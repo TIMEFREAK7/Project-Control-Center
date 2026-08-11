@@ -10,7 +10,7 @@ const assert = require("assert");
 const { JSDOM } = require("jsdom");
 const FDBFactory = require("fake-indexeddb/lib/FDBFactory");
 
-const INDEX_PATH = path.join(__dirname, "..", "pcc", "index.html");
+const INDEX_PATH = path.join(__dirname, "..", "index.html");
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));

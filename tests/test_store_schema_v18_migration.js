@@ -32,7 +32,7 @@ function makeFakeLocalStorage(initialRaw) {
 
 function loadStoreWith(rawJsonString) {
   global.window = { localStorage: makeFakeLocalStorage(rawJsonString) };
-  const src = fs.readFileSync(path.join(__dirname, "..", "pcc", "src", "js", "store.js"), "utf8");
+  const src = fs.readFileSync(path.join(__dirname, "..", "src", "js", "store.js"), "utf8");
   // eslint-disable-next-line no-eval
   eval(src);
   return global.window.PCC.store;

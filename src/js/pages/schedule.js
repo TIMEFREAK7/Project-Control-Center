@@ -1704,6 +1704,243 @@
   }
 
   // ---------------------------------------------------------------------------------
+  // Gantt tab (Gate 5) — visualization only, built on scheduleGanttLayout.js's pure
+  // row/date computation. No drag-to-reschedule; activities are still edited through
+  // the Activities tab form.
+  // ---------------------------------------------------------------------------------
+
+  var SVG_NS = "http://www.w3.org/2000/svg";
+
+  function svgEl(tag, attrs) {
+    var el = document.createElementNS(SVG_NS, tag);
+    if (attrs) {
+      Object.keys(attrs).forEach(function (k) {
+        el.setAttribute(k, attrs[k]);
+      });
+    }
+    return el;
+  }
+
+  function truncateLabel(name, maxChars) {
+    if (name.length <= maxChars) return name;
+    return name.slice(0, maxChars - 1) + "…";
+  }
+
+  function ganttPxPerDay(totalSpanDays) {
+    if (totalSpanDays <= 30) return 24;
+    if (totalSpanDays <= 90) return 14;
+    if (totalSpanDays <= 180) return 8;
+    return 4;
+  }
+
+  function ganttTickIntervalDays(totalSpanDays) {
+    if (totalSpanDays <= 45) return 7;
+    if (totalSpanDays <= 120) return 14;
+    return 30;
+  }
+
+  function formatAxisDate(iso) {
+    var d = new Date(iso + "T00:00:00Z");
+    return (d.getUTCMonth() + 1) + "/" + d.getUTCDate();
+  }
+
+  function renderGanttTab(container, data, rerender) {
+    var schedule = data.schedules.find(function (s) {
+      return s.id === uiState.scheduleId;
+    });
+    var activities = data.activities.filter(function (a) {
+      return a.schedule_id === uiState.scheduleId;
+    });
+
+    var layout = window.PCC.scheduleGanttLayout.computeLayout(activities, {
+      dataDate: schedule && schedule.data_date ? schedule.data_date : null,
+    });
+
+    if (layout.datedCount === 0) {
+      var empty = document.createElement("div");
+      empty.className = "panel empty-state";
+      empty.textContent =
+        activities.length === 0
+          ? "No activities in this schedule yet. Add some on the Activities tab first."
+          : "None of this schedule's " + activities.length + " activity(ies) have a Planned Start/Finish " +
+            "or a calculated date yet. Add planned dates on the Activities tab, or run “Calculate " +
+            "Schedule” above.";
+      container.appendChild(empty);
+      return;
+    }
+
+    if (layout.undatedCount > 0) {
+      var note = document.createElement("p");
+      note.className = "text-secondary";
+      note.style.fontSize = "12px";
+      note.style.marginBottom = "10px";
+      note.textContent =
+        layout.undatedCount + " activity(ies) have no planned or calculated dates and aren't shown on the chart.";
+      container.appendChild(note);
+    }
+
+    var diffDays = window.PCC.scheduleGanttLayout.diffDays;
+    var bufferDays = 1;
+    var totalSpanDays = diffDays(layout.rangeStart, layout.rangeEnd) + 1 + bufferDays * 2;
+    var pxPerDay = ganttPxPerDay(totalSpanDays);
+    var labelWidth = 200;
+    var rowHeight = 26;
+    var headerHeight = 28;
+    var chartWidth = labelWidth + totalSpanDays * pxPerDay;
+    var chartHeight = headerHeight + layout.rows.length * rowHeight + 6;
+
+    function xForDate(iso) {
+      return labelWidth + (diffDays(layout.rangeStart, iso) + bufferDays) * pxPerDay;
+    }
+
+    var wrap = document.createElement("div");
+    wrap.className = "panel";
+    wrap.style.overflowX = "auto";
+    wrap.style.overflowY = "auto";
+    wrap.style.maxHeight = "70vh";
+
+    var svg = svgEl("svg", { width: chartWidth, height: chartHeight, style: "display:block;" });
+
+    // Axis gridlines + date labels, drawn first so bars/labels sit on top.
+    var tickIntervalDays = ganttTickIntervalDays(totalSpanDays);
+    for (var t = 0; t <= totalSpanDays; t += tickIntervalDays) {
+      var tickIso = window.PCC.scheduleGanttLayout.addDays(layout.rangeStart, t - bufferDays);
+      var tx = labelWidth + t * pxPerDay;
+      svg.appendChild(
+        svgEl("line", { x1: tx, y1: 0, x2: tx, y2: chartHeight, stroke: "var(--grid-line)", "stroke-width": 1 })
+      );
+      svg.appendChild(
+        svgEl("text", { x: tx + 3, y: 12, "font-size": 10, fill: "var(--text-secondary)" })
+      ).textContent = formatAxisDate(tickIso);
+    }
+    svg.appendChild(
+      svgEl("line", { x1: labelWidth, y1: 0, x2: labelWidth, y2: chartHeight, stroke: "var(--divider)", "stroke-width": 1 })
+    );
+
+    // Data date marker, if the schedule has one set.
+    if (layout.dataDate) {
+      var ddx = xForDate(layout.dataDate);
+      svg.appendChild(
+        svgEl("line", {
+          x1: ddx, y1: 0, x2: ddx, y2: chartHeight,
+          stroke: "var(--signal-amber)", "stroke-width": 2, "stroke-dasharray": "4,3",
+        })
+      );
+      var ddLabel = svgEl("text", { x: ddx + 4, y: headerHeight - 4, "font-size": 10, fill: "var(--signal-amber)", "font-weight": "600" });
+      ddLabel.textContent = "Data Date";
+      svg.appendChild(ddLabel);
+    }
+
+    layout.rows.forEach(function (row, i) {
+      var y = headerHeight + i * rowHeight;
+      var rowCenter = y + rowHeight / 2;
+
+      var divider = svgEl("line", {
+        x1: 0, y1: y + rowHeight, x2: chartWidth, y2: y + rowHeight,
+        stroke: "var(--divider)", "stroke-width": 1,
+      });
+      svg.appendChild(divider);
+
+      var labelText = svgEl("text", { x: 6, y: rowCenter + 4, "font-size": 11, fill: "var(--text-primary)" });
+      labelText.textContent = truncateLabel(row.name, 26);
+      var titleEl = svgEl("title");
+      titleEl.textContent = row.name;
+      labelText.appendChild(titleEl);
+      svg.appendChild(labelText);
+
+      if (row.dateSource === "none") {
+        var noneText = svgEl("text", { x: labelWidth + 4, y: rowCenter + 4, "font-size": 11, fill: "var(--text-secondary)", "font-style": "italic" });
+        noneText.textContent = "No dates set";
+        svg.appendChild(noneText);
+        return;
+      }
+
+      var baseColor = row.isCritical
+        ? "var(--status-critical)"
+        : row.dateSource === "calculated"
+        ? "var(--status-info)"
+        : "var(--text-secondary)";
+
+      if (row.isMilestone) {
+        var cx = xForDate(row.start) + pxPerDay / 2;
+        var size = 8;
+        svg.appendChild(
+          svgEl("path", {
+            d: "M " + cx + " " + (rowCenter - size) + " L " + (cx + size) + " " + rowCenter +
+              " L " + cx + " " + (rowCenter + size) + " L " + (cx - size) + " " + rowCenter + " Z",
+            fill: row.isCritical ? "var(--status-critical)" : "var(--signal-amber)",
+            stroke: "var(--bg-paper)",
+            "stroke-width": 1,
+            "data-activity-id": row.id,
+          })
+        );
+        return;
+      }
+
+      var barX = xForDate(row.start);
+      var barW = Math.max((row.durationDays || 0) * pxPerDay, 3);
+      var barY = y + 5;
+      var barH = rowHeight - 10;
+
+      svg.appendChild(
+        svgEl("rect", {
+          x: barX, y: barY, width: barW, height: barH, rx: 3,
+          fill: baseColor, "fill-opacity": 0.28,
+          stroke: baseColor, "stroke-width": 1,
+          "stroke-dasharray": row.dateSource === "planned" ? "4,2" : "none",
+          "data-activity-id": row.id,
+        })
+      );
+
+      if (row.percentComplete > 0) {
+        var progressW = Math.max(barW * Math.min(row.percentComplete, 100) / 100, row.percentComplete > 0 ? 2 : 0);
+        svg.appendChild(
+          svgEl("rect", { x: barX, y: barY, width: progressW, height: barH, rx: 3, fill: baseColor })
+        );
+      }
+    });
+
+    wrap.appendChild(svg);
+    container.appendChild(wrap);
+
+    var legend = document.createElement("div");
+    legend.style.display = "flex";
+    legend.style.flexWrap = "wrap";
+    legend.style.gap = "16px";
+    legend.style.marginTop = "10px";
+    legend.style.fontSize = "12px";
+
+    function legendItem(colorCss, label, dashed) {
+      var item = document.createElement("span");
+      item.style.display = "inline-flex";
+      item.style.alignItems = "center";
+      item.style.gap = "6px";
+      var swatch = document.createElement("span");
+      swatch.style.width = "14px";
+      swatch.style.height = "10px";
+      swatch.style.borderRadius = "2px";
+      swatch.style.background = colorCss;
+      if (dashed) {
+        swatch.style.background = "transparent";
+        swatch.style.border = "1px dashed " + colorCss;
+      }
+      var text = document.createElement("span");
+      text.className = "text-secondary";
+      text.textContent = label;
+      item.appendChild(swatch);
+      item.appendChild(text);
+      return item;
+    }
+
+    legend.appendChild(legendItem("var(--status-critical)", "Critical (0 or negative float)"));
+    legend.appendChild(legendItem("var(--status-info)", "Calculated"));
+    legend.appendChild(legendItem("var(--text-secondary)", "Planned only — not yet calculated", true));
+    legend.appendChild(legendItem("var(--signal-amber)", "Milestone"));
+    if (layout.dataDate) legend.appendChild(legendItem("var(--signal-amber)", "Data Date", true));
+    container.appendChild(legend);
+  }
+
+  // ---------------------------------------------------------------------------------
   // Baselines tab (Gate 4)
   // ---------------------------------------------------------------------------------
 
@@ -1994,8 +2231,8 @@
     gateNote.style.fontSize = "12px";
     gateNote.style.marginBottom = "16px";
     gateNote.textContent =
-      "Gate 1: hand-entered schedule data only. Excel/MS Project import and critical-path " +
-      "calculation are not built yet.";
+      "Hand-enter activities, import from Excel, or calculate the critical path. " +
+      "View the Gantt tab for a timeline, and save/compare baselines from the Baselines tab.";
     outlet.appendChild(gateNote);
 
     renderScheduleBar(outlet, data, rerender);
@@ -2032,6 +2269,7 @@
 
     [
       { key: "activities", label: "Activities" },
+      { key: "gantt", label: "Gantt" },
       { key: "wbs", label: "WBS" },
       { key: "relationships", label: "Relationships" },
       { key: "baselines", label: "Baselines" },
@@ -2054,6 +2292,7 @@
     outlet.appendChild(tabContent);
 
     if (uiState.tab === "activities") renderActivitiesTab(tabContent, data, rerender);
+    else if (uiState.tab === "gantt") renderGanttTab(tabContent, data, rerender);
     else if (uiState.tab === "wbs") renderWbsTab(tabContent, data, rerender);
     else if (uiState.tab === "relationships") renderRelationshipsTab(tabContent, data, rerender);
     else if (uiState.tab === "baselines") renderBaselinesTab(tabContent, data, rerender);
