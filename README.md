@@ -632,19 +632,91 @@ any of it until now.
 **What I have not tested:** this on your actual device. Per the usual gate discipline, treat this
 as built-and-verified-in-this-environment, not confirmed — same standard as every prior gate.
 
+## Gate 6 — Cost Tracking (2026-08-11)
+
+The next Tier 2 line item after Gantt: budget line items vs. actual costs incurred, per project.
+**Scope decided explicitly before building** (Aditya, this session): budget-vs-actual variance
+only — no EVM (Planned Value / Earned Value / CPI / SPI), that's its own separate, later gate per
+the locked Tier 2 order.
+
+**What changed and why:**
+
+- **Schema v18 → v19** (`store.js`): two new arrays, `cost_budget_items` and `cost_actuals`.
+  Deliberately **two separate shapes, not one distinguished by a `type` field** — unlike Risk/
+  Issue/Opportunity or RFI/TQ, a budget line item and an actual cost entry genuinely aren't the
+  same shape (date, vendor, invoice ref only make sense on an actual; a budget item is just a
+  planned amount against a category). Applying the "one shape" pattern where the shapes actually
+  differ would have forced awkward always-empty fields on one side or the other.
+- **No automatic link to a project's `contract_value` or to Change Orders' `cost_impact_amount`**
+  — the exact same "reconciliation stays a manual, deliberate act" decision already made for
+  Change Orders (Aditya, 2026-08-06), applied consistently here rather than re-litigated.
+- **New page `cost.js`** (route `#/cost`, sidebar "Cost Tracking"), three tabs:
+  - **Budget** — line items (Project *, Category *, Name/Scope *, Planned Amount *, Notes).
+    Standard construction categories: Labor, Materials, Equipment, Subcontractor, Permits/Fees,
+    Other.
+  - **Actuals** — a cost log (Project *, Category *, Description *, Amount *, Date *, optional
+    Vendor/Invoice Ref/Notes) with an **optional** link to a Budget tab line item via "Against
+    Budget Item" — logging an unbudgeted/miscellaneous cost is still worth doing even with nothing
+    to link it to.
+  - **Summary** — portfolio-wide stat tiles (Total Budgeted / Total Actual / Variance, scoped to
+    active projects, same convention Reports' Portfolio Summary Report uses) plus a per-project
+    budget-vs-actual-vs-variance table.
+  - **Project assignment is mandatory** on both Budget and Actuals, same as every other register
+    — "+ Add Budget Item" / "+ Log Actual Cost" are disabled with zero active projects.
+- **Deleting a budget item unlinks rather than orphans its actual cost entries** — any actual
+  referencing the deleted item has `budget_item_id` cleared, matching the pattern Documents'
+  delete already established for cleaning up references rather than leaving stale ids around.
+- **Portfolio's Details panel gets a Cost Tracking section**, right after Change Orders, matching
+  the pattern every other register already has there: budgeted/actual/variance for the project
+  plus a working "View All" link into the Cost page filtered to it.
+
+**New file:** `cost.js`. **Changed:** `store.js` (schema 18→19, `newCostBudgetItem()`/
+`newCostActual()`/`COST_CATEGORIES`), `portfolio.js` (Cost Tracking details section),
+`layout.js`/`app.js`/`build.js` (new route/nav/bundle entry).
+
+**Tested before delivery (7 + 28 checks across 2 files, fresh session, all passed clean):**
+
+- **Schema migration** (`test_store_schema_v19_migration.js`, 7 checks; replaces the prior
+  gate's migration-chain test file, same "one canonical full-chain test targeting latest" pattern
+  as before): a v18 dataset gets both new arrays added and lands on schema 19 with existing
+  projects/schedules/activities/baselines untouched; a minimal legacy (no `schema_version` at
+  all) dataset runs the entire chain through to 19; a brand-new install starts clean;
+  `newCostBudgetItem()`/`newCostActual()` factory defaults (category defaults to "other",
+  `budget_item_id` defaults to unlinked, date defaults to today); `COST_CATEGORIES` has the
+  expected six categories.
+- **End-to-end against the actual bundled `index.html`** (`test_cost_e2e.js`, 28 checks, not a
+  reimplementation): added a budget item and an actual cost through the **real forms**, confirmed
+  the "Against Budget Item" dropdown offers the just-created item and the link is stored
+  correctly; logged a second, deliberately unlinked actual and confirmed `budget_item_id` stays
+  empty; edited a budget item through the real form; the Summary tab's totals matched hand-checked
+  arithmetic across both actuals; **deleting the linked budget item left both actuals intact with
+  the link cleared** (the specific "unlink, don't orphan" behavior, checked against the store
+  directly); deleting an actual cost entry removed only that entry; Portfolio's Details panel
+  shows the Cost Tracking section with correct numbers and a working View All link; mandatory
+  project assignment confirmed by archiving the only project and checking both "+" buttons
+  disable; every other route still renders without throwing after the schema bump.
+- **Real-browser verification** (Chromium via Playwright): added a budget item and a linked
+  actual cost through the live UI, confirmed the Summary tab's stat tiles and per-project table
+  render correctly, and confirmed the Cost Tracking section appears in Portfolio's Details panel
+  in the right place (after Change Orders) with the right numbers — zero console/page errors
+  throughout.
+
+**What I have not tested:** this on your actual device. Per the usual gate discipline, treat this
+as built-and-verified-in-this-environment, not confirmed — same standard as every prior gate.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
 RFI/TQ → Change Management → Basic Reporting → Backup & Recovery
 
-**Tier 2** (in progress — Schedule import, CPM/float engine, and Gantt are done; next up is Cost
-tracking): Schedule import (Excel/MSP first) + CPM/float engine + Gantt → Cost tracking → EVM
-engine → Resource Management
+**Tier 2** (in progress — Schedule import, CPM/float engine, Gantt, and Cost Tracking are done;
+next up is the EVM engine): Schedule import (Excel/MSP first) + CPM/float engine + Gantt → Cost
+tracking → EVM engine → Resource Management
 
 **Tier 3 (deferred until Tier 1 is in daily use):** AI Document Processing, Knowledge Base, AI Project
 Assistant, Lessons Learned, final polish
 
 ## Next phase
 
-Tier 2 continues with Cost tracking (budget vs. actuals) — scope to be decided explicitly before
-building, same as every prior gate.
+Tier 2 continues with the EVM engine (Planned Value / Earned Value / Actual Cost, CPI/SPI) —
+scope to be decided explicitly before building, same as every prior gate.

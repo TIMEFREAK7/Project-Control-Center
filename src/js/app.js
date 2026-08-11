@@ -13,6 +13,7 @@
     router.register("meetings", window.PCC.pages.meetings);
     router.register("rfis", window.PCC.pages.rfis);
     router.register("changeOrders", window.PCC.pages.changeOrders);
+    router.register("cost", window.PCC.pages.cost);
     router.register("reports", window.PCC.pages.reports);
     router.register("settings", window.PCC.pages.settings);
     router.register("notfound", window.PCC.pages.notfound);

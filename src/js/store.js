@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 18;
+  var SCHEMA_VERSION = 19;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -47,6 +47,14 @@
       // Gate 4: thin index only \u2014 see scheduleBaselineStore.js for the actual
       // frozen snapshot payload, which lives in IndexedDB, not here.
       schedule_baselines: [],
+      // Gate 5b (Tier 2 Cost Tracking): budget line items and the actual-cost log
+      // against them. Deliberately two separate arrays, not one shape distinguished by
+      // a type field \u2014 unlike Risk/Issue/Opportunity or RFI/TQ, a budget line item and
+      // an actual cost entry aren't the same shape (dates, vendor, invoice ref only
+      // make sense on an actual). No EVM (PV/EV/CPI/SPI) here \u2014 that's a separate,
+      // later gate per the locked Tier 2 order.
+      cost_budget_items: [],
+      cost_actuals: [],
     };
   }
 
@@ -405,6 +413,65 @@
       source_risk_id: "",
       source_meeting_id: "",
       revisions: [],
+      created_at: now,
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  // ============================================================
+  // GATE 5b (Tier 2 Cost Tracking) — budget line items + actual cost log. Budget vs.
+  // actual variance only; no EVM (PV/EV/CPI/SPI), that's a separate, later gate.
+  // Deliberately no automatic link to a project's contract_value or to Change Orders'
+  // cost_impact_amount — same "reconciliation stays a manual, deliberate act" decision
+  // already made for Change Orders (Aditya, 2026-08-06), applied consistently here.
+  // ============================================================
+
+  var COST_CATEGORIES = ["labor", "materials", "equipment", "subcontractor", "permits_fees", "other"];
+
+  function newCostBudgetItemId() {
+    return "cb_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  function newCostActualId() {
+    return "ca_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  /** A planned budget line item for a project — one row of "what we expect to spend,
+   * in this category, for this scope of work." Actual costs (newCostActual) may
+   * optionally reference one via budget_item_id; they don't have to. */
+  function newCostBudgetItem(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newCostBudgetItemId(),
+      project_id: "",
+      category: "other",
+      name: "",
+      planned_amount: null,
+      notes: "",
+      created_at: now,
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  /** An actual cost incurred against a project. budget_item_id is optional — an
+   * unbudgeted/miscellaneous cost is still worth logging, it just won't roll up under
+   * a specific budget line on the Summary tab, only under its category and the
+   * project's overall actual total. */
+  function newCostActual(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newCostActualId(),
+      project_id: "",
+      budget_item_id: "",
+      category: "other",
+      description: "",
+      amount: null,
+      date: now.slice(0, 10),
+      vendor: "",
+      invoice_ref: "",
+      notes: "",
       created_at: now,
       updated_at: now,
     };
@@ -771,6 +838,14 @@
       loaded.schema_version = 18;
     }
 
+    if (loaded.schema_version < 19) {
+      // Gate 5b: Cost Tracking. Brand new arrays, nothing to backfill on existing
+      // records — same as every prior gate that introduced a new register.
+      if (!loaded.cost_budget_items) loaded.cost_budget_items = [];
+      if (!loaded.cost_actuals) loaded.cost_actuals = [];
+      loaded.schema_version = 19;
+    }
+
     return loaded;
   }
 
@@ -1107,5 +1182,8 @@
     ACTIVITY_TYPES: ACTIVITY_TYPES,
     ACTIVITY_STATUSES: ACTIVITY_STATUSES,
     RELATIONSHIP_TYPES: RELATIONSHIP_TYPES,
+    newCostBudgetItem: newCostBudgetItem,
+    newCostActual: newCostActual,
+    COST_CATEGORIES: COST_CATEGORIES,
   };
 })();
