@@ -863,7 +863,10 @@
         costLine.innerHTML =
           "Budgeted " + formatMoney(costSummary.budgeted) + " · Actual " + formatMoney(costSummary.actual) +
           " · <span style='color:" + (costSummary.variance < 0 ? "var(--status-critical)" : "var(--status-on-track)") + "'>" +
-          (costSummary.variance >= 0 ? "+" : "") + formatMoney(costSummary.variance) + " variance</span>";
+          (costSummary.variance >= 0 ? "+" : "") + formatMoney(costSummary.variance) + " variance</span>" +
+          (costSummary.usingPortfolioBudget
+            ? "<br/><span class='text-secondary' style='font-size:11px;'>Budgeted from this project's Budget field — no Cost Tracking line items yet.</span>"
+            : "");
       }
       costSection.appendChild(costLine);
     }

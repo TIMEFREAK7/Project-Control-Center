@@ -259,11 +259,70 @@ function findButtonByText(win, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
+  let fallbackProjectId;
+  await check("a project with a Portfolio Budget field but no Cost Tracking line items falls back to it", () => {
+    win.PCC.store.update(function (data) {
+      var project = { id: "proj_cost_fallback", name: "Fallback Test Project", archived: false, status: "on_track", progress: 0, budget: 75000, attachments: [] };
+      data.projects.push(project);
+      fallbackProjectId = project.id;
+    });
+    var summary = win.PCC.cost.projectCostSummary(win.PCC.store.get(), fallbackProjectId);
+    assert.strictEqual(summary.budgeted, 75000, "should fall back to the project's Budget field");
+    assert.strictEqual(summary.usingPortfolioBudget, true);
+    assert.strictEqual(summary.actual, 0);
+
+    win.PCC.router.go("cost");
+    win.PCC.router.render();
+    var summaryTabBtn = findButtonByText(win, "Summary");
+    summaryTabBtn.click();
+    var outlet = win.document.getElementById("page-outlet");
+    assert.ok(outlet.textContent.indexOf("Fallback Test Project") !== -1);
+    assert.ok(outlet.textContent.indexOf("75,000") !== -1, "expected the Portfolio Budget figure on the Summary tab");
+    assert.ok(
+      outlet.textContent.indexOf("from Portfolio's Budget field") !== -1,
+      "expected a note flagging this number came from Portfolio, not line items"
+    );
+    assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
+  });
+
+  await check("Portfolio's Details panel shows the same fallback figure and note for that project", () => {
+    win.PCC.router.go("portfolio");
+    win.PCC.router.render();
+    // Two projects now exist; find the card containing "Fallback Test Project" specifically,
+    // rather than assuming array-index alignment with any other button list.
+    var cards = Array.from(win.document.querySelectorAll(".project-card"));
+    var fallbackCard = cards.find((c) => c.textContent.indexOf("Fallback Test Project") !== -1);
+    assert.ok(fallbackCard, "Fallback Test Project card not found");
+    var detailsBtn = Array.from(fallbackCard.querySelectorAll("button")).find((b) => b.textContent.trim() === "Details");
+    assert.ok(detailsBtn, "Details button not found within the Fallback Test Project card");
+    detailsBtn.click();
+    var outlet = win.document.getElementById("page-outlet");
+    assert.ok(outlet.textContent.indexOf("75,000") !== -1, "expected the fallback figure in Portfolio's Details panel");
+    assert.ok(
+      outlet.textContent.indexOf("Budgeted from this project's Budget field") !== -1,
+      "expected the fallback note in Portfolio's Details panel"
+    );
+    assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
+  });
+
+  await check("adding a real Cost Tracking budget line item turns the fallback off", () => {
+    win.PCC.store.update(function (data) {
+      data.cost_budget_items.push(
+        win.PCC.store.newCostBudgetItem({ project_id: fallbackProjectId, name: "Site Prep", category: "labor", planned_amount: 9000 })
+      );
+    });
+    var summary = win.PCC.cost.projectCostSummary(win.PCC.store.get(), fallbackProjectId);
+    assert.strictEqual(summary.usingPortfolioBudget, false, "a real line item should take over as the source of truth");
+    assert.strictEqual(summary.budgeted, 9000, "budgeted should now be the line-item sum, not the Portfolio Budget field (75,000)");
+  });
+
   await check("with no active projects, '+ Add Budget Item' and '+ Log Actual Cost' are disabled", () => {
     win.PCC.store.update(function (data) {
-      var p = data.projects.find((proj) => proj.id === projectId);
-      p.archived = true;
+      data.projects.forEach(function (p) {
+        p.archived = true;
+      });
     });
+    win.PCC.router.go("cost");
     win.PCC.router.render();
     var budgetTabBtn = findButtonByText(win, "Budget");
     budgetTabBtn.click();
@@ -277,8 +336,9 @@ function findButtonByText(win, text) {
 
     // Restore for the route smoke test below.
     win.PCC.store.update(function (data) {
-      var p = data.projects.find((proj) => proj.id === projectId);
-      p.archived = false;
+      data.projects.forEach(function (p) {
+        p.archived = false;
+      });
     });
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });

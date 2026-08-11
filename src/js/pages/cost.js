@@ -739,15 +739,39 @@
 
   /** Per-project budget/actual/variance, scoped to active projects — same convention
    * Reports' Portfolio Summary Report uses. Exported (below) so Portfolio's Details
-   * panel can show one project's numbers without duplicating this math. */
+   * panel can show one project's numbers without duplicating this math.
+   *
+   * Budget line items are always the source of truth when any exist — deliberately
+   * chosen (Aditya, this session) over the Portfolio "Budget" field, since line items
+   * carry real category-level detail and shouldn't be silently overridden by a single
+   * coarser number. Portfolio's Budget field is used ONLY as a fallback when a project
+   * has zero budget line items, so "Total Budgeted" isn't misleadingly $0 for a project
+   * where someone filled in Budget on the project form but never visited Cost Tracking.
+   * `usingPortfolioBudget` tells callers which case they're in, so the UI can say so
+   * rather than blending two different-precision numbers silently. This is still not
+   * the automatic contract_value/Change-Order-style reconciliation this app has
+   * deliberately avoided elsewhere — it's a read-only fallback, and adding a single
+   * budget line item for a project turns it off for that project immediately. */
   function projectCostSummary(data, projectId) {
-    var budgeted = data.cost_budget_items
-      .filter(function (b) {
-        return b.project_id === projectId;
-      })
-      .reduce(function (sum, b) {
-        return sum + (Number(b.planned_amount) || 0);
-      }, 0);
+    var budgetItems = data.cost_budget_items.filter(function (b) {
+      return b.project_id === projectId;
+    });
+    var itemsTotal = budgetItems.reduce(function (sum, b) {
+      return sum + (Number(b.planned_amount) || 0);
+    }, 0);
+
+    var budgeted = itemsTotal;
+    var usingPortfolioBudget = false;
+    if (budgetItems.length === 0) {
+      var project = data.projects.find(function (p) {
+        return p.id === projectId;
+      });
+      if (project && project.budget !== null && project.budget !== undefined && project.budget !== "") {
+        budgeted = Number(project.budget) || 0;
+        usingPortfolioBudget = true;
+      }
+    }
+
     var actual = data.cost_actuals
       .filter(function (a) {
         return a.project_id === projectId;
@@ -755,7 +779,7 @@
       .reduce(function (sum, a) {
         return sum + (Number(a.amount) || 0);
       }, 0);
-    return { budgeted: budgeted, actual: actual, variance: budgeted - actual };
+    return { budgeted: budgeted, actual: actual, variance: budgeted - actual, usingPortfolioBudget: usingPortfolioBudget };
   }
 
   function renderSummaryTab(container, data) {
@@ -768,9 +792,10 @@
         var s = projectCostSummary(data, p.id);
         acc.budgeted += s.budgeted;
         acc.actual += s.actual;
+        if (s.usingPortfolioBudget) acc.fallbackCount += 1;
         return acc;
       },
-      { budgeted: 0, actual: 0 }
+      { budgeted: 0, actual: 0, fallbackCount: 0 }
     );
     var totalVariance = totals.budgeted - totals.actual;
 
@@ -794,6 +819,19 @@
       kpiGrid.appendChild(card);
     });
     container.appendChild(kpiGrid);
+
+    if (totals.fallbackCount > 0) {
+      var fallbackNote = document.createElement("p");
+      fallbackNote.className = "text-secondary";
+      fallbackNote.style.fontSize = "12px";
+      fallbackNote.style.marginTop = "-10px";
+      fallbackNote.style.marginBottom = "10px";
+      fallbackNote.textContent =
+        totals.fallbackCount + " of " + activeProjects.length + " project(s) above use Portfolio's Budget " +
+        "field as a stand-in, since they have no Cost Tracking budget line items yet — add line items on " +
+        "the Budget tab for a more detailed number.";
+      container.appendChild(fallbackNote);
+    }
 
     if (activeProjects.length === 0) {
       var empty = document.createElement("div");
@@ -834,6 +872,7 @@
         "<span class='text-secondary' style='font-size:12px;'>" +
         "Budgeted " + formatMoney(s.budgeted) + " · Actual " + formatMoney(s.actual) +
         (pctUsed !== null ? " (" + pctUsed + "% used)" : "") +
+        (s.usingPortfolioBudget ? " · from Portfolio's Budget field (no cost line items yet)" : "") +
         "</span>";
       row.appendChild(main);
 
