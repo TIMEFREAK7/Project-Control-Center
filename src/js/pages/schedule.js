@@ -1994,8 +1994,8 @@
     gateNote.style.fontSize = "12px";
     gateNote.style.marginBottom = "16px";
     gateNote.textContent =
-      "Gate 1: hand-entered schedule data only. Excel/MS Project import and critical-path " +
-      "calculation are not built yet.";
+      "Hand-enter activities, import from Excel, or calculate the critical path. " +
+      "Save and compare baselines from the Baselines tab.";
     outlet.appendChild(gateNote);
 
     renderScheduleBar(outlet, data, rerender);

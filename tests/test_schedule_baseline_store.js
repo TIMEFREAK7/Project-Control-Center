@@ -32,7 +32,7 @@ function freshStore() {
   dom.window.indexedDB = new FDBFactory();
   global.window = dom.window;
   const src = fs.readFileSync(
-    path.join(__dirname, "..", "pcc", "src", "js", "scheduleBaselineStore.js"),
+    path.join(__dirname, "..", "src", "js", "scheduleBaselineStore.js"),
     "utf8"
   );
   // eslint-disable-next-line no-eval

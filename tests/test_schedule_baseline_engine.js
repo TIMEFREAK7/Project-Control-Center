@@ -7,7 +7,7 @@ const assert = require("assert");
 
 global.window = global.window || {};
 const src = fs.readFileSync(
-  path.join(__dirname, "..", "pcc", "src", "js", "scheduleBaselineEngine.js"),
+  path.join(__dirname, "..", "src", "js", "scheduleBaselineEngine.js"),
   "utf8"
 );
 // eslint-disable-next-line no-eval
