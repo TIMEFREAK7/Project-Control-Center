@@ -824,6 +824,51 @@
     }
 
     wrap.appendChild(coSection);
+
+    var costSection = document.createElement("div");
+    costSection.style.marginTop = "16px";
+    costSection.style.paddingTop = "14px";
+    costSection.style.borderTop = "1px solid var(--divider)";
+
+    var costHeader = document.createElement("div");
+    costHeader.style.display = "flex";
+    costHeader.style.justifyContent = "space-between";
+    costHeader.style.alignItems = "center";
+
+    var costLabel = document.createElement("span");
+    costLabel.className = "detail-item__label";
+    costLabel.textContent = "COST TRACKING";
+    costHeader.appendChild(costLabel);
+
+    var viewAllCostBtn = document.createElement("button");
+    viewAllCostBtn.className = "btn btn--ghost";
+    viewAllCostBtn.textContent = "View All";
+    viewAllCostBtn.onclick = function () {
+      if (window.PCC.cost) window.PCC.cost.filterByProject(p.id);
+      window.PCC.router.go("cost");
+    };
+    costHeader.appendChild(viewAllCostBtn);
+
+    costSection.appendChild(costHeader);
+
+    if (window.PCC.cost) {
+      var costSummary = window.PCC.cost.projectCostSummary(window.PCC.store.get(), p.id);
+      var costLine = document.createElement("p");
+      costLine.style.fontSize = "13px";
+      costLine.style.margin = "6px 0 0";
+      if (costSummary.budgeted === 0 && costSummary.actual === 0) {
+        costLine.className = "text-secondary";
+        costLine.textContent = "No budget items or actual costs logged for this project yet.";
+      } else {
+        costLine.innerHTML =
+          "Budgeted " + formatMoney(costSummary.budgeted) + " · Actual " + formatMoney(costSummary.actual) +
+          " · <span style='color:" + (costSummary.variance < 0 ? "var(--status-critical)" : "var(--status-on-track)") + "'>" +
+          (costSummary.variance >= 0 ? "+" : "") + formatMoney(costSummary.variance) + " variance</span>";
+      }
+      costSection.appendChild(costLine);
+    }
+
+    wrap.appendChild(costSection);
     return wrap;
   }
 

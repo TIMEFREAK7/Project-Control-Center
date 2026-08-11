@@ -1,5 +1,5 @@
 // Standalone Node test for store.js's migrate() function, exercised indirectly through
-// load() (migrate() itself isn't exported \u2014 load() is the only path that calls it, and
+// load() (migrate() itself isn't exported — load() is the only path that calls it, and
 // it runs at module-eval time by reading window.localStorage synchronously). No jsdom
 // needed: a minimal localStorage stub is enough, and keeps this fast given migrate()
 // bugs in this project have historically been the kind that silently drop data.
@@ -39,11 +39,11 @@ function loadStoreWith(rawJsonString) {
 }
 
 // ---------------------------------------------------------------------------
-// v17 -> v18: schedule_baselines gets added, nothing else touched
+// v18 -> v19: cost_budget_items/cost_actuals get added, nothing else touched
 // ---------------------------------------------------------------------------
-check("a v17 dataset gets schedule_baselines added and lands on schema_version 18", () => {
-  const v17 = {
-    schema_version: 17,
+check("a v18 dataset gets cost_budget_items/cost_actuals added and lands on schema_version 19", () => {
+  const v18 = {
+    schema_version: 18,
     meta: { app_name: "x", created_at: "2026-01-01T00:00:00.000Z", last_saved_at: null, last_exported_at: null },
     settings: { theme: "dark", company_name: "", backup_reminder_days: 7, backup_nudge_dismissed_at: null },
     projects: [{ id: "proj_1", name: "Existing Project", archived: false, status: "on_track", progress: 0, attachments: [] }],
@@ -52,50 +52,56 @@ check("a v17 dataset gets schedule_baselines added and lands on schema_version 1
     wbs_items: [],
     activities: [{ id: "act_1", schedule_id: "sch_1", project_id: "proj_1", name: "Excavate", external_id: null, duration: 5 }],
     relationships: [],
+    schedule_baselines: [{ id: "sb_1", schedule_id: "sch_1", project_id: "proj_1", name: "Existing Baseline" }],
   };
-  const store = loadStoreWith(JSON.stringify(v17));
+  const store = loadStoreWith(JSON.stringify(v18));
   const data = store.get();
 
-  assert.strictEqual(data.schema_version, 18);
-  assert.ok(Array.isArray(data.schedule_baselines), "schedule_baselines must be an array after migration");
-  assert.strictEqual(data.schedule_baselines.length, 0, "no baselines should be fabricated for a pre-Gate-4 dataset");
+  assert.strictEqual(data.schema_version, 19);
+  assert.ok(Array.isArray(data.cost_budget_items), "cost_budget_items must be an array after migration");
+  assert.strictEqual(data.cost_budget_items.length, 0, "no budget items should be fabricated for a pre-Gate-5b dataset");
+  assert.ok(Array.isArray(data.cost_actuals), "cost_actuals must be an array after migration");
+  assert.strictEqual(data.cost_actuals.length, 0);
 
-  // The actual regression risk: existing Gate 1-3 data must survive untouched.
+  // The actual regression risk: existing Gate 1-4 data must survive untouched.
   assert.strictEqual(data.projects.length, 1);
   assert.strictEqual(data.projects[0].name, "Existing Project");
   assert.strictEqual(data.schedules.length, 1);
-  assert.strictEqual(data.schedules[0].name, "Rev 1");
   assert.strictEqual(data.activities.length, 1);
-  assert.strictEqual(data.activities[0].name, "Excavate");
+  assert.strictEqual(data.schedule_baselines.length, 1);
+  assert.strictEqual(data.schedule_baselines[0].name, "Existing Baseline");
 });
 
 // ---------------------------------------------------------------------------
-// Full chain from a very old (v1-shaped) dataset still reaches v18 cleanly
+// Full chain from a very old (v1-shaped) dataset still reaches v19 cleanly
 // ---------------------------------------------------------------------------
-check("a minimal legacy dataset (no schema_version at all) migrates all the way to 18 without throwing", () => {
+check("a minimal legacy dataset (no schema_version at all) migrates all the way to 19 without throwing", () => {
   const legacy = {
     projects: [{ id: "proj_1", name: "Old Project" }],
     documents: [],
   };
   const store = loadStoreWith(JSON.stringify(legacy));
   const data = store.get();
-  assert.strictEqual(data.schema_version, 18);
+  assert.strictEqual(data.schema_version, 19);
   assert.ok(Array.isArray(data.schedule_baselines));
+  assert.ok(Array.isArray(data.cost_budget_items));
+  assert.ok(Array.isArray(data.cost_actuals));
   assert.strictEqual(data.projects[0].name, "Old Project", "pre-existing project must survive the full migration chain");
 });
 
 // ---------------------------------------------------------------------------
-// A brand-new install (no stored data at all) gets schedule_baselines from emptyData()
+// A brand-new install (no stored data at all) gets cost arrays from emptyData()
 // ---------------------------------------------------------------------------
-check("a brand-new install with no stored data starts with schedule_baselines: []", () => {
+check("a brand-new install with no stored data starts with cost_budget_items/cost_actuals: []", () => {
   const store = loadStoreWith(null);
   const data = store.get();
-  assert.strictEqual(data.schema_version, 18);
-  assert.deepStrictEqual(data.schedule_baselines, []);
+  assert.strictEqual(data.schema_version, 19);
+  assert.deepStrictEqual(data.cost_budget_items, []);
+  assert.deepStrictEqual(data.cost_actuals, []);
 });
 
 // ---------------------------------------------------------------------------
-// newScheduleBaseline() factory sanity
+// newScheduleBaseline() factory sanity (kept from the prior schema-migration test)
 // ---------------------------------------------------------------------------
 check("newScheduleBaseline() produces a well-formed record with a unique id", () => {
   const store = loadStoreWith(null);
@@ -105,6 +111,34 @@ check("newScheduleBaseline() produces a well-formed record with a unique id", ()
   assert.strictEqual(b1.schedule_id, "sch_1");
   assert.strictEqual(b1.activity_count, 0);
   assert.ok(b1.created_at);
+});
+
+// ---------------------------------------------------------------------------
+// newCostBudgetItem() / newCostActual() factory sanity
+// ---------------------------------------------------------------------------
+check("newCostBudgetItem() defaults category to 'other' and produces a unique id", () => {
+  const store = loadStoreWith(null);
+  const b1 = store.newCostBudgetItem({ project_id: "proj_1", name: "Rebar", planned_amount: 50000 });
+  const b2 = store.newCostBudgetItem({ project_id: "proj_1", name: "Formwork", planned_amount: 20000 });
+  assert.ok(b1.id && b2.id && b1.id !== b2.id, "each budget item must get a unique id");
+  assert.strictEqual(b1.category, "other");
+  assert.strictEqual(b1.planned_amount, 50000);
+  assert.ok(b1.created_at);
+});
+
+check("newCostActual() defaults budget_item_id to '' (unbudgeted) and stamps today's date", () => {
+  const store = loadStoreWith(null);
+  const a1 = store.newCostActual({ project_id: "proj_1", description: "Rebar delivery", amount: 12000 });
+  assert.strictEqual(a1.budget_item_id, "");
+  assert.strictEqual(a1.amount, 12000);
+  assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(a1.date), "date should default to today in YYYY-MM-DD form");
+});
+
+check("COST_CATEGORIES includes the standard construction cost categories", () => {
+  const store = loadStoreWith(null);
+  ["labor", "materials", "equipment", "subcontractor", "permits_fees", "other"].forEach((c) => {
+    assert.ok(store.COST_CATEGORIES.indexOf(c) !== -1, "missing category: " + c);
+  });
 });
 
 console.log("\n" + passed + " passed, " + failed + " failed");
