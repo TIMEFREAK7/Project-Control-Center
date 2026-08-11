@@ -1,7 +1,13 @@
-Put uploaded documents here (contracts, drawings, photos, RFIs, etc.).
+This folder is for files the app can't store for you.
 
-The app stores each document's filename and metadata, not the file itself — so
-when you copy the app folder to a pen drive or cloud storage, copy this /files
-folder along with it, or attachments won't open on the other machine.
+Most of the app doesn't need this folder at all: Documents (contracts, drawings, photos,
+uploaded PDFs/Word/Excel) and Daily Log photos are embedded directly in your exported
+project-data-YYYY-MM-DD.json file, byte-for-byte, and travel with it automatically.
+Nothing to copy here for those.
 
-This module isn't built yet (ships in Tier 1, Phase 3 — Document Management).
+The one exception is Meetings' recordings: the app tracks a recording's filename,
+duration, and who uploaded it, but never embeds the actual audio/video file (a single
+recording can be hundreds of MB, far past what the app's storage is meant to hold).
+If you want the real recording file to travel with the app, place it in this /files
+folder yourself and keep it there when you copy the project-control-center folder to a
+pen drive, external drive, or cloud storage.
