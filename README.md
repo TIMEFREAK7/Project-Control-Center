@@ -774,6 +774,51 @@ up front: general polish, density/clutter, navigation/findability, and mobile/sm
 this specific pass is the one gate where that caveat mattered most, and it's exactly what caught
 both real bugs above.
 
+## Cost Tracking: fall back to Portfolio's Budget field (2026-08-11)
+
+Reported by Aditya: Cost Tracking's "Total Budgeted" only ever reflected budget line items added
+inside Cost Tracking itself — a project's own "Budget" field (set on the Portfolio Add/Edit
+Project form) was completely ignored, so a project where someone filled in Budget but never
+visited Cost Tracking showed $0 budgeted, which read as a bug even though it matched Cost
+Tracking's original explicit design (no automatic link to any Portfolio field, mirroring Change
+Orders' `cost_impact_amount`).
+
+**Scope clarified explicitly before changing anything** (Aditya, this session), since "Budget"
+and "Contract Value" are two different Portfolio fields (internal planned spend vs. the signed
+contract's value — a cost concept and a revenue concept) and there were several ways this could
+plausibly work:
+
+- **Only `budget` feeds in — not `contract_value`.** They mean different things; blending them
+  would be a modeling error, not a fix.
+- **Fallback only, never a silent override.** Cost Tracking budget line items remain the source
+  of truth whenever any exist for a project — they carry real category-level detail a single
+  top-level number can't. Portfolio's Budget field is used only when a project has **zero**
+  budget line items, so the total is never misleadingly $0 while still not letting a coarser
+  number quietly override real ones. Adding a single budget line item for a project turns the
+  fallback off for that project immediately.
+- **Never silent about which source is in play** — same transparency convention as the Gantt
+  chart's calculated-vs-planned distinction and the baseline engine's `mixed_date_sources` flag.
+  Whenever the fallback is active, both the Summary tab's per-project row and Portfolio's Details
+  panel say so explicitly ("from Portfolio's Budget field — no Cost Tracking line items yet"),
+  rather than presenting a Portfolio-sourced number identically to a real line-item total.
+
+**Changed:** `cost.js`'s `projectCostSummary()` (the shared function both the Summary tab and
+Portfolio's Details panel already called) now checks for budget line items first, falls back to
+`project.budget` if none exist, and returns a `usingPortfolioBudget` flag; both call sites render
+the disclosure note when it's true. `portfolio.js`'s Cost Tracking details section updated to
+show the same note.
+
+**Tested before delivery (3 new checks in `test_cost_e2e.js`, full suite re-run clean):** a
+project with `budget` set and no line items falls back correctly (`projectCostSummary()` checked
+directly, plus the Summary tab and Portfolio's Details panel both checked for the actual rendered
+number and disclosure text); adding a real budget line item for that project immediately turns
+the fallback off and the total switches to the line-item sum. The existing 28 Cost Tracking
+checks all still pass unchanged, since the seeded project in those never had `budget` set — undefined
+correctly does not trigger the fallback, same as before this change. Full suite: 111/111 passing.
+Verified visually in real Chromium: the fallback figure and note appear on both the Summary tab
+and Portfolio Details panel, and both switch to the real line-item total (with the note gone) the
+moment a budget line item is added.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
