@@ -1,0 +1,1111 @@
+/* Project Control Center — data store.
+ * No backend, no server. Everything lives in one JS object (window.PCC.store.data),
+ * autosaved to localStorage on every change, and exportable to a single
+ * project-data.json file for moving between machines.
+ */
+(function () {
+  "use strict";
+
+  window.PCC = window.PCC || {};
+
+  var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
+  var SCHEMA_VERSION = 18;
+
+  var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
+
+  function emptyData() {
+    return {
+      schema_version: SCHEMA_VERSION,
+      meta: {
+        app_name: "Aditya Abhyankar's Project Control Center",
+        created_at: new Date().toISOString(),
+        last_saved_at: null,
+        last_exported_at: null,
+      },
+      settings: {
+        theme: "dark",
+        company_name: "",
+        backup_reminder_days: 7,
+        backup_nudge_dismissed_at: null,
+      },
+      projects: [],
+      documents: [],
+      risks: [],
+      daily_logs: [],
+      meetings: [],
+      rfis: [],
+      change_orders: [],
+      // Gate 1 (Schedule/WBS/Activity data model): storage only — no import parser and
+      // no CPM calculation engine yet (those are Gates 2 and 3). Every activity/relationship
+      // field this app will ever need for CPM already exists on the shape below so later
+      // gates only have to populate/calculate fields, never migrate the schema again just
+      // to add them.
+      schedules: [],
+      wbs_items: [],
+      activities: [],
+      relationships: [],
+      // Gate 4: thin index only \u2014 see scheduleBaselineStore.js for the actual
+      // frozen snapshot payload, which lives in IndexedDB, not here.
+      schedule_baselines: [],
+    };
+  }
+
+  function newProjectId() {
+    return "p_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  function newDocumentId() {
+    return "d_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  var DOCUMENT_CATEGORIES = ["contract", "drawing", "photo", "invoice", "other"];
+
+  /** Fields default to "" / null rather than being omitted, so forms always have
+   * something to bind to and exports/imports have a stable shape. `attachments`
+   * holds document ids referencing entries in data.documents (Phase 3). */
+  function newProject(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newProjectId(),
+      name: "",
+      client: "",
+      company: "",
+      country: "",
+      location: "",
+      sector: "",
+      contract_type: "",
+      budget: null,
+      contract_value: null,
+      currency: "",
+      start_date: "",
+      finish_date: "",
+      status: "on_track",
+      progress: 0,
+      project_manager: "",
+      planner: "",
+      engineers: "",
+      contractor: "",
+      consultant: "",
+      owner: "",
+      archived: false,
+      attachments: [],
+      created_at: now,
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  /** A document record holds metadata, whatever we could extract client-side, and
+   * (by explicit choice, since storage isn't a concern) the original file itself as a
+   * base64 data URI in `file_data` — so "Open File" always reproduces the exact
+   * uploaded file, not a re-derived version. This lives in the same exported JSON as
+   * everything else. The tradeoff: browser localStorage typically caps around 5-10MB
+   * total, so large/many files can outrun autosave well before they'd trouble a pen
+   * drive — see the size warning shown at upload time. `extraction` is null until an
+   * extractor (Excel/Word/PDF) has processed it. */
+  function newDocument(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newDocumentId(),
+      project_id: "",
+      filename: "",
+      category: "other",
+      file_size: 0,
+      mime_type: "",
+      uploaded_at: now,
+      extraction: null,
+      file_data: null,
+      meeting_id: "",
+      // Duplicate detection (schema v14). content_hash/hash_method are set at upload
+      // time by duplicateService.fingerprintFile() — hash_method is 'sha256' or
+      // 'name-size' depending on whether Web Crypto was available on that device; a
+      // 'name-size' fingerprint is a weaker signal and callers should treat it that way.
+      content_hash: null,
+      hash_method: null,
+      is_duplicate: false,
+      duplicate_group_id: null,
+      original_record_id: null,
+      duplicate_reason: null,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  function newDailyLogId() {
+    return "dl_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  function newDailyLogPhotoId() {
+    return "dlp_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  /** A photo attached to a Daily Log entry. Stored as a base64 data URI in `file_data`,
+   * same approach Documents already uses for uploaded files \u2014 no external folder
+   * dependency, survives the JSON export/import round trip intact. */
+  function newDailyLogPhoto(overrides) {
+    var base = {
+      id: newDailyLogPhotoId(),
+      filename: "",
+      file_data: null,
+      file_size: 0,
+      caption: "",
+      added_at: new Date().toISOString(),
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  /** One entry per project per day. `incident_flag` is derived at save time from
+   * whether `incidents` is non-empty, so the list view can badge it without re-parsing
+   * text every render. */
+  function newDailyLog(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newDailyLogId(),
+      project_id: "",
+      log_date: now.slice(0, 10),
+      weather: "",
+      manpower: "",
+      equipment: "",
+      visitors: "",
+      deliveries: "",
+      activities: "",
+      safety_notes: "",
+      incidents: "",
+      notes: "",
+      photos: [],
+      created_at: now,
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  function newRiskId() {
+    return "r_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  var RISK_TYPES = ["risk", "issue", "opportunity"];
+  var RISK_STATUSES = ["open", "mitigating", "closed"];
+  var RISK_LEVELS = ["low", "medium", "high"]; // used for both probability and impact
+
+  /** A unified Risk/Issue/Opportunity register entry — one shape, distinguished by
+   * `type`, rather than three separate CRUD modules with near-identical fields. */
+  function newRisk(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newRiskId(),
+      project_id: "",
+      type: "risk",
+      title: "",
+      description: "",
+      probability: "medium",
+      impact: "medium",
+      status: "open",
+      owner: "",
+      mitigation: "",
+      source_meeting_id: "",
+      created_at: now,
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  function newMeetingId() {
+    return "m_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  function newActionId() {
+    return "a_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  /** An action item belongs to exactly one meeting. `status` of "open" past `due_date`
+   * is what "overdue" means — computed at render time, not stored, so it's always
+   * correct relative to today rather than going stale. */
+  function newMeetingAction(overrides) {
+    var base = {
+      id: newActionId(),
+      description: "",
+      owner: "",
+      due_date: "",
+      status: "open",
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  function newRecordingId() {
+    return "rec_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  /** Recordings are reference-only by design: an audio/video file can easily be tens or
+   * hundreds of MB, which would blow past the browser's ~5-10MB total storage budget on
+   * its own. Only metadata is tracked here — the actual file has to be placed in /files
+   * manually, the same as any file the app doesn't embed. */
+  function newMeetingRecording(overrides) {
+    var base = {
+      id: newRecordingId(),
+      filename: "",
+      duration: "",
+      uploaded_by: "",
+      uploaded_at: new Date().toISOString(),
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  function newMeeting(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newMeetingId(),
+      project_id: "",
+      title: "",
+      meeting_date: now.slice(0, 10),
+      attendees: "",
+      agenda: "",
+      minutes: "",
+      actions: [],
+      recordings: [],
+      created_at: now,
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  function newRfiId() {
+    return "rf_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  function newRfiRevisionId() {
+    return "rv_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  var RFI_TYPES = ["rfi", "technical_query"];
+  var RFI_STATUSES = ["open", "answered", "closed"];
+  var RFI_PRIORITIES = ["low", "medium", "high"];
+
+  /** Auto-numbered per type (RFI-001, TQ-001, ...), computed from the highest existing
+   * number of that type at creation time rather than a simple count, so a deleted entry
+   * never causes a number to be reused. */
+  function nextRfiNumber(existingRfis, type) {
+    var prefix = type === "technical_query" ? "TQ" : "RFI";
+    var highest = 0;
+    (existingRfis || []).forEach(function (r) {
+      if (r.type !== type || !r.number) return;
+      var match = /-(\d+)$/.exec(r.number);
+      if (match) highest = Math.max(highest, parseInt(match[1], 10));
+    });
+    var next = highest + 1;
+    var padded = next < 100 ? ("00" + next).slice(-3) : String(next);
+    return prefix + "-" + padded;
+  }
+
+  /** A revision log entry — a free-text audit trail of what happened to an RFI/TQ over
+   * time (submitted, re-raised, answered, closed), not a diff of field values. Kept
+   * simple deliberately: the fields that matter (status, response) already have their
+   * own change tracked via updated_at; this is the human-readable "what happened and
+   * when" story the field team actually wants to read back later. */
+  function newRfiRevision(overrides) {
+    var base = {
+      id: newRfiRevisionId(),
+      date: new Date().toISOString().slice(0, 10),
+      author: "",
+      note: "",
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  /** RFI / Technical Query register entry — one shape, distinguished by `type`, matching
+   * the Risk Register pattern rather than building two near-identical modules. Workflow
+   * is open (awaiting response) -> answered (response given) -> closed (accepted/closed
+   * out). `date_required` drives the same render-time overdue computation as Meetings'
+   * action items — never stored as a stale flag. */
+  function newRfi(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newRfiId(),
+      project_id: "",
+      type: "rfi",
+      number: "",
+      subject: "",
+      question: "",
+      raised_by: "",
+      assigned_to: "",
+      date_raised: now.slice(0, 10),
+      date_required: "",
+      priority: "medium",
+      status: "open",
+      response: "",
+      date_answered: "",
+      cost_impact: false,
+      schedule_impact: false,
+      revisions: [],
+      source_meeting_id: "",
+      created_at: now,
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  function newChangeOrderId() {
+    return "co_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  function newChangeOrderRevisionId() {
+    return "cov_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  var CHANGE_ORDER_STATUSES = ["pending", "approved", "rejected", "closed"];
+
+  /** Auto-numbered CO-001, CO-002, ... — same non-reuse-after-delete logic as RFI/TQ
+   * numbering: computed from the highest existing number, not a simple count. */
+  function nextChangeOrderNumber(existingChangeOrders) {
+    var highest = 0;
+    (existingChangeOrders || []).forEach(function (co) {
+      if (!co.number) return;
+      var match = /-(\d+)$/.exec(co.number);
+      if (match) highest = Math.max(highest, parseInt(match[1], 10));
+    });
+    var next = highest + 1;
+    var padded = next < 100 ? ("00" + next).slice(-3) : String(next);
+    return "CO-" + padded;
+  }
+
+  /** Approval/decision audit trail entry — same shape and purpose as newRfiRevision:
+   * a free-text "what happened and when" log, not a diff of field values. */
+  function newChangeOrderRevision(overrides) {
+    var base = {
+      id: newChangeOrderRevisionId(),
+      date: new Date().toISOString().slice(0, 10),
+      author: "",
+      note: "",
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  /** Change Order register entry. Deliberately a log only — cost_impact_amount and
+   * schedule_impact_days are tracked for reference and reporting, never written back to
+   * the project's contract_value in Portfolio. That's a project-owner decision (Aditya,
+   * 2026-08-06): budget reconciliation stays a manual, deliberate act, not something a
+   * status change silently triggers. source_rfi_id / source_risk_id / source_meeting_id
+   * are all optional — a Change Order may originate from an RFI answer, a Risk/Issue, a
+   * meeting discussion, or nothing tracked at all. */
+  function newChangeOrder(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newChangeOrderId(),
+      project_id: "",
+      number: "",
+      title: "",
+      description: "",
+      justification: "",
+      requested_by: "",
+      date_requested: now.slice(0, 10),
+      date_decided: "",
+      decision_by: "",
+      status: "pending",
+      cost_impact_amount: null,
+      schedule_impact_days: null,
+      source_rfi_id: "",
+      source_risk_id: "",
+      source_meeting_id: "",
+      revisions: [],
+      created_at: now,
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  // ============================================================
+  // GATE 1 — Schedule / WBS / Activity / Relationship data model.
+  // Storage and CRUD only. No import parser, no CPM calculation engine \u2014 those are
+  // separate, later gates. Fields the calculation engine will eventually populate
+  // (early/late start/finish, float) exist on the shape now so Gate 3 never has to
+  // migrate the schema again, but they're null here and the UI treats them as
+  // "not yet calculated," never as user-editable.
+  // ============================================================
+
+  var SCHEDULE_STATUSES = ["draft", "active", "superseded", "archived"];
+  var ACTIVITY_TYPES = ["task", "milestone", "summary", "wbs_summary"];
+  var ACTIVITY_STATUSES = ["not_started", "in_progress", "complete", "on_hold"];
+  var RELATIONSHIP_TYPES = ["FS", "SS", "FF", "SF"]; // Finish-to-Start, Start-to-Start, Finish-to-Finish, Start-to-Finish
+
+  function newScheduleId() {
+    return "sch_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  /** One schedule revision for a Project. Multiple revisions can coexist \u2014 importing
+   * or creating a new one never overwrites an older revision (see Gate 2 import safety
+   * requirements); this factory alone doesn't enforce that, callers must not delete/
+   * overwrite an existing schedule to make room for a new one. */
+  function newSchedule(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newScheduleId(),
+      project_id: "",
+      name: "",
+      revision_number: 0,
+      version: "1.0",
+      description: "",
+      status: "draft",
+      import_date: null, // set by the importer in Gate 2; null for schedules built by hand
+      data_date: now.slice(0, 10),
+      is_baseline: false,
+      source_file_name: null,
+      // Gate 2: lets checkForDuplicateImport() detect "this exact file was already
+      // imported" using the same duplicateService fingerprinting Documents uses \u2014
+      // no separate duplicate-detection logic needed for schedules.
+      source_file_size: null,
+      content_hash: null,
+      hash_method: null,
+      // Gate 3: configurable near-critical float threshold, per your own spec's
+      // requirement that this not be hardcoded. Lives on the schedule (not global)
+      // since different schedules/projects may reasonably want different thresholds.
+      near_critical_threshold_days: 5,
+      created_at: now,
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  function newWbsId() {
+    return "wbs_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  /** WBS nodes are flat records with a parent pointer (parent_wbs_id), not a nested
+   * tree structure \u2014 same shape convention as everything else in this store. Hierarchy
+   * is derived at render time by walking parent_wbs_id, so there's one source of truth
+   * for the structure, not a tree object that can drift out of sync with the flat list. */
+  function newWbsItem(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newWbsId(),
+      project_id: "",
+      schedule_id: "",
+      code: "",
+      name: "",
+      parent_wbs_id: null,
+      level: 0,
+      description: "",
+      created_at: now,
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  function newActivityId() {
+    return "act_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  /** Every field the CPM engine (Gate 3) and baseline/revision comparison (Gate 4) will
+   * eventually need already exists here \u2014 early_start/early_finish/late_start/late_finish/
+   * total_float/free_float are always null until that engine runs; nothing in this gate
+   * writes to them, and the UI must never expose them as editable inputs. */
+  function newActivity(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newActivityId(),
+      project_id: "",
+      schedule_id: "",
+      wbs_id: null,
+      name: "",
+      activity_type: "task",
+      calendar_id: null, // no calendar model yet \u2014 placeholder for a later gate
+      duration: null,
+      original_duration: null,
+      remaining_duration: null,
+      planned_start: "",
+      planned_finish: "",
+      actual_start: "",
+      actual_finish: "",
+      // Calculated by the CPM engine (Gate 3). Never set directly by user input.
+      early_start: null,
+      early_finish: null,
+      late_start: null,
+      late_finish: null,
+      total_float: null,
+      free_float: null,
+      percent_complete: 0,
+      physical_progress: 0,
+      status: "not_started",
+      priority: "medium",
+      discipline: "",
+      contractor: "",
+      responsible_person: "",
+      constraint_type: "",
+      constraint_date: "",
+      notes: "",
+      // Gate 2: the Activity ID from the source spreadsheet, preserved for traceability
+      // and so a future re-import of a revised file can be matched against what's
+      // already here. Null for activities created by hand in Gate 1's CRUD form.
+      external_id: null,
+      created_at: now,
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  function newRelationshipId() {
+    return "rel_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  /** Predecessor/successor link between two activities in the same schedule. Storage
+   * only in this gate \u2014 lag/lead are recorded but not yet used in any calculation, and
+   * nothing here validates against circular logic (that's a Gate 2/3 concern, once
+   * there's an engine to actually walk the graph). */
+  function newRelationship(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newRelationshipId(),
+      schedule_id: "",
+      predecessor_id: "",
+      successor_id: "",
+      type: "FS",
+      lag: 0,
+      created_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  function newScheduleBaselineId() {
+    return "bl_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  /** Thin index row for a captured baseline. The full frozen WBS/Activity/Relationship
+   * payload is NOT here \u2014 it's written separately to scheduleBaselineStore (IndexedDB)
+   * under this same id. This row alone is what baseline list UIs render from, so listing
+   * baselines never has to touch IndexedDB. */
+  function newScheduleBaseline(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newScheduleBaselineId(),
+      schedule_id: "",
+      project_id: "",
+      name: "",
+      schedule_revision_number: null,
+      captured_at: now,
+      wbs_count: 0,
+      activity_count: 0,
+      relationship_count: 0,
+      notes: "",
+      created_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  /** Bring older exported/stored data up to the current schema in place. */
+  function migrate(loaded) {
+    if (!loaded.schema_version) loaded.schema_version = 1;
+
+    if (loaded.schema_version < 2) {
+      (loaded.projects || []).forEach(function (p) {
+        if (p.archived === undefined) p.archived = false;
+        if (!p.attachments) p.attachments = [];
+        if (p.progress === undefined) p.progress = 0;
+        if (!p.status || PROJECT_STATUSES.indexOf(p.status) === -1) p.status = "on_track";
+      });
+      loaded.schema_version = 2;
+    }
+
+    if (loaded.schema_version < 3) {
+      (loaded.documents || []).forEach(function (d) {
+        if (!d.category || DOCUMENT_CATEGORIES.indexOf(d.category) === -1) d.category = "other";
+        if (d.extraction === undefined) d.extraction = null;
+        if (!d.project_id) d.project_id = "";
+      });
+      (loaded.projects || []).forEach(function (p) {
+        if (!p.attachments) p.attachments = [];
+      });
+      loaded.schema_version = 3;
+    }
+
+    if (loaded.schema_version < 4) {
+      (loaded.documents || []).forEach(function (d) {
+        if (d.file_data === undefined) d.file_data = null;
+      });
+      loaded.schema_version = 4;
+    }
+
+    if (loaded.schema_version < 5) {
+      if (!loaded.daily_logs) loaded.daily_logs = [];
+      loaded.schema_version = 5;
+    }
+
+    if (loaded.schema_version < 6) {
+      (loaded.risks || []).forEach(function (r) {
+        if (!r.type || RISK_TYPES.indexOf(r.type) === -1) r.type = "risk";
+        if (!r.status || RISK_STATUSES.indexOf(r.status) === -1) r.status = "open";
+        if (!r.probability || RISK_LEVELS.indexOf(r.probability) === -1) r.probability = "medium";
+        if (!r.impact || RISK_LEVELS.indexOf(r.impact) === -1) r.impact = "medium";
+        if (!r.project_id) r.project_id = "";
+      });
+      loaded.schema_version = 6;
+    }
+
+    if (loaded.schema_version < 7) {
+      if (!loaded.meetings) loaded.meetings = [];
+      loaded.meetings.forEach(function (m) {
+        if (!m.actions) m.actions = [];
+        if (!m.project_id) m.project_id = "";
+      });
+      loaded.schema_version = 7;
+    }
+
+    if (loaded.schema_version < 8) {
+      (loaded.risks || []).forEach(function (r) {
+        if (r.source_meeting_id === undefined) r.source_meeting_id = "";
+      });
+      (loaded.documents || []).forEach(function (d) {
+        if (d.meeting_id === undefined) d.meeting_id = "";
+      });
+      loaded.schema_version = 8;
+    }
+
+    if (loaded.schema_version < 9) {
+      (loaded.meetings || []).forEach(function (m) {
+        if (!m.recordings) m.recordings = [];
+      });
+      loaded.schema_version = 9;
+    }
+
+    if (loaded.schema_version < 10) {
+      if (!loaded.rfis) loaded.rfis = [];
+      loaded.rfis.forEach(function (r) {
+        if (!r.type || RFI_TYPES.indexOf(r.type) === -1) r.type = "rfi";
+        if (!r.status || RFI_STATUSES.indexOf(r.status) === -1) r.status = "open";
+        if (!r.priority || RFI_PRIORITIES.indexOf(r.priority) === -1) r.priority = "medium";
+        if (!r.project_id) r.project_id = "";
+        if (!r.revisions) r.revisions = [];
+        if (r.cost_impact === undefined) r.cost_impact = false;
+        if (r.schedule_impact === undefined) r.schedule_impact = false;
+        if (r.source_meeting_id === undefined) r.source_meeting_id = "";
+      });
+      loaded.schema_version = 10;
+    }
+
+    if (loaded.schema_version < 11) {
+      if (!loaded.change_orders) loaded.change_orders = [];
+      loaded.change_orders.forEach(function (co) {
+        if (!co.status || CHANGE_ORDER_STATUSES.indexOf(co.status) === -1) co.status = "pending";
+        if (!co.project_id) co.project_id = "";
+        if (!co.revisions) co.revisions = [];
+        if (co.cost_impact_amount === undefined) co.cost_impact_amount = null;
+        if (co.schedule_impact_days === undefined) co.schedule_impact_days = null;
+        if (co.source_rfi_id === undefined) co.source_rfi_id = "";
+        if (co.source_risk_id === undefined) co.source_risk_id = "";
+        if (co.source_meeting_id === undefined) co.source_meeting_id = "";
+      });
+      loaded.schema_version = 11;
+    }
+
+    if (loaded.schema_version < 12) {
+      if (!loaded.meta) loaded.meta = {};
+      if (loaded.meta.last_exported_at === undefined) loaded.meta.last_exported_at = null;
+      if (!loaded.settings) loaded.settings = {};
+      if (loaded.settings.backup_reminder_days === undefined) loaded.settings.backup_reminder_days = 7;
+      if (loaded.settings.backup_nudge_dismissed_at === undefined) loaded.settings.backup_nudge_dismissed_at = null;
+      loaded.schema_version = 12;
+    }
+
+    if (loaded.schema_version < 13) {
+      (loaded.daily_logs || []).forEach(function (log) {
+        if (!log.photos) log.photos = [];
+      });
+      loaded.schema_version = 13;
+    }
+
+    if (loaded.schema_version < 14) {
+      // Duplicate-detection fields, Documents module only for now (see project notes —
+      // rolling out module by module with a real-device confirmation gate between each).
+      // Existing documents predate fingerprinting, so they get null/false defaults
+      // rather than a retroactively computed hash — nothing here re-reads stored files.
+      (loaded.documents || []).forEach(function (d) {
+        if (d.content_hash === undefined) d.content_hash = null;
+        if (d.hash_method === undefined) d.hash_method = null;
+        if (d.is_duplicate === undefined) d.is_duplicate = false;
+        if (d.duplicate_group_id === undefined) d.duplicate_group_id = null;
+        if (d.original_record_id === undefined) d.original_record_id = null;
+        if (d.duplicate_reason === undefined) d.duplicate_reason = null;
+      });
+      loaded.schema_version = 14;
+    }
+
+    if (loaded.schema_version < 15) {
+      // Gate 1: Schedule/WBS/Activity/Relationship entities. Brand new arrays, so
+      // existing installs just get them initialized empty \u2014 nothing to backfill on
+      // records that didn't exist before.
+      if (!loaded.schedules) loaded.schedules = [];
+      if (!loaded.wbs_items) loaded.wbs_items = [];
+      if (!loaded.activities) loaded.activities = [];
+      if (!loaded.relationships) loaded.relationships = [];
+      loaded.schema_version = 15;
+    }
+
+    if (loaded.schema_version < 16) {
+      // Gate 2: import metadata on schedules, external_id (source spreadsheet's own
+      // Activity ID) on activities. Gate 1 records predate both \u2014 default them rather
+      // than guessing, same pattern as every prior migration in this chain.
+      (loaded.schedules || []).forEach(function (s) {
+        if (s.source_file_size === undefined) s.source_file_size = null;
+        if (s.content_hash === undefined) s.content_hash = null;
+        if (s.hash_method === undefined) s.hash_method = null;
+      });
+      (loaded.activities || []).forEach(function (a) {
+        if (a.external_id === undefined) a.external_id = null;
+      });
+      loaded.schema_version = 16;
+    }
+
+    if (loaded.schema_version < 17) {
+      // Gate 3: configurable near-critical threshold on schedules. Existing schedules
+      // get the same default (5 days) newSchedule() uses, so behavior is identical
+      // before and after this migration until someone explicitly changes it.
+      (loaded.schedules || []).forEach(function (s) {
+        if (s.near_critical_threshold_days === undefined) s.near_critical_threshold_days = 5;
+      });
+      loaded.schema_version = 17;
+    }
+
+    if (loaded.schema_version < 18) {
+      // Gate 4: baseline snapshots. schedule_baselines is only the thin index (name,
+      // captured_at, counts) \u2014 the actual frozen WBS/Activity/Relationship payload
+      // lives in IndexedDB (scheduleBaselineStore.js), keyed by the same id, same
+      // split blobStore.js already uses for photos/documents. Nothing to backfill:
+      // pre-Gate-4 installs simply have no baselines yet.
+      if (!loaded.schedule_baselines) loaded.schedule_baselines = [];
+      loaded.schema_version = 18;
+    }
+
+    return loaded;
+  }
+
+  var data = null;
+  var listeners = [];
+  var saveTimer = null;
+  var corruptionRecovery = null; // { key, timestamp } set once, only if load() hits unparseable JSON
+
+  var CORRUPTED_BACKUP_PREFIX = "pcc_corrupted_backup_";
+
+  function notifyListeners() {
+    listeners.forEach(function (fn) {
+      try {
+        fn(data);
+      } catch (e) {
+        console.error("PCC store listener error", e);
+      }
+    });
+  }
+
+  function persistToLocalStorage() {
+    try {
+      window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
+      data.meta.last_saved_at = new Date().toISOString();
+    } catch (e) {
+      console.error("Could not save to browser storage", e);
+      if (window.PCC.notify) {
+        window.PCC.notify(
+          "Could not autosave to this browser (storage may be full or blocked). Export your data now to be safe.",
+          "error"
+        );
+      }
+    }
+  }
+
+  function scheduleSave() {
+    notifyListeners();
+    if (saveTimer) window.clearTimeout(saveTimer);
+    saveTimer = window.setTimeout(persistToLocalStorage, 250);
+  }
+
+  function load() {
+    var raw = null;
+    try {
+      raw = window.localStorage.getItem(LOCAL_STORAGE_KEY);
+    } catch (e) {
+      console.error("Could not read browser storage", e);
+    }
+    if (raw) {
+      try {
+        data = migrate(JSON.parse(raw));
+        return;
+      } catch (e) {
+        console.error("Stored data was corrupted, starting fresh.", e);
+        // Preserve the raw unparseable string under its own key immediately, before
+        // anything else touches storage, so it survives regardless of what the person
+        // does next (including if they never see or dismiss the recovery banner). Kept
+        // separate from LOCAL_STORAGE_KEY so a future normal save can never overwrite it.
+        try {
+          var recoveryKey = CORRUPTED_BACKUP_PREFIX + Date.now();
+          window.localStorage.setItem(recoveryKey, raw);
+          corruptionRecovery = { key: recoveryKey, timestamp: new Date().toISOString() };
+        } catch (e2) {
+          console.error("Could not preserve corrupted backup separately", e2);
+          corruptionRecovery = { key: null, timestamp: new Date().toISOString() };
+        }
+      }
+    }
+    data = emptyData();
+  }
+
+  function get() {
+    return data;
+  }
+
+  function onChange(fn) {
+    listeners.push(fn);
+  }
+
+  /** Mutate data via a callback, then autosave + notify. */
+  function update(mutator) {
+    mutator(data);
+    scheduleSave();
+  }
+
+  /** Every place a binary blob can currently live: Documents' `file_data`, and each
+   * Daily Log entry's `photos[].file_data`. Returns get/set accessors rather than raw
+   * values so callers can read AND write back into the same object graph \u2014 used by
+   * export (read), import (write), and the one-time legacy-blob migration (both). */
+  function collectBlobRefs(d) {
+    var refs = [];
+    (d.documents || []).forEach(function (doc) {
+      refs.push({
+        id: doc.id,
+        get: function () {
+          return doc.file_data;
+        },
+        set: function (v) {
+          doc.file_data = v;
+        },
+      });
+    });
+    (d.daily_logs || []).forEach(function (log) {
+      (log.photos || []).forEach(function (photo) {
+        refs.push({
+          id: photo.id,
+          get: function () {
+            return photo.file_data;
+          },
+          set: function (v) {
+            photo.file_data = v;
+          },
+        });
+      });
+    });
+    return refs;
+  }
+
+  /** One-time migration for data saved before blobs moved to IndexedDB: finds any
+   * document/photo still carrying its file bytes inline in `file_data`, writes each to
+   * IndexedDB, and nulls the field once that write succeeds \u2014 shrinking what
+   * persistToLocalStorage() has to write from then on. Mutates the live `data` object
+   * directly and persists when done, unlike exportToFile()'s deep-clone approach, since
+   * this genuinely IS the migration of the live data, not a one-off snapshot of it.
+   * Safe to call on data with nothing to migrate (resolves immediately, no-op). */
+  function migrateLegacyInlineBlobsToIndexedDb() {
+    var refs = collectBlobRefs(data).filter(function (r) {
+      return !!r.get();
+    });
+    if (refs.length === 0) return Promise.resolve({ migrated: 0 });
+    var writes = refs.map(function (r) {
+      var val = r.get();
+      return window.PCC.blobStore.putBlob(r.id, val).then(function () {
+        r.set(null);
+      });
+    });
+    return Promise.all(writes).then(function () {
+      persistToLocalStorage();
+      notifyListeners();
+      return { migrated: refs.length };
+    });
+  }
+
+  /** Async: gathers every blob (from IndexedDB, or inline for any not-yet-migrated
+   * legacy record) into a deep-cloned copy of `data` and downloads that as the export
+   * file \u2014 so the exported JSON stays fully self-contained and portable, same as
+   * before this migration, even though the live in-memory/localStorage copy no longer
+   * carries blobs inline. Never mutates the live `data`; persistToLocalStorage() at the
+   * end still persists the original blob-free object. */
+  function exportToFile() {
+    data.meta.last_exported_at = new Date().toISOString();
+    var clone = JSON.parse(JSON.stringify(data));
+    var refs = collectBlobRefs(clone).filter(function (r) {
+      return !r.get();
+    });
+    var fetches = refs.map(function (r) {
+      return window.PCC.blobStore
+        .getBlob(r.id)
+        .then(function (val) {
+          r.set(val);
+        })
+        .catch(function () {
+          r.set(null); // missing one photo shouldn't block the whole export
+        });
+    });
+    return Promise.all(fetches).then(function () {
+      var blob = new Blob([JSON.stringify(clone, null, 2)], { type: "application/json" });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      var stamp = new Date().toISOString().slice(0, 10);
+      a.href = url;
+      a.download = "project-data-" + stamp + ".json";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      persistToLocalStorage();
+      notifyListeners();
+    });
+  }
+
+  function getCorruptionRecovery() {
+    return corruptionRecovery;
+  }
+
+  /** Lists any preserved corrupted-backup snapshots left in localStorage, newest first.
+   * These accumulate — one per corruption event — and are only ever removed by explicit
+   * user action via deleteRecoveryBackup(), never automatically, since silently pruning
+   * a person's last copy of lost data would defeat the entire point of this. */
+  function listRecoveryBackups() {
+    var keys = [];
+    try {
+      for (var i = 0; i < window.localStorage.length; i++) {
+        var k = window.localStorage.key(i);
+        if (k && k.indexOf(CORRUPTED_BACKUP_PREFIX) === 0) keys.push(k);
+      }
+    } catch (e) {
+      console.error("Could not list recovery backups", e);
+    }
+    return keys.sort().reverse();
+  }
+
+  function downloadRecoveryBackup(key) {
+    var raw;
+    try {
+      raw = window.localStorage.getItem(key);
+    } catch (e) {
+      raw = null;
+    }
+    if (raw === null || raw === undefined) return false;
+    var blob = new Blob([raw], { type: "text/plain" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = key + ".txt";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    return true;
+  }
+
+  function deleteRecoveryBackup(key) {
+    try {
+      window.localStorage.removeItem(key);
+    } catch (e) {
+      console.error("Could not delete recovery backup", e);
+    }
+  }
+
+  /** Callback-based, same public shape as before. Internally: an imported file still
+   * carries blobs inline (exportToFile() always embeds them for portability), so each
+   * one gets written to IndexedDB and nulled out of the record before it's committed to
+   * `data` \u2014 otherwise import would re-inflate localStorage right back to the size
+   * problem this whole migration exists to fix. */
+  function importFromFile(file, callback) {
+    var reader = new FileReader();
+    reader.onload = function () {
+      var parsed;
+      try {
+        parsed = JSON.parse(reader.result);
+        if (!parsed || typeof parsed !== "object" || !("schema_version" in parsed)) {
+          throw new Error("This doesn't look like a Project Control Center data file.");
+        }
+      } catch (e) {
+        callback(e);
+        return;
+      }
+
+      var migrated;
+      try {
+        migrated = migrate(parsed);
+      } catch (e) {
+        callback(e);
+        return;
+      }
+
+      var refs = collectBlobRefs(migrated).filter(function (r) {
+        return !!r.get();
+      });
+      var writes = refs.map(function (r) {
+        var val = r.get();
+        return window.PCC.blobStore.putBlob(r.id, val).then(function () {
+          r.set(null);
+        });
+      });
+
+      Promise.all(writes)
+        .then(function () {
+          data = migrated;
+          persistToLocalStorage();
+          notifyListeners();
+          callback(null);
+        })
+        .catch(function (e) {
+          callback(new Error("Import partially failed while saving attached files: " + e.message));
+        });
+    };
+    reader.onerror = function () {
+      callback(new Error("Could not read that file."));
+    };
+    reader.readAsText(file);
+  }
+
+  function resetAll() {
+    data = emptyData();
+    persistToLocalStorage();
+    notifyListeners();
+  }
+
+  load();
+
+  window.PCC.store = {
+    get: get,
+    update: update,
+    onChange: onChange,
+    exportToFile: exportToFile,
+    migrateLegacyInlineBlobsToIndexedDb: migrateLegacyInlineBlobsToIndexedDb,
+    getCorruptionRecovery: getCorruptionRecovery,
+    listRecoveryBackups: listRecoveryBackups,
+    downloadRecoveryBackup: downloadRecoveryBackup,
+    deleteRecoveryBackup: deleteRecoveryBackup,
+    importFromFile: importFromFile,
+    resetAll: resetAll,
+    newProject: newProject,
+    PROJECT_STATUSES: PROJECT_STATUSES,
+    newDocument: newDocument,
+    DOCUMENT_CATEGORIES: DOCUMENT_CATEGORIES,
+    newDailyLog: newDailyLog,
+    newDailyLogPhoto: newDailyLogPhoto,
+    newRisk: newRisk,
+    newMeeting: newMeeting,
+    newMeetingAction: newMeetingAction,
+    newMeetingRecording: newMeetingRecording,
+    RISK_TYPES: RISK_TYPES,
+    RISK_STATUSES: RISK_STATUSES,
+    RISK_LEVELS: RISK_LEVELS,
+    newRfi: newRfi,
+    newRfiRevision: newRfiRevision,
+    nextRfiNumber: nextRfiNumber,
+    RFI_TYPES: RFI_TYPES,
+    RFI_STATUSES: RFI_STATUSES,
+    RFI_PRIORITIES: RFI_PRIORITIES,
+    newChangeOrder: newChangeOrder,
+    newChangeOrderRevision: newChangeOrderRevision,
+    nextChangeOrderNumber: nextChangeOrderNumber,
+    CHANGE_ORDER_STATUSES: CHANGE_ORDER_STATUSES,
+    newSchedule: newSchedule,
+    newWbsItem: newWbsItem,
+    newActivity: newActivity,
+    newRelationship: newRelationship,
+    newScheduleBaseline: newScheduleBaseline,
+    SCHEDULE_STATUSES: SCHEDULE_STATUSES,
+    ACTIVITY_TYPES: ACTIVITY_TYPES,
+    ACTIVITY_STATUSES: ACTIVITY_STATUSES,
+    RELATIONSHIP_TYPES: RELATIONSHIP_TYPES,
+  };
+})();

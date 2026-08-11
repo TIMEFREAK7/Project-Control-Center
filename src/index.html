@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Aditya Abhyankar's Project Control Center</title>
+    <link rel="stylesheet" href="css/styles.css" />
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <!-- Classic scripts on purpose: type="module" is blocked by browsers under
+         file:// (CORS restriction on module loading), which would break
+         double-click-to-open. Load order matters. -->
+    <script src="js/vendor/xlsx.core.min.js"></script>
+    <script src="js/vendor/mammoth.browser.min.js"></script>
+    <script src="js/vendor/pdf.min.js"></script>
+    <script src="js/vendor/pdf.worker.min.js"></script>
+    <script src="js/vendor/jszip.min.js"></script>
+    <script src="js/duplicateService.js"></script>
+    <script src="js/scheduleImportService.js"></script>
+    <script src="js/scheduleCpmEngine.js"></script>
+    <script src="js/store.js"></script>
+    <script src="js/notifications.js"></script>
+    <script src="js/router.js"></script>
+    <script src="js/layout.js"></script>
+    <script src="js/archive.js"></script>
+    <script src="js/pages/dashboard.js"></script>
+    <script src="js/pages/portfolio.js"></script>
+    <script src="js/pages/documents.js"></script>
+    <script src="js/pages/dailyLog.js"></script>
+    <script src="js/pages/schedule.js"></script>
+    <script src="js/pages/risks.js"></script>
+    <script src="js/pages/meetings.js"></script>
+    <script src="js/pages/settings.js"></script>
+    <script src="js/pages/comingSoon.js"></script>
+    <script src="js/app.js"></script>
+  </body>
+</html>

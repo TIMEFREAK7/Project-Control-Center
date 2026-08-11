@@ -1,0 +1,849 @@
+/* ===== Local fonts (no CDN — fully offline) ===== */
+@font-face {
+  font-family: "Space Grotesk";
+  src: url("fonts/space-grotesk-500.woff2") format("woff2");
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Space Grotesk";
+  src: url("fonts/space-grotesk-600.woff2") format("woff2");
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("fonts/inter-400.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("fonts/inter-500.woff2") format("woff2");
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("fonts/inter-600.woff2") format("woff2");
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("fonts/ibm-plex-mono-400.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("fonts/ibm-plex-mono-500.woff2") format("woff2");
+  font-weight: 500;
+  font-display: swap;
+}
+
+/* ===== Design tokens ===== */
+:root {
+  --font-display: "Space Grotesk", ui-sans-serif, sans-serif;
+  --font-body: "Inter", ui-sans-serif, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+
+  --signal-amber: #f0a202;
+  --signal-amber-dark: #c7860a;
+  --status-on-track: #2e9e83;
+  --status-at-risk: #d9a441;
+  --status-critical: #d64545;
+  --status-info: #4c7ea8;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --sidebar-width: 236px;
+}
+
+html[data-theme="dark"] {
+  --bg-default: #0b1420;
+  --bg-paper: #101b2b;
+  --bg-paper-raised: #16243a;
+  --text-primary: #e7ecf2;
+  --text-secondary: #9fb0c3;
+  --divider: rgba(159, 176, 195, 0.16);
+  --grid-line: rgba(124, 152, 184, 0.07);
+  --hover-bg: rgba(159, 176, 195, 0.08);
+}
+
+html[data-theme="light"] {
+  --bg-default: #edeef0;
+  --bg-paper: #ffffff;
+  --bg-paper-raised: #f5f6f7;
+  --text-primary: #1b2430;
+  --text-secondary: #54607a;
+  --divider: rgba(27, 36, 48, 0.1);
+  --grid-line: rgba(27, 36, 48, 0.05);
+  --hover-bg: rgba(27, 36, 48, 0.05);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-body);
+  background-color: var(--bg-default);
+  color: var(--text-primary);
+  background-image: linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  margin: 0;
+}
+
+a {
+  color: inherit;
+}
+
+button {
+  font-family: var(--font-body);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(124, 152, 184, 0.35);
+  border-radius: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ===== App shell ===== */
+#app-shell {
+  display: flex;
+  min-height: 100vh;
+}
+
+.sidebar {
+  width: var(--sidebar-width);
+  flex-shrink: 0;
+  border-right: 1px solid var(--divider);
+  background-color: var(--bg-paper);
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  overflow-y: auto;
+}
+
+.sidebar__label {
+  padding: 20px 20px 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--text-secondary);
+}
+
+.sidebar__nav {
+  list-style: none;
+  margin: 0;
+  padding: 0 8px;
+}
+
+.sidebar__link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  margin-bottom: 4px;
+  border-radius: var(--radius-sm);
+  border-left: 2px solid transparent;
+  text-decoration: none;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.sidebar__link:hover {
+  background-color: var(--hover-bg);
+}
+
+.sidebar__link.active {
+  background-color: var(--hover-bg);
+  border-left-color: var(--signal-amber);
+}
+
+.sidebar__icon {
+  width: 16px;
+  text-align: center;
+  opacity: 0.85;
+}
+
+.main-column {
+  flex-grow: 1;
+  min-width: 0;
+  margin-left: var(--sidebar-width);
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* ===== Title block header ===== */
+.title-block {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--divider);
+  background-color: var(--bg-paper);
+}
+
+.title-block__cell {
+  padding: 8px 16px;
+  border-right: 1px solid var(--divider);
+}
+
+.title-block__cell--grow {
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.title-block__label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 1.2px;
+  color: var(--text-secondary);
+}
+
+.title-block__value {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 13.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.title-block__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+}
+
+.icon-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-btn:hover {
+  background-color: var(--hover-bg);
+}
+
+main.page {
+  flex-grow: 1;
+  padding: 24px;
+}
+
+footer.app-footer {
+  border-top: 1px solid var(--divider);
+  background-color: var(--bg-paper);
+  padding: 6px 16px;
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+/* ===== Shared components ===== */
+.panel {
+  background-color: var(--bg-paper);
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-md);
+  padding: 20px;
+}
+
+.panel + .panel {
+  margin-top: 16px;
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.kpi-card {
+  background-color: var(--bg-paper);
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-md);
+  padding: 18px;
+}
+
+.kpi-card__label {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.kpi-card__value {
+  font-family: var(--font-mono);
+  font-size: 28px;
+  font-weight: 600;
+}
+
+.btn {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 13.5px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  padding: 9px 16px;
+  cursor: pointer;
+}
+
+.btn--primary {
+  background-color: var(--signal-amber);
+  color: #0b1420;
+}
+
+.btn--primary:hover {
+  background-color: var(--signal-amber-dark);
+}
+
+.btn--ghost {
+  background-color: transparent;
+  border-color: var(--divider);
+  color: var(--text-primary);
+}
+
+.btn--ghost:hover {
+  background-color: var(--hover-bg);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+
+.field label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.field input,
+.field select,
+.field textarea {
+  font-family: var(--font-body);
+  font-size: 14px;
+  padding: 9px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--divider);
+  background-color: var(--bg-default);
+  color: var(--text-primary);
+}
+
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  outline: 2px solid var(--signal-amber);
+  outline-offset: -1px;
+}
+
+.text-secondary {
+  color: var(--text-secondary);
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+/* ===== Toasts ===== */
+#toast-stack {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 1000;
+}
+
+.toast {
+  min-width: 260px;
+  max-width: 360px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: #0b1420;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+}
+
+.toast--success { background-color: var(--status-on-track); }
+.toast--error { background-color: var(--status-critical); color: #fff; }
+.toast--info { background-color: var(--status-info); color: #fff; }
+.toast--warning { background-color: var(--status-at-risk); }
+
+/* ===== Login-style splash (data file load) ===== */
+.splash {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.splash__panel {
+  width: 420px;
+  max-width: 90vw;
+}
+
+/* ===== Portfolio ===== */
+.toolbar {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.toolbar input[type="text"],
+.toolbar select {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--divider);
+  background-color: var(--bg-default);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 13px;
+}
+
+.toolbar input[type="text"] {
+  flex: 1 1 220px;
+  min-width: 160px;
+}
+
+.toolbar__spacer {
+  flex: 1 1 auto;
+}
+
+.project-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.project-card {
+  background-color: var(--bg-paper);
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.project-card--archived {
+  opacity: 0.6;
+}
+
+.project-card__main {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.project-card__name {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.project-card__meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.project-card__figures {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  min-width: 140px;
+}
+
+.project-card__progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 140px;
+}
+
+.progress-track {
+  width: 100px;
+  height: 6px;
+  background-color: var(--divider);
+  border-radius: 3px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.progress-fill {
+  height: 100%;
+  background-color: var(--signal-amber);
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 3px 9px;
+  border-radius: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.status-badge--on_track {
+  background-color: rgba(46, 158, 131, 0.15);
+  color: var(--status-on-track);
+}
+.status-badge--at_risk {
+  background-color: rgba(217, 164, 65, 0.15);
+  color: var(--status-at-risk);
+}
+.status-badge--critical {
+  background-color: rgba(214, 69, 69, 0.15);
+  color: var(--status-critical);
+}
+.status-badge--complete {
+  background-color: rgba(76, 126, 168, 0.15);
+  color: var(--status-info);
+}
+.status-badge--info {
+  background-color: rgba(76, 126, 168, 0.15);
+  color: var(--status-info);
+}
+
+.project-card__actions {
+  display: flex;
+  gap: 6px;
+}
+
+.project-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.project-details {
+  background-color: var(--bg-paper-raised);
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-md);
+  padding: 16px;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px 24px;
+}
+
+.detail-item__label {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 10.5px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
+
+.detail-item__value {
+  font-size: 13.5px;
+}
+
+@media (max-width: 780px) {
+  .detail-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text-secondary);
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0 16px;
+}
+
+/* ===== Risk heat map ===== */
+.heatmap {
+  display: grid;
+  grid-template-columns: 90px repeat(3, 1fr);
+  grid-template-rows: auto repeat(3, 64px);
+  gap: 4px;
+  max-width: 440px;
+}
+
+.heatmap-corner {
+  /* empty top-left cell */
+}
+
+.heatmap-col-label,
+.heatmap-row-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  letter-spacing: 0.5px;
+}
+
+.heatmap-row-label {
+  justify-content: flex-end;
+  text-align: right;
+  padding-right: 6px;
+}
+
+.heatmap-cell {
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--divider);
+}
+
+.heatmap-cell--low {
+  background-color: rgba(46, 158, 131, 0.18);
+  color: var(--status-on-track);
+}
+.heatmap-cell--medium {
+  background-color: rgba(217, 164, 65, 0.2);
+  color: var(--status-at-risk);
+}
+.heatmap-cell--high {
+  background-color: rgba(214, 69, 69, 0.22);
+  color: var(--status-critical);
+}
+
+.heatmap-cell--active {
+  outline: 2px solid var(--signal-amber);
+  outline-offset: -2px;
+}
+
+@media (max-width: 780px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ===== Responsive: narrow / phone widths =====
+   Desktop layout assumes room for a 236px fixed sidebar plus a multi-cell
+   title block. Below ~780px that stops fitting, so the sidebar becomes a
+   horizontal scrollable strip at the top instead of a fixed side column,
+   and the title block drops its secondary cells (company/date) to leave
+   room for the sheet name and the action icons. */
+@media (max-width: 780px) {
+  body {
+    overflow-x: hidden;
+  }
+
+  .sidebar {
+    position: static;
+    width: 100%;
+    height: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--divider);
+    overflow-y: visible;
+  }
+
+  .sidebar__label {
+    display: none;
+  }
+
+  .sidebar__nav {
+    display: flex;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 8px;
+    gap: 4px;
+  }
+
+  .sidebar__link {
+    flex: 0 0 auto;
+    margin-bottom: 0;
+    white-space: nowrap;
+  }
+
+  .main-column {
+    margin-left: 0;
+  }
+
+  .title-block__cell:not(.title-block__cell--grow) {
+    display: none;
+  }
+
+  .title-block__cell--grow {
+    min-width: 0;
+  }
+
+  main.page {
+    padding: 16px;
+  }
+
+  .kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .panel {
+    max-width: none !important;
+  }
+
+  h2 {
+    font-size: 20px;
+  }
+}
+
+@media (max-width: 420px) {
+  .kpi-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .kpi-card__value {
+    font-size: 22px;
+  }
+}
+
+/* --- Print / Save-as-PDF (Phase 8: Basic Reporting) ---
+   Browser-native printing, no bundled PDF library: hides the app chrome (sidebar,
+   title block, footer, and anything with .no-print) so window.print() produces just
+   the report content. .report-doc gets light, high-contrast, ink-friendly styling
+   regardless of the app's current dark/light theme, since printed reports should
+   read the same on paper no matter which theme was active on screen. */
+@media print {
+  .sidebar,
+  .title-block,
+  .app-footer,
+  .no-print {
+    display: none !important;
+  }
+
+  #app-shell,
+  .main-column,
+  .page,
+  #page-outlet {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+
+  .report-doc {
+    color: #000 !important;
+    background: #fff !important;
+  }
+
+  .report-doc * {
+    color: #000 !important;
+    background: transparent !important;
+    border-color: #999 !important;
+  }
+
+  .report-doc table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .report-doc th,
+  .report-doc td {
+    border: 1px solid #999;
+    padding: 4px 6px;
+    font-size: 11px;
+    text-align: left;
+  }
+
+  .report-doc h2,
+  .report-doc h3 {
+    break-after: avoid;
+  }
+
+  .report-doc__section {
+    break-inside: avoid;
+    margin-bottom: 16px;
+  }
+}
+
+.report-doc {
+  font-size: 13px;
+}
+
+.report-doc__section {
+  margin-bottom: 20px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.report-doc table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 6px;
+}
+
+.report-doc th {
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-secondary);
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.report-doc td {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--divider);
+  font-size: 12px;
+}
+

@@ -1,0 +1,11 @@
+{
+  "name": "pcc-gate4-tests",
+  "private": true,
+  "scripts": {
+    "test": "node test_store_schema_v18_migration.js && node test_schedule_baseline_engine.js && node test_schedule_baseline_store.js && node test_schedule_baseline_e2e.js"
+  },
+  "devDependencies": {
+    "jsdom": "^30.0.1",
+    "fake-indexeddb": "^6.2.2"
+  }
+}
