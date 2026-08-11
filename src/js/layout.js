@@ -2,19 +2,43 @@
   "use strict";
   window.PCC = window.PCC || {};
 
-  var NAV_ITEMS = [
-    { key: "dashboard", label: "Dashboard", code: "DB" },
-    { key: "portfolio", label: "Portfolio", code: "PF" },
-    { key: "documents", label: "Documents", code: "DC" },
-    { key: "dailylog", label: "Daily Log", code: "DL" },
-    { key: "risks", label: "Risk Register", code: "RK" },
-    { key: "meetings", label: "Meetings", code: "MT" },
-    { key: "rfis", label: "RFI / TQ", code: "RQ" },
-    { key: "changeOrders", label: "Change Mgmt", code: "CM" },
-    { key: "cost", label: "Cost Tracking", code: "CT" },
-    { key: "reports", label: "Reports", code: "RP" },
-    { key: "schedule", label: "Schedule", code: "SC" },
-    { key: "settings", label: "Settings", code: "ST" },
+  // Grouped for findability now that there are a dozen+ items — purely a sidebar
+  // presentation grouping, not a new concept elsewhere (routing/PAGE_TITLES below are
+  // still a flat map). Collapses to one continuous horizontal strip on mobile, same as
+  // before grouping existed (see the max-width: 780px rule hiding .sidebar__group-label).
+  var NAV_GROUPS = [
+    {
+      label: "OVERVIEW",
+      items: [
+        { key: "dashboard", label: "Dashboard", code: "DB" },
+        { key: "portfolio", label: "Portfolio", code: "PF" },
+      ],
+    },
+    {
+      label: "REGISTERS",
+      items: [
+        { key: "documents", label: "Documents", code: "DC" },
+        { key: "dailylog", label: "Daily Log", code: "DL" },
+        { key: "risks", label: "Risk Register", code: "RK" },
+        { key: "meetings", label: "Meetings", code: "MT" },
+        { key: "rfis", label: "RFI / TQ", code: "RQ" },
+        { key: "changeOrders", label: "Change Mgmt", code: "CM" },
+      ],
+    },
+    {
+      label: "PLANNING",
+      items: [
+        { key: "schedule", label: "Schedule", code: "SC" },
+        { key: "cost", label: "Cost Tracking", code: "CT" },
+      ],
+    },
+    {
+      label: "OUTPUT",
+      items: [
+        { key: "reports", label: "Reports", code: "RP" },
+        { key: "settings", label: "Settings", code: "ST" },
+      ],
+    },
   ];
 
   var PAGE_TITLES = {
@@ -69,16 +93,23 @@
     var nav = document.createElement("ul");
     nav.className = "sidebar__nav";
 
-    NAV_ITEMS.forEach(function (item) {
-      var li = document.createElement("li");
-      var a = document.createElement("a");
-      a.className = "sidebar__link";
-      a.href = "#/" + item.key;
-      a.setAttribute("data-route", item.key);
-      a.innerHTML =
-        '<span class="sidebar__icon mono">' + item.code + "</span><span>" + item.label + "</span>";
-      li.appendChild(a);
-      nav.appendChild(li);
+    NAV_GROUPS.forEach(function (group) {
+      var groupLabel = document.createElement("li");
+      groupLabel.className = "sidebar__group-label";
+      groupLabel.textContent = group.label;
+      nav.appendChild(groupLabel);
+
+      group.items.forEach(function (item) {
+        var li = document.createElement("li");
+        var a = document.createElement("a");
+        a.className = "sidebar__link";
+        a.href = "#/" + item.key;
+        a.setAttribute("data-route", item.key);
+        a.innerHTML =
+          '<span class="sidebar__icon mono">' + item.code + "</span><span>" + item.label + "</span>";
+        li.appendChild(a);
+        nav.appendChild(li);
+      });
     });
 
     sidebar.appendChild(nav);

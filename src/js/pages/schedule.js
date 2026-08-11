@@ -2262,10 +2262,8 @@
     }
 
     var tabBar = document.createElement("div");
-    tabBar.style.display = "flex";
-    tabBar.style.gap = "8px";
+    tabBar.className = "tab-bar";
     tabBar.style.marginTop = "16px";
-    tabBar.style.marginBottom = "12px";
 
     [
       { key: "activities", label: "Activities" },
@@ -2275,7 +2273,7 @@
       { key: "baselines", label: "Baselines" },
     ].forEach(function (t) {
       var btn = document.createElement("button");
-      btn.className = "btn " + (uiState.tab === t.key ? "btn--primary" : "btn--ghost");
+      btn.className = "tab-btn" + (uiState.tab === t.key ? " tab-btn--active" : "");
       btn.textContent = t.label;
       btn.onclick = function () {
         uiState.tab = t.key;
