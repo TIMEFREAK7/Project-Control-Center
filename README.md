@@ -562,20 +562,89 @@ compare, pure logic, no DOM/store writes — same separation `scheduleCpmEngine.
 **What I have not tested:** this on your actual device. Per the usual gate discipline, treat this as
 built-and-verified-in-this-environment, not confirmed — same standard as every prior gate.
 
+## Gate 5 — Gantt Chart View (2026-08-11)
+
+Completes the Tier 2 line item "Schedule import + CPM/float engine + Gantt" — Gates 1-4 built
+manual entry, Excel import, CPM calculation, and baselines, but there was no visual timeline of
+any of it until now.
+
+**What changed and why:**
+
+- **Visualization only, deliberately** — no drag-to-reschedule, no inline editing. Activities are
+  still edited through the existing Activities tab form; the chart is a read view built on data
+  the CPM engine and Activities tab already produce, not a new editing surface. Folding in
+  drag-to-reschedule would be a separate, later decision.
+- **New pure module `scheduleGanttLayout.js`** — same "calculation only, no DOM" separation
+  `scheduleCpmEngine.js` and `scheduleBaselineEngine.js` already keep. It turns a schedule's
+  activities into plain row/date data (`computeLayout()`); `schedule.js`'s new Gantt tab is the
+  only place that turns that into SVG.
+- **Date precedence matches Gate 4's `scheduleBaselineEngine.js`**: calculated (`early_start`/
+  `early_finish`) dates win when both are present, falling back to planned dates, so a schedule
+  that hasn't been through "Calculate Schedule" yet still draws something meaningful instead of an
+  empty chart — planned-only bars render with a dashed border to mark them as not-yet-calculated.
+- **Critical-path activities** (`total_float <= 0`) render in red, matching the Activities tab's
+  existing "Critical" badge color. Milestones render as diamonds rather than bars. Activities with
+  no calculated or planned dates at all are called out by name below the chart rather than
+  silently omitted.
+- **The schedule's Data Date renders as a marker line** on the chart when set, using the same
+  amber accent as the rest of the app's signal color.
+- **No calendar/working-days awareness**, matching `scheduleCpmEngine.js`'s own documented scope —
+  a bar's width is calendar days between its two dates, nothing fancier.
+- Rendered with plain SVG (`createElementNS`), no charting library — consistent with the app
+  having zero npm dependencies for anything shipped to the browser.
+
+**New file:** `scheduleGanttLayout.js` (pure layout/date logic, no DOM).
+**Changed:** `schedule.js` (new Gantt tab between Activities and WBS), `build.js` (bundle order).
+
+**Tested before delivery (13 + 19 checks across 2 files, fresh session, all passed clean):**
+
+- **Layout, pure logic** (13 checks): calculated-vs-planned date precedence (matching
+  `scheduleBaselineEngine.js`'s own precedence); a milestone with only one date becomes a
+  zero-width point, calculated or planned; an activity with no dates at all is excluded from the
+  date range and reported separately; `isCritical` true only when `total_float` is 0 or negative,
+  false (not true) when float hasn't been calculated yet; dated rows sort by start date ascending
+  with undated rows appended after, sorted by name; `rangeStart`/`rangeEnd` span the earliest
+  start to the latest finish; a Data Date outside the activity span still extends the range;
+  `diffDays`/`addDays` round-trip correctly.
+- **End-to-end against the actual bundled `index.html`** (19 checks, jsdom + `fake-indexeddb`,
+  not a reimplementation): seeded a two-task critical chain (Design → Build), an isolated
+  milestone, and a genuinely undated activity; before calculation, planned-only bars render
+  dashed, the milestone renders as a `<path>` diamond (not a bar), and the undated activity is
+  named in a "no dates" callout; clicking "Calculate Schedule" and then checking the **actual
+  store values** (not a hardcoded assumption about CPM's internals) confirms each bar's fill color
+  matches its real calculated `total_float`; the Data Date renders as a dashed marker line;
+  switching to a schedule with zero activities shows the correct empty state; every other route
+  still renders without throwing after the change.
+- **Real-browser verification** (Chromium via Playwright, this environment's one way to check
+  beyond jsdom — see the Testing conventions note below): seeded the same scenario through the
+  live UI, screenshotted before and after "Calculate Schedule." Confirmed visually: dashed
+  planned-only bars, the two critical activities turning solid red after calculation, the isolated
+  milestone staying its non-critical amber diamond, the data-date marker and legend rendering
+  correctly, and zero console/page errors throughout.
+- While verifying, also found and fixed two stale doc issues from earlier gates (not part of this
+  feature, caught in passing): all four `tests/*.js` files referenced a nonexistent `pcc/`
+  subdirectory for `store.js`/`scheduleBaselineEngine.js`/`scheduleBaselineStore.js`/
+  `index.html`, so `npm test` failed outright (0 passed, 4 failed) from a clean checkout — fixed
+  to point at the real paths. The Schedule page's on-screen note still said Excel import and
+  critical-path calculation "are not built yet" despite both shipping in Gates 2-3 — fixed to
+  describe what's actually there.
+
+**What I have not tested:** this on your actual device. Per the usual gate discipline, treat this
+as built-and-verified-in-this-environment, not confirmed — same standard as every prior gate.
+
 ## Locked build order (unchanged)
 
-**Tier 1** (next): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings → RFI/TQ →
-Change Management → Basic Reporting → Backup & Recovery
+**Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
+RFI/TQ → Change Management → Basic Reporting → Backup & Recovery
 
-**Tier 2:** Schedule import (Excel/MSP first) + CPM/float engine + Gantt → Cost tracking → EVM engine →
-Resource Management
+**Tier 2** (in progress — Schedule import, CPM/float engine, and Gantt are done; next up is Cost
+tracking): Schedule import (Excel/MSP first) + CPM/float engine + Gantt → Cost tracking → EVM
+engine → Resource Management
 
 **Tier 3 (deferred until Tier 1 is in daily use):** AI Document Processing, Knowledge Base, AI Project
 Assistant, Lessons Learned, final polish
 
 ## Next phase
 
-Tier 1 continues with RFI / Technical Query Management (submittals, approvals, revision history,
-workflow).
-
-Per your instruction: not continuing further until you confirm Meetings actually works for you.
+Tier 2 continues with Cost tracking (budget vs. actuals) — scope to be decided explicitly before
+building, same as every prior gate.
