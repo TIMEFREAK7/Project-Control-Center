@@ -254,7 +254,7 @@ function findButtonByText(win, text) {
     var outlet = win.document.getElementById("page-outlet");
     // filterByProject() forces the Budget tab; the budget item was deleted earlier, so
     // this project's filtered list should be the (project-scoped) empty state.
-    assert.strictEqual(findButtonByText(win, "Budget").className.indexOf("btn--primary") !== -1, true, "should land on the Budget tab");
+    assert.strictEqual(findButtonByText(win, "Budget").className.indexOf("tab-btn--active") !== -1, true, "should land on the Budget tab");
     assert.ok(outlet.textContent.indexOf("No budget items yet") !== -1, "expected the empty state, got: " + outlet.textContent.slice(0, 300));
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });

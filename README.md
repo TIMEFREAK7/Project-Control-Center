@@ -704,6 +704,76 @@ the locked Tier 2 order.
 **What I have not tested:** this on your actual device. Per the usual gate discipline, treat this
 as built-and-verified-in-this-environment, not confirmed — same standard as every prior gate.
 
+## UI/UX Design Pass (2026-08-11)
+
+Not a numbered Gate — a design-only pass, no schema change, no new feature. **Scope decided
+explicitly first** (Aditya, this session): keep the existing industrial/blueprint-navy + amber-
+accent identity and title-block header exactly as designed, refine within it. Priorities named
+up front: general polish, density/clutter, navigation/findability, and mobile/small-screen.
+
+**What changed and why:**
+
+- **Found and fixed a real mobile layout bug, not a cosmetic one**: below the 780px breakpoint,
+  `#app-shell` never switched from a row flexbox to a column one, so the sidebar's "become a
+  horizontal strip at the top" CSS was fighting the parent's row layout — on an actual phone
+  viewport the sidebar and page content were squeezed side-by-side into two narrow columns
+  instead of stacking, both nearly unusable. This is exactly the class of bug the README's own
+  Testing conventions note says jsdom structurally can't catch (no real viewport) and every prior
+  gate could only flag as "not tested on your actual device" — caught here specifically because
+  this pass took real Chromium screenshots at a 375px phone viewport for the first time, not just
+  the 1280px desktop width every previous verification pass used.
+- **Found and fixed a second real bug**: `.detail-card` — used for every row in Schedule's
+  Activities/WBS/Relationships/Baselines tabs and Cost Tracking's Budget/Actuals/Summary lists (8
+  call sites) — had **no CSS rule defined at all**. Those rows have rendered as bare unstyled
+  `<div>`s (no background, border, padding, or spacing) since Schedule's Gate 1, invisible in every
+  jsdom test because jsdom doesn't render CSS, only DOM structure. Added a `.detail-card` rule
+  matching `.project-card`'s established visual language.
+- **Design tokens**: added a spacing scale (`--space-1` … `--space-6`), elevation shadows
+  (`--shadow-sm`/`--shadow-md`, tuned separately per theme), and transition tokens — additive to
+  the existing token set, nothing renamed or removed.
+- **Button/control states that were simply missing**: `:disabled` had no visual treatment at all
+  (a disabled "+ Add Entry" button looked identical to an enabled one except for the cursor);
+  `:focus-visible` outlines existed on form fields but not on buttons or links, a real keyboard-
+  accessibility gap. Both fixed app-wide via the shared `.btn`/`.icon-btn` rules, not per-page.
+- **Sidebar grouped into sections** (Overview / Registers / Planning / Output) now that it holds
+  13 items — directly addresses the navigation/findability priority. Purely a presentation
+  grouping in `layout.js`'s `NAV_GROUPS`; routing and `PAGE_TITLES` are untouched flat maps.
+- **Tabs get their own visual language**: Schedule's and Cost Tracking's tab bars
+  (Activities/Gantt/WBS/… and Budget/Actuals/Summary) previously reused the same `.btn`/
+  `.btn--primary` classes as toolbar filter and action buttons, so a page's primary navigation
+  looked identical to an unrelated "+ Add" button. New `.tab-bar`/`.tab-btn`/`.tab-btn--active`
+  classes give tabs an underline style instead, applied in both `schedule.js` and `cost.js`.
+- **Density/polish**: heat map cells and cards get hover feedback (they were `cursor: pointer`
+  with zero visual response); toasts get a subtle entrance animation; empty states get a dashed
+  border to read as "nothing here yet" rather than a regular content panel; meta text (the
+  `·`-separated fact lines used throughout every register) gets `line-height: 1.5` instead of the
+  browser default, since several facts packed onto one line were reading cramped.
+- **Mobile toolbar stacking**: below 780px, the search input and filter `<select>`s now each take
+  a full row instead of wrapping mid-row — easier to read and tap than the desktop's wrapped strip
+  shrunk down.
+
+**Changed:** `styles.css` (tokens, the `#app-shell` flex-direction fix, `.detail-card`,
+`.tab-bar`/`.tab-btn`, button/focus states, mobile toolbar rule), `layout.js` (`NAV_GROUPS`),
+`schedule.js` and `cost.js` (tab bar markup switched to the new classes).
+
+**Tested before delivery:**
+
+- `cd tests && npm test` — all 108 existing checks still pass unchanged (this pass is CSS/markup
+  only; one test assertion in `test_cost_e2e.js` that checked for the old `btn--primary` class on
+  the active tab was updated to check for `tab-btn--active` instead, since that's the actual
+  behavior being verified — a class-name rename, not a behavior change).
+- **Real-browser verification, both themes and two viewports** (Chromium via Playwright — this is
+  the pass where that mattered most, given both real bugs found were invisible to jsdom):
+  Dashboard, Portfolio (with Details panel expanded), Risk Register (heat map + cards), Schedule
+  (Activities and Gantt tabs), and Cost Tracking (Budget and Summary tabs) screenshotted at a
+  1280px desktop viewport in both dark and light theme, and at a 375px phone viewport in dark
+  theme (Dashboard, Portfolio, Risk Register) — zero console/page errors across all of it, and the
+  mobile screenshots are what surfaced the `#app-shell` layout bug in the first place.
+
+**What I have not tested:** this on your actual device — same standing caveat as always, though
+this specific pass is the one gate where that caveat mattered most, and it's exactly what caught
+both real bugs above.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →

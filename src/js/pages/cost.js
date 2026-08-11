@@ -875,9 +875,7 @@
     outlet.appendChild(subNote);
 
     var tabBar = document.createElement("div");
-    tabBar.style.display = "flex";
-    tabBar.style.gap = "8px";
-    tabBar.style.marginBottom = "12px";
+    tabBar.className = "tab-bar";
 
     [
       { key: "budget", label: "Budget" },
@@ -885,7 +883,7 @@
       { key: "summary", label: "Summary" },
     ].forEach(function (t) {
       var btn = document.createElement("button");
-      btn.className = "btn " + (uiState.tab === t.key ? "btn--primary" : "btn--ghost");
+      btn.className = "tab-btn" + (uiState.tab === t.key ? " tab-btn--active" : "");
       btn.textContent = t.label;
       btn.onclick = function () {
         uiState.tab = t.key;

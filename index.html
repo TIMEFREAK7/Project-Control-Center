@@ -64,7 +64,18 @@
 
   --radius-sm: 4px;
   --radius-md: 8px;
+  --radius-lg: 12px;
   --sidebar-width: 236px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  --transition-fast: 120ms ease;
+  --transition-base: 180ms ease;
 }
 
 html[data-theme="dark"] {
@@ -76,6 +87,8 @@ html[data-theme="dark"] {
   --divider: rgba(159, 176, 195, 0.16);
   --grid-line: rgba(124, 152, 184, 0.07);
   --hover-bg: rgba(159, 176, 195, 0.08);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.28);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.32);
 }
 
 html[data-theme="light"] {
@@ -87,6 +100,8 @@ html[data-theme="light"] {
   --divider: rgba(27, 36, 48, 0.1);
   --grid-line: rgba(27, 36, 48, 0.05);
   --hover-bg: rgba(27, 36, 48, 0.05);
+  --shadow-sm: 0 1px 2px rgba(27, 36, 48, 0.06);
+  --shadow-md: 0 8px 24px rgba(27, 36, 48, 0.12);
 }
 
 * {
@@ -166,6 +181,19 @@ button {
   padding: 0 8px;
 }
 
+.sidebar__group-label {
+  padding: 14px 12px 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  color: var(--text-secondary);
+  opacity: 0.75;
+}
+
+.sidebar__group-label:first-child {
+  padding-top: 4px;
+}
+
 .sidebar__link {
   display: flex;
   align-items: center;
@@ -179,6 +207,7 @@ button {
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
+  transition: background-color var(--transition-fast), border-color var(--transition-fast);
 }
 
 .sidebar__link:hover {
@@ -259,10 +288,16 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: background-color var(--transition-fast);
 }
 
-.icon-btn:hover {
+.icon-btn:hover:not(:disabled) {
   background-color: var(--hover-bg);
+}
+
+.icon-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 main.page {
@@ -287,6 +322,7 @@ footer.app-footer {
   border: 1px solid var(--divider);
   border-radius: var(--radius-md);
   padding: 20px;
+  box-shadow: var(--shadow-sm);
 }
 
 .panel + .panel {
@@ -305,6 +341,12 @@ footer.app-footer {
   border: 1px solid var(--divider);
   border-radius: var(--radius-md);
   padding: 18px;
+  box-shadow: var(--shadow-sm);
+  transition: border-color var(--transition-base);
+}
+
+.kpi-card:hover {
+  border-color: var(--text-secondary);
 }
 
 .kpi-card__label {
@@ -329,6 +371,26 @@ footer.app-footer {
   border: 1px solid transparent;
   padding: 9px 16px;
   cursor: pointer;
+  transition: background-color var(--transition-fast), border-color var(--transition-fast),
+    transform var(--transition-fast), opacity var(--transition-fast);
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn:focus-visible,
+.icon-btn:focus-visible,
+.sidebar__link:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--signal-amber);
+  outline-offset: 2px;
 }
 
 .btn--primary {
@@ -336,7 +398,7 @@ footer.app-footer {
   color: #0b1420;
 }
 
-.btn--primary:hover {
+.btn--primary:hover:not(:disabled) {
   background-color: var(--signal-amber-dark);
 }
 
@@ -346,8 +408,9 @@ footer.app-footer {
   color: var(--text-primary);
 }
 
-.btn--ghost:hover {
+.btn--ghost:hover:not(:disabled) {
   background-color: var(--hover-bg);
+  border-color: var(--text-secondary);
 }
 
 .field {
@@ -372,6 +435,13 @@ footer.app-footer {
   border: 1px solid var(--divider);
   background-color: var(--bg-default);
   color: var(--text-primary);
+  transition: border-color var(--transition-fast);
+}
+
+.field input:hover,
+.field select:hover,
+.field textarea:hover {
+  border-color: var(--text-secondary);
 }
 
 .field input:focus,
@@ -379,6 +449,7 @@ footer.app-footer {
 .field textarea:focus {
   outline: 2px solid var(--signal-amber);
   outline-offset: -1px;
+  border-color: var(--signal-amber);
 }
 
 .text-secondary {
@@ -409,6 +480,18 @@ footer.app-footer {
   font-size: 13px;
   color: #0b1420;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+  animation: toast-in var(--transition-base);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .toast--success { background-color: var(--status-on-track); }
@@ -458,6 +541,46 @@ footer.app-footer {
   flex: 1 1 auto;
 }
 
+/* Tab bars (Schedule: Activities/Gantt/WBS/Relationships/Baselines; Cost Tracking:
+   Budget/Actuals/Summary) — deliberately distinct from .toolbar's filter/action
+   buttons: an underline style instead of solid pills, so the page's primary
+   navigation reads as a different kind of control than a filter or a form action. */
+.tab-bar {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--divider);
+  margin-bottom: 16px;
+  overflow-x: auto;
+}
+
+.tab-btn {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 13.5px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  padding: 10px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.tab-btn:hover:not(.tab-btn--active) {
+  color: var(--text-primary);
+}
+
+.tab-btn--active {
+  color: var(--text-primary);
+  border-bottom-color: var(--signal-amber);
+}
+
+.tab-btn:focus-visible {
+  outline: 2px solid var(--signal-amber);
+  outline-offset: -2px;
+}
+
 .project-list {
   display: flex;
   flex-direction: column;
@@ -473,6 +596,12 @@ footer.app-footer {
   align-items: center;
   gap: 16px;
   flex-wrap: wrap;
+  box-shadow: var(--shadow-sm);
+  transition: border-color var(--transition-base);
+}
+
+.project-card:hover {
+  border-color: var(--text-secondary);
 }
 
 .project-card--archived {
@@ -493,6 +622,7 @@ footer.app-footer {
   font-size: 12px;
   color: var(--text-secondary);
   margin-top: 2px;
+  line-height: 1.5;
 }
 
 .project-card__figures {
@@ -574,6 +704,27 @@ footer.app-footer {
   padding: 16px;
 }
 
+/* Used for individual rows inside a list (Schedule's Activities/WBS/Relationships/
+   Baselines tabs, Cost Tracking's Budget/Actuals/Summary lists) — same visual
+   language as .project-card but slightly more compact, since these sit one per row
+   inside an already-titled tab rather than needing their own strong identity. */
+.detail-card {
+  background-color: var(--bg-paper);
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  box-shadow: var(--shadow-sm);
+  transition: border-color var(--transition-base);
+}
+
+.detail-card:hover {
+  border-color: var(--text-secondary);
+}
+
+.detail-card .text-secondary {
+  line-height: 1.5;
+}
+
 .detail-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -609,6 +760,10 @@ footer.app-footer {
   text-align: center;
   padding: 40px 20px;
   color: var(--text-secondary);
+  border-style: dashed;
+  box-shadow: none;
+  font-size: 13.5px;
+  line-height: 1.6;
 }
 
 .form-grid {
@@ -658,6 +813,12 @@ footer.app-footer {
   font-weight: 600;
   cursor: pointer;
   border: 1px solid var(--divider);
+  transition: transform var(--transition-fast), border-color var(--transition-fast);
+}
+
+.heatmap-cell:hover {
+  transform: scale(1.04);
+  border-color: var(--text-secondary);
 }
 
 .heatmap-cell--low {
@@ -695,6 +856,15 @@ footer.app-footer {
     overflow-x: hidden;
   }
 
+  /* #app-shell is a row flexbox on desktop (sidebar beside main-column). Without
+     switching to column here, .sidebar's "width: 100%" below is still just a flex-item
+     width inside that row — it gets squeezed to share space with .main-column instead
+     of actually stacking above it. This is what makes the horizontal-scrolling nav
+     strip land at the top of the page instead of beside it. */
+  #app-shell {
+    flex-direction: column;
+  }
+
   .sidebar {
     position: static;
     width: 100%;
@@ -704,7 +874,8 @@ footer.app-footer {
     overflow-y: visible;
   }
 
-  .sidebar__label {
+  .sidebar__label,
+  .sidebar__group-label {
     display: none;
   }
 
@@ -720,6 +891,13 @@ footer.app-footer {
     flex: 0 0 auto;
     margin-bottom: 0;
     white-space: nowrap;
+  }
+
+  /* One control per row instead of the desktop's wrapped multi-filter row — easier
+     to tap and read on a phone than several inputs crammed into a wrapped strip. */
+  .toolbar input[type="text"],
+  .toolbar select {
+    flex-basis: 100%;
   }
 
   .main-column {
@@ -853,7 +1031,6 @@ footer.app-footer {
   border-bottom: 1px solid var(--divider);
   font-size: 12px;
 }
-
 
 </style>
   </head>
@@ -3796,19 +3973,43 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   "use strict";
   window.PCC = window.PCC || {};
 
-  var NAV_ITEMS = [
-    { key: "dashboard", label: "Dashboard", code: "DB" },
-    { key: "portfolio", label: "Portfolio", code: "PF" },
-    { key: "documents", label: "Documents", code: "DC" },
-    { key: "dailylog", label: "Daily Log", code: "DL" },
-    { key: "risks", label: "Risk Register", code: "RK" },
-    { key: "meetings", label: "Meetings", code: "MT" },
-    { key: "rfis", label: "RFI / TQ", code: "RQ" },
-    { key: "changeOrders", label: "Change Mgmt", code: "CM" },
-    { key: "cost", label: "Cost Tracking", code: "CT" },
-    { key: "reports", label: "Reports", code: "RP" },
-    { key: "schedule", label: "Schedule", code: "SC" },
-    { key: "settings", label: "Settings", code: "ST" },
+  // Grouped for findability now that there are a dozen+ items — purely a sidebar
+  // presentation grouping, not a new concept elsewhere (routing/PAGE_TITLES below are
+  // still a flat map). Collapses to one continuous horizontal strip on mobile, same as
+  // before grouping existed (see the max-width: 780px rule hiding .sidebar__group-label).
+  var NAV_GROUPS = [
+    {
+      label: "OVERVIEW",
+      items: [
+        { key: "dashboard", label: "Dashboard", code: "DB" },
+        { key: "portfolio", label: "Portfolio", code: "PF" },
+      ],
+    },
+    {
+      label: "REGISTERS",
+      items: [
+        { key: "documents", label: "Documents", code: "DC" },
+        { key: "dailylog", label: "Daily Log", code: "DL" },
+        { key: "risks", label: "Risk Register", code: "RK" },
+        { key: "meetings", label: "Meetings", code: "MT" },
+        { key: "rfis", label: "RFI / TQ", code: "RQ" },
+        { key: "changeOrders", label: "Change Mgmt", code: "CM" },
+      ],
+    },
+    {
+      label: "PLANNING",
+      items: [
+        { key: "schedule", label: "Schedule", code: "SC" },
+        { key: "cost", label: "Cost Tracking", code: "CT" },
+      ],
+    },
+    {
+      label: "OUTPUT",
+      items: [
+        { key: "reports", label: "Reports", code: "RP" },
+        { key: "settings", label: "Settings", code: "ST" },
+      ],
+    },
   ];
 
   var PAGE_TITLES = {
@@ -3863,16 +4064,23 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var nav = document.createElement("ul");
     nav.className = "sidebar__nav";
 
-    NAV_ITEMS.forEach(function (item) {
-      var li = document.createElement("li");
-      var a = document.createElement("a");
-      a.className = "sidebar__link";
-      a.href = "#/" + item.key;
-      a.setAttribute("data-route", item.key);
-      a.innerHTML =
-        '<span class="sidebar__icon mono">' + item.code + "</span><span>" + item.label + "</span>";
-      li.appendChild(a);
-      nav.appendChild(li);
+    NAV_GROUPS.forEach(function (group) {
+      var groupLabel = document.createElement("li");
+      groupLabel.className = "sidebar__group-label";
+      groupLabel.textContent = group.label;
+      nav.appendChild(groupLabel);
+
+      group.items.forEach(function (item) {
+        var li = document.createElement("li");
+        var a = document.createElement("a");
+        a.className = "sidebar__link";
+        a.href = "#/" + item.key;
+        a.setAttribute("data-route", item.key);
+        a.innerHTML =
+          '<span class="sidebar__icon mono">' + item.code + "</span><span>" + item.label + "</span>";
+        li.appendChild(a);
+        nav.appendChild(li);
+      });
     });
 
     sidebar.appendChild(nav);
@@ -9404,10 +9612,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     }
 
     var tabBar = document.createElement("div");
-    tabBar.style.display = "flex";
-    tabBar.style.gap = "8px";
+    tabBar.className = "tab-bar";
     tabBar.style.marginTop = "16px";
-    tabBar.style.marginBottom = "12px";
 
     [
       { key: "activities", label: "Activities" },
@@ -9417,7 +9623,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       { key: "baselines", label: "Baselines" },
     ].forEach(function (t) {
       var btn = document.createElement("button");
-      btn.className = "btn " + (uiState.tab === t.key ? "btn--primary" : "btn--ghost");
+      btn.className = "tab-btn" + (uiState.tab === t.key ? " tab-btn--active" : "");
       btn.textContent = t.label;
       btn.onclick = function () {
         uiState.tab = t.key;
@@ -13456,9 +13662,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     outlet.appendChild(subNote);
 
     var tabBar = document.createElement("div");
-    tabBar.style.display = "flex";
-    tabBar.style.gap = "8px";
-    tabBar.style.marginBottom = "12px";
+    tabBar.className = "tab-bar";
 
     [
       { key: "budget", label: "Budget" },
@@ -13466,7 +13670,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       { key: "summary", label: "Summary" },
     ].forEach(function (t) {
       var btn = document.createElement("button");
-      btn.className = "btn " + (uiState.tab === t.key ? "btn--primary" : "btn--ghost");
+      btn.className = "tab-btn" + (uiState.tab === t.key ? " tab-btn--active" : "");
       btn.textContent = t.label;
       btn.onclick = function () {
         uiState.tab = t.key;
