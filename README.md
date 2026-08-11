@@ -819,19 +819,105 @@ Verified visually in real Chromium: the fallback figure and note appear on both 
 and Portfolio Details panel, and both switch to the real line-item total (with the note gone) the
 moment a budget line item is added.
 
+## Gate 7 — EVM Engine (2026-08-11)
+
+The last Tier 2 line item before Resource Management: Planned Value, Earned Value, CPI, and SPI.
+
+**Scope decided explicitly before building** (Aditya, this session), choosing the detailed option
+over a simpler project-level approximation: a budget item can optionally link to one Schedule
+activity, so Planned Value is time-phased from that activity's own real dates and Earned Value
+comes from that activity's own real `percent_complete` — not a project-wide average or a single
+straight line across the whole project.
+
+**What changed and why:**
+
+- **Schema v19 → v20**: `cost_budget_items` gets `activity_id`, an optional link to one Schedule
+  activity. **Many-to-one, not many-to-many** — several budget items may point at the same
+  activity (e.g. separate Labor and Equipment lines for one dig), but one item can't span several
+  activities. Same shape as the existing `budget_item_id` link on `cost_actuals`, applied
+  consistently. Unlinked is fully valid: the item still counts toward Budget at Completion, it
+  just has no PV/EV.
+- **New pure module `costEvmEngine.js`** — same "calculation only, no DOM" separation every prior
+  engine in this app keeps (`scheduleCpmEngine.js`, `scheduleBaselineEngine.js`,
+  `scheduleGanttLayout.js`). Per linked item: PV is a **linear distribution of that item's budget
+  across its own activity's date span** (calculated `early_start`/`early_finish` preferred, falling
+  back to planned — same precedence Gantt and baselines already use; a zero-duration span, i.e. a
+  milestone, is a step function, not a division by zero). EV is that item's budget × its activity's
+  real `percent_complete`. **Actual Cost is always the full total for the project, linked or not**
+  — money already spent doesn't stop being real just because it isn't tied to a schedule activity.
+- **Unlinked budget still counts toward BAC but is explicitly excluded from PV/EV, never silently
+  blended in.** A "coverage %" (linked budget ÷ total budget) is always visible; when it's below
+  100% the EVM tab says so directly rather than presenting a partial-coverage number identically
+  to a fully-covered one — same transparency convention as Gantt's dashed "not yet calculated"
+  bars and Cost Tracking's `usingPortfolioBudget` disclosure.
+- **CPI/SPI stay `null` (not a misleading `0.00`) when nothing is linked yet**, even if real actual
+  cost has already been logged — `EV = 0` from "nothing measurable" and `EV = 0` from "measured and
+  genuinely 0% earned" are different situations, and only the second one is a real performance
+  signal. Guarded on `linkedBac > 0`, not just on `ac`/`pv` being positive.
+- **EAC uses the BAC/CPI formula specifically** — one of several industry-standard EAC formulas,
+  documented as a deliberate choice (it assumes the project's current cost efficiency holds for
+  the remaining work), same "ambiguous industry convention, pick one and say so" approach
+  `scheduleCpmEngine.js` already takes for Free Float. ETC = EAC − AC, VAC = BAC − EAC follow from
+  it.
+- **New "EVM" tab on the Cost Tracking page** (not a separate page — it's built entirely from
+  numbers Cost Tracking and Schedule already track): portfolio-wide EARNED VALUE / ACTUAL COST /
+  CPI / SPI tiles (CPI/SPI colored red when below 1.0), a coverage disclosure when below 100%, and
+  a "By Project" breakdown with each project's own EV/AC/PV/CPI/SPI/EAC and a VAC badge.
+- **The Budget Item form gets a "Schedule Activity" field**, listing that project's activities
+  across all of its schedule revisions, each labeled with its schedule's name so linking stays
+  unambiguous when a project has more than one revision. Same dependent-select pattern the Actuals
+  form already uses for "Against Budget Item."
+- Found and fixed a real formatting bug while verifying: `formatMoney()` never capped fraction
+  digits, so EAC/VAC (genuinely fractional, unlike every other whole-dollar figure in this app)
+  displayed raw floating-point noise like "3,083.333" instead of standard 2-decimal currency
+  precision — invisible until real division produced a non-integer result to look at.
+
+**New file:** `costEvmEngine.js`. **Changed:** `store.js` (schema 19→20, `activity_id` on
+`newCostBudgetItem()`), `cost.js` (EVM tab, Schedule Activity form field, `formatMoney()` fix),
+`build.js` (bundle order).
+
+**Tested before delivery (19 pure-logic + 22 e2e checks, full suite re-run clean):**
+
+- **Engine, pure logic** (`test_cost_evm_engine.js`, 19 checks): PV linear interpolation at an
+  activity's midpoint, before its span, and after it; the milestone step-function case; calculated-
+  vs-planned date precedence; an activity with no usable dates excluded (not guessed); EV from real
+  percent_complete, clamped to [0,100]; two budget items linked to the same activity earning
+  independently; an unlinked item counting toward BAC but not PV/EV; a deleted activity's dangling
+  `activity_id` treated as unlinked rather than crashing; AC always summing every actual regardless
+  of linkage; the `usingPortfolioBudget`-style `options.bac`/`options.ac` override; **the specific
+  CPI/SPI-stays-null-with-nothing-linked scenario** and its inverse (a genuine 0%-complete linked
+  activity correctly producing a real CPI/SPI of 0); a full on-plan scenario where PV=EV=AC and
+  CPI=SPI=1; CPI/SPI null on zero AC/PV; the EAC/ETC/VAC formula chain; an all-zero project.
+- **End-to-end against the actual bundled `index.html`** (`test_cost_evm_e2e.js`, 22 checks, not a
+  reimplementation): the Schedule Activity dropdown on the real Budget Item form offers the seeded
+  activity labeled with its schedule name; submitting the form actually stores `activity_id`; the
+  budget item's list row shows what it's linked to and its % complete; a hand-checkable exact-
+  midpoint scenario (10-day activity, data date at day 5, 50% complete, on-budget) produces PV=EV=
+  AC=500 and CPI=SPI=1.00 on the real EVM tab; adding a second unlinked item drops coverage to 50%
+  and the disclosure note appears; the EVM tab's own empty state with zero active projects; full
+  route smoke test.
+- **Real-browser verification** (Chromium via Playwright): a two-activity scenario (one behind
+  schedule and over budget, one ahead) hand-verified against the actual rendered numbers —
+  PV=2,100, EV=1,800, AC=1,850, CPI=0.97, SPI=0.86, EAC=3,083.33, VAC=−83.33, all matching hand
+  arithmetic exactly, with CPI/SPI/VAC correctly rendering red for the over-budget/behind-schedule
+  result. This same pass is what surfaced the `formatMoney()` decimal-precision bug above.
+
+**What I have not tested:** this on your actual device. Per the usual gate discipline, treat this
+as built-and-verified-in-this-environment, not confirmed — same standard as every prior gate.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
 RFI/TQ → Change Management → Basic Reporting → Backup & Recovery
 
-**Tier 2** (in progress — Schedule import, CPM/float engine, Gantt, and Cost Tracking are done;
-next up is the EVM engine): Schedule import (Excel/MSP first) + CPM/float engine + Gantt → Cost
-tracking → EVM engine → Resource Management
+**Tier 2** (in progress — Schedule import, CPM/float engine, Gantt, Cost Tracking, and the EVM
+engine are done; next up is Resource Management): Schedule import (Excel/MSP first) + CPM/float
+engine + Gantt → Cost tracking → EVM engine → Resource Management
 
 **Tier 3 (deferred until Tier 1 is in daily use):** AI Document Processing, Knowledge Base, AI Project
 Assistant, Lessons Learned, final polish
 
 ## Next phase
 
-Tier 2 continues with the EVM engine (Planned Value / Earned Value / Actual Cost, CPI/SPI) —
-scope to be decided explicitly before building, same as every prior gate.
+Tier 2 continues with Resource Management — scope to be decided explicitly before building, same
+as every prior gate.

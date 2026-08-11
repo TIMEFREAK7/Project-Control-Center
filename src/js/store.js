@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 19;
+  var SCHEMA_VERSION = 20;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -439,7 +439,14 @@
 
   /** A planned budget line item for a project — one row of "what we expect to spend,
    * in this category, for this scope of work." Actual costs (newCostActual) may
-   * optionally reference one via budget_item_id; they don't have to. */
+   * optionally reference one via budget_item_id; they don't have to.
+   *
+   * `activity_id` (Gate 7, EVM) optionally links this item to one Schedule activity —
+   * many-to-one, same shape as `budget_item_id` on newCostActual: several budget items
+   * may point at the same activity (e.g. separate Labor/Equipment lines for one dig),
+   * but one item can't span multiple activities. Unlinked is fully valid; it just means
+   * this item has no Planned Value/Earned Value time-phasing (see costEvmEngine.js) —
+   * it still counts toward the project's Budget at Completion. */
   function newCostBudgetItem(overrides) {
     var now = new Date().toISOString();
     var base = {
@@ -448,6 +455,7 @@
       category: "other",
       name: "",
       planned_amount: null,
+      activity_id: "",
       notes: "",
       created_at: now,
       updated_at: now,
@@ -844,6 +852,16 @@
       if (!loaded.cost_budget_items) loaded.cost_budget_items = [];
       if (!loaded.cost_actuals) loaded.cost_actuals = [];
       loaded.schema_version = 19;
+    }
+
+    if (loaded.schema_version < 20) {
+      // Gate 7: EVM engine. activity_id links a budget item to a Schedule activity for
+      // time-phased PV/EV — pre-Gate-7 budget items simply have none, same as every
+      // prior migration in this chain.
+      (loaded.cost_budget_items || []).forEach(function (b) {
+        if (b.activity_id === undefined) b.activity_id = "";
+      });
+      loaded.schema_version = 20;
     }
 
     return loaded;
