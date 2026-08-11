@@ -1,8 +1,13 @@
 /* Cost Tracking (Tier 2, Gate 5b) — budget line items + an actual-cost log against
- * them. Deliberately scoped: budget-vs-actual variance only, no EVM (PV/EV/CPI/SPI) —
- * that's a separate, later gate per the locked Tier 2 order. No automatic link to a
- * project's contract_value or to Change Orders' cost_impact_amount — reconciliation
- * stays a manual, deliberate act, same decision already made for Change Orders.
+ * them. No automatic link to a project's contract_value or to Change Orders'
+ * cost_impact_amount — reconciliation stays a manual, deliberate act, same decision
+ * already made for Change Orders. Portfolio's own Budget field is used as a read-only
+ * fallback for a project's Total Budgeted only when it has zero budget line items (see
+ * projectCostSummary()'s usingPortfolioBudget flag).
+ *
+ * Gate 7 adds activity-linked EVM (PV/EV/CPI/SPI) on top of this: a budget item may
+ * optionally link to a Schedule activity via `activity_id`, and the EVM tab surfaces
+ * costEvmEngine.js's calculations. See that file's header for the EVM scope decisions.
  */
 (function () {
   "use strict";
@@ -39,7 +44,12 @@
     if (value === null || value === undefined || value === "") return "—";
     var num = Number(value);
     if (Number.isNaN(num)) return "—";
-    return (currency ? currency + " " : "") + num.toLocaleString();
+    // maximumFractionDigits caps at standard currency precision — whole-dollar inputs
+    // (budget/actual amounts, entered by hand) still show with no decimals; only
+    // genuinely fractional values (EAC/ETC/VAC, derived by division in
+    // costEvmEngine.js) round to cents instead of showing raw floating-point noise
+    // like "3,083.333333...".
+    return (currency ? currency + " " : "") + num.toLocaleString(undefined, { maximumFractionDigits: 2 });
   }
 
   function projectSelectField(labelText, idAttr, projects, selectedId) {
@@ -93,6 +103,38 @@
     return { field: field, select: select };
   }
 
+  /** Lists a project's Schedule activities across ALL of its schedule revisions —
+   * labeled "Schedule Name: Activity Name" so linking is unambiguous when a project
+   * has more than one revision. Same dependent-select pattern renderActualForm already
+   * uses for "Against Budget Item". */
+  function activityOptionsFor(select, data, projectId, selectedActivityId) {
+    select.innerHTML = "";
+    var noneOpt = document.createElement("option");
+    noneOpt.value = "";
+    noneOpt.textContent = "(none — not linked to a schedule activity)";
+    select.appendChild(noneOpt);
+
+    var projectSchedules = data.schedules.filter(function (s) {
+      return s.project_id === projectId;
+    });
+    var scheduleNameById = {};
+    projectSchedules.forEach(function (s) {
+      scheduleNameById[s.id] = s.name;
+    });
+
+    data.activities
+      .filter(function (a) {
+        return a.project_id === projectId;
+      })
+      .forEach(function (a) {
+        var opt = document.createElement("option");
+        opt.value = a.id;
+        opt.textContent = (scheduleNameById[a.schedule_id] || "(schedule)") + ": " + (a.name || "(unnamed activity)");
+        select.appendChild(opt);
+      });
+    select.value = selectedActivityId || "";
+  }
+
   // ---------------------------------------------------------------------------------
   // Budget tab
   // ---------------------------------------------------------------------------------
@@ -139,6 +181,19 @@
     amountInput.value = item.planned_amount == null ? "" : item.planned_amount;
     amountField.appendChild(amountInput);
     grid.appendChild(amountField);
+
+    var activityField = document.createElement("div");
+    activityField.className = "field";
+    activityField.innerHTML = "<label>Schedule Activity (for EVM)</label>";
+    var activitySelect = document.createElement("select");
+    activitySelect.id = "costbudgetfield-activity_id";
+    activityOptionsFor(activitySelect, data, proj.select.value, item.activity_id);
+    activityField.appendChild(activitySelect);
+    grid.appendChild(activityField);
+
+    proj.select.onchange = function () {
+      activityOptionsFor(activitySelect, data, proj.select.value, "");
+    };
 
     form.appendChild(grid);
 
@@ -198,6 +253,7 @@
         category: cat.select.value,
         name: name,
         planned_amount: amount,
+        activity_id: activitySelect.value,
         notes: notesArea.value,
       };
 
@@ -303,6 +359,12 @@
       card.style.gap = "12px";
       card.style.flexWrap = "wrap";
 
+      var linkedActivity = b.activity_id
+        ? data.activities.find(function (a) {
+            return a.id === b.activity_id;
+          })
+        : null;
+
       var main = document.createElement("div");
       main.innerHTML =
         "<strong>" + b.name + "</strong><br/>" +
@@ -310,6 +372,7 @@
         CATEGORY_LABELS[b.category] + " · " + projectName(data.projects, b.project_id) +
         " · Planned " + formatMoney(b.planned_amount) +
         " · Actual so far " + formatMoney(actualTotal) +
+        (linkedActivity ? " · linked to “" + linkedActivity.name + "” (" + (linkedActivity.percent_complete || 0) + "% complete)" : "") +
         "</span>";
       card.appendChild(main);
 
@@ -888,6 +951,149 @@
   }
 
   // ---------------------------------------------------------------------------------
+  // EVM tab (Gate 7)
+  // ---------------------------------------------------------------------------------
+
+  /** Runs costEvmEngine.js for one project, reusing projectCostSummary()'s
+   * fallback-aware BAC so "what does Budget at Completion mean for this project" has
+   * one source of truth shared with the Summary tab and Portfolio's Details panel. */
+  function projectEvm(data, projectId) {
+    var budgetItems = data.cost_budget_items.filter(function (b) {
+      return b.project_id === projectId;
+    });
+    var actuals = data.cost_actuals.filter(function (a) {
+      return a.project_id === projectId;
+    });
+    var costSummary = projectCostSummary(data, projectId);
+    return window.PCC.costEvmEngine.computeEvm(budgetItems, actuals, data.activities, data.schedules, {
+      bac: costSummary.budgeted,
+    });
+  }
+
+  function formatIndex(value) {
+    return value == null ? "—" : value.toFixed(2);
+  }
+
+  function renderEvmTab(container, data) {
+    var note = document.createElement("p");
+    note.className = "text-secondary";
+    note.style.fontSize = "12px";
+    note.style.marginBottom = "10px";
+    note.textContent =
+      "Planned Value and Earned Value only reflect budget items linked to a Schedule activity (set on " +
+      "the Budget tab). Actual Cost always reflects everything logged, linked or not.";
+    container.appendChild(note);
+
+    var activeProjects = data.projects.filter(function (p) {
+      return !p.archived;
+    });
+
+    if (activeProjects.length === 0) {
+      var empty = document.createElement("div");
+      empty.className = "panel empty-state";
+      empty.textContent = "Add a project in Portfolio first to see EVM here.";
+      container.appendChild(empty);
+      return;
+    }
+
+    var perProject = activeProjects.map(function (p) {
+      return { project: p, evm: projectEvm(data, p.id) };
+    });
+
+    var totals = perProject.reduce(
+      function (acc, row) {
+        acc.bac += row.evm.bac;
+        acc.ac += row.evm.ac;
+        acc.pv += row.evm.pv;
+        acc.ev += row.evm.ev;
+        acc.linkedBac += row.evm.linkedBac;
+        return acc;
+      },
+      { bac: 0, ac: 0, pv: 0, ev: 0, linkedBac: 0 }
+    );
+    var portfolioCpi = totals.ac > 0 && totals.linkedBac > 0 ? totals.ev / totals.ac : null;
+    var portfolioSpi = totals.pv > 0 && totals.linkedBac > 0 ? totals.ev / totals.pv : null;
+
+    var kpiGrid = document.createElement("div");
+    kpiGrid.className = "kpi-grid";
+    [
+      { label: "EARNED VALUE", value: formatMoney(totals.ev), colorVar: null },
+      { label: "ACTUAL COST", value: formatMoney(totals.ac), colorVar: null },
+      { label: "CPI", value: formatIndex(portfolioCpi), colorVar: portfolioCpi != null && portfolioCpi < 1 ? "--status-critical" : "--status-on-track" },
+      { label: "SPI", value: formatIndex(portfolioSpi), colorVar: portfolioSpi != null && portfolioSpi < 1 ? "--status-critical" : "--status-on-track" },
+    ].forEach(function (kpi) {
+      var card = document.createElement("div");
+      card.className = "kpi-card";
+      var valueStyle = kpi.colorVar ? ' style="color:var(' + kpi.colorVar + ')"' : "";
+      card.innerHTML =
+        '<span class="kpi-card__label">' + kpi.label + '</span>' +
+        '<span class="kpi-card__value mono"' + valueStyle + ">" + kpi.value + "</span>";
+      kpiGrid.appendChild(card);
+    });
+    container.appendChild(kpiGrid);
+
+    var coveragePct = totals.bac > 0 ? Math.round((totals.linkedBac / totals.bac) * 100) : null;
+    if (coveragePct !== null && coveragePct < 100) {
+      var coverageNote = document.createElement("p");
+      coverageNote.className = "text-secondary";
+      coverageNote.style.fontSize = "12px";
+      coverageNote.style.marginTop = "-10px";
+      coverageNote.style.marginBottom = "10px";
+      coverageNote.textContent =
+        coveragePct + "% of total budget across active projects is linked to schedule activities — the rest " +
+        "isn't reflected in these figures. Link budget items to activities on the Budget tab for full coverage.";
+      container.appendChild(coverageNote);
+    }
+
+    var table = document.createElement("div");
+    table.className = "panel";
+    table.style.marginTop = "16px";
+
+    var heading = document.createElement("h3");
+    heading.style.marginBottom = "12px";
+    heading.textContent = "By Project";
+    table.appendChild(heading);
+
+    var list = document.createElement("div");
+    list.className = "project-list";
+    perProject.forEach(function (row) {
+      var p = row.project;
+      var evm = row.evm;
+
+      var rowEl = document.createElement("div");
+      rowEl.className = "detail-card";
+      rowEl.style.display = "flex";
+      rowEl.style.justifyContent = "space-between";
+      rowEl.style.alignItems = "center";
+      rowEl.style.marginBottom = "6px";
+      rowEl.style.gap = "12px";
+      rowEl.style.flexWrap = "wrap";
+
+      var main = document.createElement("div");
+      main.innerHTML =
+        "<strong>" + (p.name || "(unnamed project)") + "</strong><br/>" +
+        "<span class='text-secondary' style='font-size:12px;'>" +
+        "EV " + formatMoney(evm.ev) + " · AC " + formatMoney(evm.ac) + " · PV " + formatMoney(evm.pv) +
+        " · CPI " + formatIndex(evm.cpi) + " · SPI " + formatIndex(evm.spi) +
+        (evm.eac != null ? " · EAC " + formatMoney(evm.eac) : "") +
+        (evm.coveragePct != null ? " · " + evm.coveragePct + "% linked" : " · nothing linked yet") +
+        "</span>";
+      rowEl.appendChild(main);
+
+      if (evm.vac != null) {
+        var vacBadge = document.createElement("span");
+        vacBadge.className = "status-badge " + (evm.vac < 0 ? "status-badge--critical" : "status-badge--on_track");
+        vacBadge.textContent = (evm.vac >= 0 ? "+" : "") + formatMoney(evm.vac) + " VAC";
+        rowEl.appendChild(vacBadge);
+      }
+
+      list.appendChild(rowEl);
+    });
+    table.appendChild(list);
+    container.appendChild(table);
+  }
+
+  // ---------------------------------------------------------------------------------
   // Top-level render
   // ---------------------------------------------------------------------------------
 
@@ -920,6 +1126,7 @@
       { key: "budget", label: "Budget" },
       { key: "actuals", label: "Actuals" },
       { key: "summary", label: "Summary" },
+      { key: "evm", label: "EVM" },
     ].forEach(function (t) {
       var btn = document.createElement("button");
       btn.className = "tab-btn" + (uiState.tab === t.key ? " tab-btn--active" : "");
@@ -940,6 +1147,7 @@
     if (uiState.tab === "budget") renderBudgetTab(tabContent, data, rerender);
     else if (uiState.tab === "actuals") renderActualsTab(tabContent, data, rerender);
     else if (uiState.tab === "summary") renderSummaryTab(tabContent, data);
+    else if (uiState.tab === "evm") renderEvmTab(tabContent, data);
   }
 
   window.PCC.pages.cost = render;

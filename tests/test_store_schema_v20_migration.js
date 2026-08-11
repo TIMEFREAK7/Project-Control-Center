@@ -39,50 +39,41 @@ function loadStoreWith(rawJsonString) {
 }
 
 // ---------------------------------------------------------------------------
-// v18 -> v19: cost_budget_items/cost_actuals get added, nothing else touched
+// v19 -> v20: activity_id backfilled onto existing budget items, nothing else touched
 // ---------------------------------------------------------------------------
-check("a v18 dataset gets cost_budget_items/cost_actuals added and lands on schema_version 19", () => {
-  const v18 = {
-    schema_version: 18,
+check("a v19 dataset gets activity_id backfilled onto existing budget items and lands on schema_version 20", () => {
+  const v19 = {
+    schema_version: 19,
     meta: { app_name: "x", created_at: "2026-01-01T00:00:00.000Z", last_saved_at: null, last_exported_at: null },
     settings: { theme: "dark", company_name: "", backup_reminder_days: 7, backup_nudge_dismissed_at: null },
     projects: [{ id: "proj_1", name: "Existing Project", archived: false, status: "on_track", progress: 0, attachments: [] }],
     documents: [], risks: [], daily_logs: [], meetings: [], rfis: [], change_orders: [],
-    schedules: [{ id: "sch_1", project_id: "proj_1", name: "Rev 1", revision_number: 1, near_critical_threshold_days: 5 }],
-    wbs_items: [],
-    activities: [{ id: "act_1", schedule_id: "sch_1", project_id: "proj_1", name: "Excavate", external_id: null, duration: 5 }],
-    relationships: [],
-    schedule_baselines: [{ id: "sb_1", schedule_id: "sch_1", project_id: "proj_1", name: "Existing Baseline" }],
+    schedules: [], wbs_items: [], activities: [], relationships: [], schedule_baselines: [],
+    cost_budget_items: [{ id: "cb_1", project_id: "proj_1", category: "materials", name: "Rebar", planned_amount: 50000, notes: "" }],
+    cost_actuals: [{ id: "ca_1", project_id: "proj_1", budget_item_id: "cb_1", amount: 12000 }],
   };
-  const store = loadStoreWith(JSON.stringify(v18));
+  const store = loadStoreWith(JSON.stringify(v19));
   const data = store.get();
 
-  assert.strictEqual(data.schema_version, 19);
-  assert.ok(Array.isArray(data.cost_budget_items), "cost_budget_items must be an array after migration");
-  assert.strictEqual(data.cost_budget_items.length, 0, "no budget items should be fabricated for a pre-Gate-5b dataset");
-  assert.ok(Array.isArray(data.cost_actuals), "cost_actuals must be an array after migration");
-  assert.strictEqual(data.cost_actuals.length, 0);
-
-  // The actual regression risk: existing Gate 1-4 data must survive untouched.
-  assert.strictEqual(data.projects.length, 1);
-  assert.strictEqual(data.projects[0].name, "Existing Project");
-  assert.strictEqual(data.schedules.length, 1);
-  assert.strictEqual(data.activities.length, 1);
-  assert.strictEqual(data.schedule_baselines.length, 1);
-  assert.strictEqual(data.schedule_baselines[0].name, "Existing Baseline");
+  assert.strictEqual(data.schema_version, 20);
+  assert.strictEqual(data.cost_budget_items.length, 1, "no budget items should be fabricated or dropped");
+  assert.strictEqual(data.cost_budget_items[0].activity_id, "", "pre-Gate-7 budget items get an empty (unlinked) activity_id, not undefined");
+  assert.strictEqual(data.cost_budget_items[0].name, "Rebar", "existing fields must survive untouched");
+  assert.strictEqual(data.cost_actuals.length, 1);
+  assert.strictEqual(data.cost_actuals[0].budget_item_id, "cb_1");
 });
 
 // ---------------------------------------------------------------------------
-// Full chain from a very old (v1-shaped) dataset still reaches v19 cleanly
+// Full chain from a very old (v1-shaped) dataset still reaches v20 cleanly
 // ---------------------------------------------------------------------------
-check("a minimal legacy dataset (no schema_version at all) migrates all the way to 19 without throwing", () => {
+check("a minimal legacy dataset (no schema_version at all) migrates all the way to 20 without throwing", () => {
   const legacy = {
     projects: [{ id: "proj_1", name: "Old Project" }],
     documents: [],
   };
   const store = loadStoreWith(JSON.stringify(legacy));
   const data = store.get();
-  assert.strictEqual(data.schema_version, 19);
+  assert.strictEqual(data.schema_version, 20);
   assert.ok(Array.isArray(data.schedule_baselines));
   assert.ok(Array.isArray(data.cost_budget_items));
   assert.ok(Array.isArray(data.cost_actuals));
@@ -90,12 +81,12 @@ check("a minimal legacy dataset (no schema_version at all) migrates all the way 
 });
 
 // ---------------------------------------------------------------------------
-// A brand-new install (no stored data at all) gets cost arrays from emptyData()
+// A brand-new install (no stored data at all) gets everything from emptyData()
 // ---------------------------------------------------------------------------
 check("a brand-new install with no stored data starts with cost_budget_items/cost_actuals: []", () => {
   const store = loadStoreWith(null);
   const data = store.get();
-  assert.strictEqual(data.schema_version, 19);
+  assert.strictEqual(data.schema_version, 20);
   assert.deepStrictEqual(data.cost_budget_items, []);
   assert.deepStrictEqual(data.cost_actuals, []);
 });
@@ -116,13 +107,14 @@ check("newScheduleBaseline() produces a well-formed record with a unique id", ()
 // ---------------------------------------------------------------------------
 // newCostBudgetItem() / newCostActual() factory sanity
 // ---------------------------------------------------------------------------
-check("newCostBudgetItem() defaults category to 'other' and produces a unique id", () => {
+check("newCostBudgetItem() defaults category to 'other', activity_id to unlinked, and produces a unique id", () => {
   const store = loadStoreWith(null);
   const b1 = store.newCostBudgetItem({ project_id: "proj_1", name: "Rebar", planned_amount: 50000 });
   const b2 = store.newCostBudgetItem({ project_id: "proj_1", name: "Formwork", planned_amount: 20000 });
   assert.ok(b1.id && b2.id && b1.id !== b2.id, "each budget item must get a unique id");
   assert.strictEqual(b1.category, "other");
   assert.strictEqual(b1.planned_amount, 50000);
+  assert.strictEqual(b1.activity_id, "", "unlinked by default");
   assert.ok(b1.created_at);
 });
 

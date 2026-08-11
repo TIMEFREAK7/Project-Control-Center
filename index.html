@@ -2690,6 +2690,197 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 })();
 
 
+/* ---- js/costEvmEngine.js ---- */
+/* Cost EVM (Earned Value Management) engine — calculation only, no DOM, no store
+ * writes. Same separation scheduleCpmEngine.js and scheduleGanttLayout.js keep.
+ *
+ * SCOPE, DELIBERATELY (Gate 7 — activity-linked EVM, the detailed option chosen
+ * explicitly over a simpler project-level approximation, Aditya, this session):
+ *
+ * - A budget item optionally links to ONE Schedule activity via `activity_id`
+ *   (many-to-one: several budget items may point at the same activity, one item can't
+ *   span several — same shape as `budget_item_id` on cost_actuals). Only linked items
+ *   with usable dates contribute to Planned Value and Earned Value; unlinked items
+ *   still count toward Budget at Completion but are excluded from PV/EV and flagged
+ *   via `unlinkedBac`/`coveragePct` rather than silently guessed or blended in.
+ * - Planned Value per linked item is a LINEAR distribution of that item's budget
+ *   across its own activity's date span (calculated early_start/early_finish
+ *   preferred, falling back to planned_start/planned_finish — same precedence
+ *   scheduleBaselineEngine.js and scheduleGanttLayout.js already use). No day-by-day
+ *   time-phased cost curve exists in this app's data model; a straight-line
+ *   distribution across each activity's own span is the standard simplification when
+ *   finer data isn't available, and it's a real improvement over one project-wide
+ *   straight line since it respects each activity's actual timing.
+ * - Earned Value per linked item is that item's budget × its activity's real
+ *   `percent_complete` — not a project-wide average.
+ * - Actual Cost is always the FULL actual-cost total for the project, linked or not —
+ *   money already spent doesn't stop being real just because it isn't tied to a
+ *   specific schedule activity.
+ * - EAC uses BAC/CPI specifically (one of several industry-standard EAC formulas,
+ *   documented here as a deliberate choice — same "ambiguous industry convention,
+ *   pick one and say so" approach scheduleCpmEngine.js already takes for Free Float).
+ *   It assumes the project's current cost efficiency (CPI) holds for the remaining
+ *   work; ETC = EAC - AC, VAC = BAC - EAC follow from it.
+ */
+(function () {
+  "use strict";
+  window.PCC = window.PCC || {};
+
+  var DAY_MS = 24 * 60 * 60 * 1000;
+
+  function toDayNumber(isoDateStr) {
+    var d = new Date(isoDateStr + "T00:00:00Z");
+    return Math.round(d.getTime() / DAY_MS);
+  }
+
+  function diffDays(fromIso, toIso) {
+    return toDayNumber(toIso) - toDayNumber(fromIso);
+  }
+
+  /** Same date precedence as scheduleGanttLayout.js's effectiveDates(): calculated
+   * dates win when both early_start/early_finish are present, else planned, else a
+   * milestone's single date treated as both ends of a zero-width span, else none. */
+  function effectiveDates(activity) {
+    if (activity.early_start && activity.early_finish) {
+      return { start: activity.early_start, finish: activity.early_finish, source: "calculated" };
+    }
+    if (activity.planned_start && activity.planned_finish) {
+      return { start: activity.planned_start, finish: activity.planned_finish, source: "planned" };
+    }
+    if (activity.activity_type === "milestone") {
+      if (activity.early_start) return { start: activity.early_start, finish: activity.early_start, source: "calculated" };
+      if (activity.planned_start) return { start: activity.planned_start, finish: activity.planned_start, source: "planned" };
+    }
+    return { start: null, finish: null, source: "none" };
+  }
+
+  function clampPercent(value) {
+    var n = Number(value) || 0;
+    return Math.max(0, Math.min(100, n));
+  }
+
+  /** PV for one linked item: 0 before its span starts, full budget after it ends,
+   * linear in between. A zero-duration span (milestone) is a step function at its
+   * single date rather than a division-by-zero. Returns null when there's no usable
+   * data date or activity date to compute against — never a guessed number. */
+  function itemPlannedValue(itemBac, activity, dataDate) {
+    if (!dataDate) return null;
+    var dates = effectiveDates(activity);
+    if (dates.source === "none") return null;
+
+    var durationDays = diffDays(dates.start, dates.finish);
+    var fraction;
+    if (durationDays <= 0) {
+      fraction = dataDate >= dates.start ? 1 : 0;
+    } else {
+      var elapsed = diffDays(dates.start, dataDate);
+      fraction = Math.max(0, Math.min(1, elapsed / durationDays));
+    }
+    return itemBac * fraction;
+  }
+
+  /** Computes EVM for one project's budget items. `options.bac`/`options.ac` let the
+   * caller (cost.js) pass in numbers already computed elsewhere (e.g.
+   * projectCostSummary()'s Portfolio-Budget-fallback-aware total) so there's one
+   * source of truth for "what does Budget at Completion mean for this project" rather
+   * than two divergent calculations; omit either to derive it from budgetItems/actuals
+   * directly. `options.dataDate` overrides using each activity's own schedule's
+   * data_date (useful for "as of X" what-if views; not used by the current UI). */
+  function computeEvm(budgetItems, actuals, activities, schedules, options) {
+    options = options || {};
+
+    var linkedBac = 0;
+    var unlinkedBac = 0;
+    var pv = 0;
+    var ev = 0;
+    var items = [];
+
+    budgetItems.forEach(function (item) {
+      var itemBac = Number(item.planned_amount) || 0;
+      var activity = item.activity_id
+        ? activities.find(function (a) {
+            return a.id === item.activity_id;
+          })
+        : null;
+
+      if (!activity) {
+        unlinkedBac += itemBac;
+        items.push({ id: item.id, name: item.name, linked: false, bac: itemBac, ev: null, pv: null });
+        return;
+      }
+
+      linkedBac += itemBac;
+      var itemEv = itemBac * (clampPercent(activity.percent_complete) / 100);
+      ev += itemEv;
+
+      var schedule = schedules.find(function (s) {
+        return s.id === activity.schedule_id;
+      });
+      var dataDate = options.dataDate || (schedule && schedule.data_date) || null;
+      var itemPv = itemPlannedValue(itemBac, activity, dataDate);
+      if (itemPv !== null) pv += itemPv;
+
+      items.push({
+        id: item.id,
+        name: item.name,
+        linked: true,
+        activityName: activity.name,
+        dateSource: effectiveDates(activity).source,
+        bac: itemBac,
+        ev: itemEv,
+        pv: itemPv,
+      });
+    });
+
+    var bac = options.bac != null ? options.bac : linkedBac + unlinkedBac;
+    var ac =
+      options.ac != null
+        ? options.ac
+        : actuals.reduce(function (sum, a) {
+            return sum + (Number(a.amount) || 0);
+          }, 0);
+
+    var cv = ev - ac;
+    var sv = ev - pv;
+    // Guarded on linkedBac > 0, not just ac/pv > 0: with zero linked budget items,
+    // ev is 0 because nothing is measurable yet, not because performance is actually
+    // zero — showing CPI/SPI as 0.00 in that case would be a false alarm, not a real
+    // one. A real 0% (work legitimately hasn't started on linked, dated activities)
+    // still correctly produces cpi/spi of 0 once something IS linked.
+    var cpi = ac > 0 && linkedBac > 0 ? ev / ac : null;
+    var spi = pv > 0 && linkedBac > 0 ? ev / pv : null;
+    var eac = cpi ? bac / cpi : null;
+    var etc = eac != null ? eac - ac : null;
+    var vac = eac != null ? bac - eac : null;
+    var coveragePct = bac > 0 ? Math.round((linkedBac / bac) * 100) : null;
+
+    return {
+      bac: bac,
+      ac: ac,
+      pv: pv,
+      ev: ev,
+      cv: cv,
+      sv: sv,
+      cpi: cpi,
+      spi: spi,
+      eac: eac,
+      etc: etc,
+      vac: vac,
+      linkedBac: linkedBac,
+      unlinkedBac: unlinkedBac,
+      coveragePct: coveragePct,
+      items: items,
+    };
+  }
+
+  window.PCC.costEvmEngine = {
+    computeEvm: computeEvm,
+    effectiveDates: effectiveDates,
+    diffDays: diffDays,
+  };
+})();
+
+
 /* ---- js/store.js ---- */
 /* Project Control Center — data store.
  * No backend, no server. Everything lives in one JS object (window.PCC.store.data),
@@ -2702,7 +2893,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 19;
+  var SCHEMA_VERSION = 20;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -3132,7 +3323,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
   /** A planned budget line item for a project — one row of "what we expect to spend,
    * in this category, for this scope of work." Actual costs (newCostActual) may
-   * optionally reference one via budget_item_id; they don't have to. */
+   * optionally reference one via budget_item_id; they don't have to.
+   *
+   * `activity_id` (Gate 7, EVM) optionally links this item to one Schedule activity —
+   * many-to-one, same shape as `budget_item_id` on newCostActual: several budget items
+   * may point at the same activity (e.g. separate Labor/Equipment lines for one dig),
+   * but one item can't span multiple activities. Unlinked is fully valid; it just means
+   * this item has no Planned Value/Earned Value time-phasing (see costEvmEngine.js) —
+   * it still counts toward the project's Budget at Completion. */
   function newCostBudgetItem(overrides) {
     var now = new Date().toISOString();
     var base = {
@@ -3141,6 +3339,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       category: "other",
       name: "",
       planned_amount: null,
+      activity_id: "",
       notes: "",
       created_at: now,
       updated_at: now,
@@ -3537,6 +3736,16 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       if (!loaded.cost_budget_items) loaded.cost_budget_items = [];
       if (!loaded.cost_actuals) loaded.cost_actuals = [];
       loaded.schema_version = 19;
+    }
+
+    if (loaded.schema_version < 20) {
+      // Gate 7: EVM engine. activity_id links a budget item to a Schedule activity for
+      // time-phased PV/EV — pre-Gate-7 budget items simply have none, same as every
+      // prior migration in this chain.
+      (loaded.cost_budget_items || []).forEach(function (b) {
+        if (b.activity_id === undefined) b.activity_id = "";
+      });
+      loaded.schema_version = 20;
     }
 
     return loaded;
@@ -12789,10 +12998,15 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
 /* ---- js/pages/cost.js ---- */
 /* Cost Tracking (Tier 2, Gate 5b) — budget line items + an actual-cost log against
- * them. Deliberately scoped: budget-vs-actual variance only, no EVM (PV/EV/CPI/SPI) —
- * that's a separate, later gate per the locked Tier 2 order. No automatic link to a
- * project's contract_value or to Change Orders' cost_impact_amount — reconciliation
- * stays a manual, deliberate act, same decision already made for Change Orders.
+ * them. No automatic link to a project's contract_value or to Change Orders'
+ * cost_impact_amount — reconciliation stays a manual, deliberate act, same decision
+ * already made for Change Orders. Portfolio's own Budget field is used as a read-only
+ * fallback for a project's Total Budgeted only when it has zero budget line items (see
+ * projectCostSummary()'s usingPortfolioBudget flag).
+ *
+ * Gate 7 adds activity-linked EVM (PV/EV/CPI/SPI) on top of this: a budget item may
+ * optionally link to a Schedule activity via `activity_id`, and the EVM tab surfaces
+ * costEvmEngine.js's calculations. See that file's header for the EVM scope decisions.
  */
 (function () {
   "use strict";
@@ -12829,7 +13043,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     if (value === null || value === undefined || value === "") return "—";
     var num = Number(value);
     if (Number.isNaN(num)) return "—";
-    return (currency ? currency + " " : "") + num.toLocaleString();
+    // maximumFractionDigits caps at standard currency precision — whole-dollar inputs
+    // (budget/actual amounts, entered by hand) still show with no decimals; only
+    // genuinely fractional values (EAC/ETC/VAC, derived by division in
+    // costEvmEngine.js) round to cents instead of showing raw floating-point noise
+    // like "3,083.333333...".
+    return (currency ? currency + " " : "") + num.toLocaleString(undefined, { maximumFractionDigits: 2 });
   }
 
   function projectSelectField(labelText, idAttr, projects, selectedId) {
@@ -12883,6 +13102,38 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     return { field: field, select: select };
   }
 
+  /** Lists a project's Schedule activities across ALL of its schedule revisions —
+   * labeled "Schedule Name: Activity Name" so linking is unambiguous when a project
+   * has more than one revision. Same dependent-select pattern renderActualForm already
+   * uses for "Against Budget Item". */
+  function activityOptionsFor(select, data, projectId, selectedActivityId) {
+    select.innerHTML = "";
+    var noneOpt = document.createElement("option");
+    noneOpt.value = "";
+    noneOpt.textContent = "(none — not linked to a schedule activity)";
+    select.appendChild(noneOpt);
+
+    var projectSchedules = data.schedules.filter(function (s) {
+      return s.project_id === projectId;
+    });
+    var scheduleNameById = {};
+    projectSchedules.forEach(function (s) {
+      scheduleNameById[s.id] = s.name;
+    });
+
+    data.activities
+      .filter(function (a) {
+        return a.project_id === projectId;
+      })
+      .forEach(function (a) {
+        var opt = document.createElement("option");
+        opt.value = a.id;
+        opt.textContent = (scheduleNameById[a.schedule_id] || "(schedule)") + ": " + (a.name || "(unnamed activity)");
+        select.appendChild(opt);
+      });
+    select.value = selectedActivityId || "";
+  }
+
   // ---------------------------------------------------------------------------------
   // Budget tab
   // ---------------------------------------------------------------------------------
@@ -12929,6 +13180,19 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     amountInput.value = item.planned_amount == null ? "" : item.planned_amount;
     amountField.appendChild(amountInput);
     grid.appendChild(amountField);
+
+    var activityField = document.createElement("div");
+    activityField.className = "field";
+    activityField.innerHTML = "<label>Schedule Activity (for EVM)</label>";
+    var activitySelect = document.createElement("select");
+    activitySelect.id = "costbudgetfield-activity_id";
+    activityOptionsFor(activitySelect, data, proj.select.value, item.activity_id);
+    activityField.appendChild(activitySelect);
+    grid.appendChild(activityField);
+
+    proj.select.onchange = function () {
+      activityOptionsFor(activitySelect, data, proj.select.value, "");
+    };
 
     form.appendChild(grid);
 
@@ -12988,6 +13252,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         category: cat.select.value,
         name: name,
         planned_amount: amount,
+        activity_id: activitySelect.value,
         notes: notesArea.value,
       };
 
@@ -13093,6 +13358,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       card.style.gap = "12px";
       card.style.flexWrap = "wrap";
 
+      var linkedActivity = b.activity_id
+        ? data.activities.find(function (a) {
+            return a.id === b.activity_id;
+          })
+        : null;
+
       var main = document.createElement("div");
       main.innerHTML =
         "<strong>" + b.name + "</strong><br/>" +
@@ -13100,6 +13371,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         CATEGORY_LABELS[b.category] + " · " + projectName(data.projects, b.project_id) +
         " · Planned " + formatMoney(b.planned_amount) +
         " · Actual so far " + formatMoney(actualTotal) +
+        (linkedActivity ? " · linked to “" + linkedActivity.name + "” (" + (linkedActivity.percent_complete || 0) + "% complete)" : "") +
         "</span>";
       card.appendChild(main);
 
@@ -13678,6 +13950,149 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   }
 
   // ---------------------------------------------------------------------------------
+  // EVM tab (Gate 7)
+  // ---------------------------------------------------------------------------------
+
+  /** Runs costEvmEngine.js for one project, reusing projectCostSummary()'s
+   * fallback-aware BAC so "what does Budget at Completion mean for this project" has
+   * one source of truth shared with the Summary tab and Portfolio's Details panel. */
+  function projectEvm(data, projectId) {
+    var budgetItems = data.cost_budget_items.filter(function (b) {
+      return b.project_id === projectId;
+    });
+    var actuals = data.cost_actuals.filter(function (a) {
+      return a.project_id === projectId;
+    });
+    var costSummary = projectCostSummary(data, projectId);
+    return window.PCC.costEvmEngine.computeEvm(budgetItems, actuals, data.activities, data.schedules, {
+      bac: costSummary.budgeted,
+    });
+  }
+
+  function formatIndex(value) {
+    return value == null ? "—" : value.toFixed(2);
+  }
+
+  function renderEvmTab(container, data) {
+    var note = document.createElement("p");
+    note.className = "text-secondary";
+    note.style.fontSize = "12px";
+    note.style.marginBottom = "10px";
+    note.textContent =
+      "Planned Value and Earned Value only reflect budget items linked to a Schedule activity (set on " +
+      "the Budget tab). Actual Cost always reflects everything logged, linked or not.";
+    container.appendChild(note);
+
+    var activeProjects = data.projects.filter(function (p) {
+      return !p.archived;
+    });
+
+    if (activeProjects.length === 0) {
+      var empty = document.createElement("div");
+      empty.className = "panel empty-state";
+      empty.textContent = "Add a project in Portfolio first to see EVM here.";
+      container.appendChild(empty);
+      return;
+    }
+
+    var perProject = activeProjects.map(function (p) {
+      return { project: p, evm: projectEvm(data, p.id) };
+    });
+
+    var totals = perProject.reduce(
+      function (acc, row) {
+        acc.bac += row.evm.bac;
+        acc.ac += row.evm.ac;
+        acc.pv += row.evm.pv;
+        acc.ev += row.evm.ev;
+        acc.linkedBac += row.evm.linkedBac;
+        return acc;
+      },
+      { bac: 0, ac: 0, pv: 0, ev: 0, linkedBac: 0 }
+    );
+    var portfolioCpi = totals.ac > 0 && totals.linkedBac > 0 ? totals.ev / totals.ac : null;
+    var portfolioSpi = totals.pv > 0 && totals.linkedBac > 0 ? totals.ev / totals.pv : null;
+
+    var kpiGrid = document.createElement("div");
+    kpiGrid.className = "kpi-grid";
+    [
+      { label: "EARNED VALUE", value: formatMoney(totals.ev), colorVar: null },
+      { label: "ACTUAL COST", value: formatMoney(totals.ac), colorVar: null },
+      { label: "CPI", value: formatIndex(portfolioCpi), colorVar: portfolioCpi != null && portfolioCpi < 1 ? "--status-critical" : "--status-on-track" },
+      { label: "SPI", value: formatIndex(portfolioSpi), colorVar: portfolioSpi != null && portfolioSpi < 1 ? "--status-critical" : "--status-on-track" },
+    ].forEach(function (kpi) {
+      var card = document.createElement("div");
+      card.className = "kpi-card";
+      var valueStyle = kpi.colorVar ? ' style="color:var(' + kpi.colorVar + ')"' : "";
+      card.innerHTML =
+        '<span class="kpi-card__label">' + kpi.label + '</span>' +
+        '<span class="kpi-card__value mono"' + valueStyle + ">" + kpi.value + "</span>";
+      kpiGrid.appendChild(card);
+    });
+    container.appendChild(kpiGrid);
+
+    var coveragePct = totals.bac > 0 ? Math.round((totals.linkedBac / totals.bac) * 100) : null;
+    if (coveragePct !== null && coveragePct < 100) {
+      var coverageNote = document.createElement("p");
+      coverageNote.className = "text-secondary";
+      coverageNote.style.fontSize = "12px";
+      coverageNote.style.marginTop = "-10px";
+      coverageNote.style.marginBottom = "10px";
+      coverageNote.textContent =
+        coveragePct + "% of total budget across active projects is linked to schedule activities — the rest " +
+        "isn't reflected in these figures. Link budget items to activities on the Budget tab for full coverage.";
+      container.appendChild(coverageNote);
+    }
+
+    var table = document.createElement("div");
+    table.className = "panel";
+    table.style.marginTop = "16px";
+
+    var heading = document.createElement("h3");
+    heading.style.marginBottom = "12px";
+    heading.textContent = "By Project";
+    table.appendChild(heading);
+
+    var list = document.createElement("div");
+    list.className = "project-list";
+    perProject.forEach(function (row) {
+      var p = row.project;
+      var evm = row.evm;
+
+      var rowEl = document.createElement("div");
+      rowEl.className = "detail-card";
+      rowEl.style.display = "flex";
+      rowEl.style.justifyContent = "space-between";
+      rowEl.style.alignItems = "center";
+      rowEl.style.marginBottom = "6px";
+      rowEl.style.gap = "12px";
+      rowEl.style.flexWrap = "wrap";
+
+      var main = document.createElement("div");
+      main.innerHTML =
+        "<strong>" + (p.name || "(unnamed project)") + "</strong><br/>" +
+        "<span class='text-secondary' style='font-size:12px;'>" +
+        "EV " + formatMoney(evm.ev) + " · AC " + formatMoney(evm.ac) + " · PV " + formatMoney(evm.pv) +
+        " · CPI " + formatIndex(evm.cpi) + " · SPI " + formatIndex(evm.spi) +
+        (evm.eac != null ? " · EAC " + formatMoney(evm.eac) : "") +
+        (evm.coveragePct != null ? " · " + evm.coveragePct + "% linked" : " · nothing linked yet") +
+        "</span>";
+      rowEl.appendChild(main);
+
+      if (evm.vac != null) {
+        var vacBadge = document.createElement("span");
+        vacBadge.className = "status-badge " + (evm.vac < 0 ? "status-badge--critical" : "status-badge--on_track");
+        vacBadge.textContent = (evm.vac >= 0 ? "+" : "") + formatMoney(evm.vac) + " VAC";
+        rowEl.appendChild(vacBadge);
+      }
+
+      list.appendChild(rowEl);
+    });
+    table.appendChild(list);
+    container.appendChild(table);
+  }
+
+  // ---------------------------------------------------------------------------------
   // Top-level render
   // ---------------------------------------------------------------------------------
 
@@ -13710,6 +14125,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       { key: "budget", label: "Budget" },
       { key: "actuals", label: "Actuals" },
       { key: "summary", label: "Summary" },
+      { key: "evm", label: "EVM" },
     ].forEach(function (t) {
       var btn = document.createElement("button");
       btn.className = "tab-btn" + (uiState.tab === t.key ? " tab-btn--active" : "");
@@ -13730,6 +14146,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     if (uiState.tab === "budget") renderBudgetTab(tabContent, data, rerender);
     else if (uiState.tab === "actuals") renderActualsTab(tabContent, data, rerender);
     else if (uiState.tab === "summary") renderSummaryTab(tabContent, data);
+    else if (uiState.tab === "evm") renderEvmTab(tabContent, data);
   }
 
   window.PCC.pages.cost = render;

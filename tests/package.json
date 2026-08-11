@@ -2,7 +2,7 @@
   "name": "pcc-gate4-tests",
   "private": true,
   "scripts": {
-    "test": "node test_store_schema_v19_migration.js && node test_schedule_baseline_engine.js && node test_schedule_baseline_store.js && node test_schedule_baseline_e2e.js && node test_schedule_gantt_layout.js && node test_schedule_gantt_e2e.js && node test_cost_e2e.js"
+    "test": "node test_store_schema_v20_migration.js && node test_schedule_baseline_engine.js && node test_schedule_baseline_store.js && node test_schedule_baseline_e2e.js && node test_schedule_gantt_layout.js && node test_schedule_gantt_e2e.js && node test_cost_e2e.js && node test_cost_evm_engine.js && node test_cost_evm_e2e.js"
   },
   "devDependencies": {
     "jsdom": "^30.0.1",
