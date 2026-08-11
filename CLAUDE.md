@@ -75,3 +75,23 @@ node --check src/js/whatever.js   # quick syntax check on a single file
   *before* building it. When adding a feature, keep it scoped to what was asked — this project has
   explicitly rejected doing more than asked in several places (e.g. Change Management staying "a
   log only," `blobStore.js` staying blobs-only).
+
+## PR / shipping conventions (Aditya, standing instruction)
+
+- **If a PR has no comments, merge it — don't ask first.** This is a solo repo with no CI and no
+  other reviewers; a clean PR (tests pass, no review comments) is ready by definition. Still stop
+  and ask before merging if there *are* comments to address, or if something is genuinely
+  ambiguous about the change itself.
+- **After every gate/phase/tier, compile a distributable zip and hand it over** — not just push to
+  `main`. Rebuild (`node build.js`), run the full suite, then assemble a clean end-user package:
+  `index.html`, `README.md`, and empty `data/`/`files/` placeholder folders (with their own
+  `README.txt`) — **not** `src/`, `build.js`, `tests/`, or `.claude/`, which are dev-only and just
+  add confusion for someone who isn't going to edit the code. Verify the zip actually works before
+  sending it: extract it fresh (not the dev working copy) and open `index.html` in real Chromium —
+  see the Testing conventions section above for why that matters here specifically.
+- If the branch backing an already-merged PR is reused for the next piece of work, restart it from
+  the latest `main` first (`git fetch origin main && git reset --hard origin/main`, or rebase if
+  there's already unmerged work sitting on the branch) rather than stacking new commits on old
+  history — GitHub doesn't move a branch ref forward on merge, so the local/remote branch will
+  otherwise silently drift behind `main`. **Commit before running any `git reset --hard`** — it
+  discards uncommitted changes in tracked files with no warning.
