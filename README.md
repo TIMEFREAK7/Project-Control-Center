@@ -905,6 +905,81 @@ straight line across the whole project.
 **What I have not tested:** this on your actual device. Per the usual gate discipline, treat this
 as built-and-verified-in-this-environment, not confirmed — same standard as every prior gate.
 
+## Gate 8 — In-App Excel Editor for Schedules (2026-08-12)
+
+Requested directly (Aditya): when a schedule's Excel file is imported, it should be attached to
+the project and editable **in PCC itself** — not downloaded, hand-edited in real Excel, and
+re-imported — with the schedule updating automatically from those edits. This sits on top of the
+existing Gate 2 import pipeline rather than replacing it.
+
+**Scope decided before building:** the editable grid covers the same recognized columns Import
+already understands (Activity ID, Name, Type, WBS Code/Name, Duration, dates, Predecessors, %
+Complete, Discipline, Contractor, Responsible, Status, Notes) — not a generic spreadsheet grid with
+arbitrary columns/formulas. Extra columns from the original file were never stored even before this
+gate (Import only ever kept the *parsed* result), so there's nothing to preserve there. Edits apply
+via an explicit "Review Changes" → "Apply to Schedule" step (not live-as-you-type) and update the
+*same* schedule in place — no new revision — matching how hand-editing an Activity already works
+today; only a fresh Import from a new file creates a new revision.
+
+**What changed and why:**
+
+- **The original Excel file is now actually stored.** Import always parsed the file but discarded
+  the bytes afterward; `commitImport()` now writes them to `blobStore` (IndexedDB, keyed by the
+  schedule's id — same store Documents/Photos already use) before writing the schedule record, so a
+  schedule that claims a source file always genuinely has one. Schedules imported before this gate
+  have no stored blob and just don't get an "Edit Excel" option — no attempt to fabricate one.
+- **New "Edit Excel" toolbar button**, enabled only when the selected schedule has
+  `source_file_name` set. Opens an in-page panel (not `window.open`, not a download) — the one thing
+  explicitly ruled out, since Documents' existing "open original file" already downloads/new-tabs
+  Word/Excel files and that's exactly what wasn't wanted here.
+- **The grid is built from the schedule's current Activities/WBS/Relationships, not by re-parsing
+  the stored file's bytes.** After the first Apply, the attached file is regenerated from exactly
+  what was applied, so both stay in sync either way — but sourcing the grid from live data (rather
+  than the file) means there's only ever one source of truth to keep consistent, not two.
+- **Reuses `scheduleImportService.parseRows()` verbatim for Apply** — the grid's "Review Changes"
+  step feeds its rows through the identical parser Import uses (same header-recognition, date/number
+  validation, WBS-hierarchy derivation, predecessor-token parsing, and circular-dependency
+  detection), via a new `CANONICAL_HEADERS` export that's the single source of truth for which
+  columns the grid shows and what labels represent them — so grid edits can never be validated more
+  loosely than a fresh Import.
+- **`buildScheduleRecords()`** factored out of `commitImport()` so both a fresh Import (new schedule)
+  and an Excel-edit Apply (existing schedule, in place) build WBS/Activity/Relationship records
+  through identical logic — no separate, potentially-drifting copy for the "editing" path.
+- **Hand-added-activity safety gate:** an activity added by hand on the Activities tab has no
+  Activity ID, so it can't be represented in the grid at all — and Apply replaces a schedule's full
+  activity list from the grid's contents. Rather than silently deleting such activities, Apply is
+  blocked behind an explicit "N activities aren't from the Excel file — delete them and continue?"
+  warning (same pattern as Import's existing duplicate-file warning) until acknowledged.
+- **`ACTIVITY_TYPE_ALIASES` gained a `wbs_summary` (underscore) alias** — the raw value the app
+  stores internally for that activity type — so a grid `<select>` round-trips through parseRows
+  without tripping the "unrecognized activity type" warning on every single Apply.
+
+**New file:** none (kept inside `scheduleImportService.js` and `schedule.js`, both already Gate 2's
+home). **Changed:** `scheduleImportService.js` (`CANONICAL_HEADERS`, `wbs_summary` alias),
+`schedule.js` (blob storage on import, `buildScheduleRecords()`, the full Excel-editor grid/review/
+apply flow, shared `renderParsedIssuesToggle()`).
+
+**Tested before delivery (4 pure-logic + 21 e2e checks, full suite re-run clean):**
+
+- **Parser round-trip** (`test_schedule_import_service.js`, 4 checks): every `CANONICAL_HEADERS`
+  label maps back to its own key with zero unrecognized-header warnings; the `wbs_summary` alias
+  round-trips without a spurious type warning; status passes through as a raw key with no aliasing,
+  matching what the grid's `<select>` stores.
+- **End-to-end against the actual bundled `index.html`** (`test_schedule_excel_editor_e2e.js`, 21
+  checks): a schedule seeded to look like a real import (source file, blob, two activities with an
+  FS relationship, one WBS item) shows "Edit Excel" enabled and pre-populates the grid correctly,
+  including reconstructing the Predecessors cell from the relationship; editing a name, adding a row,
+  reviewing, and applying updates the store **in place** (same schedule id, revision stays 0) and
+  rewrites the attached blob to a genuinely different value, not the placeholder; the hand-added-
+  activity warning blocks Apply until acknowledged, then deletes it on confirm; full route smoke test
+  across every page.
+- **Real-browser verification** (Chromium via Playwright, screenshots reviewed): the grid, review
+  step, and post-Apply state all render correctly with the dark theme; an edited activity name
+  ("Excavate (Chromium Edit)") applied and appeared in the Activities tab immediately, with the
+  success toast confirming the attached file was updated to match.
+
+**What I have not tested:** this on your actual device. Same standard as every prior gate.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →

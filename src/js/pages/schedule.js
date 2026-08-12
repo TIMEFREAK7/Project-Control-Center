@@ -34,12 +34,27 @@
     // Gate 2 import flow
     importPanelOpen: false,
     importStep: "pick", // 'pick' | 'reviewing' | 'importing'
-    importFile: null, // { name, size, buffer, hash, hashMethod }
+    importFile: null, // { name, size, hash, hashMethod, fileData } — fileData is a base64 data URI, stored via blobStore on commit
     importParsed: null, // result of scheduleImportService.parseRows()
     importDuplicateMatches: [], // schedules in this project that appear to be the same source file
     importDuplicateAcknowledged: false,
     importScheduleName: "",
     importError: null,
+    importCommitting: false,
+    // Gate 8: in-app Excel editor. The attached file (blobStore, keyed by schedule.id)
+    // is edited as a grid of the recognized columns, then re-run through the same
+    // scheduleImportService.parseRows() used at import time and applied back onto the
+    // *same* schedule id — see renderExcelEditorPanel() below.
+    excelEditorOpen: false,
+    excelEditorScheduleId: null,
+    excelEditorStep: "grid", // 'grid' | 'review'
+    excelEditorRows: [], // [{ external_id, name, activity_type, wbs_code, wbs_name, duration, planned_start, planned_finish, predecessors, percent_complete, discipline, contractor, responsible_person, status, notes }]
+    excelEditorHandAddedCount: 0, // activities on this schedule with no external_id — not shown in the grid, deleted if Apply proceeds
+    excelEditorHandAddedAcknowledged: false,
+    excelEditorReview: null, // result of scheduleImportService.parseRows() from the grid's current contents
+    excelEditorError: null,
+    excelEditorSaving: false,
+    excelEditorNextNewSeq: 1, // suggested "NEW-N" external_id for rows added via "+ Add Row"
   };
 
   function projectName(projects, projectId) {
@@ -227,6 +242,26 @@
   // Gate 2 \u2014 Excel import
   // ---------------------------------------------------------------------------------
 
+  /** Base64-encodes an ArrayBuffer in fixed-size chunks (avoids both the slow
+   * per-byte-string-concat path and the call-stack limit of spreading a huge typed
+   * array into String.fromCharCode.apply at once). Same approach as documents.js's
+   * copy of this helper \u2014 kept as a private per-module copy rather than a shared
+   * utility, matching this codebase's existing convention (no shared utils module). */
+  function arrayBufferToBase64(buffer) {
+    var bytes = new Uint8Array(buffer);
+    var chunkSize = 8192;
+    var chunks = [];
+    for (var i = 0; i < bytes.length; i += chunkSize) {
+      chunks.push(String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize)));
+    }
+    return btoa(chunks.join(""));
+  }
+
+  var XLSX_MIME_TYPES = {
+    xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    xls: "application/vnd.ms-excel",
+  };
+
   function resetImportState() {
     uiState.importPanelOpen = false;
     uiState.importStep = "pick";
@@ -236,6 +271,7 @@
     uiState.importDuplicateAcknowledged = false;
     uiState.importScheduleName = "";
     uiState.importError = null;
+    uiState.importCommitting = false;
   }
 
   function handleImportFileSelected(file, data, rerender) {
@@ -270,9 +306,10 @@
       }
 
       var parsed = window.PCC.scheduleImportService.parseRows(headers, rows);
+      var fileDataUri = "data:" + (XLSX_MIME_TYPES[ext] || "application/octet-stream") + ";base64," + arrayBufferToBase64(buffer);
 
       window.PCC.duplicateService.fingerprintFile(buffer, file.name, file.size).then(function (fp) {
-        uiState.importFile = { name: file.name, size: file.size, hash: fp.hash, hashMethod: fp.method };
+        uiState.importFile = { name: file.name, size: file.size, hash: fp.hash, hashMethod: fp.method, fileData: fileDataUri };
         uiState.importParsed = parsed;
         uiState.importScheduleName = file.name.replace(/\.(xlsx|xls)$/i, "");
         uiState.importDuplicateAcknowledged = false;
@@ -291,6 +328,70 @@
       });
     };
     reader.readAsArrayBuffer(file);
+  }
+
+  /** Turns a scheduleImportService.parseRows() result into store-shaped WBS/Activity/
+   * Relationship records for one schedule. Shared by commitImport (new schedule, Gate
+   * 2) and applyExcelEdit (existing schedule, Gate 8) so both go through identical
+   * construction logic \u2014 only the target schedule id and whether the records get
+   * pushed as new vs. spliced in as a replacement differs between the two callers. */
+  function buildScheduleRecords(parsed, projectId, scheduleId) {
+    // WBS: create every parsed entry first so a code\u2192id map exists before wiring
+    // parent_wbs_id \u2014 order of creation doesn't matter since parents are resolved by
+    // code lookup afterward, not by creation sequence.
+    var wbsCodeToId = {};
+    var wbsItems = parsed.wbsEntries.map(function (w) {
+      var item = window.PCC.store.newWbsItem({
+        project_id: projectId,
+        schedule_id: scheduleId,
+        code: w.code,
+        name: w.name,
+        level: w.level,
+      });
+      wbsCodeToId[w.code] = item.id;
+      return item;
+    });
+    wbsItems.forEach(function (item, i) {
+      var parentCode = parsed.wbsEntries[i].parent_code;
+      item.parent_wbs_id = parentCode ? wbsCodeToId[parentCode] || null : null;
+    });
+
+    var externalIdToActivityId = {};
+    var activities = parsed.activities.map(function (a) {
+      var activity = window.PCC.store.newActivity({
+        project_id: projectId,
+        schedule_id: scheduleId,
+        wbs_id: a.wbs_code ? wbsCodeToId[a.wbs_code] || null : null,
+        name: a.name,
+        activity_type: a.activity_type,
+        duration: a.duration,
+        remaining_duration: a.duration,
+        original_duration: a.duration,
+        planned_start: a.planned_start,
+        planned_finish: a.planned_finish,
+        percent_complete: a.percent_complete,
+        discipline: a.discipline,
+        contractor: a.contractor,
+        responsible_person: a.responsible_person,
+        status: a.status,
+        notes: a.notes,
+        external_id: a.external_id,
+      });
+      externalIdToActivityId[a.external_id] = activity.id;
+      return activity;
+    });
+
+    var relationships = parsed.relationships.map(function (r) {
+      return window.PCC.store.newRelationship({
+        schedule_id: scheduleId,
+        predecessor_id: externalIdToActivityId[r.predecessor_external_id],
+        successor_id: externalIdToActivityId[r.successor_external_id],
+        type: r.type,
+        lag: r.lag,
+      });
+    });
+
+    return { wbsItems: wbsItems, activities: activities, relationships: relationships };
   }
 
   function commitImport(data, rerender) {
@@ -318,77 +419,78 @@
       hash_method: uiState.importFile.hashMethod,
     });
 
-    // WBS: create every parsed entry first so a code\u2192id map exists before wiring
-    // parent_wbs_id \u2014 order of creation doesn't matter since parents are resolved by
-    // code lookup afterward, not by creation sequence.
-    var wbsCodeToId = {};
-    var newWbsItems = parsed.wbsEntries.map(function (w) {
-      var item = window.PCC.store.newWbsItem({
-        project_id: uiState.projectId,
-        schedule_id: newSchedule.id,
-        code: w.code,
-        name: w.name,
-        level: w.level,
+    var records = buildScheduleRecords(parsed, uiState.projectId, newSchedule.id);
+
+    uiState.importCommitting = true;
+    uiState.importError = null;
+
+    function finishImport() {
+      window.PCC.store.update(function (d) {
+        d.schedules.push(newSchedule);
+        d.wbs_items = d.wbs_items.concat(records.wbsItems);
+        d.activities = d.activities.concat(records.activities);
+        d.relationships = d.relationships.concat(records.relationships);
       });
-      wbsCodeToId[w.code] = item.id;
-      return item;
-    });
-    newWbsItems.forEach(function (item, i) {
-      var parentCode = parsed.wbsEntries[i].parent_code;
-      item.parent_wbs_id = parentCode ? wbsCodeToId[parentCode] || null : null;
-    });
 
-    var externalIdToActivityId = {};
-    var newActivities = parsed.activities.map(function (a) {
-      var activity = window.PCC.store.newActivity({
-        project_id: uiState.projectId,
-        schedule_id: newSchedule.id,
-        wbs_id: a.wbs_code ? wbsCodeToId[a.wbs_code] || null : null,
-        name: a.name,
-        activity_type: a.activity_type,
-        duration: a.duration,
-        remaining_duration: a.duration,
-        original_duration: a.duration,
-        planned_start: a.planned_start,
-        planned_finish: a.planned_finish,
-        percent_complete: a.percent_complete,
-        discipline: a.discipline,
-        contractor: a.contractor,
-        responsible_person: a.responsible_person,
-        status: a.status,
-        notes: a.notes,
-        external_id: a.external_id,
+      window.PCC.notify(
+        "Imported " + records.activities.length + " activities as a new schedule (Rev " + nextRevision +
+          "). The original Excel file is attached \u2014 use \u201cEdit Excel\u201d to update it in place.",
+        "success"
+      );
+
+      uiState.scheduleId = newSchedule.id;
+      uiState.tab = "activities";
+      resetImportState();
+      rerender();
+    }
+
+    // Store the original file first (same precedent as documents.js's Save Document
+    // handler): if IndexedDB write fails, nothing is written to the main store either,
+    // rather than leaving a schedule record that claims a source file that isn't there.
+    window.PCC.blobStore
+      .putBlob(newSchedule.id, uiState.importFile.fileData)
+      .then(finishImport)
+      .catch(function (e) {
+        uiState.importCommitting = false;
+        uiState.importError = "Could not store the original Excel file: " + e.message;
+        rerender();
       });
-      externalIdToActivityId[a.external_id] = activity.id;
-      return activity;
+  }
+
+  /** Renders a collapsible list of a parseRows() result's errors/warnings, or null if
+   * there's nothing to show. Shared by the Import review step and the Excel-editor
+   * review step so the two stay visually identical rather than drifting apart. */
+  function renderParsedIssuesToggle(parsed) {
+    var summary = parsed.summary;
+    if (summary.warnings === 0 && summary.errors === 0) return null;
+
+    var issuesToggle = document.createElement("details");
+    issuesToggle.style.marginBottom = "12px";
+    var summaryTag = document.createElement("summary");
+    summaryTag.style.cursor = "pointer";
+    summaryTag.style.fontSize = "13px";
+    summaryTag.textContent = "View " + (summary.errors + summary.warnings) + " issue(s)";
+    issuesToggle.appendChild(summaryTag);
+    var issuesList = document.createElement("div");
+    issuesList.style.maxHeight = "220px";
+    issuesList.style.overflowY = "auto";
+    issuesList.style.marginTop = "8px";
+    parsed.errors.forEach(function (e) {
+      var p = document.createElement("p");
+      p.style.fontSize = "12px";
+      p.style.color = "var(--status-critical)";
+      p.textContent = (e.row ? "Row " + e.row + ": " : "") + e.message;
+      issuesList.appendChild(p);
     });
-
-    var newRelationships = parsed.relationships.map(function (r) {
-      return window.PCC.store.newRelationship({
-        schedule_id: newSchedule.id,
-        predecessor_id: externalIdToActivityId[r.predecessor_external_id],
-        successor_id: externalIdToActivityId[r.successor_external_id],
-        type: r.type,
-        lag: r.lag,
-      });
+    parsed.warnings.forEach(function (w) {
+      var p = document.createElement("p");
+      p.style.fontSize = "12px";
+      p.style.color = "var(--status-at-risk)";
+      p.textContent = (w.row ? "Row " + w.row + ": " : "") + w.message;
+      issuesList.appendChild(p);
     });
-
-    window.PCC.store.update(function (d) {
-      d.schedules.push(newSchedule);
-      d.wbs_items = d.wbs_items.concat(newWbsItems);
-      d.activities = d.activities.concat(newActivities);
-      d.relationships = d.relationships.concat(newRelationships);
-    });
-
-    window.PCC.notify(
-      "Imported " + newActivities.length + " activities as a new schedule (Rev " + nextRevision + ").",
-      "success"
-    );
-
-    uiState.scheduleId = newSchedule.id;
-    uiState.tab = "activities";
-    resetImportState();
-    rerender();
+    issuesToggle.appendChild(issuesList);
+    return issuesToggle;
   }
 
   function renderImportPanel(container, data, rerender) {
@@ -510,35 +612,8 @@
         panel.appendChild(errNote);
       }
 
-      if (summary.warnings > 0 || summary.errors > 0) {
-        var issuesToggle = document.createElement("details");
-        issuesToggle.style.marginBottom = "12px";
-        var summaryTag = document.createElement("summary");
-        summaryTag.style.cursor = "pointer";
-        summaryTag.style.fontSize = "13px";
-        summaryTag.textContent = "View " + (summary.errors + summary.warnings) + " issue(s)";
-        issuesToggle.appendChild(summaryTag);
-        var issuesList = document.createElement("div");
-        issuesList.style.maxHeight = "220px";
-        issuesList.style.overflowY = "auto";
-        issuesList.style.marginTop = "8px";
-        parsed.errors.forEach(function (e) {
-          var p = document.createElement("p");
-          p.style.fontSize = "12px";
-          p.style.color = "var(--status-critical)";
-          p.textContent = (e.row ? "Row " + e.row + ": " : "") + e.message;
-          issuesList.appendChild(p);
-        });
-        parsed.warnings.forEach(function (w) {
-          var p = document.createElement("p");
-          p.style.fontSize = "12px";
-          p.style.color = "var(--status-at-risk)";
-          p.textContent = (w.row ? "Row " + w.row + ": " : "") + w.message;
-          issuesList.appendChild(p);
-        });
-        issuesToggle.appendChild(issuesList);
-        panel.appendChild(issuesToggle);
-      }
+      var issuesToggle = renderParsedIssuesToggle(parsed);
+      if (issuesToggle) panel.appendChild(issuesToggle);
 
       var nameField = document.createElement("div");
       nameField.className = "field";
@@ -560,8 +635,11 @@
 
       var confirmBtn = document.createElement("button");
       confirmBtn.className = "btn btn--primary";
-      confirmBtn.textContent = "Confirm Import (" + summary.imported + " activities)";
-      confirmBtn.disabled = summary.imported === 0 || (uiState.importDuplicateMatches.length > 0 && !uiState.importDuplicateAcknowledged);
+      confirmBtn.textContent = uiState.importCommitting ? "Saving…" : "Confirm Import (" + summary.imported + " activities)";
+      confirmBtn.disabled =
+        summary.imported === 0 ||
+        uiState.importCommitting ||
+        (uiState.importDuplicateMatches.length > 0 && !uiState.importDuplicateAcknowledged);
       confirmBtn.onclick = function () {
         commitImport(data, rerender);
       };
@@ -570,6 +648,7 @@
       var cancelReviewBtn = document.createElement("button");
       cancelReviewBtn.className = "btn btn--ghost";
       cancelReviewBtn.textContent = "Cancel";
+      cancelReviewBtn.disabled = uiState.importCommitting;
       cancelReviewBtn.onclick = function () {
         resetImportState();
         rerender();
@@ -577,6 +656,561 @@
       actions.appendChild(cancelReviewBtn);
 
       panel.appendChild(actions);
+
+      if (uiState.importError) {
+        var reviewErr = document.createElement("p");
+        reviewErr.style.color = "var(--status-critical)";
+        reviewErr.style.fontSize = "13px";
+        reviewErr.style.marginTop = "10px";
+        reviewErr.textContent = uiState.importError;
+        panel.appendChild(reviewErr);
+      }
+    }
+
+    container.appendChild(panel);
+  }
+
+  // ---------------------------------------------------------------------------------
+  // Gate 8 — in-app Excel editor. Only offered on schedules that came from an Excel
+  // import (source_file_name set — see commitImport above), since the whole pipeline
+  // below re-runs scheduleImportService.parseRows() the same way import does, and that
+  // requires every row to carry an Activity ID the way an imported activity always
+  // does. Hand-built (Gate 1 CRUD) activities have no external_id and so aren't
+  // representable in the grid — see the hand-added-activity guard in
+  // renderExcelReviewStep()/applyExcelEdits() below.
+  // ---------------------------------------------------------------------------------
+
+  var EXCEL_GRID_FIELDS = window.PCC.scheduleImportService.CANONICAL_HEADERS;
+
+  function resetExcelEditorState() {
+    uiState.excelEditorOpen = false;
+    uiState.excelEditorScheduleId = null;
+    uiState.excelEditorStep = "grid";
+    uiState.excelEditorRows = [];
+    uiState.excelEditorReview = null;
+    uiState.excelEditorHandAddedAcknowledged = false;
+    uiState.excelEditorError = null;
+    uiState.excelEditorSaving = false;
+    uiState.excelEditorNextNewSeq = 1;
+  }
+
+  /** Reconstructs the "A010FS+2,A020" predecessor token string for one activity from
+   * the schedule's relationship records, the same format parseRows() expects on the
+   * way back in. A predecessor with no external_id (a hand-added activity — see the
+   * module comment above) can't be expressed in this format and is silently dropped
+   * from the string; the hand-added-activity guard elsewhere is what surfaces that
+   * loss to the user before they commit to it, so this function doesn't need to. */
+  function buildPredecessorsString(activity, relationships, activitiesById) {
+    var tokens = relationships
+      .filter(function (r) {
+        return r.successor_id === activity.id;
+      })
+      .map(function (r) {
+        var pred = activitiesById[r.predecessor_id];
+        if (!pred || !pred.external_id) return null;
+        var token = pred.external_id;
+        if (r.type && r.type !== "FS") token += r.type;
+        if (r.lag) token += (r.lag > 0 ? "+" : "") + r.lag;
+        return token;
+      })
+      .filter(function (t) {
+        return t;
+      });
+    return tokens.join(",");
+  }
+
+  /** Builds the editable grid's row data from the schedule's CURRENT Activities/WBS/
+   * Relationships — not by re-reading the attached file's bytes. This means the grid
+   * always reflects whatever's live in the schedule (including any prior Apply), and
+   * the attached Excel file is kept as a byproduct of Apply rather than the source of
+   * truth read on every open. */
+  function openExcelEditor(schedule, data, rerender) {
+    var wbsById = {};
+    data.wbs_items
+      .filter(function (w) {
+        return w.schedule_id === schedule.id;
+      })
+      .forEach(function (w) {
+        wbsById[w.id] = w;
+      });
+    var activitiesById = {};
+    data.activities
+      .filter(function (a) {
+        return a.schedule_id === schedule.id;
+      })
+      .forEach(function (a) {
+        activitiesById[a.id] = a;
+      });
+    var relationships = data.relationships.filter(function (r) {
+      return r.schedule_id === schedule.id;
+    });
+
+    uiState.excelEditorRows = data.activities
+      .filter(function (a) {
+        return a.schedule_id === schedule.id && a.external_id;
+      })
+      .map(function (a) {
+        var wbs = a.wbs_id ? wbsById[a.wbs_id] : null;
+        return {
+          external_id: a.external_id || "",
+          name: a.name || "",
+          activity_type: a.activity_type || "task",
+          wbs_code: wbs ? wbs.code : "",
+          wbs_name: wbs ? wbs.name : "",
+          duration: a.duration != null ? String(a.duration) : "",
+          planned_start: a.planned_start || "",
+          planned_finish: a.planned_finish || "",
+          predecessors: buildPredecessorsString(a, relationships, activitiesById),
+          percent_complete: a.percent_complete != null ? String(a.percent_complete) : "",
+          discipline: a.discipline || "",
+          contractor: a.contractor || "",
+          responsible_person: a.responsible_person || "",
+          status: a.status || "not_started",
+          notes: a.notes || "",
+        };
+      });
+
+    uiState.excelEditorOpen = true;
+    uiState.excelEditorScheduleId = schedule.id;
+    uiState.excelEditorStep = "grid";
+    uiState.excelEditorReview = null;
+    uiState.excelEditorHandAddedAcknowledged = false;
+    uiState.excelEditorError = null;
+    uiState.excelEditorNextNewSeq = 1;
+    rerender();
+  }
+
+  /** Grid cells are read from the DOM only when something needs their current values
+   * (adding/deleting a row, or Review Changes) — not on every keystroke — for the same
+   * reason renderScheduleForm() above reads its fields at submit time instead of
+   * tracking each input in uiState: a full outlet re-render on every keystroke would
+   * blow away focus/cursor position mid-edit. */
+  function syncExcelEditorRowsFromDom() {
+    uiState.excelEditorRows.forEach(function (row, i) {
+      EXCEL_GRID_FIELDS.forEach(function (f) {
+        var el = document.getElementById("excelgrid-" + i + "-" + f.key);
+        if (el) row[f.key] = el.value;
+      });
+    });
+  }
+
+  function excelCellControl(rowIndex, field, value) {
+    var id = "excelgrid-" + rowIndex + "-" + field.key;
+    if (field.key === "activity_type") {
+      var typeSelect = document.createElement("select");
+      typeSelect.id = id;
+      typeSelect.style.width = "100%";
+      ["task", "milestone", "summary", "wbs_summary"].forEach(function (k) {
+        var opt = document.createElement("option");
+        opt.value = k;
+        opt.textContent = ACTIVITY_TYPE_LABELS[k];
+        typeSelect.appendChild(opt);
+      });
+      typeSelect.value = value || "task";
+      return typeSelect;
+    }
+    if (field.key === "status") {
+      var statusSelect = document.createElement("select");
+      statusSelect.id = id;
+      statusSelect.style.width = "100%";
+      Object.keys(ACTIVITY_STATUS_LABELS).forEach(function (k) {
+        var opt = document.createElement("option");
+        opt.value = k;
+        opt.textContent = ACTIVITY_STATUS_LABELS[k];
+        statusSelect.appendChild(opt);
+      });
+      statusSelect.value = value || "not_started";
+      return statusSelect;
+    }
+    var input = document.createElement("input");
+    input.id = id;
+    input.value = value || "";
+    input.style.width = "100%";
+    input.style.boxSizing = "border-box";
+    if (field.key === "planned_start" || field.key === "planned_finish") input.type = "date";
+    else if (field.key === "duration" || field.key === "percent_complete") {
+      input.type = "number";
+      input.step = "any";
+    } else input.type = "text";
+    return input;
+  }
+
+  function renderExcelGridStep(panel, schedule, data, rerender) {
+    var gridActions = document.createElement("div");
+    gridActions.style.display = "flex";
+    gridActions.style.gap = "10px";
+    gridActions.style.marginBottom = "10px";
+
+    var addRowBtn = document.createElement("button");
+    addRowBtn.type = "button";
+    addRowBtn.className = "btn btn--ghost";
+    addRowBtn.textContent = "+ Add Row";
+    addRowBtn.onclick = function () {
+      syncExcelEditorRowsFromDom();
+      var seq = uiState.excelEditorNextNewSeq++;
+      uiState.excelEditorRows.push({
+        external_id: "NEW-" + seq,
+        name: "",
+        activity_type: "task",
+        wbs_code: "",
+        wbs_name: "",
+        duration: "",
+        planned_start: "",
+        planned_finish: "",
+        predecessors: "",
+        percent_complete: "",
+        discipline: "",
+        contractor: "",
+        responsible_person: "",
+        status: "not_started",
+        notes: "",
+      });
+      rerender();
+    };
+    gridActions.appendChild(addRowBtn);
+    panel.appendChild(gridActions);
+
+    if (uiState.excelEditorRows.length === 0) {
+      var emptyNote = document.createElement("p");
+      emptyNote.className = "text-secondary";
+      emptyNote.style.fontSize = "12px";
+      emptyNote.style.marginBottom = "10px";
+      emptyNote.textContent = "No activities from the original Excel file remain on this schedule. Click “+ Add Row” to start adding some, or Close and use the Activities tab instead.";
+      panel.appendChild(emptyNote);
+    }
+
+    var tableWrap = document.createElement("div");
+    tableWrap.style.overflowX = "auto";
+    tableWrap.style.maxHeight = "440px";
+    tableWrap.style.overflowY = "auto";
+    tableWrap.style.border = "1px solid var(--divider)";
+    tableWrap.style.borderRadius = "var(--radius-sm)";
+    tableWrap.style.marginBottom = "12px";
+
+    var table = document.createElement("table");
+    table.style.borderCollapse = "collapse";
+    table.style.width = "100%";
+    table.style.fontSize = "12px";
+
+    var thead = document.createElement("thead");
+    var headRow = document.createElement("tr");
+    EXCEL_GRID_FIELDS.forEach(function (f) {
+      var th = document.createElement("th");
+      th.textContent = f.label;
+      th.style.textAlign = "left";
+      th.style.padding = "6px 8px";
+      th.style.borderBottom = "1px solid var(--divider)";
+      th.style.position = "sticky";
+      th.style.top = "0";
+      th.style.backgroundColor = "var(--bg-paper-raised)";
+      th.style.whiteSpace = "nowrap";
+      headRow.appendChild(th);
+    });
+    var thActions = document.createElement("th");
+    thActions.style.borderBottom = "1px solid var(--divider)";
+    thActions.style.position = "sticky";
+    thActions.style.top = "0";
+    thActions.style.backgroundColor = "var(--bg-paper-raised)";
+    headRow.appendChild(thActions);
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    var tbody = document.createElement("tbody");
+    uiState.excelEditorRows.forEach(function (row, i) {
+      var tr = document.createElement("tr");
+      EXCEL_GRID_FIELDS.forEach(function (f) {
+        var td = document.createElement("td");
+        td.style.padding = "3px 6px";
+        td.style.borderBottom = "1px solid var(--divider)";
+        td.style.minWidth = f.key === "name" || f.key === "notes" ? "160px" : "110px";
+        td.appendChild(excelCellControl(i, f, row[f.key]));
+        tr.appendChild(td);
+      });
+      var tdActions = document.createElement("td");
+      tdActions.style.padding = "3px 6px";
+      tdActions.style.borderBottom = "1px solid var(--divider)";
+      var delBtn = document.createElement("button");
+      delBtn.type = "button";
+      delBtn.className = "btn btn--ghost";
+      delBtn.style.padding = "2px 8px";
+      delBtn.title = "Delete row";
+      delBtn.textContent = "×";
+      delBtn.onclick = function () {
+        syncExcelEditorRowsFromDom();
+        uiState.excelEditorRows.splice(i, 1);
+        rerender();
+      };
+      tdActions.appendChild(delBtn);
+      tr.appendChild(tdActions);
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    tableWrap.appendChild(table);
+    panel.appendChild(tableWrap);
+
+    var bottomActions = document.createElement("div");
+    bottomActions.style.display = "flex";
+    bottomActions.style.gap = "10px";
+
+    var reviewBtn = document.createElement("button");
+    reviewBtn.type = "button";
+    reviewBtn.className = "btn btn--primary";
+    reviewBtn.textContent = "Review Changes";
+    reviewBtn.onclick = function () {
+      syncExcelEditorRowsFromDom();
+      var headerLabels = EXCEL_GRID_FIELDS.map(function (f) {
+        return f.label;
+      });
+      var rowArrays = uiState.excelEditorRows.map(function (row) {
+        return EXCEL_GRID_FIELDS.map(function (f) {
+          return row[f.key] || "";
+        });
+      });
+      uiState.excelEditorReview = window.PCC.scheduleImportService.parseRows(headerLabels, rowArrays);
+      uiState.excelEditorStep = "review";
+      rerender();
+    };
+    bottomActions.appendChild(reviewBtn);
+
+    var closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.className = "btn btn--ghost";
+    closeBtn.textContent = "Close";
+    closeBtn.onclick = function () {
+      resetExcelEditorState();
+      rerender();
+    };
+    bottomActions.appendChild(closeBtn);
+    panel.appendChild(bottomActions);
+
+    if (uiState.excelEditorError) {
+      var gridErr = document.createElement("p");
+      gridErr.style.color = "var(--status-critical)";
+      gridErr.style.fontSize = "13px";
+      gridErr.style.marginTop = "10px";
+      gridErr.textContent = uiState.excelEditorError;
+      panel.appendChild(gridErr);
+    }
+  }
+
+  function renderExcelReviewStep(panel, schedule, data, rerender) {
+    var parsed = uiState.excelEditorReview;
+    var summary = parsed.summary;
+    var handAdded = data.activities.filter(function (a) {
+      return a.schedule_id === schedule.id && !a.external_id;
+    });
+    var blockedByHandAdded = handAdded.length > 0 && !uiState.excelEditorHandAddedAcknowledged;
+
+    if (blockedByHandAdded) {
+      var warnBox = document.createElement("div");
+      warnBox.style.border = "1px solid var(--status-at-risk)";
+      warnBox.style.borderRadius = "8px";
+      warnBox.style.padding = "12px";
+      warnBox.style.marginBottom = "14px";
+      warnBox.style.background = "rgba(230, 162, 60, 0.08)";
+      var warnTitle = document.createElement("p");
+      warnTitle.style.fontWeight = "600";
+      warnTitle.style.fontSize = "13px";
+      warnTitle.textContent =
+        handAdded.length + " activit" + (handAdded.length === 1 ? "y" : "ies") + " on this schedule " +
+        (handAdded.length === 1 ? "isn’t" : "aren’t") + " from the Excel file";
+      warnBox.appendChild(warnTitle);
+      var warnBody = document.createElement("p");
+      warnBody.style.fontSize = "12px";
+      warnBody.style.marginTop = "6px";
+      warnBody.textContent =
+        "They were added by hand on the Activities tab and have no Activity ID, so they can't appear in this " +
+        "grid. Applying replaces this schedule's full activity list from the grid, so continuing will delete them.";
+      warnBox.appendChild(warnBody);
+      var warnActions = document.createElement("div");
+      warnActions.style.display = "flex";
+      warnActions.style.gap = "10px";
+      warnActions.style.marginTop = "10px";
+      var ackBtn = document.createElement("button");
+      ackBtn.type = "button";
+      ackBtn.className = "btn btn--ghost";
+      ackBtn.textContent = "Delete Them and Continue";
+      ackBtn.onclick = function () {
+        uiState.excelEditorHandAddedAcknowledged = true;
+        rerender();
+      };
+      var backFromWarnBtn = document.createElement("button");
+      backFromWarnBtn.type = "button";
+      backFromWarnBtn.className = "btn btn--ghost";
+      backFromWarnBtn.textContent = "Back to Grid";
+      backFromWarnBtn.onclick = function () {
+        uiState.excelEditorStep = "grid";
+        rerender();
+      };
+      warnActions.appendChild(ackBtn);
+      warnActions.appendChild(backFromWarnBtn);
+      warnBox.appendChild(warnActions);
+      panel.appendChild(warnBox);
+    }
+
+    var summaryLine = document.createElement("p");
+    summaryLine.style.fontSize = "14px";
+    summaryLine.style.fontWeight = "600";
+    summaryLine.style.marginBottom = "4px";
+    summaryLine.textContent =
+      summary.imported + " activit" + (summary.imported === 1 ? "y" : "ies") + " will be applied to this schedule, " +
+      summary.warnings + " warning(s), " + summary.errors + " error(s).";
+    panel.appendChild(summaryLine);
+
+    if (summary.errors > 0) {
+      var errNote = document.createElement("p");
+      errNote.className = "text-secondary";
+      errNote.style.fontSize = "12px";
+      errNote.style.marginBottom = "10px";
+      errNote.textContent = "Rows with errors are excluded entirely — go back, fix them in the grid, and click Review Changes again.";
+      panel.appendChild(errNote);
+    }
+
+    var issuesToggle = renderParsedIssuesToggle(parsed);
+    if (issuesToggle) panel.appendChild(issuesToggle);
+
+    var actions = document.createElement("div");
+    actions.style.display = "flex";
+    actions.style.gap = "10px";
+    actions.style.marginTop = "14px";
+
+    var applyBtn = document.createElement("button");
+    applyBtn.type = "button";
+    applyBtn.className = "btn btn--primary";
+    applyBtn.textContent = uiState.excelEditorSaving ? "Applying…" : "Apply to Schedule (" + summary.imported + " activities)";
+    applyBtn.disabled = summary.imported === 0 || uiState.excelEditorSaving || blockedByHandAdded;
+    applyBtn.onclick = function () {
+      applyExcelEdits(schedule, data, rerender);
+    };
+    actions.appendChild(applyBtn);
+
+    var backBtn = document.createElement("button");
+    backBtn.type = "button";
+    backBtn.className = "btn btn--ghost";
+    backBtn.textContent = "Back to Grid";
+    backBtn.disabled = uiState.excelEditorSaving;
+    backBtn.onclick = function () {
+      uiState.excelEditorStep = "grid";
+      rerender();
+    };
+    actions.appendChild(backBtn);
+
+    panel.appendChild(actions);
+
+    if (uiState.excelEditorError) {
+      var reviewErr = document.createElement("p");
+      reviewErr.style.color = "var(--status-critical)";
+      reviewErr.style.fontSize = "13px";
+      reviewErr.style.marginTop = "10px";
+      reviewErr.textContent = uiState.excelEditorError;
+      panel.appendChild(reviewErr);
+    }
+  }
+
+  /** Regenerates the attached Excel file from exactly the header/row data that was
+   * just parsed (same values shown in the review step), so the stored file always
+   * matches what Apply actually committed — never a stale copy of the pre-edit file
+   * or a copy of grid contents that got rejected as errors. */
+  function applyExcelEdits(schedule, data, rerender) {
+    var parsed = uiState.excelEditorReview;
+    if (!parsed) return;
+
+    var headerLabels = EXCEL_GRID_FIELDS.map(function (f) {
+      return f.label;
+    });
+    var rowArrays = uiState.excelEditorRows.map(function (row) {
+      return EXCEL_GRID_FIELDS.map(function (f) {
+        return row[f.key] || "";
+      });
+    });
+
+    var workbook = window.XLSX.utils.book_new();
+    var sheet = window.XLSX.utils.aoa_to_sheet([headerLabels].concat(rowArrays));
+    window.XLSX.utils.book_append_sheet(workbook, sheet, "Schedule");
+    var wbBuffer = window.XLSX.write(workbook, { type: "array", bookType: "xlsx" });
+    var fileDataUri = "data:" + XLSX_MIME_TYPES.xlsx + ";base64," + arrayBufferToBase64(wbBuffer);
+
+    var records = buildScheduleRecords(parsed, schedule.project_id, schedule.id);
+
+    uiState.excelEditorSaving = true;
+    uiState.excelEditorError = null;
+
+    window.PCC.blobStore
+      .putBlob(schedule.id, fileDataUri)
+      .then(function () {
+        window.PCC.store.update(function (d) {
+          d.wbs_items = d.wbs_items.filter(function (w) {
+            return w.schedule_id !== schedule.id;
+          });
+          d.activities = d.activities.filter(function (a) {
+            return a.schedule_id !== schedule.id;
+          });
+          d.relationships = d.relationships.filter(function (r) {
+            return r.schedule_id !== schedule.id;
+          });
+          d.wbs_items = d.wbs_items.concat(records.wbsItems);
+          d.activities = d.activities.concat(records.activities);
+          d.relationships = d.relationships.concat(records.relationships);
+
+          var sched = d.schedules.find(function (s) {
+            return s.id === schedule.id;
+          });
+          if (sched) {
+            sched.source_file_size = wbBuffer.byteLength;
+            sched.updated_at = new Date().toISOString();
+          }
+        });
+
+        window.PCC.notify(
+          "Schedule updated from the edited Excel (" + records.activities.length + " activities). " +
+            "The attached file was updated to match.",
+          "success"
+        );
+
+        uiState.excelEditorSaving = false;
+        resetExcelEditorState();
+        uiState.tab = "activities";
+        rerender();
+      })
+      .catch(function (e) {
+        uiState.excelEditorSaving = false;
+        uiState.excelEditorError = "Could not save changes: " + e.message;
+        rerender();
+      });
+  }
+
+  function renderExcelEditorPanel(container, data, rerender) {
+    var schedule = data.schedules.find(function (s) {
+      return s.id === uiState.excelEditorScheduleId;
+    });
+    if (!schedule) {
+      resetExcelEditorState();
+      return;
+    }
+
+    var panel = document.createElement("div");
+    panel.className = "panel";
+    panel.style.marginBottom = "16px";
+
+    var heading = document.createElement("h3");
+    heading.style.marginBottom = "10px";
+    heading.textContent = "Edit Excel — " + schedule.name;
+    panel.appendChild(heading);
+
+    var help = document.createElement("p");
+    help.className = "text-secondary";
+    help.style.fontSize = "12px";
+    help.style.marginBottom = "10px";
+    help.textContent =
+      "Editing here updates the attached Excel file and this schedule's Activities/WBS/Relationships together — " +
+      "no separate download or re-upload needed. Recognized columns only (same set as Import); extra columns " +
+      "from the original file aren't shown.";
+    panel.appendChild(help);
+
+    if (uiState.excelEditorStep === "grid") {
+      renderExcelGridStep(panel, schedule, data, rerender);
+    } else {
+      renderExcelReviewStep(panel, schedule, data, rerender);
     }
 
     container.appendChild(panel);
@@ -678,6 +1312,21 @@
       rerender();
     };
     bar.appendChild(importBtn);
+
+    var currentScheduleForExcelEdit = data.schedules.find(function (s) {
+      return s.id === uiState.scheduleId;
+    });
+    var editExcelBtn = document.createElement("button");
+    editExcelBtn.className = "btn btn--ghost";
+    editExcelBtn.textContent = "Edit Excel";
+    editExcelBtn.title = currentScheduleForExcelEdit && !currentScheduleForExcelEdit.source_file_name
+      ? "This schedule wasn't imported from an Excel file, so there's nothing to edit here."
+      : "";
+    editExcelBtn.disabled = !currentScheduleForExcelEdit || !currentScheduleForExcelEdit.source_file_name;
+    editExcelBtn.onclick = function () {
+      openExcelEditor(currentScheduleForExcelEdit, data, rerender);
+    };
+    bar.appendChild(editExcelBtn);
 
     var calcBtn = document.createElement("button");
     calcBtn.className = "btn btn--ghost";
@@ -2239,6 +2888,10 @@
 
     if (uiState.importPanelOpen) {
       renderImportPanel(outlet, data, rerender);
+    }
+
+    if (uiState.excelEditorOpen) {
+      renderExcelEditorPanel(outlet, data, rerender);
     }
 
     if (uiState.editingScheduleId) {
