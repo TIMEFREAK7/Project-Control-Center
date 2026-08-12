@@ -2,7 +2,8 @@
 
 Paste this into a new chat to resume work with full context. This file lives in the repo
 (`HANDOFF.md` at the root) specifically so a future session can find it without being told a
-path — see the standing instruction added to `CLAUDE.md` about keeping it current.
+path — see the standing instructions added to `CLAUDE.md` about keeping it current and about
+handing it (and a zip) to Aditya directly after every major upgrade, not just committing quietly.
 
 ## What this project is
 
@@ -17,16 +18,17 @@ that override default behavior).
 - **If a PR has no comments, merge it — don't ask first.** Solo repo, no CI, no other
   reviewers. Only pause to ask if there *are* comments to address, or something about the
   change itself is genuinely ambiguous.
-- **After every gate/phase/tier, compile a distributable zip and hand it over** — not just push
-  to `main`. Rebuild (`node build.js`), run the full test suite, then package `index.html`,
-  `README.md`, and empty `data/`/`files/` placeholder folders (with their own `README.txt`) —
-  **not** `src/`, `build.js`, `tests/`, or `.claude/`. Verify the zip works by extracting it
-  fresh and opening `index.html` in real Chromium before sending.
-  **⚠ Not done yet for Gate 8 or Gate 9 (see below) — this is the top outstanding item.**
-- **After every major upgrade, update `HANDOFF.md` at the repo root** (this file) with current
-  session context, so a new session can resume without re-deriving everything from git log and
-  source. New standing instruction as of this session (2026-08-12) — see `CLAUDE.md`'s PR/
-  shipping conventions section.
+- **After every gate/phase/tier, compile everything and hand over a zip file Aditya can send to
+  a laptop or to other people and they can use directly** — not just push to `main`. Rebuild
+  (`node build.js`), run the full test suite, then package `index.html`, `README.md`, and empty
+  `data/`/`files/` placeholder folders (with their own `README.txt`, already present at the repo
+  root — reuse them, don't rewrite) — **not** `src/`, `build.js`, `tests/`, `.claude/`,
+  `CLAUDE.md`, or `HANDOFF.md`. The point is zero setup for the recipient: extract, double-click
+  `index.html`, nothing to install. Verify before sending: extract fresh (not the dev working
+  copy) and open `index.html` in real Chromium.
+- **After every major upgrade, update `HANDOFF.md` at the repo root AND hand Aditya the complete
+  updated file directly** (same as the zip — don't just leave it committed silently), so a new
+  session can resume without re-deriving everything from git log and source.
 - Develop on branch `claude/excel-schedule-pcc-editing-dgyy9m` (current branch — see "Repo/
   branch state" below; this may not match whatever branch name a fresh task assignment gives
   you, in which case follow the new assignment instead and treat this file as background only).
@@ -58,13 +60,18 @@ two big ones:
   their existing `expandMeeting()`/`expandRfi()`/`expandRisk()` hooks. Vendor documents get an
   *optional* project (a GST cert isn't tied to one project) with real revision history
   (`document_group_id` + `revision_number`). **Follow-up in the same session:** Portfolio's
-  project details panel now also has a "VENDORS" section with its own "+ Link Vendor"/"Unlink" —
+  project details panel also got a "VENDORS" section with its own "+ Link Vendor"/"Unlink" —
   reads/writes the exact same `vendor_project_links` array Vendor Management uses, so linking
   from either side is immediately visible on the other (no sync code, just two UIs on one array).
+- **This delivery round:** compiled the distributable zip for Gates 8+9 (had been skipped
+  earlier in the session — flagged and caught via this exact handoff process), plus tightened
+  the zip/handoff standing instructions themselves in both `CLAUDE.md` and this file to
+  explicitly say the zip must be laptop/other-people-shareable with zero setup, and that both
+  the zip and this file get handed to Aditya directly, not just committed.
 
-All merged to... **not yet** — see "Repo/branch state" below, nothing from this session is
-merged to `main` yet. Schema is at `schema_version: 21`. Test suite is at **12 files, ~209
-checks**, all passing as of the last run (`cd tests && npm test`).
+Nothing from this branch is merged to `main` yet — see "Repo/branch state" below. Schema is at
+`schema_version: 21`. Test suite is at **12 files, ~209 checks**, all passing as of the last run
+(`cd tests && npm test`).
 
 ## Key technical conventions to carry forward
 
@@ -107,20 +114,28 @@ checks**, all passing as of the last run (`cd tests && npm test`).
   dependency in the single-file build.
 - No File System Access API (desktop-Chrome-only, needs `https://`); export/import-as-JSON is
   the deliberate cross-platform answer.
+- The distributable zip's `data/README.txt` and `files/README.txt` already exist at the repo
+  root (`/data/README.txt`, `/files/README.txt`) — copy them into the package as-is, don't
+  regenerate their text from scratch each time (drifted wording between deliveries would be
+  its own small bug).
 - Testing: `cd tests && npm test` must pass before anything ships. Pure-logic tests eval the
   real source file directly (plain Node). E2E tests load the actual bundled `index.html` via
   jsdom (+ `fake-indexeddb` for IndexedDB-touching code) — never a reimplementation. Also do
   one real-Chromium pass per gate (`/opt/pw-browsers/chromium-1194/chrome-linux/chrome
   --no-sandbox`, via the globally installed `playwright` package at
   `/opt/node22/lib/node_modules/playwright`) — jsdom has already missed real bugs (unstyled CSS
-  class, broken mobile flex layout) that only a real render caught.
-- **jsdom gotcha found this session:** arrays derived from `win.PCC.store.get()` inside a jsdom
-  test are jsdom-realm arrays, not Node-realm arrays. `assert.deepStrictEqual(thatArray, [1, 2])`
-  fails on prototype identity even when every element matches ("Values have same structure but
-  are not reference-equal"). Compare via `.join(",")` against a string, or check length +
-  individual elements, instead of `deepStrictEqual` against a Node-realm array literal.
-- **Playwright gotcha found this session:** `page.locator(tag, { hasText: "X" })` is a
-  *substring* match, not exact — `"Add Vendor"` will also match a `"+ Add Vendor"` button
+  class, broken mobile flex layout) that only a real render caught. For the zip specifically,
+  the real-Chromium pass should open the file from the *fresh extraction*
+  (`file:///path/to/extracted/index.html`), not the dev working copy — that's the only way to
+  actually prove "extract and double-click, nothing else needed" rather than assuming it.
+- **jsdom gotcha found in the Gate 8/9 session:** arrays derived from `win.PCC.store.get()`
+  inside a jsdom test are jsdom-realm arrays, not Node-realm arrays.
+  `assert.deepStrictEqual(thatArray, [1, 2])` fails on prototype identity even when every
+  element matches ("Values have same structure but are not reference-equal"). Compare via
+  `.join(",")` against a string, or check length + individual elements, instead of
+  `deepStrictEqual` against a Node-realm array literal.
+- **Playwright gotcha found in the Gate 8/9 session:** `page.locator(tag, { hasText: "X" })` is
+  a *substring* match, not exact — `"Add Vendor"` will also match a `"+ Add Vendor"` button
   elsewhere on the page, and `.first()` may grab the wrong one. The jsdom test suite's own
   `findButtonByText()` helper does exact-trim matching and doesn't have this problem; for
   ad hoc Playwright verification scripts, filter with an anchored regex (`^...$`) if two
@@ -136,22 +151,33 @@ checks**, all passing as of the last run (`cd tests && npm test`).
 - `#app-shell` didn't switch to `flex-direction: column` below 780px — mobile layout was
   broken until this was added to the mobile media query.
 - `ACTIVITY_TYPE_ALIASES` in `scheduleImportService.js` gained a `wbs_summary` (underscore)
-  alias this session — the raw value the app stores internally for that activity type wasn't
-  previously recognized as an input alias, which would have broken the Excel grid editor's
-  round-trip for WBS Summary activities specifically.
+  alias in the Gate 8 session — the raw value the app stores internally for that activity type
+  wasn't previously recognized as an input alias, which would have broken the Excel grid
+  editor's round-trip for WBS Summary activities specifically.
+- The Gate 8/9 delivery zip was skipped in the moment it should have shipped (right after Gate
+  9) and only caught because this exact handoff-file process surfaced it as an outstanding item
+  on the next turn — worth remembering that these standing instructions are easy to let slip
+  mid-session when work keeps flowing straight from one gate into the next; check this file's
+  own outstanding-items list explicitly before considering a delivery "done."
 
 ## Repo/branch state
 
 Branch `claude/excel-schedule-pcc-editing-dgyy9m` is pushed and in sync with origin. **No PR
 exists for it yet** (confirmed via `list_pull_requests` — empty result), so it's safe to keep
-committing directly on top without any merge/rebase dance. It is 3 commits ahead of `main`:
-`886eaab` (Gate 8), `fad1c03` (Gate 9), `4c6abe6` (Portfolio↔Vendor linking follow-up), plus
-this handoff-file commit. `main` still only has through Gate 7.
+committing directly on top without any merge/rebase dance. It is ahead of `main` by: `886eaab`
+(Gate 8), `fad1c03` (Gate 9), `4c6abe6` (Portfolio↔Vendor linking follow-up), `3b547a6` (added
+`HANDOFF.md` + the standing instruction in `CLAUDE.md`), plus this round's commit (zip delivered,
+handoff/CLAUDE.md wording tightened). `main` still only has through Gate 7.
+
+**Zip delivered this round:** `project-control-center-2026-08-12-gate9.zip` — `index.html` +
+`README.md` + `data/` + `files/` (their existing `README.txt` placeholders), verified via a
+fresh extraction opened in real Chromium (all 13 routes render, zero console/page errors,
+`index.html`'s SHA-256 matches the freshly-built dev copy exactly).
 
 **Next steps, in likely priority order:**
-1. Create and hand over the distributable zip for Gates 8+9 (skipped so far this session — see
-   the standing instruction above).
-2. Decide whether/when to open a PR for `claude/excel-schedule-pcc-editing-dgyy9m` → `main`, or
+1. Decide whether/when to open a PR for `claude/excel-schedule-pcc-editing-dgyy9m` → `main`, or
    keep building more on this branch first.
-3. Ask whether to resume the original locked Tier 2 order (Resource Management) or whether more
+2. Ask whether to resume the original locked Tier 2 order (Resource Management) or whether more
    ad hoc requests are coming first.
+3. Going forward: don't let the zip-and-handoff delivery slip again — do it in the same turn a
+   gate/major change finishes, not as an afterthought once asked for.
