@@ -2461,5 +2461,15 @@
       uiState.profileVendorId = vendorId;
       uiState.profileTab = "overview";
     },
+    // Same "View All" convention every other register exposes (risks.js, meetings.js,
+    // etc.) — Portfolio's project details panel calls this before navigating here.
+    filterByProject: function (projectId) {
+      uiState.view = "list";
+      uiState.projectFilter = projectId;
+      uiState.search = "";
+      uiState.statusFilter = "";
+      uiState.tradeFilter = "";
+      uiState.docTypeFilter = "";
+    },
   };
 })();

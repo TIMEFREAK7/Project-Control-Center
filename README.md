@@ -1071,6 +1071,35 @@ clean):**
 
 **What I have not tested:** this on your actual device. Same standard as every prior gate.
 
+## Portfolio ↔ Vendor Management linking (2026-08-12)
+
+Requested directly (Aditya): linking a vendor to a project needed to be possible from the **project's
+own page**, not only from the Vendor Profile's Projects tab — and changes from either side had to
+show up on the other automatically.
+
+That last part came for free from Gate 9's own design: `vendor_project_links` is one shared array,
+not two copies, so any UI that reads/writes it is automatically in sync with every other UI that
+does — no separate sync logic needed, ever. This change is purely a second UI surface onto that same
+array.
+
+**What changed:** Portfolio's project details panel (`renderProjectDetails()`) gets a new "VENDORS"
+section, in the same read-summary-plus-"View All" style as its existing Risks/Meetings/Change Orders
+sections — except this one also gets a "+ Link Vendor" quick-action (a plain vendor picker, no role/
+scope/contract-status fields, since editing those stays the Vendor Profile Projects tab's job) and a
+per-row "Unlink," since the ask was specifically for project-side linking capability, not just a
+read-only summary. `renderProjectDetails()` now takes the page's `rerender` callback (previously
+didn't need one, since every other section in it was purely read-only) so the new picker can update
+the view after linking/unlinking. `vendors.js` gained `filterByProject()`, the same "View All" hook
+every other register already exposes.
+
+**Tested:** three new checks added to `test_vendors_e2e.js` (32 total in that file now): linking from
+the Vendor Profile shows up correctly in Portfolio's Vendors section (role included); unlinking from
+Portfolio removes it from the store and re-linking from Portfolio's picker restores it; the
+Portfolio-made link is visible back on the vendor's own Projects tab. Full suite re-run clean.
+Real-browser verification (Chromium via Playwright, screenshots reviewed): the Vendors section and
+its Link Vendor picker render correctly and already-linked vendors are correctly excluded from the
+picker's options.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →

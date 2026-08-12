@@ -157,6 +157,47 @@ function findButtonsByTextPrefix(dom, prefix) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
+  await check("Portfolio's project details panel shows the same link (Vendor Management -> Portfolio direction)", () => {
+    win.PCC.router.go("portfolio");
+    win.PCC.router.render();
+    findButtonByText(dom, "Details").click();
+    var text = outlet().textContent;
+    assert.ok(text.indexOf("VENDORS (1)") !== -1, "expected the Vendors section to show the 1 link made from the Vendor Profile side, got: " + text.slice(0, 1000));
+    assert.ok(text.indexOf("Acme Steel Suppliers") !== -1);
+    assert.ok(text.indexOf("Steel Supplier") !== -1, "expected the role set from the Vendor Profile side to show here too");
+    assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
+  });
+
+  await check("unlinking from Portfolio removes it, and '+ Link Vendor' from Portfolio re-links it (Portfolio -> Vendor Management direction)", () => {
+    findButtonByText(dom, "Unlink").click();
+    var afterUnlink = win.PCC.store.get();
+    assert.strictEqual(afterUnlink.vendor_project_links.filter((l) => l.vendor_id === vendorId).length, 0);
+    assert.ok(outlet().textContent.indexOf("VENDORS (0)") !== -1);
+
+    var linkBtn = findButtonByText(dom, "+ Link Vendor");
+    assert.strictEqual(linkBtn.disabled, false, "the vendor should be available to link again after unlinking");
+    linkBtn.click();
+    var picker = Array.from(win.document.querySelectorAll("select")).find((s) => Array.from(s.options).some((o) => o.textContent === "Acme Steel Suppliers"));
+    assert.ok(picker, "vendor picker select not found in Portfolio's Link Vendor panel");
+    picker.value = vendorId;
+    findButtonByText(dom, "Link").click();
+
+    var afterRelink = win.PCC.store.get();
+    var relinked = afterRelink.vendor_project_links.filter((l) => l.vendor_id === vendorId && l.project_id === projectId);
+    assert.strictEqual(relinked.length, 1);
+    assert.ok(outlet().textContent.indexOf("VENDORS (1)") !== -1);
+    assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
+  });
+
+  await check("the Portfolio-side link is visible back on the vendor's own Projects tab (round trip)", () => {
+    if (win.PCC.vendors) win.PCC.vendors.openProfile(vendorId);
+    win.PCC.router.go("vendors");
+    win.PCC.router.render();
+    findButtonByText(dom, "Projects").click();
+    assert.ok(outlet().textContent.indexOf("Vendor Test Tower") !== -1);
+    assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
+  });
+
   await check("Contacts tab: primary contact is listed, and a second contact can be added", () => {
     findButtonByText(dom, "Contacts").click();
     assert.ok(outlet().textContent.indexOf("Rajesh Kumar") !== -1);

@@ -40,6 +40,7 @@
     showArchived: false,
     editingId: null, // null = form closed, "new" = creating, otherwise an existing project id
     expandedId: null, // project id whose details panel is open, or null
+    vendorLinkPickerOpen: false, // Gate 9: "+ Link Vendor" inline picker in the Vendors section below
   };
 
   function formatMoney(value, currency) {
@@ -285,7 +286,7 @@
     { key: "owner", label: "Owner" },
   ];
 
-  function renderProjectDetails(p) {
+  function renderProjectDetails(p, onChanged) {
     var wrap = document.createElement("div");
     wrap.className = "project-details";
 
@@ -825,6 +826,191 @@
 
     wrap.appendChild(coSection);
 
+    // Gate 9: vendor_project_links is the same shared array Vendor Management's own
+    // Projects tab reads/writes — linking or unlinking here shows up there immediately
+    // and vice versa, since both sides are just views onto the one join array, not two
+    // copies that need to be kept in sync.
+    var vendorContractLabels = { draft: "Draft", active: "Active", completed: "Completed", terminated: "Terminated" };
+    var projectVendorLinks = window.PCC.store
+      .get()
+      .vendor_project_links.filter(function (l) {
+        return l.project_id === p.id;
+      });
+    var allVendors = window.PCC.store.get().vendors;
+
+    var vendorsSection = document.createElement("div");
+    vendorsSection.style.marginTop = "16px";
+    vendorsSection.style.paddingTop = "14px";
+    vendorsSection.style.borderTop = "1px solid var(--divider)";
+
+    var vendorsHeader = document.createElement("div");
+    vendorsHeader.style.display = "flex";
+    vendorsHeader.style.justifyContent = "space-between";
+    vendorsHeader.style.alignItems = "center";
+
+    var vendorsLabel = document.createElement("span");
+    vendorsLabel.className = "detail-item__label";
+    vendorsLabel.textContent = "VENDORS (" + projectVendorLinks.length + ")";
+    vendorsHeader.appendChild(vendorsLabel);
+
+    var vendorsHeaderBtns = document.createElement("div");
+    vendorsHeaderBtns.style.display = "flex";
+    vendorsHeaderBtns.style.gap = "8px";
+
+    var linkVendorBtn = document.createElement("button");
+    linkVendorBtn.className = "btn btn--ghost";
+    linkVendorBtn.textContent = "+ Link Vendor";
+    var unlinkedVendors = allVendors.filter(function (v) {
+      return !projectVendorLinks.some(function (l) {
+        return l.vendor_id === v.id;
+      });
+    });
+    linkVendorBtn.disabled = unlinkedVendors.length === 0;
+    linkVendorBtn.title = unlinkedVendors.length === 0 ? (allVendors.length === 0 ? "Add a vendor in Vendor Management first" : "Every vendor is already linked to this project") : "";
+    linkVendorBtn.onclick = function () {
+      uiState.vendorLinkPickerOpen = true;
+      onChanged();
+    };
+    vendorsHeaderBtns.appendChild(linkVendorBtn);
+
+    if (projectVendorLinks.length > 0) {
+      var viewAllVendorsBtn = document.createElement("button");
+      viewAllVendorsBtn.className = "btn btn--ghost";
+      viewAllVendorsBtn.textContent = "View All";
+      viewAllVendorsBtn.onclick = function () {
+        if (window.PCC.vendors) window.PCC.vendors.filterByProject(p.id);
+        window.PCC.router.go("vendors");
+      };
+      vendorsHeaderBtns.appendChild(viewAllVendorsBtn);
+    }
+
+    vendorsHeader.appendChild(vendorsHeaderBtns);
+    vendorsSection.appendChild(vendorsHeader);
+
+    if (uiState.vendorLinkPickerOpen) {
+      var pickerWrap = document.createElement("div");
+      pickerWrap.style.marginTop = "8px";
+      pickerWrap.style.display = "flex";
+      pickerWrap.style.gap = "8px";
+      pickerWrap.style.alignItems = "center";
+      pickerWrap.style.flexWrap = "wrap";
+
+      var vendorSelect = document.createElement("select");
+      unlinkedVendors.forEach(function (v) {
+        var opt = document.createElement("option");
+        opt.value = v.id;
+        opt.textContent = v.vendor_name || "(unnamed vendor)";
+        vendorSelect.appendChild(opt);
+      });
+      pickerWrap.appendChild(vendorSelect);
+
+      var confirmLinkBtn = document.createElement("button");
+      confirmLinkBtn.className = "btn btn--primary";
+      confirmLinkBtn.textContent = "Link";
+      confirmLinkBtn.onclick = function () {
+        window.PCC.store.update(function (d) {
+          d.vendor_project_links.push(window.PCC.store.newVendorProjectLink({ vendor_id: vendorSelect.value, project_id: p.id }));
+        });
+        uiState.vendorLinkPickerOpen = false;
+        onChanged();
+      };
+      pickerWrap.appendChild(confirmLinkBtn);
+
+      var cancelLinkBtn = document.createElement("button");
+      cancelLinkBtn.className = "btn btn--ghost";
+      cancelLinkBtn.textContent = "Cancel";
+      cancelLinkBtn.onclick = function () {
+        uiState.vendorLinkPickerOpen = false;
+        onChanged();
+      };
+      pickerWrap.appendChild(cancelLinkBtn);
+
+      vendorsSection.appendChild(pickerWrap);
+    }
+
+    if (projectVendorLinks.length === 0) {
+      var noVendorsNote = document.createElement("p");
+      noVendorsNote.className = "text-secondary";
+      noVendorsNote.style.fontSize = "13px";
+      noVendorsNote.style.margin = "6px 0 0";
+      noVendorsNote.textContent = "No vendors linked to this project yet.";
+      vendorsSection.appendChild(noVendorsNote);
+    } else {
+      var vendorsList = document.createElement("div");
+      vendorsList.style.display = "flex";
+      vendorsList.style.flexDirection = "column";
+      vendorsList.style.gap = "6px";
+      vendorsList.style.marginTop = "8px";
+
+      projectVendorLinks.slice(0, 5).forEach(function (link) {
+        var vendor = allVendors.find(function (v) {
+          return v.id === link.vendor_id;
+        });
+
+        var row = document.createElement("div");
+        row.style.display = "flex";
+        row.style.justifyContent = "space-between";
+        row.style.alignItems = "center";
+        row.style.fontSize = "13px";
+        row.style.gap = "8px";
+
+        var nameBtn = document.createElement("button");
+        nameBtn.className = "btn btn--ghost";
+        nameBtn.style.overflow = "hidden";
+        nameBtn.style.textOverflow = "ellipsis";
+        nameBtn.style.whiteSpace = "nowrap";
+        nameBtn.style.padding = "2px 8px";
+        nameBtn.textContent = (vendor ? vendor.vendor_name || "(unnamed vendor)" : "(deleted vendor)") + (link.role ? " — " + link.role : "");
+        nameBtn.disabled = !vendor;
+        nameBtn.onclick = function () {
+          if (window.PCC.vendors) window.PCC.vendors.openProfile(link.vendor_id);
+          window.PCC.router.go("vendors");
+        };
+        row.appendChild(nameBtn);
+
+        var rightSide = document.createElement("div");
+        rightSide.style.display = "flex";
+        rightSide.style.alignItems = "center";
+        rightSide.style.gap = "8px";
+        rightSide.style.flexShrink = "0";
+
+        var statusBadge = document.createElement("span");
+        statusBadge.className = "status-badge " + (link.contract_status === "active" ? "status-badge--on_track" : link.contract_status === "terminated" ? "status-badge--critical" : "status-badge--info");
+        statusBadge.textContent = vendorContractLabels[link.contract_status] || link.contract_status;
+        rightSide.appendChild(statusBadge);
+
+        var unlinkBtn = document.createElement("button");
+        unlinkBtn.className = "btn btn--ghost";
+        unlinkBtn.style.padding = "2px 8px";
+        unlinkBtn.textContent = "Unlink";
+        unlinkBtn.onclick = function () {
+          window.PCC.store.update(function (d) {
+            d.vendor_project_links = d.vendor_project_links.filter(function (x) {
+              return x.id !== link.id;
+            });
+          });
+          onChanged();
+        };
+        rightSide.appendChild(unlinkBtn);
+
+        row.appendChild(rightSide);
+        vendorsList.appendChild(row);
+      });
+
+      vendorsSection.appendChild(vendorsList);
+
+      if (projectVendorLinks.length > 5) {
+        var moreVendorsNote = document.createElement("p");
+        moreVendorsNote.className = "text-secondary";
+        moreVendorsNote.style.fontSize = "11px";
+        moreVendorsNote.style.marginTop = "4px";
+        moreVendorsNote.textContent = "+" + (projectVendorLinks.length - 5) + " more — View All to see the rest.";
+        vendorsSection.appendChild(moreVendorsNote);
+      }
+    }
+
+    wrap.appendChild(vendorsSection);
+
     var costSection = document.createElement("div");
     costSection.style.marginTop = "16px";
     costSection.style.paddingTop = "14px";
@@ -880,7 +1066,7 @@
     entry.className = "project-entry";
     entry.appendChild(renderProjectCard(p, onChanged));
     if (uiState.expandedId === p.id) {
-      entry.appendChild(renderProjectDetails(p));
+      entry.appendChild(renderProjectDetails(p, onChanged));
     }
     return entry;
   }
