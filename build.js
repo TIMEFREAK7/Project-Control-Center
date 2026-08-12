@@ -28,6 +28,7 @@ const JS_ORDER = [
   "js/archive.js",
   "js/pages/dashboard.js",
   "js/pages/portfolio.js",
+  "js/pages/vendors.js",
   "js/pages/documents.js",
   "js/pages/dailyLog.js",
   "js/pages/schedule.js",

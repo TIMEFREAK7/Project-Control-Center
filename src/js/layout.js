@@ -12,6 +12,7 @@
       items: [
         { key: "dashboard", label: "Dashboard", code: "DB" },
         { key: "portfolio", label: "Portfolio", code: "PF" },
+        { key: "vendors", label: "Vendors", code: "VN" },
       ],
     },
     {
@@ -44,6 +45,7 @@
   var PAGE_TITLES = {
     dashboard: "Dashboard",
     portfolio: "Portfolio",
+    vendors: "Vendor Management",
     documents: "Documents",
     dailylog: "Daily Log",
     risks: "Risk Register",

@@ -980,6 +980,97 @@ apply flow, shared `renderParsedIssuesToggle()`).
 
 **What I have not tested:** this on your actual device. Same standard as every prior gate.
 
+## Gate 9 — Vendor Management Module (2026-08-12)
+
+Requested directly (Aditya) via a full feature spec: a "single source of truth" for vendor
+information across every project — master list, project links, documents, meetings, RFI/TQ, risk,
+and performance, all reachable from one vendor profile. Like Gate 8, this wasn't on the locked Tier
+2/3 roadmap — it's a directly-requested addition slotted in ahead of Resource Management, which is
+still next once this is in daily use.
+
+**Architecture translation, decided before building:** the spec was written in general ERP language
+("database design," "normalized tables," "foreign keys," "API endpoints," "the project's folder
+structure") that doesn't map onto this app's actual architecture — no server, no SQL, no API layer,
+just one JS object in `localStorage` plus IndexedDB for blobs (see "Architecture" above). Every
+"table" in the spec became a flat array in `store.js` with id-string references, "foreign keys"
+became the same convention every existing register already uses, and "API endpoints" simply doesn't
+apply. "The project's folder structure" doesn't exist in this app either (see "On 'just save files
+to a real folder automatically'" above) — vendor documents use `blobStore.js`, same as every other
+file this app stores.
+
+**Scope decisions made explicitly before building:**
+
+- **Vendor Master is portfolio-wide, not project-scoped** — unlike Documents/Risk/RFI/Change Orders
+  (which are mandatory-project registers per this file's own stated convention), a vendor is closer
+  to a Project itself: one master record, linked to zero or more projects via a join array
+  (`vendor_project_links`), each link carrying its own role/scope of work/contract status.
+- **Vendor<->Meeting/RFI/Risk linking never touches meetings.js/rfis.js/risks.js.** Those three join
+  arrays (`vendor_meeting_links`, `vendor_rfi_links`, `vendor_risk_links`) are populated entirely
+  from the Vendor Profile side, and "open the real record" reuses those modules' own existing public
+  `expandMeeting()`/`expandRfi()`/`expandRisk()` hooks (the same hooks Risk's "raise from meeting"
+  flow already uses) rather than adding a field to their schemas. This is the literal reading of "do
+  not modify or break existing modules" — those three files have zero changes in this gate.
+- **RFIs and Technical Queries are one integration point, not two** — this app already stores them
+  as a single register distinguished by a `type` field (the same "one shape, one type field" pattern
+  this file documents for Risk/Issue/Opportunity), so `vendor_rfi_links` covers both.
+- **Vendor Documents get an OPTIONAL `project_id`, breaking from the mandatory-project rule** on
+  purpose: a vendor's GST certificate or insurance policy isn't "for" any one project, but a
+  project-specific PO or M.O.M. genuinely is. Both needed to be representable, so this register is a
+  deliberate, disclosed exception to that rule rather than an oversight.
+- **Version history is real, not cosmetic:** every upload is its own row; re-uploading over an
+  existing document creates a new row sharing that document's `document_group_id` with
+  `revision_number` incremented. "Latest revision" is computed at render time (highest
+  `revision_number` in the group), not a denormalized `is_latest` flag that could drift.
+- **"Custom document categories added later"** doesn't need a schema change to satisfy: the 19
+  categories from the spec are a fixed list plus "Other" with a free-text `custom_category_label` —
+  the escape hatch a 20th category will need, decided now rather than guessed at.
+- **Skipped:** the "Change Requests" vendor tab from the spec's profile-tabs list — Change Orders
+  wasn't in the spec's own top-level integration list (Portfolio, Documents, Meetings, RFI, Risk,
+  Project) and has no DB table in the spec's own database-design section either, so this reads as a
+  spec inconsistency rather than a real requirement. AI document extraction/OCR/automation were
+  explicitly excluded by the spec itself ("Tier 2... do not implement AI, OCR, document parsing").
+- **"Preview" matches this app's existing behavior for stored files** (View/Download via a new tab —
+  PDFs render inline, other types download, same as Documents' `openStoredFile()`) rather than
+  building a second, richer preview system alongside the one Documents already has.
+- **Overall performance rating is always computed** (average of Quality/Delivery/Communication/
+  Safety, unrated categories excluded rather than dragging the score toward 0), never a
+  separately-editable field that could disagree with its own inputs.
+
+**What changed:** `store.js` (schema v20→v21: nine new arrays — `vendors`, `vendor_contacts`,
+`vendor_project_links`, `vendor_documents`, `vendor_meeting_links`, `vendor_rfi_links`,
+`vendor_risk_links`, `vendor_performance`, `vendor_notes` — plus `VENDOR_STATUSES`,
+`VENDOR_DOCUMENT_CATEGORIES`, `VENDOR_PROJECT_CONTRACT_STATUSES`, `nextVendorCode()`, and nine new
+factory functions). **New file:** `pages/vendors.js` — Dashboard (summary cards + recent activity),
+Vendor Master list (search across vendor/company/contact/trade/project/document name, plus status/
+project/trade/document-type filters), and a tabbed Vendor Profile (Overview, Projects, Contacts,
+Documents, Meetings, RFI/TQ, Risks, Performance, Notes). **Changed:** `app.js` (route registration),
+`layout.js` (sidebar nav under OVERVIEW next to Portfolio, matching its cross-project nature),
+`build.js` (bundle order).
+
+**Tested before delivery (7 pure-logic + 29 e2e checks + updated migration tests, full suite re-run
+clean):**
+
+- **Schema migration** (`test_store_schema_v20_migration.js`, updated for the v20→v21 step): a v19
+  dataset and a very old legacy dataset both migrate cleanly through to schema_version 21 with the
+  new vendor arrays backfilled and no data loss to existing records.
+- **End-to-end against the actual bundled `index.html`** (`test_vendors_e2e.js`, 29 checks): create a
+  vendor with a primary contact (verifying the contact is upserted into `vendor_contacts`, not
+  duplicated onto the vendor record); link a project with role/scope/contract status; add a second
+  contact; a directly-seeded document displays correctly with category/expiry/tags, and uploading a
+  new revision correctly increments `revision_number` while sharing `document_group_id`; linking an
+  existing meeting/RFI/risk and clicking "View X" actually navigates to that module and reuses its
+  real expand hook; a performance review's computed overall rating is hand-verified (4+5+3+4)/4 =
+  4.0; a note is added and listed; the dashboard's summary cards and per-project breakdown reflect
+  seeded data correctly; search-by-trade and status-filter both narrow the list correctly; deleting a
+  vendor cascades to every linked record and its stored blob; full route smoke test.
+- **Real-browser verification** (Chromium via Playwright, screenshots reviewed): the dashboard,
+  vendor form, profile tabs, meeting-linking flow, document upload form, and performance tab all
+  render correctly in the dark theme; a real end-to-end vendor creation → project link → meeting
+  link → performance review flow was hand-verified, including the exact 4.5/5 overall rating
+  computation ((5+4+4+5)/4) matching what real Chromium displayed.
+
+**What I have not tested:** this on your actual device. Same standard as every prior gate.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →

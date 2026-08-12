@@ -55,7 +55,11 @@ check("a v19 dataset gets activity_id backfilled onto existing budget items and 
   const store = loadStoreWith(JSON.stringify(v19));
   const data = store.get();
 
-  assert.strictEqual(data.schema_version, 20);
+  // Migration is a chain — a v19 dataset now also runs the v20->v21 (Gate 9, Vendor
+  // Management) step on the way through, so it lands on the CURRENT schema_version,
+  // not frozen at 20 forever. That's inherent to how migrate() works, not a re-scoping
+  // of what this test checks (the v19->v20 assertions below are unchanged).
+  assert.strictEqual(data.schema_version, 21);
   assert.strictEqual(data.cost_budget_items.length, 1, "no budget items should be fabricated or dropped");
   assert.strictEqual(data.cost_budget_items[0].activity_id, "", "pre-Gate-7 budget items get an empty (unlinked) activity_id, not undefined");
   assert.strictEqual(data.cost_budget_items[0].name, "Rebar", "existing fields must survive untouched");
@@ -66,17 +70,19 @@ check("a v19 dataset gets activity_id backfilled onto existing budget items and 
 // ---------------------------------------------------------------------------
 // Full chain from a very old (v1-shaped) dataset still reaches v20 cleanly
 // ---------------------------------------------------------------------------
-check("a minimal legacy dataset (no schema_version at all) migrates all the way to 20 without throwing", () => {
+check("a minimal legacy dataset (no schema_version at all) migrates all the way to 21 without throwing", () => {
   const legacy = {
     projects: [{ id: "proj_1", name: "Old Project" }],
     documents: [],
   };
   const store = loadStoreWith(JSON.stringify(legacy));
   const data = store.get();
-  assert.strictEqual(data.schema_version, 20);
+  assert.strictEqual(data.schema_version, 21);
   assert.ok(Array.isArray(data.schedule_baselines));
   assert.ok(Array.isArray(data.cost_budget_items));
   assert.ok(Array.isArray(data.cost_actuals));
+  assert.ok(Array.isArray(data.vendors), "Gate 9's vendors array must be backfilled by the full chain");
+  assert.ok(Array.isArray(data.vendor_documents));
   assert.strictEqual(data.projects[0].name, "Old Project", "pre-existing project must survive the full migration chain");
 });
 
@@ -86,9 +92,10 @@ check("a minimal legacy dataset (no schema_version at all) migrates all the way 
 check("a brand-new install with no stored data starts with cost_budget_items/cost_actuals: []", () => {
   const store = loadStoreWith(null);
   const data = store.get();
-  assert.strictEqual(data.schema_version, 20);
+  assert.strictEqual(data.schema_version, 21);
   assert.deepStrictEqual(data.cost_budget_items, []);
   assert.deepStrictEqual(data.cost_actuals, []);
+  assert.deepStrictEqual(data.vendors, []);
 });
 
 // ---------------------------------------------------------------------------

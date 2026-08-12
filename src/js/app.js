@@ -6,6 +6,7 @@
 
     router.register("dashboard", window.PCC.pages.dashboard);
     router.register("portfolio", window.PCC.pages.portfolio);
+    router.register("vendors", window.PCC.pages.vendors);
     router.register("documents", window.PCC.pages.documents);
     router.register("dailylog", window.PCC.pages.dailylog);
     router.register("schedule", window.PCC.pages.schedule);
