@@ -95,3 +95,11 @@ node --check src/js/whatever.js   # quick syntax check on a single file
   history — GitHub doesn't move a branch ref forward on merge, so the local/remote branch will
   otherwise silently drift behind `main`. **Commit before running any `git reset --hard`** — it
   discards uncommitted changes in tracked files with no warning.
+- **After every major upgrade (a gate, a significant follow-up change), update `HANDOFF.md` at the
+  repo root** with current session context — what shipped, current schema version, test file/check
+  count, exact repo/branch state (ahead-of-main commit list, whether a PR exists, whether it's
+  merged), and any new conventions/gotchas discovered that a fresh session would otherwise have to
+  re-derive from git log and source. Kept at a fixed, discoverable repo path deliberately — a session
+  can't act on a handoff file it doesn't know exists, so it can't live only in an upload/paste that
+  has to be re-supplied each time. If the user separately maintains their own pasted-in handoff copy
+  outside the repo, update that too when asked, but `HANDOFF.md` is the one that persists on its own.
