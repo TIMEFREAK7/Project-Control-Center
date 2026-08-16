@@ -31,6 +31,7 @@
       items: [
         { key: "schedule", label: "Schedule", code: "SC" },
         { key: "cost", label: "Cost Tracking", code: "CT" },
+        { key: "resources", label: "Resources", code: "RS" },
       ],
     },
     {
@@ -53,6 +54,7 @@
     rfis: "RFI / Technical Query",
     changeOrders: "Change Management",
     cost: "Cost Tracking",
+    resources: "Resource Management",
     reports: "Reports",
     schedule: "Schedule",
     settings: "Settings",

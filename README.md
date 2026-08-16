@@ -1188,15 +1188,114 @@ the common case and stays consistent with every other register's link shape.
 **What I have not tested:** this on your actual device. Per the usual gate discipline, treat this
 as built-and-verified-in-this-environment, not confirmed — same standard as every prior gate.
 
+## Gate 11 — Resource Management (2026-08-16)
+
+The last item in Tier 2's locked build order: a shared, portfolio-wide resource pool (labor/
+equipment/material), assignments to Schedule activities, and cross-project resource leveling —
+a day-by-day usage histogram plus over-allocation detection, the same kind of resource histogram
+commercial scheduling tools ship.
+
+**Scope decided explicitly before building** (Aditya, this session, asked directly): **full
+leveling**, not a bare register — an Assignments tab plus a Leveling tab with a real histogram and
+over-allocation detection, not just CRUD. **No cost linkage** — quantity/availability only this
+gate; rate × usage feeding Cost Tracking/EVM is deferred, matching the same "reconciliation stays
+a deliberate, separate act" pattern Change Orders and Cost Tracking's Portfolio-budget fallback
+already established.
+
+**What changed and why:**
+
+- **Schema v22 → v23**: two new shapes, deliberately **not** following the "project assignment is
+  mandatory on every register" rule enforced everywhere else in this app. A **Resource**
+  (`newResource`) — name, type (labor/equipment/material), unit, `max_availability` per day — is a
+  shared, reusable ASSET, not an event or artifact that belongs to one project; forcing project
+  assignment on it would be a modeling error. A **ResourceAssignment** (`newResourceAssignment`) —
+  resource_id + activity_id + quantity — IS project-scoped, but transitively, through the activity
+  it points at. That's also what makes real cross-project leveling possible at all: the same crane
+  can be assigned to activities in two different projects' schedules, and the engine can catch the
+  conflict precisely because assignments aren't siloed per project.
+- **New pure module `resourceLevelingEngine.js`** (same "calculation only, no DOM" split every
+  other engine here keeps): `computeResourceUsageTimeline()` does a day-by-day scan across
+  **every** assignment for a resource regardless of which project its activity belongs to,
+  returning allocated quantity per day plus which activities/projects contributed (so a conflict
+  is explainable, not just flagged). `detectOverAllocations()` compares against
+  `max_availability` — unset (null) means "not computable," never "zero capacity," same discipline
+  `projectHealthEngine.js` established for a factor with no underlying data. Milestones and
+  undated/zero-duration activities are excluded from allocation (a point in time doesn't consume a
+  resource over a span) and counted, not silently dropped. `portfolioOverAllocationSummary()`
+  rolls this up across every resource for quick "what's over-allocated right now" signals.
+  `bucketTimeline()` buckets a long day range into weekly/monthly bars for the histogram, taking
+  the **max** per bucket (not average) so a short sharp spike survives the chart.
+- **New page `resources.js`** (route `#/resources`, sidebar entry under Planning): **Register**
+  tab (CRUD, deleting a resource cascades to its assignments with a confirm naming the count, same
+  pattern Activity delete already uses for its relationships); **Assignments** tab (Resource →
+  Project → Activity dependent selects, the same `activityOptionsFor()` pattern Cost Tracking's
+  Budget Item form established in Gate 7, plus a quantity, with "View in Gantt" on each row);
+  **Leveling** tab (a portfolio-wide "currently over-allocated" summary up top, a per-resource
+  picker below with KPI tiles, an SVG usage histogram — red bars where demand exceeds capacity,
+  a dashed line at max availability — and a day-by-day conflict list naming exactly which
+  activities/projects are contending for the resource, so there's something to actually act on,
+  not just a red flag).
+- **Cross-linked into everything Gate 8-10 already built**: resource assignments are a 7th source
+  in the Gantt's Activity Detail Panel's Linked Records section (fits the same `activity_id`-driven
+  array pattern the other six use, decorated with the resource's name since the assignment record
+  itself doesn't carry one); Portfolio's Details panel gets a "RESOURCES ASSIGNED" section listing
+  each resource assigned to that project with a portfolio-wide over-allocation flag when relevant;
+  Executive Center gets a RESOURCES KPI section — **only once `data.resources.length > 0`**,
+  completing the promise Gate 9 made when it explicitly skipped Resource KPIs because the module
+  didn't exist yet.
+
+**Changed:** `build.js` (JS_ORDER), `layout.js` (nav entry + page title), `app.js` (route),
+`schedule.js` (7th Linked Records source), `portfolio.js` (Resources Assigned section),
+`executiveCenter.js` (RESOURCES KPI section + context gathering). **New:**
+`resourceLevelingEngine.js`, `resources.js`.
+
+**Tested before delivery (13 + 15 + 25 checks, fresh session, all passed clean):**
+
+- **Schema migration** (`test_store_schema_v23_migration.js`, 13 checks, replacing the v22 file
+  per the "one canonical test targeting latest" pattern): a v20 dataset reaches v23 in one hop
+  with Gates 9/10/11's fields all correctly added/backfilled; the full legacy chain and a
+  brand-new install both reach v23 cleanly; `newResource()`/`newResourceAssignment()` factory
+  defaults; `RESOURCE_TYPES` has all three types.
+- **Engine, pure logic** (`test_resource_leveling_engine.js`, 15 checks): allocation across a
+  span is start-inclusive/finish-exclusive; calculated dates preferred over planned; two
+  overlapping assignments to the same resource sum correctly; **the core cross-project claim,
+  verified directly** — the same resource assigned to two different projects' activities sums
+  demand across both, with contributors correctly attributed to each project; milestones,
+  undated activities, zero/missing quantity, and a deleted activity are all excluded and counted,
+  never guessed or crashed on; `max_availability` unset correctly reads as "not computable" rather
+  than zero capacity; over-allocated days are flagged exactly and only where demand exceeds
+  capacity; the portfolio summary excludes resources with unset availability and resources with no
+  conflicts; bucketing takes the max (not average) per bucket and handles an empty timeline.
+- **End-to-end against the actual bundled `index.html`** (`test_resources_e2e.js`, 25 checks, not
+  a reimplementation): seeded two projects with **overlapping activities** specifically to prove
+  cross-project detection, not just within-one-schedule double-booking; added a resource and two
+  assignments (one per project) through the real forms; the Leveling tab's portfolio summary and
+  per-resource view both correctly flag the conflict, name the exact overlapping date, and list
+  **both** contributing projects/activities in the conflict detail (the specific claim that proves
+  this isn't just single-project math); the Gantt's Linked Records section lists the assignment
+  and its "View" button lands on the Assignments tab; Portfolio's Details panel shows the
+  over-allocation flag with a working View All link; Executive Center's RESOURCES section shows
+  real assigned/over-allocated counts for a project with assignments, and still renders (correctly,
+  since resources exist app-wide) rather than fabricating zeros for a second, resource-free
+  project; deleting a resource cascades to its assignments with a confirm naming the count; full
+  route smoke test including the new route.
+- **Real-browser verification** (Chromium via Playwright, both themes, desktop and 375px mobile):
+  the same cross-project scenario, confirming the histogram renders with red over-capacity bars
+  and a dashed max-availability line, the KPI tiles and conflict list read cleanly in both themes
+  — zero console/page errors throughout.
+
+**What I have not tested:** this on your actual device. Per the usual gate discipline, treat this
+as built-and-verified-in-this-environment, not confirmed — same standard as every prior gate.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
 RFI/TQ → Change Management → Basic Reporting → Backup & Recovery
 
-**Tier 2** (in progress — Schedule import, CPM/float engine, interactive Gantt, Cost Tracking, and
-the EVM engine are done; next up is Resource Management): Schedule import (Excel/MSP first) +
-CPM/float engine + Gantt (visualization, then Gate 8's editing) → Cost tracking → EVM engine →
-Resource Management
+**Tier 2** (complete — Schedule import, CPM/float engine, interactive Gantt, Cost Tracking, the
+EVM engine, and Resource Management are all done): Schedule import (Excel/MSP first) + CPM/float
+engine + Gantt (visualization, then Gate 8's editing) → Cost tracking → EVM engine → Resource
+Management (Gate 11 — register + assignments + cross-project leveling, no cost linkage)
 
 **Project Executive Center** (Gate 9, done) — sits above Tier 2 rather than inside its original
 line items, per the architecture this gate was built against: Project → the operational modules
@@ -1214,6 +1313,10 @@ Assistant, Lessons Learned, final polish
 
 ## Next phase
 
-Tier 2 continues with Resource Management — scope to be decided explicitly before building, same
-as every prior gate. Separately, still open: a persisted/logo-customizable report-template system,
-portfolio-level executive dashboard filtering, and 10,000+ activity Gantt virtualization.
+**Tier 2 is now complete.** What's still open, none of it blocking daily use: rate × usage from
+Resource Management feeding Cost Tracking/EVM (explicitly deferred, Gate 11); a persisted/logo-
+customizable report-template system; portfolio-level executive dashboard filtering; 10,000+
+activity Gantt virtualization; per-activity linking extended to Resource Assignments' own
+sub-fields if that turns out to matter in practice. Tier 3 (AI Document Processing, Knowledge
+Base, AI Project Assistant, Lessons Learned, final polish) is next per the locked build order,
+deferred until Tier 1/2 are in daily use — worth checking in on before starting it.

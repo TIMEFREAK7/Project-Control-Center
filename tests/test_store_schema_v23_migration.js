@@ -1,7 +1,7 @@
 // Standalone Node test for store.js's migrate() function, exercised indirectly through
 // load() — same approach every prior version of this file used, replaced here per the
 // "one canonical full-chain test targeting latest" pattern established at Gate 6 (this
-// file supersedes the v21 one; its own checks are folded in below rather than kept as a
+// file supersedes the v22 one; its own checks are folded in below rather than kept as a
 // separate frozen-in-time file).
 "use strict";
 const fs = require("fs");
@@ -39,12 +39,12 @@ function loadStoreWith(rawJsonString) {
 }
 
 // ---------------------------------------------------------------------------
-// v20 -> v22 in one hop: project_type/current_phase/forecast_finish_date backfilled
+// v20 -> v23 in one hop: project_type/current_phase/forecast_finish_date backfilled
 // onto existing projects, health_score_weights defaulted, executive_summaries added
-// (v21, Gate 9), AND activity_id backfilled onto every linkable register's existing
-// records (v22, Gate 10).
+// (v21, Gate 9); activity_id backfilled onto every linkable register's existing
+// records (v22, Gate 10); resources/resource_assignments arrays added (v23, Gate 11).
 // ---------------------------------------------------------------------------
-check("a v20 dataset gets Gate 9 + Gate 10 fields backfilled and lands on schema_version 22", () => {
+check("a v20 dataset gets Gate 9 + Gate 10 + Gate 11 fields backfilled and lands on schema_version 23", () => {
   const v20 = {
     schema_version: 20,
     meta: { app_name: "x", created_at: "2026-01-01T00:00:00.000Z", last_saved_at: null, last_exported_at: null },
@@ -62,7 +62,7 @@ check("a v20 dataset gets Gate 9 + Gate 10 fields backfilled and lands on schema
   const store = loadStoreWith(JSON.stringify(v20));
   const data = store.get();
 
-  assert.strictEqual(data.schema_version, 22);
+  assert.strictEqual(data.schema_version, 23);
   assert.strictEqual(data.projects[0].name, "Existing Project", "existing project fields must survive untouched");
   assert.strictEqual(data.projects[0].project_type, "");
   assert.ok(data.settings.health_score_weights, "health_score_weights must be defaulted");
@@ -80,23 +80,29 @@ check("a v20 dataset gets Gate 9 + Gate 10 fields backfilled and lands on schema
   assert.strictEqual(data.rfis[0].activity_id, "");
   assert.strictEqual(data.change_orders[0].activity_id, "");
   assert.strictEqual(data.change_orders[0].number, "CO-001");
+
+  // Gate 11: brand new arrays, nothing to backfill on a dataset that predates them.
+  assert.deepStrictEqual(data.resources, []);
+  assert.deepStrictEqual(data.resource_assignments, []);
 });
 
 // ---------------------------------------------------------------------------
-// Full chain from a very old (v1-shaped) dataset still reaches v22 cleanly
+// Full chain from a very old (v1-shaped) dataset still reaches v23 cleanly
 // ---------------------------------------------------------------------------
-check("a minimal legacy dataset (no schema_version at all) migrates all the way to 22 without throwing", () => {
+check("a minimal legacy dataset (no schema_version at all) migrates all the way to 23 without throwing", () => {
   const legacy = {
     projects: [{ id: "proj_1", name: "Old Project" }],
     documents: [],
   };
   const store = loadStoreWith(JSON.stringify(legacy));
   const data = store.get();
-  assert.strictEqual(data.schema_version, 22);
+  assert.strictEqual(data.schema_version, 23);
   assert.ok(Array.isArray(data.schedule_baselines));
   assert.ok(Array.isArray(data.cost_budget_items));
   assert.ok(Array.isArray(data.cost_actuals));
   assert.ok(Array.isArray(data.executive_summaries));
+  assert.ok(Array.isArray(data.resources));
+  assert.ok(Array.isArray(data.resource_assignments));
   assert.strictEqual(data.projects[0].name, "Old Project", "pre-existing project must survive the full migration chain");
   assert.strictEqual(data.projects[0].project_type, "");
 });
@@ -107,11 +113,13 @@ check("a minimal legacy dataset (no schema_version at all) migrates all the way 
 check("a brand-new install with no stored data starts with executive_summaries: [] and default health weights", () => {
   const store = loadStoreWith(null);
   const data = store.get();
-  assert.strictEqual(data.schema_version, 22);
+  assert.strictEqual(data.schema_version, 23);
   assert.deepStrictEqual(data.executive_summaries, []);
   assert.deepStrictEqual(data.settings.health_score_weights, {
     schedule: 25, cost: 20, risk: 20, issue: 10, rfi: 15, change: 10,
   });
+  assert.deepStrictEqual(data.resources, []);
+  assert.deepStrictEqual(data.resource_assignments, []);
 });
 
 // ---------------------------------------------------------------------------
@@ -126,6 +134,35 @@ check("newRisk()/newRfi()/newMeeting()/newDocument()/newDailyLog()/newChangeOrde
   assert.strictEqual(store.newDocument({}).activity_id, "");
   assert.strictEqual(store.newDailyLog({}).activity_id, "");
   assert.strictEqual(store.newChangeOrder({}).activity_id, "");
+});
+
+// ---------------------------------------------------------------------------
+// Gate 11 factory defaults
+// ---------------------------------------------------------------------------
+check("newResource() defaults type to 'labor', max_availability to null, and produces a unique id", () => {
+  const store = loadStoreWith(null);
+  const r1 = store.newResource({ name: "Tower Crane" });
+  const r2 = store.newResource({ name: "Electricians" });
+  assert.ok(r1.id && r2.id && r1.id !== r2.id, "each resource must get a unique id");
+  assert.strictEqual(r1.type, "labor");
+  assert.strictEqual(r1.max_availability, null);
+  assert.ok(r1.created_at);
+});
+
+check("newResourceAssignment() defaults quantity to null and produces a unique id", () => {
+  const store = loadStoreWith(null);
+  const a1 = store.newResourceAssignment({ resource_id: "res_1", activity_id: "act_1" });
+  const a2 = store.newResourceAssignment({ resource_id: "res_1", activity_id: "act_2" });
+  assert.ok(a1.id && a2.id && a1.id !== a2.id, "each assignment must get a unique id");
+  assert.strictEqual(a1.resource_id, "res_1");
+  assert.strictEqual(a1.quantity, null);
+});
+
+check("RESOURCE_TYPES includes labor, equipment, and material", () => {
+  const store = loadStoreWith(null);
+  ["labor", "equipment", "material"].forEach((t) => {
+    assert.ok(store.RESOURCE_TYPES.indexOf(t) !== -1, "missing resource type: " + t);
+  });
 });
 
 // ---------------------------------------------------------------------------

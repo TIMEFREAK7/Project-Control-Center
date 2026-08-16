@@ -268,6 +268,27 @@
     ctx.documents = data.documents.filter(function (d) { return d.project_id === projectId; });
     ctx.dailyLogs = data.daily_logs.filter(function (l) { return l.project_id === projectId; });
 
+    // ---- Resources (Gate 11) — only meaningful once the module has real data; the
+    // KPI section itself is gated on data.resources.length > 0, matching the same
+    // "only display when the module exists and has data" rule EVM already follows. ----
+    // Deliberately every activity across every one of this project's schedule
+    // revisions, not just the primary schedule picked above for CPM/KPI purposes — a
+    // resource assignment against an older revision's activity still counts.
+    var allProjectActivityIds = {};
+    data.activities.forEach(function (a) { if (a.project_id === projectId) allProjectActivityIds[a.id] = true; });
+    var projectAssignments = data.resource_assignments.filter(function (a) { return allProjectActivityIds[a.activity_id]; });
+    var assignedResourceIds = {};
+    projectAssignments.forEach(function (a) { assignedResourceIds[a.resource_id] = true; });
+    var portfolioOverAlloc = window.PCC.resourceLevelingEngine
+      ? window.PCC.resourceLevelingEngine.portfolioOverAllocationSummary(data.resources, data.resource_assignments, data.activities)
+      : [];
+    var overAllocById = {};
+    portfolioOverAlloc.forEach(function (s) { overAllocById[s.resourceId] = s; });
+    ctx.assignedResourceCount = Object.keys(assignedResourceIds).length;
+    ctx.overAllocatedResources = Object.keys(assignedResourceIds)
+      .filter(function (id) { return overAllocById[id]; })
+      .map(function (id) { return overAllocById[id]; });
+
     return ctx;
   }
 
@@ -808,6 +829,19 @@
       { label: "Pending Approvals", value: ctx.pendingChangeOrders.length, colorVar: ctx.pendingChangeOrders.length ? "--status-at-risk" : null },
       { label: "Approved", value: ctx.approvedChangeOrders.length },
     ]);
+
+    // Gate 11: only shown once Resource Management has real data, matching the same
+    // "only display when the module exists" rule EVM already follows.
+    if (data.resources.length > 0) {
+      renderKpiSection(outlet, "RESOURCES", [
+        { label: "Resources Assigned", value: ctx.assignedResourceCount },
+        {
+          label: "Over-Allocated (Portfolio-Wide)",
+          value: ctx.overAllocatedResources.length,
+          colorVar: ctx.overAllocatedResources.length ? "--status-critical" : null,
+        },
+      ]);
+    }
 
     // ---- Health Score ----
     outlet.appendChild(renderHealthScorePanel(health, data, rerender));

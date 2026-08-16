@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 22;
+  var SCHEMA_VERSION = 23;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -71,6 +71,10 @@
       // Gate 9 (Project Executive Center): editable overrides for the template-based
       // Executive Summary, one record per project. See newExecutiveSummary() header.
       executive_summaries: [],
+      // Gate 11 (Resource Management): resources is a shared, portfolio-wide pool
+      // (not project-scoped) — see the header comment above newResource() for why.
+      resources: [],
+      resource_assignments: [],
     };
   }
 
@@ -537,6 +541,77 @@
   }
 
   // ============================================================
+  // GATE 11 — Resource Management (labor/equipment/material) with cross-project
+  // resource leveling. Two shapes, deliberately NOT one register with mandatory
+  // project assignment like every other module in this app:
+  //
+  // - A Resource (`newResource`) is a shared, reusable ASSET — a crew type, a crane,
+  //   a material stockpile — not an event or artifact that belongs to one project the
+  //   way a Risk or a Daily Log entry does. Project assignment being "mandatory on
+  //   every register" (a rule enforced consistently everywhere else in this app) was
+  //   deliberately NOT applied here: a resource that's shared across the portfolio has
+  //   nowhere single to be "assigned" to, and forcing one would be a modeling error,
+  //   not consistency.
+  // - A ResourceAssignment (`newResourceAssignment`) IS project-scoped, just
+  //   transitively — every assignment points at one Schedule activity, and that
+  //   activity already carries its own project_id/schedule_id. This is also what
+  //   makes real cross-project leveling possible: the same crane can be assigned to
+  //   activities in two different projects' schedules, and resourceLevelingEngine.js
+  //   can detect the conflict precisely because assignments aren't siloed per project.
+  //   No cost linkage this gate (explicit call, Aditya, 2026-08-16) — resource
+  //   quantity/availability only; rate x usage feeding Cost Tracking/EVM is deferred,
+  //   matching the same "reconciliation stays a deliberate, separate act" pattern
+  //   Change Orders and Cost Tracking's Portfolio-budget fallback already established.
+  // ============================================================
+
+  var RESOURCE_TYPES = ["labor", "equipment", "material"];
+
+  function newResourceId() {
+    return "res_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  /** `max_availability` is the quantity of this resource available per day (e.g. 5
+   * electricians, 2 cranes) — null means "not set," which resourceLevelingEngine.js
+   * treats as "unlimited / no over-allocation computable," never as zero capacity. */
+  function newResource(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newResourceId(),
+      name: "",
+      type: "labor",
+      unit: "",
+      max_availability: null,
+      notes: "",
+      created_at: now,
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  function newResourceAssignmentId() {
+    return "asg_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  /** Links one Resource to one Schedule activity for a given quantity (e.g. "3
+   * electricians on Rough-In Wiring"). Always tied to exactly one activity — a
+   * resource needed across several activities gets several assignment records, same
+   * "one link per record" shape every other link in this app uses (cost_budget_items,
+   * Gate 10's activity_id fields). */
+  function newResourceAssignment(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newResourceAssignmentId(),
+      resource_id: "",
+      activity_id: "",
+      quantity: null,
+      notes: "",
+      created_at: now,
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  // ============================================================
   // GATE 9 — Project Executive Center: template-based Executive Summary. Not AI-
   // generated (explicitly out of scope) — executiveCenter.js computes default text for
   // each section from real project data at render time; this record only stores the
@@ -981,6 +1056,14 @@
       loaded.schema_version = 22;
     }
 
+    if (loaded.schema_version < 23) {
+      // Gate 11: Resource Management. Brand new arrays, nothing to backfill on
+      // existing records — same as every prior gate that introduced a new register.
+      if (!loaded.resources) loaded.resources = [];
+      if (!loaded.resource_assignments) loaded.resource_assignments = [];
+      loaded.schema_version = 23;
+    }
+
     return loaded;
   }
 
@@ -1321,5 +1404,8 @@
     newCostActual: newCostActual,
     COST_CATEGORIES: COST_CATEGORIES,
     newExecutiveSummary: newExecutiveSummary,
+    newResource: newResource,
+    newResourceAssignment: newResourceAssignment,
+    RESOURCE_TYPES: RESOURCE_TYPES,
   };
 })();

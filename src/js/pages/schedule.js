@@ -2137,6 +2137,27 @@
         window.PCC.router.go("changeOrders");
       },
     },
+    {
+      // Gate 11: resource assignments link to an activity the same way the other six
+      // sources do (activity_id), so this fits the same array-driven pattern — the
+      // one difference is the assignment record itself doesn't carry a display name,
+      // so list() decorates each match with the resource's name/unit before label()
+      // reads it, rather than label() doing its own lookup with no data reference.
+      module: "resources",
+      label: function (a) { return "Resource: " + a._resourceName + " (" + a.quantity + (a._unit ? " " + a._unit : "") + ")"; },
+      list: function (data, activityId) {
+        return data.resource_assignments
+          .filter(function (a) { return a.activity_id === activityId; })
+          .map(function (a) {
+            var resource = data.resources.find(function (r) { return r.id === a.resource_id; });
+            return Object.assign({}, a, { _resourceName: resource ? resource.name : "(resource deleted)", _unit: resource ? resource.unit : "" });
+          });
+      },
+      view: function (a) {
+        if (window.PCC.resources && window.PCC.resources.expandAssignment) window.PCC.resources.expandAssignment(a.id);
+        window.PCC.router.go("resources");
+      },
+    },
   ];
 
   function renderLinkedRecordsSection(activity, data) {

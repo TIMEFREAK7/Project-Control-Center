@@ -881,6 +881,72 @@
     }
 
     wrap.appendChild(costSection);
+
+    if (window.PCC.resourceLevelingEngine && window.PCC.store.get().resources.length > 0) {
+      var data = window.PCC.store.get();
+      var projectActivityIds = {};
+      data.activities.forEach(function (a) { if (a.project_id === p.id) projectActivityIds[a.id] = true; });
+      var projectAssignments = data.resource_assignments.filter(function (a) { return projectActivityIds[a.activity_id]; });
+
+      var resSection = document.createElement("div");
+      resSection.style.marginTop = "16px";
+      resSection.style.paddingTop = "14px";
+      resSection.style.borderTop = "1px solid var(--divider)";
+
+      var resHeader = document.createElement("div");
+      resHeader.style.display = "flex";
+      resHeader.style.justifyContent = "space-between";
+      resHeader.style.alignItems = "center";
+      var resLabel = document.createElement("span");
+      resLabel.className = "detail-item__label";
+      resLabel.textContent = "RESOURCES ASSIGNED";
+      resHeader.appendChild(resLabel);
+      var viewAllResBtn = document.createElement("button");
+      viewAllResBtn.className = "btn btn--ghost";
+      viewAllResBtn.textContent = "View All";
+      viewAllResBtn.onclick = function () {
+        if (window.PCC.resources) window.PCC.resources.filterByProject(p.id);
+        window.PCC.router.go("resources");
+      };
+      resHeader.appendChild(viewAllResBtn);
+      resSection.appendChild(resHeader);
+
+      if (projectAssignments.length === 0) {
+        var noRes = document.createElement("p");
+        noRes.className = "text-secondary";
+        noRes.style.fontSize = "13px";
+        noRes.style.margin = "6px 0 0";
+        noRes.textContent = "No resources assigned to this project's activities yet.";
+        resSection.appendChild(noRes);
+      } else {
+        var portfolioOverAlloc = window.PCC.resourceLevelingEngine.portfolioOverAllocationSummary(data.resources, data.resource_assignments, data.activities);
+        var overAllocById = {};
+        portfolioOverAlloc.forEach(function (s) { overAllocById[s.resourceId] = s; });
+
+        var seenResourceIds = {};
+        projectAssignments.forEach(function (a) {
+          if (seenResourceIds[a.resource_id]) return;
+          seenResourceIds[a.resource_id] = true;
+          var resource = data.resources.find(function (r) { return r.id === a.resource_id; });
+          if (!resource) return;
+          var overAlloc = overAllocById[resource.id];
+          var line = document.createElement("p");
+          line.style.fontSize = "13px";
+          line.style.margin = "6px 0 0";
+          line.appendChild(document.createTextNode(resource.name || "(unnamed resource)"));
+          if (overAlloc) {
+            var overSpan = document.createElement("span");
+            overSpan.style.color = "var(--status-critical)";
+            overSpan.textContent = " — over-allocated " + overAlloc.overAllocatedDayCount + " day(s) (portfolio-wide)";
+            line.appendChild(overSpan);
+          }
+          resSection.appendChild(line);
+        });
+      }
+
+      wrap.appendChild(resSection);
+    }
+
     return wrap;
   }
 
