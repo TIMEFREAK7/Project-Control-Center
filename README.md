@@ -905,14 +905,232 @@ straight line across the whole project.
 **What I have not tested:** this on your actual device. Per the usual gate discipline, treat this
 as built-and-verified-in-this-environment, not confirmed — same standard as every prior gate.
 
+## Gate 8 — Interactive Gantt Editing (2026-08-16)
+
+Gate 5 shipped the Gantt as a read-only visualization, deliberately — "no drag-to-reschedule,
+no inline editing... a separate, later decision." This gate is that later decision: the Gantt
+becomes the primary way to reschedule activities day-to-day, not just view them.
+
+**Scope decided explicitly before building:** drag-to-move, drag-to-resize, and a click-to-open
+detail panel, with every edit auto-recalculating the schedule — matching the spec's "no manual
+refresh should be required." **Deliberately NOT built this pass, and said so in the UI rather than
+silently omitted:** linking an activity to Risks/Issues/RFIs/Meetings/Documents/Vendors/Change
+Orders (none of those registers carry an activity reference — adding one to five-plus modules is
+a schema change on the scale of its own gate) and virtualized rendering for 10,000+ activities
+(current SVG rendering is fine for realistic project sizes but untested at that scale).
+
+**What changed and why:**
+
+- **`scheduleGanttLayout.js` gained three pure, testable functions** — `daysFromPixelDelta()`,
+  `moveDates()`, `resizeFinish()` — same "calculation here, DOM there" split every engine in this
+  app keeps. Both date functions always write to `planned_start`/`planned_finish`, never the
+  calculated early/late fields, matching the Activities tab form's existing rule.
+- **Drag-to-move**: dragging a bar (or a milestone diamond) shifts both dates by the same number
+  of days, preserving duration. **Drag-to-resize**: a narrow handle at a bar's right edge extends
+  only the finish date (and therefore duration) — clamped so finish can never end up before start.
+  Live visual feedback during the drag is a plain SVG `transform`/`width` tweak on the existing
+  elements (no rerender until drop); the commit on pointer-up writes to the store and immediately
+  re-runs `scheduleCpmEngine.calculateSchedule()`, the same call the toolbar's own "Calculate
+  Schedule" button makes, so float/critical-path/project-finish are never stale after an edit.
+  pointermove/pointerup are attached to `window`, not via `setPointerCapture` (not universally
+  available across every environment this app runs in), so a fast drag that leaves the bar's thin
+  hit area is never dropped.
+- **Click vs. drag disambiguation**: a pointer-down/up with no real movement (under a 4px
+  threshold) opens a new **Activity Detail Panel** instead of committing a zero-day edit — ID
+  (external, falling back to the internal id), WBS, type, status, duration, remaining duration,
+  planned dates, float, % complete, discipline, contractor, responsible person, constraint,
+  notes, and a live Predecessors/Successors list, with Edit / + Add Relationship / Delete actions.
+  The panel says explicitly that cross-module linking isn't built yet rather than showing an empty
+  or broken section.
+- **Filters**: WBS, Discipline, Contractor, Responsible Person (all populated from the schedule's
+  own real values, not a fixed list), plus a single "quick" status filter (Critical / Near
+  Critical / Delayed / Completed / In Progress / Not Started / Milestones Only) and free-text
+  search across Activity ID / Name / WBS / Contractor / Discipline. "Delayed" is computed at
+  filter time from the effective (calculated-preferred, planned-fallback) finish date vs. the
+  schedule's data date — never stored, same convention every other overdue check in this app uses.
+- **Zoom presets** (Auto / Daily / Weekly / Monthly / Quarterly / Yearly) alongside the pre-existing
+  size-based "Auto" heuristic, plus **Today / Project Start / Project Finish / Data Date** buttons
+  that scroll the chart's own container to the relevant date. A solid **Today line**, distinct
+  from the existing dashed amber Data Date marker, renders when today falls inside the chart's
+  date range.
+- **Baseline overlay**: a "Show Baseline" toggle (when the project has at least one saved
+  baseline) loads that baseline's IndexedDB snapshot and draws thin dashed ghost bars behind the
+  matching current bars — matched by `external_id` falling back to `id`, the same precedence
+  `scheduleBaselineEngine.js`'s own comparison already uses, so a baseline captured before a
+  re-import still lines up correctly.
+- **Quick-add**: "+ Add Activity" / "+ Add Milestone" buttons jump to the Activities tab's existing
+  form (pre-selecting Milestone as the type for the latter) rather than duplicating the form here.
+
+**Changed:** `scheduleGanttLayout.js` (drag-math functions), `schedule.js` (the Gantt tab
+rewritten with editing/filters/zoom/detail panel/baseline overlay; a shared
+`deleteActivityWithConfirm()` extracted so the Activities tab and the new detail panel delete the
+same way). **New (unused by this gate, prep for Gate 9 below):** `projectHealthEngine.js`, schema
+v20 → v21.
+
+**Tested before delivery (16 + 23 checks, fresh session, all passed clean):**
+
+- **`projectHealthEngine.js`, pure logic** (16 checks) — see Gate 9 below, built alongside this
+  gate but not wired into any UI until Gate 9.
+- **End-to-end against the actual bundled `index.html`** (`test_schedule_gantt_editing_e2e.js`,
+  23 checks, not a reimplementation, real `pointerdown`/`pointermove`/`pointerup` events dispatched
+  with `clientX` set): dragging a bar 3 days right shifts both planned dates and preserves
+  duration; a plain click with no movement opens the detail panel instead of editing dates
+  (checked against the store, not just the UI); resizing a bar's right edge by 5 days extends only
+  the finish date and grows duration; dragging a milestone diamond moves its single date; editing
+  auto-recalculates without a manual "Calculate Schedule" click; the search filter narrows the
+  chart to matching activities only; "+ Add Milestone" pre-selects the Milestone type on the real
+  form; deleting an activity from the detail panel removes it and any relationship referencing it;
+  full route smoke test across every page.
+- **Real-browser verification** (Chromium via Playwright, both themes, desktop and 375px mobile
+  viewports): seeded a five-activity/one-milestone scenario, dragged a bar with real mouse
+  move/down/up events and confirmed the toast + recalculated critical-path count, clicked a bar to
+  open the detail panel and confirmed every field renders correctly in both themes, confirmed the
+  filter/zoom/jump toolbar lays out cleanly — zero console/page errors throughout.
+
+**What I have not tested:** this on your actual device, and Gantt rendering performance at
+10,000+ activities (explicitly out of scope this pass, noted above). Per the usual gate
+discipline, treat this as built-and-verified-in-this-environment, not confirmed.
+
+## Gate 9 — Project Executive Center (2026-08-16)
+
+The management-facing counterpart to Gate 8's operational Gantt: a per-project rollup
+consolidating Portfolio, Schedule, Cost Tracking, Risk Register, RFI/TQ, Change Management, and
+Meetings into one screen, plus printable output for meetings and steering committees.
+
+**Scope decided explicitly before building**, several items deliberately cut and documented rather
+than silently skipped: **no Resource Management KPIs** (that module doesn't exist yet — nothing
+here is a placeholder for it); **Cost KPIs are Budget/Actual/Variance plus EAC when EVM is
+available** — Commitments and Cash Flow have no underlying data model anywhere in PCC and are
+called out as untracked rather than shown as a permanently-empty tile; **EVM tiles/charts only
+render when the project actually has Cost Tracking budget items** — no fabricated PV/EV/CPI for a
+project that's never touched Cost Tracking; **per-activity linking to Risks/Issues/RFIs/Meetings/
+Documents/Vendors/Change Orders is not built** (same reason as Gate 8 — no register carries an
+`activity_id`); **no PDF/Word/Excel library** — Project Snapshot and the Management Pack reuse
+`reports.js`'s existing `window.print()`/`.report-doc` architecture, per the standing decision
+that this app never bundles a document-generation library; **no persisted/logo-customizable report
+templates** — deferred as a separate, later polish item.
+
+**What changed and why:**
+
+- **Schema v20 → v21**: `newProject()` gains `project_type`, `current_phase`, and an optional
+  manual `forecast_finish_date` override (used only when no schedule has been calculated —
+  the Executive Center prefers the CPM engine's live-calculated finish and says which source is
+  in play, same transparency convention as Gantt's dashed "not yet calculated" bars). New
+  `settings.health_score_weights` (defaults below). New `executive_summaries` array +
+  `newExecutiveSummary()` — one record per project, storing only the user's *edited overrides* for
+  the Executive Summary's five sections; the default text is always computed fresh from real data,
+  never stored, so it can't drift stale.
+- **New pure module `projectHealthEngine.js`** (same "calculation only, no DOM" split every other
+  engine here keeps): `computeHealthScore(context, weights)` returns a 0–100 score, a RAG
+  (on_track/at_risk/critical), and a full **breakdown** — every factor's raw inputs, sub-score,
+  weight, and contribution, so the "why" is never hidden, per the spec's explicit requirement. Six
+  factors (Schedule 25 / Cost 20 / Risk 20 / Issue 10 / RFI 15 / Change 10, defaults, editable in
+  the UI and applied portfolio-wide): a factor with no underlying data (e.g. no budget set yet) is
+  marked `available: false` and **excluded** from the score — weights re-normalize over just the
+  available factors, so a project that simply hasn't used Cost Tracking yet doesn't get penalized
+  as if it were over budget. `computeDiagnostics(context)` produces rule-based alerts (SPI/CPI
+  below threshold, EAC over BAC, cost over budget, critical/near-critical activities, milestone
+  slippage, high risks, overdue RFIs, overdue meeting actions, pending change orders) — no AI,
+  every alert traces to a real record.
+- **New page `executiveCenter.js`** (route `#/executiveCenter`, "Executive Center" button on every
+  Portfolio project card, sidebar entry under Overview):
+  - **Project Overview**: name/client/location/sector/project type/contract value/budget (with
+    the same Portfolio-budget-fallback disclosure Cost Tracking already established)/planned and
+    forecast finish/data date/PM/planner/progress, with an RAG health badge.
+  - **KPI cards** grouped Progress / Schedule / Cost / EVM (conditional) / Risks / Issues / RFIs /
+    Changes — Schedule KPIs (critical/near-critical/delayed counts, upcoming milestones, schedule
+    variance) are computed **live** via `scheduleCpmEngine` at render time rather than reading
+    possibly-stale stored `total_float`, so the dashboard reflects reality even if nobody has
+    clicked "Calculate Schedule" recently on the Schedule page — directly satisfying the spec's
+    "if an activity changes, the dashboard must reflect it."
+  - **Health Score panel**: gauge, RAG badge, and the full breakdown table from
+    `projectHealthEngine.js`; weights are editable inline and persist to
+    `settings.health_score_weights`.
+  - **Project Health Diagnostics**: the rule-based alert list, each linking back to its source
+    record (a risk, an RFI, a change order, a meeting) via the same cross-page navigation pattern
+    Portfolio's Details panel and the Meetings hub already use (`window.PCC.<module>.expandX()` +
+    `router.go()`).
+  - **Executive Summary**: five sections (Status/Achievements/Challenges/Management Attention/
+    Upcoming), each showing computed default text unless the user has edited and saved an
+    override — template/data-driven, never AI-generated, per the spec's explicit requirement.
+  - **Charts**, all plain SVG (no charting library, consistent with the Gantt's own approach):
+    Progress S-Curve (a real duration-weighted **planned** cumulative curve — there's no stored
+    day-by-day actual-progress history anywhere in PCC, only current `percent_complete`, so
+    "actual" is a single labeled point rather than a fabricated curve), Critical vs Non-Critical
+    donut, Float Distribution histogram, Milestone Timeline, Risk Heat Map, RFI Open/Closed,
+    Change Order status. Every chart shows "No data available" instead of a misleadingly empty
+    axis when a project has nothing to plot.
+  - **Recent Activity** feed, **Upcoming Items** (configurable 7/14/30/60/90-day range), and a
+    **Management Action List** aggregating delayed activities / high risks / overdue RFIs /
+    pending approvals / outstanding meeting actions / cost warnings / schedule slippage, each
+    linking to its source.
+  - **Project Snapshot**: a fixed one-page **A4 landscape** printable summary (a new CSS named
+    page, `page: snapshot-page`, applied only to `.snapshot-doc` — the existing portrait
+    `@media print` rules for Reports' own output are untouched) for weekly/client/steering-
+    committee use.
+  - **Management Pack**: one click assembles a checkbox-driven, multi-section printable document
+    (cover, executive summary, snapshot, KPI dashboard, progress, schedule, milestones, cost, EVM,
+    risks, issues, RFIs, changes, daily log, meetings) — a section with genuinely no data still
+    renders (with its own "no data" note) if explicitly checked, per the spec's "don't include
+    empty sections unless the user explicitly chooses to."
+
+**Changed:** `build.js` (JS_ORDER), `layout.js` (nav entry + page title), `app.js` (route),
+`portfolio.js` ("Executive Center" button on every project card), `styles.css` (the
+`snapshot-page` named-page print rule). **New:** `projectHealthEngine.js`, `executiveCenter.js`.
+
+**Tested before delivery (31 checks, fresh session, all passed clean):**
+
+- **End-to-end against the actual bundled `index.html`** (`test_executive_center_e2e.js`, not a
+  reimplementation): seeded one project with real data across every rolled-up module (a critical-
+  path activity, a high risk, an overdue RFI, a pending change order, an overdue meeting action, a
+  Cost Tracking budget item linked to an activity) and confirmed — the Executive Center is
+  reachable from Portfolio's own "Executive Center" button; KPI tiles show the real seeded numbers
+  (not fabricated ones); the EVM section renders (because real budget items exist) and disappears
+  entirely for a second, zero-budget-item project (checked directly — "SPI" doesn't appear
+  anywhere on that project's page); the Health Score panel renders a numeric score/RAG/breakdown;
+  editing a weight in "Configure Weights" persists to the store; Diagnostics lists the real risk/
+  RFI/change-order/meeting-action by name/number; the Management Action List surfaces the same
+  real items; the Executive Summary's auto-generated text mentions the real completed activity;
+  editing and saving a summary section persists an override that then displays instead of the
+  auto text; every chart SVG renders without throwing; the Snapshot and Management Pack both
+  render real numbers, "Print / Save as PDF" calls `window.print()`, toggling a Management Pack
+  section checkbox on/off actually adds/removes that section from the assembled document; full
+  route smoke test including the new route.
+- **`projectHealthEngine.js`, pure logic** (16 checks, listed under Gate 8 above since it was
+  built in that same session — a fully healthy project scores 100/on_track; a factor with no
+  underlying data is excluded rather than scored as 0; critical activities/schedule slippage/
+  over-budget/high-risks/critical-issues/overdue-RFIs/pending-COs each measurably lower their own
+  factor; malformed or non-100-summing weights are re-normalized rather than distorting the score;
+  RAG thresholds; every diagnostic rule fires correctly (SPI/CPI/EAC-over-BAC/cost-over-budget/
+  critical-and-near-critical activities/milestone slippage/high risks/overdue RFIs/overdue meeting
+  actions/pending change orders) with a correct severity and a real record link; alerts sort
+  critical-then-warning-then-info; empty/undefined context produces no alerts without throwing).
+- **Real-browser verification** (Chromium via Playwright, both themes, desktop and 375px mobile):
+  seeded a realistic multi-module scenario, confirmed the Overview/KPI/Health-Score/Diagnostics/
+  Executive-Summary/Charts/Recent-Activity/Upcoming/Management-Action sections all render
+  correctly and legibly in both themes and at mobile width; confirmed the Project Snapshot and
+  Management Pack both render with real numbers and every Management Pack section checkbox toggles
+  correctly — zero console/page errors throughout.
+
+**What I have not tested:** this on your actual device. Per the usual gate discipline, treat this
+as built-and-verified-in-this-environment, not confirmed — same standard as every prior gate.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
 RFI/TQ → Change Management → Basic Reporting → Backup & Recovery
 
-**Tier 2** (in progress — Schedule import, CPM/float engine, Gantt, Cost Tracking, and the EVM
-engine are done; next up is Resource Management): Schedule import (Excel/MSP first) + CPM/float
-engine + Gantt → Cost tracking → EVM engine → Resource Management
+**Tier 2** (in progress — Schedule import, CPM/float engine, interactive Gantt, Cost Tracking, and
+the EVM engine are done; next up is Resource Management): Schedule import (Excel/MSP first) +
+CPM/float engine + Gantt (visualization, then Gate 8's editing) → Cost tracking → EVM engine →
+Resource Management
+
+**Project Executive Center** (Gate 9, done) — sits above Tier 2 rather than inside its original
+line items, per the architecture this gate was built against: Project → the operational modules
+(Schedule/Cost/Risk/RFI/Change/Meetings/etc.) → **Project Executive Center** → Management Pack.
+Consumes Tier 2's data, adds nothing that duplicates it. Portfolio-level executive dashboard
+enhancements beyond what Dashboard already shows (portfolio-wide filtering by client/country/
+sector/PM/date range) are still open — noted as follow-on work, not done here.
 
 **Tier 3 (deferred until Tier 1 is in daily use):** AI Document Processing, Knowledge Base, AI Project
 Assistant, Lessons Learned, final polish
@@ -920,4 +1138,7 @@ Assistant, Lessons Learned, final polish
 ## Next phase
 
 Tier 2 continues with Resource Management — scope to be decided explicitly before building, same
-as every prior gate.
+as every prior gate. Separately, still open from Gate 9: per-activity linking to Risks/Issues/
+RFIs/Meetings/Documents/Vendors/Change Orders (needs an `activity_id` added to five-plus
+registers — a schema change on the scale of its own gate), a persisted/logo-customizable report-
+template system, and portfolio-level executive dashboard filtering.
