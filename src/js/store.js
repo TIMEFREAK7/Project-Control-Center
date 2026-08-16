@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 21;
+  var SCHEMA_VERSION = 22;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -164,6 +164,8 @@
       duplicate_group_id: null,
       original_record_id: null,
       duplicate_reason: null,
+      // Gate 10: optional link to one Schedule activity — see newRisk()'s comment.
+      activity_id: "",
     };
     return Object.assign(base, overrides || {});
   }
@@ -210,6 +212,13 @@
       incidents: "",
       notes: "",
       photos: [],
+      // Gate 10: optional link to one Schedule activity — see newRisk()'s comment.
+      // Deliberately a single pointer, same simplification every other register's
+      // activity link makes, even though a day's log realistically touches several
+      // activities: modeling a many-to-many here would be the only such relationship
+      // in the app, and this still covers the common "log against the activity this
+      // entry is mainly about" case.
+      activity_id: "",
       created_at: now,
       updated_at: now,
     };
@@ -240,6 +249,10 @@
       owner: "",
       mitigation: "",
       source_meeting_id: "",
+      // Gate 10: optional link to one Schedule activity, same many-to-one shape as
+      // cost_budget_items.activity_id (Gate 7) — several risks may point at the same
+      // activity, one risk can't span several. Unlinked is fully valid.
+      activity_id: "",
       created_at: now,
       updated_at: now,
     };
@@ -299,6 +312,9 @@
       minutes: "",
       actions: [],
       recordings: [],
+      // Gate 10: optional link to one Schedule activity — see newRisk()'s comment for
+      // the shape convention this follows.
+      activity_id: "",
       created_at: now,
       updated_at: now,
     };
@@ -374,6 +390,8 @@
       schedule_impact: false,
       revisions: [],
       source_meeting_id: "",
+      // Gate 10: optional link to one Schedule activity — see newRisk()'s comment.
+      activity_id: "",
       created_at: now,
       updated_at: now,
     };
@@ -442,6 +460,8 @@
       source_rfi_id: "",
       source_risk_id: "",
       source_meeting_id: "",
+      // Gate 10: optional link to one Schedule activity — see newRisk()'s comment.
+      activity_id: "",
       revisions: [],
       created_at: now,
       updated_at: now,
@@ -945,6 +965,20 @@
         };
       }
       loaded.schema_version = 21;
+    }
+
+    if (loaded.schema_version < 22) {
+      // Gate 10: activity linking. Backfills activity_id: "" (unlinked) onto every
+      // existing record in the six registers that can now optionally point at one
+      // Schedule activity — nothing to migrate beyond the default, same as every prior
+      // gate that added an optional link field.
+      (loaded.risks || []).forEach(function (r) { if (r.activity_id === undefined) r.activity_id = ""; });
+      (loaded.rfis || []).forEach(function (r) { if (r.activity_id === undefined) r.activity_id = ""; });
+      (loaded.meetings || []).forEach(function (m) { if (m.activity_id === undefined) m.activity_id = ""; });
+      (loaded.documents || []).forEach(function (d) { if (d.activity_id === undefined) d.activity_id = ""; });
+      (loaded.daily_logs || []).forEach(function (l) { if (l.activity_id === undefined) l.activity_id = ""; });
+      (loaded.change_orders || []).forEach(function (co) { if (co.activity_id === undefined) co.activity_id = ""; });
+      loaded.schema_version = 22;
     }
 
     return loaded;

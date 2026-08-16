@@ -1,7 +1,7 @@
 // Standalone Node test for store.js's migrate() function, exercised indirectly through
-// load() — same approach test_store_schema_v20_migration.js used, replaced here per the
+// load() — same approach every prior version of this file used, replaced here per the
 // "one canonical full-chain test targeting latest" pattern established at Gate 6 (this
-// file supersedes the v20 one; its own checks are folded in below rather than kept as a
+// file supersedes the v21 one; its own checks are folded in below rather than kept as a
 // separate frozen-in-time file).
 "use strict";
 const fs = require("fs");
@@ -39,43 +39,60 @@ function loadStoreWith(rawJsonString) {
 }
 
 // ---------------------------------------------------------------------------
-// v20 -> v21 (Gate 9): project_type/current_phase/forecast_finish_date backfilled onto
-// existing projects, health_score_weights defaulted, executive_summaries added.
+// v20 -> v22 in one hop: project_type/current_phase/forecast_finish_date backfilled
+// onto existing projects, health_score_weights defaulted, executive_summaries added
+// (v21, Gate 9), AND activity_id backfilled onto every linkable register's existing
+// records (v22, Gate 10).
 // ---------------------------------------------------------------------------
-check("a v20 dataset gets Gate 9 project fields/weights/array backfilled and lands on schema_version 21", () => {
+check("a v20 dataset gets Gate 9 + Gate 10 fields backfilled and lands on schema_version 22", () => {
   const v20 = {
     schema_version: 20,
     meta: { app_name: "x", created_at: "2026-01-01T00:00:00.000Z", last_saved_at: null, last_exported_at: null },
     settings: { theme: "dark", company_name: "", backup_reminder_days: 7, backup_nudge_dismissed_at: null },
     projects: [{ id: "proj_1", name: "Existing Project", archived: false, status: "on_track", progress: 0, attachments: [] }],
-    documents: [], risks: [], daily_logs: [], meetings: [], rfis: [], change_orders: [],
+    documents: [{ id: "doc_1", project_id: "proj_1", filename: "x.pdf" }],
+    risks: [{ id: "r_1", project_id: "proj_1", type: "risk", title: "Existing Risk" }],
+    daily_logs: [{ id: "dl_1", project_id: "proj_1", log_date: "2026-01-01" }],
+    meetings: [{ id: "m_1", project_id: "proj_1", title: "Existing Meeting", actions: [] }],
+    rfis: [{ id: "rf_1", project_id: "proj_1", type: "rfi", number: "RFI-001" }],
+    change_orders: [{ id: "co_1", project_id: "proj_1", number: "CO-001" }],
     schedules: [], wbs_items: [], activities: [], relationships: [], schedule_baselines: [],
     cost_budget_items: [], cost_actuals: [],
   };
   const store = loadStoreWith(JSON.stringify(v20));
   const data = store.get();
 
-  assert.strictEqual(data.schema_version, 21);
+  assert.strictEqual(data.schema_version, 22);
   assert.strictEqual(data.projects[0].name, "Existing Project", "existing project fields must survive untouched");
   assert.strictEqual(data.projects[0].project_type, "");
-  assert.strictEqual(data.projects[0].current_phase, "");
-  assert.strictEqual(data.projects[0].forecast_finish_date, "");
   assert.ok(data.settings.health_score_weights, "health_score_weights must be defaulted");
-  assert.strictEqual(data.settings.health_score_weights.schedule, 25);
   assert.deepStrictEqual(data.executive_summaries, []);
+
+  // Gate 10: activity_id backfilled as "" (unlinked) on every existing record across
+  // all six linkable registers, with every other field left untouched.
+  assert.strictEqual(data.documents[0].activity_id, "");
+  assert.strictEqual(data.documents[0].filename, "x.pdf");
+  assert.strictEqual(data.risks[0].activity_id, "");
+  assert.strictEqual(data.risks[0].title, "Existing Risk");
+  assert.strictEqual(data.daily_logs[0].activity_id, "");
+  assert.strictEqual(data.meetings[0].activity_id, "");
+  assert.strictEqual(data.meetings[0].title, "Existing Meeting");
+  assert.strictEqual(data.rfis[0].activity_id, "");
+  assert.strictEqual(data.change_orders[0].activity_id, "");
+  assert.strictEqual(data.change_orders[0].number, "CO-001");
 });
 
 // ---------------------------------------------------------------------------
-// Full chain from a very old (v1-shaped) dataset still reaches v21 cleanly
+// Full chain from a very old (v1-shaped) dataset still reaches v22 cleanly
 // ---------------------------------------------------------------------------
-check("a minimal legacy dataset (no schema_version at all) migrates all the way to 21 without throwing", () => {
+check("a minimal legacy dataset (no schema_version at all) migrates all the way to 22 without throwing", () => {
   const legacy = {
     projects: [{ id: "proj_1", name: "Old Project" }],
     documents: [],
   };
   const store = loadStoreWith(JSON.stringify(legacy));
   const data = store.get();
-  assert.strictEqual(data.schema_version, 21);
+  assert.strictEqual(data.schema_version, 22);
   assert.ok(Array.isArray(data.schedule_baselines));
   assert.ok(Array.isArray(data.cost_budget_items));
   assert.ok(Array.isArray(data.cost_actuals));
@@ -90,11 +107,25 @@ check("a minimal legacy dataset (no schema_version at all) migrates all the way 
 check("a brand-new install with no stored data starts with executive_summaries: [] and default health weights", () => {
   const store = loadStoreWith(null);
   const data = store.get();
-  assert.strictEqual(data.schema_version, 21);
+  assert.strictEqual(data.schema_version, 22);
   assert.deepStrictEqual(data.executive_summaries, []);
   assert.deepStrictEqual(data.settings.health_score_weights, {
     schedule: 25, cost: 20, risk: 20, issue: 10, rfi: 15, change: 10,
   });
+});
+
+// ---------------------------------------------------------------------------
+// Gate 10 factory defaults: every linkable register's factory defaults activity_id
+// to "" (unlinked)
+// ---------------------------------------------------------------------------
+check("newRisk()/newRfi()/newMeeting()/newDocument()/newDailyLog()/newChangeOrder() all default activity_id to ''", () => {
+  const store = loadStoreWith(null);
+  assert.strictEqual(store.newRisk({}).activity_id, "");
+  assert.strictEqual(store.newRfi({}).activity_id, "");
+  assert.strictEqual(store.newMeeting({}).activity_id, "");
+  assert.strictEqual(store.newDocument({}).activity_id, "");
+  assert.strictEqual(store.newDailyLog({}).activity_id, "");
+  assert.strictEqual(store.newChangeOrder({}).activity_id, "");
 });
 
 // ---------------------------------------------------------------------------

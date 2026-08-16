@@ -1115,6 +1115,79 @@ templates** — deferred as a separate, later polish item.
 **What I have not tested:** this on your actual device. Per the usual gate discipline, treat this
 as built-and-verified-in-this-environment, not confirmed — same standard as every prior gate.
 
+## Gate 10 — Activity Linking (2026-08-16)
+
+Gate 8's Activity Detail Panel shipped with an explicit note that cross-module linking "isn't
+built yet — those registers don't currently carry an activity reference." This gate is that: an
+optional `activity_id` on Risk/Issue/Opportunity, RFI/TQ, Meetings, Documents, Daily Log, and
+Change Orders, plus a real, live Linked Records list in the Gantt's Activity Detail Panel and
+"Linked Activity"/"View in Gantt" on every one of those six registers' own detail views — the
+cross-module drill-down the Gantt was missing.
+
+**Scope decided explicitly before building:** the six registers link, not "Vendors" (no Vendor
+Management module exists in PCC — nothing to link to) and not "Meeting Actions" individually (a
+Meeting links as a whole, same granularity `source_meeting_id` already uses everywhere else in
+this app, rather than introducing action-item-level linking as a one-off). Daily Log links to a
+single optional activity too, even though a day's log realistically touches several — modeling a
+many-to-many would be the only such relationship anywhere in PCC; a single pointer still covers
+the common case and stays consistent with every other register's link shape.
+
+**What changed and why:**
+
+- **Schema v21 → v22**: `activity_id: ""` added to `newRisk()`, `newRfi()`, `newMeeting()`,
+  `newDocument()`, `newDailyLog()`, `newChangeOrder()` — same many-to-one shape
+  `cost_budget_items.activity_id` (Gate 7) already established: several records may point at the
+  same activity, one record can't span several. Unlinked is fully valid and remains the default.
+- **A "Linked Activity (optional)" dropdown** on all six forms, listing that project's activities
+  across every one of its schedule revisions, each labeled with its schedule's name — the exact
+  same `activityOptionsFor()` helper cost.js's Budget Item form established in Gate 7 for linking
+  to a Schedule Activity, duplicated into each module (self-contained page modules, no shared util
+  layer, matching this codebase's existing convention) rather than factored out.
+- **Each register's own detail/expanded view** gains a "LINKED ACTIVITY" row with a "View in
+  Gantt" button when set — same visual pattern as the existing "RAISED IN MEETING"/source-link rows
+  Risk Register, RFI/TQ, and Change Orders already had from earlier gates.
+- **`schedule.js` gained its first public API**, `window.PCC.schedule.viewActivity(projectId,
+  scheduleId, activityId)` — jumps straight to the Gantt tab with that activity's own Detail Panel
+  already open, the reverse-navigation half every "View in Gantt" button calls, matching the same
+  "land exactly on the linked record" convention `expandRisk`/`expandRfi`/`expandMeeting`/
+  `expandChangeOrder` already established.
+- **The Gantt's Activity Detail Panel's old "not built yet" note is now a real "Linked Records"
+  section** — queries all six registers live (`activity_id === this activity's id`, nothing
+  cached or duplicated) and lists every match with its own "View" button that navigates to and
+  expands that exact record. `documents.js` and `dailyLog.js` gained `expandDocument()`/
+  `expandLog()` public exports to support this (the other four already had an equivalent).
+  An activity with nothing linked shows a clear empty state pointing at where to link one, not a
+  blank section.
+
+**Changed:** `store.js` (schema v21→v22), `risks.js`, `rfis.js`, `meetings.js`, `documents.js`,
+`dailyLog.js`, `changeOrders.js` (Linked Activity field + display + navigation on each),
+`schedule.js` (Linked Records section, `window.PCC.schedule` export).
+
+**Tested before delivery (10 + 24 checks, fresh session, all passed clean):**
+
+- **Schema migration** (`test_store_schema_v22_migration.js`, 10 checks, replacing the v21 file
+  per the "one canonical test targeting latest" pattern): a v20 dataset reaches v22 in one pass
+  with Gate 9's fields AND Gate 10's `activity_id` correctly backfilled onto one existing record
+  in every one of the six registers, every other field left untouched; the full legacy migration
+  chain (no `schema_version` at all) still reaches v22 without throwing; a brand-new install;
+  all six factories default `activity_id` to `""`.
+- **End-to-end against the actual bundled `index.html`** (`test_activity_linking_e2e.js`, 24
+  checks, not a reimplementation): each of the six registers' real Add form offers the Linked
+  Activity select (populated with the seeded schedule's activities, labeled with the schedule
+  name) and persists `activity_id` on submit, checked directly against the store; **two full
+  bidirectional round trips** as the deep verification — a Risk's "View in Gantt" button lands on
+  the correct activity's Detail Panel with that risk listed under Linked Records, and from there
+  the RFI's own "View" button navigates to RFI/TQ with that exact entry expanded showing its own
+  "LINKED ACTIVITY" row back; a second, unlinked activity correctly shows "LINKED RECORDS (0)"
+  and the empty-state explanation rather than fabricated content; full route smoke test.
+- **Real-browser verification** (Chromium via Playwright, both themes): seeded a risk and an RFI
+  both linked to one activity, confirmed the Gantt's Linked Records section lists both with
+  working View buttons, and confirmed the Risk Register's own details panel shows "LINKED
+  ACTIVITY" with a working "View in Gantt" button — zero console/page errors throughout.
+
+**What I have not tested:** this on your actual device. Per the usual gate discipline, treat this
+as built-and-verified-in-this-environment, not confirmed — same standard as every prior gate.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
@@ -1132,13 +1205,15 @@ Consumes Tier 2's data, adds nothing that duplicates it. Portfolio-level executi
 enhancements beyond what Dashboard already shows (portfolio-wide filtering by client/country/
 sector/PM/date range) are still open — noted as follow-on work, not done here.
 
+**Activity Linking** (Gate 10, done) — Risk/Issue/Opportunity, RFI/TQ, Meetings, Documents, Daily
+Log, and Change Orders can each optionally link to one Schedule activity, surfaced bidirectionally
+(each register's own details, and the Gantt's Activity Detail Panel's Linked Records section).
+
 **Tier 3 (deferred until Tier 1 is in daily use):** AI Document Processing, Knowledge Base, AI Project
 Assistant, Lessons Learned, final polish
 
 ## Next phase
 
 Tier 2 continues with Resource Management — scope to be decided explicitly before building, same
-as every prior gate. Separately, still open from Gate 9: per-activity linking to Risks/Issues/
-RFIs/Meetings/Documents/Vendors/Change Orders (needs an `activity_id` added to five-plus
-registers — a schema change on the scale of its own gate), a persisted/logo-customizable report-
-template system, and portfolio-level executive dashboard filtering.
+as every prior gate. Separately, still open: a persisted/logo-customizable report-template system,
+portfolio-level executive dashboard filtering, and 10,000+ activity Gantt virtualization.

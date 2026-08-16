@@ -63,6 +63,30 @@
     };
   }
 
+  /** Gate 10: see risks.js's identical helper for the full rationale. */
+  function activityOptionsFor(select, data, projectId, selectedActivityId) {
+    select.innerHTML = "";
+    var noneOpt = document.createElement("option");
+    noneOpt.value = "";
+    noneOpt.textContent = "(none)";
+    select.appendChild(noneOpt);
+
+    var scheduleNameById = {};
+    data.schedules
+      .filter(function (s) { return s.project_id === projectId; })
+      .forEach(function (s) { scheduleNameById[s.id] = s.name; });
+
+    data.activities
+      .filter(function (a) { return a.project_id === projectId; })
+      .forEach(function (a) {
+        var opt = document.createElement("option");
+        opt.value = a.id;
+        opt.textContent = (scheduleNameById[a.schedule_id] || "(schedule)") + ": " + (a.name || "(unnamed activity)");
+        select.appendChild(opt);
+      });
+    select.value = selectedActivityId || "";
+  }
+
   function renderForm(container, co, projects, onSaved) {
     var isNew = uiState.editingId === "new";
     var panel = document.createElement("div");
@@ -101,6 +125,18 @@
     }
     projField.appendChild(projSelect);
     form.appendChild(projField);
+
+    var activityField = document.createElement("div");
+    activityField.className = "field";
+    activityField.innerHTML = "<label>Linked Activity (optional)</label>";
+    var activitySelect = document.createElement("select");
+    activitySelect.id = "cofield-activity_id";
+    activityOptionsFor(activitySelect, window.PCC.store.get(), projSelect.value, co.activity_id);
+    activityField.appendChild(activitySelect);
+    form.appendChild(activityField);
+    projSelect.onchange = function () {
+      activityOptionsFor(activitySelect, window.PCC.store.get(), projSelect.value, "");
+    };
 
     var grid = document.createElement("div");
     grid.className = "form-grid";
@@ -292,6 +328,7 @@
       e.preventDefault();
       var values = readFormValues(form);
       values.project_id = projSelect.value;
+      values.activity_id = activitySelect.value;
       values.source_rfi_id = rfiSelect.value;
       values.source_risk_id = riskSelect.value;
       if (isNew) values.source_meeting_id = co.source_meeting_id || "";
@@ -488,6 +525,13 @@
         if (window.PCC.risks && window.PCC.risks.expandRisk) window.PCC.risks.expandRisk(risk.id);
         window.PCC.router.go("risks");
       }, btn: "View Entry" });
+    }
+    if (co.activity_id) {
+      var linkedActivity = data.activities.find(function (x) { return x.id === co.activity_id; });
+      if (linkedActivity) links.push({ label: "LINKED ACTIVITY", text: linkedActivity.name, go: function () {
+        if (window.PCC.schedule) window.PCC.schedule.viewActivity(co.project_id, linkedActivity.schedule_id, linkedActivity.id);
+        window.PCC.router.go("schedule");
+      }, btn: "View in Gantt" });
     }
 
     links.forEach(function (link) {

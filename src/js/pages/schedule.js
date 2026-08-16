@@ -2073,6 +2073,123 @@
     }
   }
 
+  /** Gate 10 (Activity Linking): every register that can now optionally carry an
+   * `activity_id` — Risks/Issues/Opportunities, RFI/TQ, Meetings, Documents, Daily
+   * Log, Change Orders — surfaced here as one flat, real, live-queried list. Nothing
+   * duplicated or cached: this reads straight from `data` each render, same as every
+   * other cross-module rollup in this app (Portfolio's Details panel, the Meetings
+   * hub). Each row's "View" button uses that module's own existing expand/navigate
+   * API (added in this same gate for Documents/Daily Log; already existed for the
+   * other four), matching the bidirectional-link pattern Change Orders established
+   * for source_rfi_id/source_risk_id/source_meeting_id. */
+  var LINKED_RECORD_SOURCES = [
+    {
+      module: "risks",
+      label: function (r) { return (r.type === "risk" ? "Risk" : r.type === "issue" ? "Issue" : "Opportunity") + ": " + (r.title || "(untitled)"); },
+      list: function (data, activityId) { return data.risks.filter(function (r) { return r.activity_id === activityId; }); },
+      view: function (r) {
+        if (window.PCC.risks && window.PCC.risks.expandRisk) window.PCC.risks.expandRisk(r.id);
+        window.PCC.router.go("risks");
+      },
+    },
+    {
+      module: "rfis",
+      label: function (r) { return r.number + " — " + (r.subject || "(untitled)"); },
+      list: function (data, activityId) { return data.rfis.filter(function (r) { return r.activity_id === activityId; }); },
+      view: function (r) {
+        if (window.PCC.rfis && window.PCC.rfis.expandRfi) window.PCC.rfis.expandRfi(r.id);
+        window.PCC.router.go("rfis");
+      },
+    },
+    {
+      module: "meetings",
+      label: function (m) { return "Meeting: " + (m.title || "(untitled)") + " (" + m.meeting_date + ")"; },
+      list: function (data, activityId) { return data.meetings.filter(function (m) { return m.activity_id === activityId; }); },
+      view: function (m) {
+        if (window.PCC.meetings) window.PCC.meetings.expandMeeting(m.id);
+        window.PCC.router.go("meetings");
+      },
+    },
+    {
+      module: "documents",
+      label: function (d) { return "Document: " + d.filename; },
+      list: function (data, activityId) { return data.documents.filter(function (d) { return d.activity_id === activityId; }); },
+      view: function (d) {
+        if (window.PCC.documents && window.PCC.documents.expandDocument) window.PCC.documents.expandDocument(d.id);
+        window.PCC.router.go("documents");
+      },
+    },
+    {
+      module: "dailylog",
+      label: function (l) { return "Daily Log: " + l.log_date; },
+      list: function (data, activityId) { return data.daily_logs.filter(function (l) { return l.activity_id === activityId; }); },
+      view: function (l) {
+        if (window.PCC.dailyLog && window.PCC.dailyLog.expandLog) window.PCC.dailyLog.expandLog(l.id);
+        window.PCC.router.go("dailylog");
+      },
+    },
+    {
+      module: "changeOrders",
+      label: function (co) { return co.number + " — " + (co.title || "(untitled)"); },
+      list: function (data, activityId) { return data.change_orders.filter(function (co) { return co.activity_id === activityId; }); },
+      view: function (co) {
+        if (window.PCC.changeOrders && window.PCC.changeOrders.expandChangeOrder) window.PCC.changeOrders.expandChangeOrder(co.id);
+        window.PCC.router.go("changeOrders");
+      },
+    },
+  ];
+
+  function renderLinkedRecordsSection(activity, data) {
+    var wrap = document.createElement("div");
+    wrap.style.marginTop = "14px";
+    wrap.style.paddingTop = "10px";
+    wrap.style.borderTop = "1px solid var(--divider)";
+
+    var rows = [];
+    LINKED_RECORD_SOURCES.forEach(function (source) {
+      source.list(data, activity.id).forEach(function (record) {
+        rows.push({ text: source.label(record), view: function () { source.view(record); } });
+      });
+    });
+
+    var heading = document.createElement("p");
+    heading.className = "detail-item__label";
+    heading.style.marginBottom = "6px";
+    heading.textContent = "LINKED RECORDS (" + rows.length + ")";
+    wrap.appendChild(heading);
+
+    if (rows.length === 0) {
+      var empty = document.createElement("p");
+      empty.className = "text-secondary";
+      empty.style.fontSize = "12px";
+      empty.textContent = "No Risks/Issues, RFIs, Meetings, Documents, Daily Log entries, or Change Orders are linked to this activity yet — link one from that record's own Add/Edit form.";
+      wrap.appendChild(empty);
+    } else {
+      rows.forEach(function (row) {
+        var rowEl = document.createElement("div");
+        rowEl.style.display = "flex";
+        rowEl.style.justifyContent = "space-between";
+        rowEl.style.alignItems = "center";
+        rowEl.style.fontSize = "13px";
+        rowEl.style.marginBottom = "4px";
+
+        var text = document.createElement("span");
+        text.textContent = row.text;
+        rowEl.appendChild(text);
+
+        var viewBtn = document.createElement("button");
+        viewBtn.className = "btn btn--ghost";
+        viewBtn.textContent = "View";
+        viewBtn.onclick = row.view;
+        rowEl.appendChild(viewBtn);
+
+        wrap.appendChild(rowEl);
+      });
+    }
+
+    return wrap;
+  }
+
   function renderActivityDetailPanel(container, activity, data, wbsItems, scheduleActivities, relationships, rerender) {
     var panel = document.createElement("div");
     panel.className = "panel";
@@ -2162,14 +2279,7 @@
     relWrap.appendChild(succLine);
     panel.appendChild(relWrap);
 
-    var note = document.createElement("p");
-    note.className = "text-secondary";
-    note.style.fontSize = "12px";
-    note.style.marginTop = "10px";
-    note.textContent =
-      "Linking this activity to Risks, Issues, RFIs, Meetings, Documents, Vendors, or Change Orders isn't built yet — " +
-      "those registers don't currently carry an activity reference. Deferred to a later phase rather than bolted on here.";
-    panel.appendChild(note);
+    panel.appendChild(renderLinkedRecordsSection(activity, data));
 
     var actions = document.createElement("div");
     actions.style.display = "flex";
@@ -2967,4 +3077,18 @@
   }
 
   window.PCC.pages.schedule = render;
+  window.PCC.schedule = {
+    /** Gate 10: the reverse-navigation half of activity linking — every other
+     * register's "View in Gantt" button calls this, then routes to #/schedule. Jumps
+     * straight to the Gantt tab with that activity's own Detail Panel already open,
+     * matching the same "land exactly on the linked record" convention every other
+     * cross-module link in this app already follows (expandRisk/expandRfi/
+     * expandMeeting/expandChangeOrder). */
+    viewActivity: function (projectId, scheduleId, activityId) {
+      uiState.projectId = projectId;
+      uiState.scheduleId = scheduleId;
+      uiState.tab = "gantt";
+      uiState.ganttDetailActivityId = activityId;
+    },
+  };
 })();
