@@ -18,6 +18,11 @@
     summary: "summary",
     "wbs summary": "wbs_summary",
     wbssummary: "wbs_summary",
+    // Underscore form recognized too — it's the raw value the app stores internally
+    // (see store.js's newActivity), so the in-app Excel grid editor (schedule.js) can
+    // round-trip a WBS Summary activity through <select value="wbs_summary"> without a
+    // spurious "unrecognized type" warning on every Apply.
+    wbs_summary: "wbs_summary",
   };
 
   var HEADER_MAP = {
@@ -70,6 +75,29 @@
     notes: "notes",
     comments: "notes",
   };
+
+  // Canonical (key, label) pairs for the recognized schedule columns, in the order
+  // shown throughout the UI (import help text, the in-app Excel grid editor). Every
+  // label here is guaranteed to round-trip through HEADER_MAP back to the same key —
+  // this is the single source of truth for that pairing so the grid editor's column
+  // set and the import-review help text can't drift apart from each other.
+  var CANONICAL_HEADERS = [
+    { key: "external_id", label: "Activity ID" },
+    { key: "name", label: "Activity Name" },
+    { key: "activity_type", label: "Activity Type" },
+    { key: "wbs_code", label: "WBS Code" },
+    { key: "wbs_name", label: "WBS Name" },
+    { key: "duration", label: "Duration" },
+    { key: "planned_start", label: "Planned Start" },
+    { key: "planned_finish", label: "Planned Finish" },
+    { key: "predecessors", label: "Predecessors" },
+    { key: "percent_complete", label: "% Complete" },
+    { key: "discipline", label: "Discipline" },
+    { key: "contractor", label: "Contractor" },
+    { key: "responsible_person", label: "Responsible Person" },
+    { key: "status", label: "Status" },
+    { key: "notes", label: "Notes" },
+  ];
 
   function normalizeHeader(h) {
     return String(h || "").trim().toLowerCase();
@@ -350,5 +378,5 @@
     };
   }
 
-  window.PCC.scheduleImportService = { parseRows: parseRows };
+  window.PCC.scheduleImportService = { parseRows: parseRows, CANONICAL_HEADERS: CANONICAL_HEADERS };
 })();

@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 20;
+  var SCHEMA_VERSION = 24;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -27,6 +27,19 @@
         company_name: "",
         backup_reminder_days: 7,
         backup_nudge_dismissed_at: null,
+        // Gate 9 (Project Executive Center): weights for the configurable health score,
+        // one set applied to every project rather than per-project config — the spec
+        // asks for the weighting logic to be configurable and visible, not for each
+        // project to carry its own tuning. Must sum to 100; projectHealthEngine.js
+        // normalizes defensively if a user edits them into an inconsistent state.
+        health_score_weights: {
+          schedule: 25,
+          cost: 20,
+          risk: 20,
+          issue: 10,
+          rfi: 15,
+          change: 10,
+        },
       },
       projects: [],
       documents: [],
@@ -55,6 +68,30 @@
       // later gate per the locked Tier 2 order.
       cost_budget_items: [],
       cost_actuals: [],
+      // Gate 9 (Project Executive Center): editable overrides for the template-based
+      // Executive Summary, one record per project. See newExecutiveSummary() header.
+      executive_summaries: [],
+      // Gate 11 (Resource Management): resources is a shared, portfolio-wide pool
+      // (not project-scoped) — see the header comment above newResource() for why.
+      resources: [],
+      resource_assignments: [],
+      // Gate 13 (Vendor Management): Vendor Master is portfolio-wide, not scoped to a
+      // single project the way Documents/Risk/RFI are — vendor_project_links is the
+      // many-to-many join, same shape convention as every other join in this store
+      // (a flat array of link records, not nested arrays on either side). The
+      // vendor_meeting_links / vendor_rfi_links / vendor_risk_links joins deliberately
+      // don't touch meetings.js/rfis.js/risks.js's own schemas at all — linking happens
+      // entirely from the Vendor side, and "open the real record" reuses those modules'
+      // existing public expand*() hooks (see vendors.js) instead of adding fields there.
+      vendors: [],
+      vendor_contacts: [],
+      vendor_project_links: [],
+      vendor_documents: [],
+      vendor_meeting_links: [],
+      vendor_rfi_links: [],
+      vendor_risk_links: [],
+      vendor_performance: [],
+      vendor_notes: [],
     };
   }
 
@@ -82,6 +119,20 @@
       location: "",
       sector: "",
       contract_type: "",
+      // Gate 9: "Project Type" on the Executive Center's Overview — distinct from
+      // contract_type (which describes the commercial arrangement, e.g. lump sum vs
+      // cost-plus). E.g. "Commercial Building," "Highway," "Water Treatment Plant."
+      project_type: "",
+      // Gate 9: free-text label for the Executive Center's Overview (e.g. "Design,"
+      // "Procurement," "Construction," "Commissioning"). Not an enum — phases vary too
+      // much by industry/project type to force a fixed list.
+      current_phase: "",
+      // Gate 9: optional manual override for "Forecast Finish" on the Executive Center
+      // when no schedule has been calculated yet (or the PM wants to record a forecast
+      // independent of the CPM engine's own projectFinish). The Executive Center prefers
+      // the active schedule's calculated finish when one exists; this is the fallback,
+      // never silently blended with it — see projectHealthEngine.js/executiveCenter.js.
+      forecast_finish_date: "",
       budget: null,
       contract_value: null,
       currency: "",
@@ -134,6 +185,8 @@
       duplicate_group_id: null,
       original_record_id: null,
       duplicate_reason: null,
+      // Gate 10: optional link to one Schedule activity — see newRisk()'s comment.
+      activity_id: "",
     };
     return Object.assign(base, overrides || {});
   }
@@ -180,6 +233,13 @@
       incidents: "",
       notes: "",
       photos: [],
+      // Gate 10: optional link to one Schedule activity — see newRisk()'s comment.
+      // Deliberately a single pointer, same simplification every other register's
+      // activity link makes, even though a day's log realistically touches several
+      // activities: modeling a many-to-many here would be the only such relationship
+      // in the app, and this still covers the common "log against the activity this
+      // entry is mainly about" case.
+      activity_id: "",
       created_at: now,
       updated_at: now,
     };
@@ -210,6 +270,10 @@
       owner: "",
       mitigation: "",
       source_meeting_id: "",
+      // Gate 10: optional link to one Schedule activity, same many-to-one shape as
+      // cost_budget_items.activity_id (Gate 7) — several risks may point at the same
+      // activity, one risk can't span several. Unlinked is fully valid.
+      activity_id: "",
       created_at: now,
       updated_at: now,
     };
@@ -269,6 +333,9 @@
       minutes: "",
       actions: [],
       recordings: [],
+      // Gate 10: optional link to one Schedule activity — see newRisk()'s comment for
+      // the shape convention this follows.
+      activity_id: "",
       created_at: now,
       updated_at: now,
     };
@@ -344,6 +411,8 @@
       schedule_impact: false,
       revisions: [],
       source_meeting_id: "",
+      // Gate 10: optional link to one Schedule activity — see newRisk()'s comment.
+      activity_id: "",
       created_at: now,
       updated_at: now,
     };
@@ -412,6 +481,8 @@
       source_rfi_id: "",
       source_risk_id: "",
       source_meeting_id: "",
+      // Gate 10: optional link to one Schedule activity — see newRisk()'s comment.
+      activity_id: "",
       revisions: [],
       created_at: now,
       updated_at: now,
@@ -481,6 +552,106 @@
       invoice_ref: "",
       notes: "",
       created_at: now,
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  // ============================================================
+  // GATE 11 — Resource Management (labor/equipment/material) with cross-project
+  // resource leveling. Two shapes, deliberately NOT one register with mandatory
+  // project assignment like every other module in this app:
+  //
+  // - A Resource (`newResource`) is a shared, reusable ASSET — a crew type, a crane,
+  //   a material stockpile — not an event or artifact that belongs to one project the
+  //   way a Risk or a Daily Log entry does. Project assignment being "mandatory on
+  //   every register" (a rule enforced consistently everywhere else in this app) was
+  //   deliberately NOT applied here: a resource that's shared across the portfolio has
+  //   nowhere single to be "assigned" to, and forcing one would be a modeling error,
+  //   not consistency.
+  // - A ResourceAssignment (`newResourceAssignment`) IS project-scoped, just
+  //   transitively — every assignment points at one Schedule activity, and that
+  //   activity already carries its own project_id/schedule_id. This is also what
+  //   makes real cross-project leveling possible: the same crane can be assigned to
+  //   activities in two different projects' schedules, and resourceLevelingEngine.js
+  //   can detect the conflict precisely because assignments aren't siloed per project.
+  //   No cost linkage this gate (explicit call, Aditya, 2026-08-16) — resource
+  //   quantity/availability only; rate x usage feeding Cost Tracking/EVM is deferred,
+  //   matching the same "reconciliation stays a deliberate, separate act" pattern
+  //   Change Orders and Cost Tracking's Portfolio-budget fallback already established.
+  // ============================================================
+
+  var RESOURCE_TYPES = ["labor", "equipment", "material"];
+
+  function newResourceId() {
+    return "res_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  /** `max_availability` is the quantity of this resource available per day (e.g. 5
+   * electricians, 2 cranes) — null means "not set," which resourceLevelingEngine.js
+   * treats as "unlimited / no over-allocation computable," never as zero capacity. */
+  function newResource(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newResourceId(),
+      name: "",
+      type: "labor",
+      unit: "",
+      max_availability: null,
+      notes: "",
+      created_at: now,
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  function newResourceAssignmentId() {
+    return "asg_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  /** Links one Resource to one Schedule activity for a given quantity (e.g. "3
+   * electricians on Rough-In Wiring"). Always tied to exactly one activity — a
+   * resource needed across several activities gets several assignment records, same
+   * "one link per record" shape every other link in this app uses (cost_budget_items,
+   * Gate 10's activity_id fields). */
+  function newResourceAssignment(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newResourceAssignmentId(),
+      resource_id: "",
+      activity_id: "",
+      quantity: null,
+      notes: "",
+      created_at: now,
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  // ============================================================
+  // GATE 9 — Project Executive Center: template-based Executive Summary. Not AI-
+  // generated (explicitly out of scope) — executiveCenter.js computes default text for
+  // each section from real project data at render time; this record only stores the
+  // *edited* override for a section, so a user's rewrite survives even as the underlying
+  // data changes. An empty-string override means "still showing the auto-generated text."
+  // One record per project (project_id is unique within this array by convention, not
+  // enforced by the array shape, same as every other "one row per project" record here).
+  // ============================================================
+
+  function newExecutiveSummaryId() {
+    return "es_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  function newExecutiveSummary(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newExecutiveSummaryId(),
+      project_id: "",
+      status_override: "",
+      achievements_override: "",
+      challenges_override: "",
+      management_attention_override: "",
+      upcoming_override: "",
       updated_at: now,
     };
     return Object.assign(base, overrides || {});
@@ -659,6 +830,255 @@
       relationship_count: 0,
       notes: "",
       created_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  // ============================================================
+  // GATE 9 — Vendor Management. Vendor Master is portfolio-wide (like Projects
+  // themselves), not scoped to one project the way Documents/Risk/RFI are — every
+  // vendor<->X relationship below is its own flat join array rather than an array-typed
+  // field on either side, same "flat records + id references, no nested trees" shape
+  // convention this store already uses everywhere else (see wbs_items' parent_wbs_id
+  // comment). vendor_meeting_links / vendor_rfi_links / vendor_risk_links deliberately
+  // don't add any field to meetings/rfis/risks — see vendors.js for how linking reuses
+  // those modules' existing expandMeeting()/expandRfi()/expandRisk() hooks instead.
+  // ============================================================
+
+  var VENDOR_STATUSES = ["active", "inactive", "preferred", "blacklisted"];
+  // Fixed list per the spec, plus "other" as the escape hatch for "custom categories
+  // added later" — see newVendorDocument's custom_category_label below, which avoids a
+  // schema change being needed the day someone actually needs a 20th category.
+  var VENDOR_DOCUMENT_CATEGORIES = [
+    "mom", "boq", "escalation_matrix", "contract", "purchase_order", "quotation",
+    "technical_submittal", "material_approval", "drawing", "method_statement",
+    "inspection_report", "test_certificate", "quality_document", "safety_document",
+    "insurance_document", "bank_details", "invoice", "performance_report", "other",
+  ];
+  var VENDOR_PROJECT_CONTRACT_STATUSES = ["draft", "active", "completed", "terminated"];
+
+  function newVendorId() {
+    return "vn_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  /** Auto-suggested vendor code (V-0001, V-0002, ...), same "highest existing number + 1"
+   * approach as nextRfiNumber/nextChangeOrderNumber so a deleted vendor never causes a
+   * code to be reused. Always editable on the form — "auto-generated or manual" per spec. */
+  function nextVendorCode(existingVendors) {
+    var highest = 0;
+    (existingVendors || []).forEach(function (v) {
+      var match = /^V-(\d+)$/.exec(v.vendor_code || "");
+      if (match) highest = Math.max(highest, parseInt(match[1], 10));
+    });
+    var next = highest + 1;
+    var padded = next < 1000 ? ("000" + next).slice(-4) : String(next);
+    return "V-" + padded;
+  }
+
+  /** The Vendor Master record itself. Deliberately has NO primary-contact fields of its
+   * own (name/mobile/email etc.) even though the spec's "Basic Information" section
+   * lists them alongside vendor identity — those live in vendor_contacts (with one
+   * marked is_primary) so there's exactly one place contact data can live, not a
+   * duplicate copy on the vendor record that could drift out of sync with the Contacts
+   * list. vendors.js's vendor form still presents primary-contact fields inline for a
+   * one-step "add vendor with its main contact" flow; it upserts into vendor_contacts
+   * on save rather than storing them here. category/trade_discipline are free text, not
+   * enums — this app already leaves comparably open-ended classification fields
+   * (Activity's `discipline`, Cost's category is the exception because Cost Tracking
+   * needed a fixed roll-up) as free text rather than guessing a fixed vendor-trade
+   * taxonomy the spec didn't actually enumerate. */
+  function newVendor(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newVendorId(),
+      vendor_code: "",
+      vendor_name: "",
+      company_name: "",
+      category: "",
+      trade_discipline: "",
+      gst_number: "",
+      pan_number: "",
+      registration_number: "",
+      website: "",
+      office_address: "",
+      city: "",
+      state: "",
+      country: "",
+      postal_code: "",
+      status: "active",
+      notes: "",
+      created_at: now,
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  function newVendorContactId() {
+    return "vc_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  function newVendorContact(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newVendorContactId(),
+      vendor_id: "",
+      name: "",
+      designation: "",
+      mobile: "",
+      email: "",
+      is_primary: false,
+      created_at: now,
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  function newVendorProjectLinkId() {
+    return "vpl_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  /** One row per (vendor, project) pairing — a vendor working on 3 projects has 3 of
+   * these, each with its own role/scope/contract_status, rather than one vendor record
+   * trying to hold three parallel arrays in lockstep. */
+  function newVendorProjectLink(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newVendorProjectLinkId(),
+      vendor_id: "",
+      project_id: "",
+      role: "",
+      scope_of_work: "",
+      contract_status: "active",
+      created_at: now,
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  function newVendorDocumentId() {
+    return "vd_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  /** project_id is OPTIONAL (unlike the mandatory-project rule on Documents/Risk/RFI/
+   * Change Orders) — a vendor's GST certificate or insurance policy isn't "for" any one
+   * project, but a project-specific PO or M.O.M. genuinely is, so both need to be
+   * representable. Version history: every upload is its own record; re-uploading over
+   * an existing document creates a NEW row sharing that document's document_group_id
+   * (defaulted to this row's own id for a first upload) with revision_number
+   * incremented — the "latest" revision is whichever row in a group has the highest
+   * revision_number, computed at render time rather than a denormalized "is_latest"
+   * flag that could drift. Binary bytes live in blobStore (IndexedDB), keyed by this
+   * record's id, same as every other file this app stores. */
+  function newVendorDocument(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newVendorDocumentId(),
+      vendor_id: "",
+      project_id: "",
+      document_group_id: "",
+      revision_number: 1,
+      category: "other",
+      custom_category_label: "",
+      filename: "",
+      file_size: 0,
+      mime_type: "",
+      upload_date: now,
+      uploaded_by: "",
+      expiry_date: "",
+      tags: "",
+      comments: "",
+      content_hash: null,
+      hash_method: null,
+      created_at: now,
+      updated_at: now,
+    };
+    var doc = Object.assign(base, overrides || {});
+    if (!doc.document_group_id) doc.document_group_id = doc.id;
+    return doc;
+  }
+
+  function newVendorMeetingLinkId() {
+    return "vml_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  function newVendorMeetingLink(overrides) {
+    var base = {
+      id: newVendorMeetingLinkId(),
+      vendor_id: "",
+      meeting_id: "",
+      created_at: new Date().toISOString(),
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  function newVendorRfiLinkId() {
+    return "vrl_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  function newVendorRfiLink(overrides) {
+    var base = {
+      id: newVendorRfiLinkId(),
+      vendor_id: "",
+      rfi_id: "",
+      created_at: new Date().toISOString(),
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  function newVendorRiskLinkId() {
+    return "vrsk_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  function newVendorRiskLink(overrides) {
+    var base = {
+      id: newVendorRiskLinkId(),
+      vendor_id: "",
+      risk_id: "",
+      created_at: new Date().toISOString(),
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  function newVendorPerformanceId() {
+    return "vp_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  /** One row per review (supports "review history" as multiple rows over time, not one
+   * mutable record). overall_rating is NOT stored — it's always the average of the four
+   * sub-ratings, computed where it's displayed (vendors.js), so it can never disagree
+   * with its own inputs the way a separately-editable "overall" field could. Ratings are
+   * 1-5 integers (0 = not yet rated), the common default scale absent a spec'd one. */
+  function newVendorPerformance(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newVendorPerformanceId(),
+      vendor_id: "",
+      project_id: "",
+      quality_rating: 0,
+      delivery_rating: 0,
+      communication_rating: 0,
+      safety_rating: 0,
+      comments: "",
+      review_date: now.slice(0, 10),
+      reviewed_by: "",
+      created_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  function newVendorNoteId() {
+    return "vnt_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  function newVendorNote(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newVendorNoteId(),
+      vendor_id: "",
+      note_text: "",
+      author: "",
+      created_at: now,
+      updated_at: now,
     };
     return Object.assign(base, overrides || {});
   }
@@ -862,6 +1282,70 @@
         if (b.activity_id === undefined) b.activity_id = "";
       });
       loaded.schema_version = 20;
+    }
+
+    if (loaded.schema_version < 21) {
+      // Gate 9: Project Executive Center. New array + project fields, nothing to
+      // backfill on existing records — same as every prior gate that added a register
+      // or a handful of new project-level fields (defaults below match newProject()'s
+      // own defaults so an old project reads identically to a brand-new one).
+      if (!loaded.executive_summaries) loaded.executive_summaries = [];
+      (loaded.projects || []).forEach(function (p) {
+        if (p.project_type === undefined) p.project_type = "";
+        if (p.current_phase === undefined) p.current_phase = "";
+        if (p.forecast_finish_date === undefined) p.forecast_finish_date = "";
+      });
+      if (loaded.settings && !loaded.settings.health_score_weights) {
+        loaded.settings.health_score_weights = {
+          schedule: 25,
+          cost: 20,
+          risk: 20,
+          issue: 10,
+          rfi: 15,
+          change: 10,
+        };
+      }
+      loaded.schema_version = 21;
+    }
+
+    if (loaded.schema_version < 22) {
+      // Gate 10: activity linking. Backfills activity_id: "" (unlinked) onto every
+      // existing record in the six registers that can now optionally point at one
+      // Schedule activity — nothing to migrate beyond the default, same as every prior
+      // gate that added an optional link field.
+      (loaded.risks || []).forEach(function (r) { if (r.activity_id === undefined) r.activity_id = ""; });
+      (loaded.rfis || []).forEach(function (r) { if (r.activity_id === undefined) r.activity_id = ""; });
+      (loaded.meetings || []).forEach(function (m) { if (m.activity_id === undefined) m.activity_id = ""; });
+      (loaded.documents || []).forEach(function (d) { if (d.activity_id === undefined) d.activity_id = ""; });
+      (loaded.daily_logs || []).forEach(function (l) { if (l.activity_id === undefined) l.activity_id = ""; });
+      (loaded.change_orders || []).forEach(function (co) { if (co.activity_id === undefined) co.activity_id = ""; });
+      loaded.schema_version = 22;
+    }
+
+    if (loaded.schema_version < 23) {
+      // Gate 11: Resource Management. Brand new arrays, nothing to backfill on
+      // existing records — same as every prior gate that introduced a new register.
+      if (!loaded.resources) loaded.resources = [];
+      if (!loaded.resource_assignments) loaded.resource_assignments = [];
+      loaded.schema_version = 23;
+    }
+
+    if (loaded.schema_version < 24) {
+      // Gate 13: Vendor Management. Nine brand new arrays, nothing to backfill on
+      // existing records — same as every prior gate that introduced a new register.
+      // (Originally built as this branch's "Gate 9" against schema v21 in a parallel
+      // session; renumbered to Gate 13 / v24 when reconciled into main alongside
+      // Gates 9-11 above, which had independently claimed v21-v23 in the meantime.)
+      if (!loaded.vendors) loaded.vendors = [];
+      if (!loaded.vendor_contacts) loaded.vendor_contacts = [];
+      if (!loaded.vendor_project_links) loaded.vendor_project_links = [];
+      if (!loaded.vendor_documents) loaded.vendor_documents = [];
+      if (!loaded.vendor_meeting_links) loaded.vendor_meeting_links = [];
+      if (!loaded.vendor_rfi_links) loaded.vendor_rfi_links = [];
+      if (!loaded.vendor_risk_links) loaded.vendor_risk_links = [];
+      if (!loaded.vendor_performance) loaded.vendor_performance = [];
+      if (!loaded.vendor_notes) loaded.vendor_notes = [];
+      loaded.schema_version = 24;
     }
 
     return loaded;
@@ -1203,5 +1687,22 @@
     newCostBudgetItem: newCostBudgetItem,
     newCostActual: newCostActual,
     COST_CATEGORIES: COST_CATEGORIES,
+    newExecutiveSummary: newExecutiveSummary,
+    newResource: newResource,
+    newResourceAssignment: newResourceAssignment,
+    RESOURCE_TYPES: RESOURCE_TYPES,
+    newVendor: newVendor,
+    nextVendorCode: nextVendorCode,
+    VENDOR_STATUSES: VENDOR_STATUSES,
+    newVendorContact: newVendorContact,
+    newVendorProjectLink: newVendorProjectLink,
+    VENDOR_PROJECT_CONTRACT_STATUSES: VENDOR_PROJECT_CONTRACT_STATUSES,
+    newVendorDocument: newVendorDocument,
+    VENDOR_DOCUMENT_CATEGORIES: VENDOR_DOCUMENT_CATEGORIES,
+    newVendorMeetingLink: newVendorMeetingLink,
+    newVendorRfiLink: newVendorRfiLink,
+    newVendorRiskLink: newVendorRiskLink,
+    newVendorPerformance: newVendorPerformance,
+    newVendorNote: newVendorNote,
   };
 })();

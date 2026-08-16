@@ -34,12 +34,43 @@
     // Gate 2 import flow
     importPanelOpen: false,
     importStep: "pick", // 'pick' | 'reviewing' | 'importing'
-    importFile: null, // { name, size, buffer, hash, hashMethod }
+    importFile: null, // { name, size, hash, hashMethod, fileData } — fileData is a base64 data URI, stored via blobStore on commit
     importParsed: null, // result of scheduleImportService.parseRows()
     importDuplicateMatches: [], // schedules in this project that appear to be the same source file
     importDuplicateAcknowledged: false,
     importScheduleName: "",
     importError: null,
+    importCommitting: false,
+    // Gate 8 (interactive Gantt editing).
+    ganttFilter: {
+      search: "",
+      wbsId: "",
+      discipline: "",
+      contractor: "",
+      responsiblePerson: "",
+      quick: "", // '' | 'critical' | 'near_critical' | 'delayed' | 'completed' | 'in_progress' | 'not_started' | 'milestones'
+    },
+    ganttZoom: "auto", // 'auto' | 'day' | 'week' | 'month' | 'quarter' | 'year'
+    ganttDetailActivityId: null,
+    ganttShowBaseline: false,
+    ganttBaselineId: "",
+    ganttBaselineSnapshot: null, // { baselineId, activities } once loaded
+    ganttBaselineLoading: false,
+    relationshipPrefillId: null, // predecessor id to prefill when "+ Add Relationship" is used from the Gantt detail panel
+    // Gate 12: in-app Excel editor. The attached file (blobStore, keyed by schedule.id)
+    // is edited as a grid of the recognized columns, then re-run through the same
+    // scheduleImportService.parseRows() used at import time and applied back onto the
+    // *same* schedule id — see renderExcelEditorPanel() below.
+    excelEditorOpen: false,
+    excelEditorScheduleId: null,
+    excelEditorStep: "grid", // 'grid' | 'review'
+    excelEditorRows: [], // [{ external_id, name, activity_type, wbs_code, wbs_name, duration, planned_start, planned_finish, predecessors, percent_complete, discipline, contractor, responsible_person, status, notes }]
+    excelEditorHandAddedCount: 0, // activities on this schedule with no external_id — not shown in the grid, deleted if Apply proceeds
+    excelEditorHandAddedAcknowledged: false,
+    excelEditorReview: null, // result of scheduleImportService.parseRows() from the grid's current contents
+    excelEditorError: null,
+    excelEditorSaving: false,
+    excelEditorNextNewSeq: 1, // suggested "NEW-N" external_id for rows added via "+ Add Row"
   };
 
   function projectName(projects, projectId) {
@@ -62,6 +93,24 @@
       return x.id === activityId;
     });
     return a ? a.name || "(unnamed activity)" : "(deleted activity)";
+  }
+
+  /** Shared by the Activities tab list and the Gantt tab's detail panel (Gate 8) so
+   * both delete the same way — confirm, then remove the activity and any relationship
+   * referencing it, matching the pattern every other register's delete already uses. */
+  function deleteActivityWithConfirm(activity, rerender) {
+    if (!confirm('Delete activity "' + activity.name + '"? This also removes any relationships referencing it.')) return;
+    window.PCC.store.update(function (data2) {
+      data2.activities = data2.activities.filter(function (item) {
+        return item.id !== activity.id;
+      });
+      data2.relationships = data2.relationships.filter(function (rel) {
+        return rel.predecessor_id !== activity.id && rel.successor_id !== activity.id;
+      });
+    });
+    window.PCC.notify("Activity deleted.", "success");
+    if (uiState.ganttDetailActivityId === activity.id) uiState.ganttDetailActivityId = null;
+    rerender();
   }
 
   // ---------------------------------------------------------------------------------
@@ -227,6 +276,26 @@
   // Gate 2 \u2014 Excel import
   // ---------------------------------------------------------------------------------
 
+  /** Base64-encodes an ArrayBuffer in fixed-size chunks (avoids both the slow
+   * per-byte-string-concat path and the call-stack limit of spreading a huge typed
+   * array into String.fromCharCode.apply at once). Same approach as documents.js's
+   * copy of this helper \u2014 kept as a private per-module copy rather than a shared
+   * utility, matching this codebase's existing convention (no shared utils module). */
+  function arrayBufferToBase64(buffer) {
+    var bytes = new Uint8Array(buffer);
+    var chunkSize = 8192;
+    var chunks = [];
+    for (var i = 0; i < bytes.length; i += chunkSize) {
+      chunks.push(String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize)));
+    }
+    return btoa(chunks.join(""));
+  }
+
+  var XLSX_MIME_TYPES = {
+    xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    xls: "application/vnd.ms-excel",
+  };
+
   function resetImportState() {
     uiState.importPanelOpen = false;
     uiState.importStep = "pick";
@@ -236,6 +305,7 @@
     uiState.importDuplicateAcknowledged = false;
     uiState.importScheduleName = "";
     uiState.importError = null;
+    uiState.importCommitting = false;
   }
 
   function handleImportFileSelected(file, data, rerender) {
@@ -270,9 +340,10 @@
       }
 
       var parsed = window.PCC.scheduleImportService.parseRows(headers, rows);
+      var fileDataUri = "data:" + (XLSX_MIME_TYPES[ext] || "application/octet-stream") + ";base64," + arrayBufferToBase64(buffer);
 
       window.PCC.duplicateService.fingerprintFile(buffer, file.name, file.size).then(function (fp) {
-        uiState.importFile = { name: file.name, size: file.size, hash: fp.hash, hashMethod: fp.method };
+        uiState.importFile = { name: file.name, size: file.size, hash: fp.hash, hashMethod: fp.method, fileData: fileDataUri };
         uiState.importParsed = parsed;
         uiState.importScheduleName = file.name.replace(/\.(xlsx|xls)$/i, "");
         uiState.importDuplicateAcknowledged = false;
@@ -291,6 +362,70 @@
       });
     };
     reader.readAsArrayBuffer(file);
+  }
+
+  /** Turns a scheduleImportService.parseRows() result into store-shaped WBS/Activity/
+   * Relationship records for one schedule. Shared by commitImport (new schedule, Gate
+   * 2) and applyExcelEdit (existing schedule, Gate 12) so both go through identical
+   * construction logic \u2014 only the target schedule id and whether the records get
+   * pushed as new vs. spliced in as a replacement differs between the two callers. */
+  function buildScheduleRecords(parsed, projectId, scheduleId) {
+    // WBS: create every parsed entry first so a code\u2192id map exists before wiring
+    // parent_wbs_id \u2014 order of creation doesn't matter since parents are resolved by
+    // code lookup afterward, not by creation sequence.
+    var wbsCodeToId = {};
+    var wbsItems = parsed.wbsEntries.map(function (w) {
+      var item = window.PCC.store.newWbsItem({
+        project_id: projectId,
+        schedule_id: scheduleId,
+        code: w.code,
+        name: w.name,
+        level: w.level,
+      });
+      wbsCodeToId[w.code] = item.id;
+      return item;
+    });
+    wbsItems.forEach(function (item, i) {
+      var parentCode = parsed.wbsEntries[i].parent_code;
+      item.parent_wbs_id = parentCode ? wbsCodeToId[parentCode] || null : null;
+    });
+
+    var externalIdToActivityId = {};
+    var activities = parsed.activities.map(function (a) {
+      var activity = window.PCC.store.newActivity({
+        project_id: projectId,
+        schedule_id: scheduleId,
+        wbs_id: a.wbs_code ? wbsCodeToId[a.wbs_code] || null : null,
+        name: a.name,
+        activity_type: a.activity_type,
+        duration: a.duration,
+        remaining_duration: a.duration,
+        original_duration: a.duration,
+        planned_start: a.planned_start,
+        planned_finish: a.planned_finish,
+        percent_complete: a.percent_complete,
+        discipline: a.discipline,
+        contractor: a.contractor,
+        responsible_person: a.responsible_person,
+        status: a.status,
+        notes: a.notes,
+        external_id: a.external_id,
+      });
+      externalIdToActivityId[a.external_id] = activity.id;
+      return activity;
+    });
+
+    var relationships = parsed.relationships.map(function (r) {
+      return window.PCC.store.newRelationship({
+        schedule_id: scheduleId,
+        predecessor_id: externalIdToActivityId[r.predecessor_external_id],
+        successor_id: externalIdToActivityId[r.successor_external_id],
+        type: r.type,
+        lag: r.lag,
+      });
+    });
+
+    return { wbsItems: wbsItems, activities: activities, relationships: relationships };
   }
 
   function commitImport(data, rerender) {
@@ -318,77 +453,78 @@
       hash_method: uiState.importFile.hashMethod,
     });
 
-    // WBS: create every parsed entry first so a code\u2192id map exists before wiring
-    // parent_wbs_id \u2014 order of creation doesn't matter since parents are resolved by
-    // code lookup afterward, not by creation sequence.
-    var wbsCodeToId = {};
-    var newWbsItems = parsed.wbsEntries.map(function (w) {
-      var item = window.PCC.store.newWbsItem({
-        project_id: uiState.projectId,
-        schedule_id: newSchedule.id,
-        code: w.code,
-        name: w.name,
-        level: w.level,
+    var records = buildScheduleRecords(parsed, uiState.projectId, newSchedule.id);
+
+    uiState.importCommitting = true;
+    uiState.importError = null;
+
+    function finishImport() {
+      window.PCC.store.update(function (d) {
+        d.schedules.push(newSchedule);
+        d.wbs_items = d.wbs_items.concat(records.wbsItems);
+        d.activities = d.activities.concat(records.activities);
+        d.relationships = d.relationships.concat(records.relationships);
       });
-      wbsCodeToId[w.code] = item.id;
-      return item;
-    });
-    newWbsItems.forEach(function (item, i) {
-      var parentCode = parsed.wbsEntries[i].parent_code;
-      item.parent_wbs_id = parentCode ? wbsCodeToId[parentCode] || null : null;
-    });
 
-    var externalIdToActivityId = {};
-    var newActivities = parsed.activities.map(function (a) {
-      var activity = window.PCC.store.newActivity({
-        project_id: uiState.projectId,
-        schedule_id: newSchedule.id,
-        wbs_id: a.wbs_code ? wbsCodeToId[a.wbs_code] || null : null,
-        name: a.name,
-        activity_type: a.activity_type,
-        duration: a.duration,
-        remaining_duration: a.duration,
-        original_duration: a.duration,
-        planned_start: a.planned_start,
-        planned_finish: a.planned_finish,
-        percent_complete: a.percent_complete,
-        discipline: a.discipline,
-        contractor: a.contractor,
-        responsible_person: a.responsible_person,
-        status: a.status,
-        notes: a.notes,
-        external_id: a.external_id,
+      window.PCC.notify(
+        "Imported " + records.activities.length + " activities as a new schedule (Rev " + nextRevision +
+          "). The original Excel file is attached \u2014 use \u201cEdit Excel\u201d to update it in place.",
+        "success"
+      );
+
+      uiState.scheduleId = newSchedule.id;
+      uiState.tab = "activities";
+      resetImportState();
+      rerender();
+    }
+
+    // Store the original file first (same precedent as documents.js's Save Document
+    // handler): if IndexedDB write fails, nothing is written to the main store either,
+    // rather than leaving a schedule record that claims a source file that isn't there.
+    window.PCC.blobStore
+      .putBlob(newSchedule.id, uiState.importFile.fileData)
+      .then(finishImport)
+      .catch(function (e) {
+        uiState.importCommitting = false;
+        uiState.importError = "Could not store the original Excel file: " + e.message;
+        rerender();
       });
-      externalIdToActivityId[a.external_id] = activity.id;
-      return activity;
+  }
+
+  /** Renders a collapsible list of a parseRows() result's errors/warnings, or null if
+   * there's nothing to show. Shared by the Import review step and the Excel-editor
+   * review step so the two stay visually identical rather than drifting apart. */
+  function renderParsedIssuesToggle(parsed) {
+    var summary = parsed.summary;
+    if (summary.warnings === 0 && summary.errors === 0) return null;
+
+    var issuesToggle = document.createElement("details");
+    issuesToggle.style.marginBottom = "12px";
+    var summaryTag = document.createElement("summary");
+    summaryTag.style.cursor = "pointer";
+    summaryTag.style.fontSize = "13px";
+    summaryTag.textContent = "View " + (summary.errors + summary.warnings) + " issue(s)";
+    issuesToggle.appendChild(summaryTag);
+    var issuesList = document.createElement("div");
+    issuesList.style.maxHeight = "220px";
+    issuesList.style.overflowY = "auto";
+    issuesList.style.marginTop = "8px";
+    parsed.errors.forEach(function (e) {
+      var p = document.createElement("p");
+      p.style.fontSize = "12px";
+      p.style.color = "var(--status-critical)";
+      p.textContent = (e.row ? "Row " + e.row + ": " : "") + e.message;
+      issuesList.appendChild(p);
     });
-
-    var newRelationships = parsed.relationships.map(function (r) {
-      return window.PCC.store.newRelationship({
-        schedule_id: newSchedule.id,
-        predecessor_id: externalIdToActivityId[r.predecessor_external_id],
-        successor_id: externalIdToActivityId[r.successor_external_id],
-        type: r.type,
-        lag: r.lag,
-      });
+    parsed.warnings.forEach(function (w) {
+      var p = document.createElement("p");
+      p.style.fontSize = "12px";
+      p.style.color = "var(--status-at-risk)";
+      p.textContent = (w.row ? "Row " + w.row + ": " : "") + w.message;
+      issuesList.appendChild(p);
     });
-
-    window.PCC.store.update(function (d) {
-      d.schedules.push(newSchedule);
-      d.wbs_items = d.wbs_items.concat(newWbsItems);
-      d.activities = d.activities.concat(newActivities);
-      d.relationships = d.relationships.concat(newRelationships);
-    });
-
-    window.PCC.notify(
-      "Imported " + newActivities.length + " activities as a new schedule (Rev " + nextRevision + ").",
-      "success"
-    );
-
-    uiState.scheduleId = newSchedule.id;
-    uiState.tab = "activities";
-    resetImportState();
-    rerender();
+    issuesToggle.appendChild(issuesList);
+    return issuesToggle;
   }
 
   function renderImportPanel(container, data, rerender) {
@@ -510,35 +646,8 @@
         panel.appendChild(errNote);
       }
 
-      if (summary.warnings > 0 || summary.errors > 0) {
-        var issuesToggle = document.createElement("details");
-        issuesToggle.style.marginBottom = "12px";
-        var summaryTag = document.createElement("summary");
-        summaryTag.style.cursor = "pointer";
-        summaryTag.style.fontSize = "13px";
-        summaryTag.textContent = "View " + (summary.errors + summary.warnings) + " issue(s)";
-        issuesToggle.appendChild(summaryTag);
-        var issuesList = document.createElement("div");
-        issuesList.style.maxHeight = "220px";
-        issuesList.style.overflowY = "auto";
-        issuesList.style.marginTop = "8px";
-        parsed.errors.forEach(function (e) {
-          var p = document.createElement("p");
-          p.style.fontSize = "12px";
-          p.style.color = "var(--status-critical)";
-          p.textContent = (e.row ? "Row " + e.row + ": " : "") + e.message;
-          issuesList.appendChild(p);
-        });
-        parsed.warnings.forEach(function (w) {
-          var p = document.createElement("p");
-          p.style.fontSize = "12px";
-          p.style.color = "var(--status-at-risk)";
-          p.textContent = (w.row ? "Row " + w.row + ": " : "") + w.message;
-          issuesList.appendChild(p);
-        });
-        issuesToggle.appendChild(issuesList);
-        panel.appendChild(issuesToggle);
-      }
+      var issuesToggle = renderParsedIssuesToggle(parsed);
+      if (issuesToggle) panel.appendChild(issuesToggle);
 
       var nameField = document.createElement("div");
       nameField.className = "field";
@@ -560,8 +669,11 @@
 
       var confirmBtn = document.createElement("button");
       confirmBtn.className = "btn btn--primary";
-      confirmBtn.textContent = "Confirm Import (" + summary.imported + " activities)";
-      confirmBtn.disabled = summary.imported === 0 || (uiState.importDuplicateMatches.length > 0 && !uiState.importDuplicateAcknowledged);
+      confirmBtn.textContent = uiState.importCommitting ? "Saving…" : "Confirm Import (" + summary.imported + " activities)";
+      confirmBtn.disabled =
+        summary.imported === 0 ||
+        uiState.importCommitting ||
+        (uiState.importDuplicateMatches.length > 0 && !uiState.importDuplicateAcknowledged);
       confirmBtn.onclick = function () {
         commitImport(data, rerender);
       };
@@ -570,6 +682,7 @@
       var cancelReviewBtn = document.createElement("button");
       cancelReviewBtn.className = "btn btn--ghost";
       cancelReviewBtn.textContent = "Cancel";
+      cancelReviewBtn.disabled = uiState.importCommitting;
       cancelReviewBtn.onclick = function () {
         resetImportState();
         rerender();
@@ -577,6 +690,561 @@
       actions.appendChild(cancelReviewBtn);
 
       panel.appendChild(actions);
+
+      if (uiState.importError) {
+        var reviewErr = document.createElement("p");
+        reviewErr.style.color = "var(--status-critical)";
+        reviewErr.style.fontSize = "13px";
+        reviewErr.style.marginTop = "10px";
+        reviewErr.textContent = uiState.importError;
+        panel.appendChild(reviewErr);
+      }
+    }
+
+    container.appendChild(panel);
+  }
+
+  // ---------------------------------------------------------------------------------
+  // Gate 12 — in-app Excel editor. Only offered on schedules that came from an Excel
+  // import (source_file_name set — see commitImport above), since the whole pipeline
+  // below re-runs scheduleImportService.parseRows() the same way import does, and that
+  // requires every row to carry an Activity ID the way an imported activity always
+  // does. Hand-built (Gate 1 CRUD) activities have no external_id and so aren't
+  // representable in the grid — see the hand-added-activity guard in
+  // renderExcelReviewStep()/applyExcelEdits() below.
+  // ---------------------------------------------------------------------------------
+
+  var EXCEL_GRID_FIELDS = window.PCC.scheduleImportService.CANONICAL_HEADERS;
+
+  function resetExcelEditorState() {
+    uiState.excelEditorOpen = false;
+    uiState.excelEditorScheduleId = null;
+    uiState.excelEditorStep = "grid";
+    uiState.excelEditorRows = [];
+    uiState.excelEditorReview = null;
+    uiState.excelEditorHandAddedAcknowledged = false;
+    uiState.excelEditorError = null;
+    uiState.excelEditorSaving = false;
+    uiState.excelEditorNextNewSeq = 1;
+  }
+
+  /** Reconstructs the "A010FS+2,A020" predecessor token string for one activity from
+   * the schedule's relationship records, the same format parseRows() expects on the
+   * way back in. A predecessor with no external_id (a hand-added activity — see the
+   * module comment above) can't be expressed in this format and is silently dropped
+   * from the string; the hand-added-activity guard elsewhere is what surfaces that
+   * loss to the user before they commit to it, so this function doesn't need to. */
+  function buildPredecessorsString(activity, relationships, activitiesById) {
+    var tokens = relationships
+      .filter(function (r) {
+        return r.successor_id === activity.id;
+      })
+      .map(function (r) {
+        var pred = activitiesById[r.predecessor_id];
+        if (!pred || !pred.external_id) return null;
+        var token = pred.external_id;
+        if (r.type && r.type !== "FS") token += r.type;
+        if (r.lag) token += (r.lag > 0 ? "+" : "") + r.lag;
+        return token;
+      })
+      .filter(function (t) {
+        return t;
+      });
+    return tokens.join(",");
+  }
+
+  /** Builds the editable grid's row data from the schedule's CURRENT Activities/WBS/
+   * Relationships — not by re-reading the attached file's bytes. This means the grid
+   * always reflects whatever's live in the schedule (including any prior Apply), and
+   * the attached Excel file is kept as a byproduct of Apply rather than the source of
+   * truth read on every open. */
+  function openExcelEditor(schedule, data, rerender) {
+    var wbsById = {};
+    data.wbs_items
+      .filter(function (w) {
+        return w.schedule_id === schedule.id;
+      })
+      .forEach(function (w) {
+        wbsById[w.id] = w;
+      });
+    var activitiesById = {};
+    data.activities
+      .filter(function (a) {
+        return a.schedule_id === schedule.id;
+      })
+      .forEach(function (a) {
+        activitiesById[a.id] = a;
+      });
+    var relationships = data.relationships.filter(function (r) {
+      return r.schedule_id === schedule.id;
+    });
+
+    uiState.excelEditorRows = data.activities
+      .filter(function (a) {
+        return a.schedule_id === schedule.id && a.external_id;
+      })
+      .map(function (a) {
+        var wbs = a.wbs_id ? wbsById[a.wbs_id] : null;
+        return {
+          external_id: a.external_id || "",
+          name: a.name || "",
+          activity_type: a.activity_type || "task",
+          wbs_code: wbs ? wbs.code : "",
+          wbs_name: wbs ? wbs.name : "",
+          duration: a.duration != null ? String(a.duration) : "",
+          planned_start: a.planned_start || "",
+          planned_finish: a.planned_finish || "",
+          predecessors: buildPredecessorsString(a, relationships, activitiesById),
+          percent_complete: a.percent_complete != null ? String(a.percent_complete) : "",
+          discipline: a.discipline || "",
+          contractor: a.contractor || "",
+          responsible_person: a.responsible_person || "",
+          status: a.status || "not_started",
+          notes: a.notes || "",
+        };
+      });
+
+    uiState.excelEditorOpen = true;
+    uiState.excelEditorScheduleId = schedule.id;
+    uiState.excelEditorStep = "grid";
+    uiState.excelEditorReview = null;
+    uiState.excelEditorHandAddedAcknowledged = false;
+    uiState.excelEditorError = null;
+    uiState.excelEditorNextNewSeq = 1;
+    rerender();
+  }
+
+  /** Grid cells are read from the DOM only when something needs their current values
+   * (adding/deleting a row, or Review Changes) — not on every keystroke — for the same
+   * reason renderScheduleForm() above reads its fields at submit time instead of
+   * tracking each input in uiState: a full outlet re-render on every keystroke would
+   * blow away focus/cursor position mid-edit. */
+  function syncExcelEditorRowsFromDom() {
+    uiState.excelEditorRows.forEach(function (row, i) {
+      EXCEL_GRID_FIELDS.forEach(function (f) {
+        var el = document.getElementById("excelgrid-" + i + "-" + f.key);
+        if (el) row[f.key] = el.value;
+      });
+    });
+  }
+
+  function excelCellControl(rowIndex, field, value) {
+    var id = "excelgrid-" + rowIndex + "-" + field.key;
+    if (field.key === "activity_type") {
+      var typeSelect = document.createElement("select");
+      typeSelect.id = id;
+      typeSelect.style.width = "100%";
+      ["task", "milestone", "summary", "wbs_summary"].forEach(function (k) {
+        var opt = document.createElement("option");
+        opt.value = k;
+        opt.textContent = ACTIVITY_TYPE_LABELS[k];
+        typeSelect.appendChild(opt);
+      });
+      typeSelect.value = value || "task";
+      return typeSelect;
+    }
+    if (field.key === "status") {
+      var statusSelect = document.createElement("select");
+      statusSelect.id = id;
+      statusSelect.style.width = "100%";
+      Object.keys(ACTIVITY_STATUS_LABELS).forEach(function (k) {
+        var opt = document.createElement("option");
+        opt.value = k;
+        opt.textContent = ACTIVITY_STATUS_LABELS[k];
+        statusSelect.appendChild(opt);
+      });
+      statusSelect.value = value || "not_started";
+      return statusSelect;
+    }
+    var input = document.createElement("input");
+    input.id = id;
+    input.value = value || "";
+    input.style.width = "100%";
+    input.style.boxSizing = "border-box";
+    if (field.key === "planned_start" || field.key === "planned_finish") input.type = "date";
+    else if (field.key === "duration" || field.key === "percent_complete") {
+      input.type = "number";
+      input.step = "any";
+    } else input.type = "text";
+    return input;
+  }
+
+  function renderExcelGridStep(panel, schedule, data, rerender) {
+    var gridActions = document.createElement("div");
+    gridActions.style.display = "flex";
+    gridActions.style.gap = "10px";
+    gridActions.style.marginBottom = "10px";
+
+    var addRowBtn = document.createElement("button");
+    addRowBtn.type = "button";
+    addRowBtn.className = "btn btn--ghost";
+    addRowBtn.textContent = "+ Add Row";
+    addRowBtn.onclick = function () {
+      syncExcelEditorRowsFromDom();
+      var seq = uiState.excelEditorNextNewSeq++;
+      uiState.excelEditorRows.push({
+        external_id: "NEW-" + seq,
+        name: "",
+        activity_type: "task",
+        wbs_code: "",
+        wbs_name: "",
+        duration: "",
+        planned_start: "",
+        planned_finish: "",
+        predecessors: "",
+        percent_complete: "",
+        discipline: "",
+        contractor: "",
+        responsible_person: "",
+        status: "not_started",
+        notes: "",
+      });
+      rerender();
+    };
+    gridActions.appendChild(addRowBtn);
+    panel.appendChild(gridActions);
+
+    if (uiState.excelEditorRows.length === 0) {
+      var emptyNote = document.createElement("p");
+      emptyNote.className = "text-secondary";
+      emptyNote.style.fontSize = "12px";
+      emptyNote.style.marginBottom = "10px";
+      emptyNote.textContent = "No activities from the original Excel file remain on this schedule. Click “+ Add Row” to start adding some, or Close and use the Activities tab instead.";
+      panel.appendChild(emptyNote);
+    }
+
+    var tableWrap = document.createElement("div");
+    tableWrap.style.overflowX = "auto";
+    tableWrap.style.maxHeight = "440px";
+    tableWrap.style.overflowY = "auto";
+    tableWrap.style.border = "1px solid var(--divider)";
+    tableWrap.style.borderRadius = "var(--radius-sm)";
+    tableWrap.style.marginBottom = "12px";
+
+    var table = document.createElement("table");
+    table.style.borderCollapse = "collapse";
+    table.style.width = "100%";
+    table.style.fontSize = "12px";
+
+    var thead = document.createElement("thead");
+    var headRow = document.createElement("tr");
+    EXCEL_GRID_FIELDS.forEach(function (f) {
+      var th = document.createElement("th");
+      th.textContent = f.label;
+      th.style.textAlign = "left";
+      th.style.padding = "6px 8px";
+      th.style.borderBottom = "1px solid var(--divider)";
+      th.style.position = "sticky";
+      th.style.top = "0";
+      th.style.backgroundColor = "var(--bg-paper-raised)";
+      th.style.whiteSpace = "nowrap";
+      headRow.appendChild(th);
+    });
+    var thActions = document.createElement("th");
+    thActions.style.borderBottom = "1px solid var(--divider)";
+    thActions.style.position = "sticky";
+    thActions.style.top = "0";
+    thActions.style.backgroundColor = "var(--bg-paper-raised)";
+    headRow.appendChild(thActions);
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    var tbody = document.createElement("tbody");
+    uiState.excelEditorRows.forEach(function (row, i) {
+      var tr = document.createElement("tr");
+      EXCEL_GRID_FIELDS.forEach(function (f) {
+        var td = document.createElement("td");
+        td.style.padding = "3px 6px";
+        td.style.borderBottom = "1px solid var(--divider)";
+        td.style.minWidth = f.key === "name" || f.key === "notes" ? "160px" : "110px";
+        td.appendChild(excelCellControl(i, f, row[f.key]));
+        tr.appendChild(td);
+      });
+      var tdActions = document.createElement("td");
+      tdActions.style.padding = "3px 6px";
+      tdActions.style.borderBottom = "1px solid var(--divider)";
+      var delBtn = document.createElement("button");
+      delBtn.type = "button";
+      delBtn.className = "btn btn--ghost";
+      delBtn.style.padding = "2px 8px";
+      delBtn.title = "Delete row";
+      delBtn.textContent = "×";
+      delBtn.onclick = function () {
+        syncExcelEditorRowsFromDom();
+        uiState.excelEditorRows.splice(i, 1);
+        rerender();
+      };
+      tdActions.appendChild(delBtn);
+      tr.appendChild(tdActions);
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    tableWrap.appendChild(table);
+    panel.appendChild(tableWrap);
+
+    var bottomActions = document.createElement("div");
+    bottomActions.style.display = "flex";
+    bottomActions.style.gap = "10px";
+
+    var reviewBtn = document.createElement("button");
+    reviewBtn.type = "button";
+    reviewBtn.className = "btn btn--primary";
+    reviewBtn.textContent = "Review Changes";
+    reviewBtn.onclick = function () {
+      syncExcelEditorRowsFromDom();
+      var headerLabels = EXCEL_GRID_FIELDS.map(function (f) {
+        return f.label;
+      });
+      var rowArrays = uiState.excelEditorRows.map(function (row) {
+        return EXCEL_GRID_FIELDS.map(function (f) {
+          return row[f.key] || "";
+        });
+      });
+      uiState.excelEditorReview = window.PCC.scheduleImportService.parseRows(headerLabels, rowArrays);
+      uiState.excelEditorStep = "review";
+      rerender();
+    };
+    bottomActions.appendChild(reviewBtn);
+
+    var closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.className = "btn btn--ghost";
+    closeBtn.textContent = "Close";
+    closeBtn.onclick = function () {
+      resetExcelEditorState();
+      rerender();
+    };
+    bottomActions.appendChild(closeBtn);
+    panel.appendChild(bottomActions);
+
+    if (uiState.excelEditorError) {
+      var gridErr = document.createElement("p");
+      gridErr.style.color = "var(--status-critical)";
+      gridErr.style.fontSize = "13px";
+      gridErr.style.marginTop = "10px";
+      gridErr.textContent = uiState.excelEditorError;
+      panel.appendChild(gridErr);
+    }
+  }
+
+  function renderExcelReviewStep(panel, schedule, data, rerender) {
+    var parsed = uiState.excelEditorReview;
+    var summary = parsed.summary;
+    var handAdded = data.activities.filter(function (a) {
+      return a.schedule_id === schedule.id && !a.external_id;
+    });
+    var blockedByHandAdded = handAdded.length > 0 && !uiState.excelEditorHandAddedAcknowledged;
+
+    if (blockedByHandAdded) {
+      var warnBox = document.createElement("div");
+      warnBox.style.border = "1px solid var(--status-at-risk)";
+      warnBox.style.borderRadius = "8px";
+      warnBox.style.padding = "12px";
+      warnBox.style.marginBottom = "14px";
+      warnBox.style.background = "rgba(230, 162, 60, 0.08)";
+      var warnTitle = document.createElement("p");
+      warnTitle.style.fontWeight = "600";
+      warnTitle.style.fontSize = "13px";
+      warnTitle.textContent =
+        handAdded.length + " activit" + (handAdded.length === 1 ? "y" : "ies") + " on this schedule " +
+        (handAdded.length === 1 ? "isn’t" : "aren’t") + " from the Excel file";
+      warnBox.appendChild(warnTitle);
+      var warnBody = document.createElement("p");
+      warnBody.style.fontSize = "12px";
+      warnBody.style.marginTop = "6px";
+      warnBody.textContent =
+        "They were added by hand on the Activities tab and have no Activity ID, so they can't appear in this " +
+        "grid. Applying replaces this schedule's full activity list from the grid, so continuing will delete them.";
+      warnBox.appendChild(warnBody);
+      var warnActions = document.createElement("div");
+      warnActions.style.display = "flex";
+      warnActions.style.gap = "10px";
+      warnActions.style.marginTop = "10px";
+      var ackBtn = document.createElement("button");
+      ackBtn.type = "button";
+      ackBtn.className = "btn btn--ghost";
+      ackBtn.textContent = "Delete Them and Continue";
+      ackBtn.onclick = function () {
+        uiState.excelEditorHandAddedAcknowledged = true;
+        rerender();
+      };
+      var backFromWarnBtn = document.createElement("button");
+      backFromWarnBtn.type = "button";
+      backFromWarnBtn.className = "btn btn--ghost";
+      backFromWarnBtn.textContent = "Back to Grid";
+      backFromWarnBtn.onclick = function () {
+        uiState.excelEditorStep = "grid";
+        rerender();
+      };
+      warnActions.appendChild(ackBtn);
+      warnActions.appendChild(backFromWarnBtn);
+      warnBox.appendChild(warnActions);
+      panel.appendChild(warnBox);
+    }
+
+    var summaryLine = document.createElement("p");
+    summaryLine.style.fontSize = "14px";
+    summaryLine.style.fontWeight = "600";
+    summaryLine.style.marginBottom = "4px";
+    summaryLine.textContent =
+      summary.imported + " activit" + (summary.imported === 1 ? "y" : "ies") + " will be applied to this schedule, " +
+      summary.warnings + " warning(s), " + summary.errors + " error(s).";
+    panel.appendChild(summaryLine);
+
+    if (summary.errors > 0) {
+      var errNote = document.createElement("p");
+      errNote.className = "text-secondary";
+      errNote.style.fontSize = "12px";
+      errNote.style.marginBottom = "10px";
+      errNote.textContent = "Rows with errors are excluded entirely — go back, fix them in the grid, and click Review Changes again.";
+      panel.appendChild(errNote);
+    }
+
+    var issuesToggle = renderParsedIssuesToggle(parsed);
+    if (issuesToggle) panel.appendChild(issuesToggle);
+
+    var actions = document.createElement("div");
+    actions.style.display = "flex";
+    actions.style.gap = "10px";
+    actions.style.marginTop = "14px";
+
+    var applyBtn = document.createElement("button");
+    applyBtn.type = "button";
+    applyBtn.className = "btn btn--primary";
+    applyBtn.textContent = uiState.excelEditorSaving ? "Applying…" : "Apply to Schedule (" + summary.imported + " activities)";
+    applyBtn.disabled = summary.imported === 0 || uiState.excelEditorSaving || blockedByHandAdded;
+    applyBtn.onclick = function () {
+      applyExcelEdits(schedule, data, rerender);
+    };
+    actions.appendChild(applyBtn);
+
+    var backBtn = document.createElement("button");
+    backBtn.type = "button";
+    backBtn.className = "btn btn--ghost";
+    backBtn.textContent = "Back to Grid";
+    backBtn.disabled = uiState.excelEditorSaving;
+    backBtn.onclick = function () {
+      uiState.excelEditorStep = "grid";
+      rerender();
+    };
+    actions.appendChild(backBtn);
+
+    panel.appendChild(actions);
+
+    if (uiState.excelEditorError) {
+      var reviewErr = document.createElement("p");
+      reviewErr.style.color = "var(--status-critical)";
+      reviewErr.style.fontSize = "13px";
+      reviewErr.style.marginTop = "10px";
+      reviewErr.textContent = uiState.excelEditorError;
+      panel.appendChild(reviewErr);
+    }
+  }
+
+  /** Regenerates the attached Excel file from exactly the header/row data that was
+   * just parsed (same values shown in the review step), so the stored file always
+   * matches what Apply actually committed — never a stale copy of the pre-edit file
+   * or a copy of grid contents that got rejected as errors. */
+  function applyExcelEdits(schedule, data, rerender) {
+    var parsed = uiState.excelEditorReview;
+    if (!parsed) return;
+
+    var headerLabels = EXCEL_GRID_FIELDS.map(function (f) {
+      return f.label;
+    });
+    var rowArrays = uiState.excelEditorRows.map(function (row) {
+      return EXCEL_GRID_FIELDS.map(function (f) {
+        return row[f.key] || "";
+      });
+    });
+
+    var workbook = window.XLSX.utils.book_new();
+    var sheet = window.XLSX.utils.aoa_to_sheet([headerLabels].concat(rowArrays));
+    window.XLSX.utils.book_append_sheet(workbook, sheet, "Schedule");
+    var wbBuffer = window.XLSX.write(workbook, { type: "array", bookType: "xlsx" });
+    var fileDataUri = "data:" + XLSX_MIME_TYPES.xlsx + ";base64," + arrayBufferToBase64(wbBuffer);
+
+    var records = buildScheduleRecords(parsed, schedule.project_id, schedule.id);
+
+    uiState.excelEditorSaving = true;
+    uiState.excelEditorError = null;
+
+    window.PCC.blobStore
+      .putBlob(schedule.id, fileDataUri)
+      .then(function () {
+        window.PCC.store.update(function (d) {
+          d.wbs_items = d.wbs_items.filter(function (w) {
+            return w.schedule_id !== schedule.id;
+          });
+          d.activities = d.activities.filter(function (a) {
+            return a.schedule_id !== schedule.id;
+          });
+          d.relationships = d.relationships.filter(function (r) {
+            return r.schedule_id !== schedule.id;
+          });
+          d.wbs_items = d.wbs_items.concat(records.wbsItems);
+          d.activities = d.activities.concat(records.activities);
+          d.relationships = d.relationships.concat(records.relationships);
+
+          var sched = d.schedules.find(function (s) {
+            return s.id === schedule.id;
+          });
+          if (sched) {
+            sched.source_file_size = wbBuffer.byteLength;
+            sched.updated_at = new Date().toISOString();
+          }
+        });
+
+        window.PCC.notify(
+          "Schedule updated from the edited Excel (" + records.activities.length + " activities). " +
+            "The attached file was updated to match.",
+          "success"
+        );
+
+        uiState.excelEditorSaving = false;
+        resetExcelEditorState();
+        uiState.tab = "activities";
+        rerender();
+      })
+      .catch(function (e) {
+        uiState.excelEditorSaving = false;
+        uiState.excelEditorError = "Could not save changes: " + e.message;
+        rerender();
+      });
+  }
+
+  function renderExcelEditorPanel(container, data, rerender) {
+    var schedule = data.schedules.find(function (s) {
+      return s.id === uiState.excelEditorScheduleId;
+    });
+    if (!schedule) {
+      resetExcelEditorState();
+      return;
+    }
+
+    var panel = document.createElement("div");
+    panel.className = "panel";
+    panel.style.marginBottom = "16px";
+
+    var heading = document.createElement("h3");
+    heading.style.marginBottom = "10px";
+    heading.textContent = "Edit Excel — " + schedule.name;
+    panel.appendChild(heading);
+
+    var help = document.createElement("p");
+    help.className = "text-secondary";
+    help.style.fontSize = "12px";
+    help.style.marginBottom = "10px";
+    help.textContent =
+      "Editing here updates the attached Excel file and this schedule's Activities/WBS/Relationships together — " +
+      "no separate download or re-upload needed. Recognized columns only (same set as Import); extra columns " +
+      "from the original file aren't shown.";
+    panel.appendChild(help);
+
+    if (uiState.excelEditorStep === "grid") {
+      renderExcelGridStep(panel, schedule, data, rerender);
+    } else {
+      renderExcelReviewStep(panel, schedule, data, rerender);
     }
 
     container.appendChild(panel);
@@ -678,6 +1346,21 @@
       rerender();
     };
     bar.appendChild(importBtn);
+
+    var currentScheduleForExcelEdit = data.schedules.find(function (s) {
+      return s.id === uiState.scheduleId;
+    });
+    var editExcelBtn = document.createElement("button");
+    editExcelBtn.className = "btn btn--ghost";
+    editExcelBtn.textContent = "Edit Excel";
+    editExcelBtn.title = currentScheduleForExcelEdit && !currentScheduleForExcelEdit.source_file_name
+      ? "This schedule wasn't imported from an Excel file, so there's nothing to edit here."
+      : "";
+    editExcelBtn.disabled = !currentScheduleForExcelEdit || !currentScheduleForExcelEdit.source_file_name;
+    editExcelBtn.onclick = function () {
+      openExcelEditor(currentScheduleForExcelEdit, data, rerender);
+    };
+    bar.appendChild(editExcelBtn);
 
     var calcBtn = document.createElement("button");
     calcBtn.className = "btn btn--ghost";
@@ -1047,10 +1730,11 @@
     if (uiState.editingActivityId) {
       var activityBeingEdited =
         uiState.editingActivityId === "new"
-          ? window.PCC.store.newActivity({})
+          ? window.PCC.store.newActivity(uiState.newActivityTypeHint ? { activity_type: uiState.newActivityTypeHint } : {})
           : scheduleActivities.find(function (a) {
               return a.id === uiState.editingActivityId;
             });
+      uiState.newActivityTypeHint = null;
       if (activityBeingEdited) renderActivityForm(container, activityBeingEdited, wbsItems, rerender);
     }
 
@@ -1165,17 +1849,7 @@
         deleteBtn.className = "btn btn--ghost";
         deleteBtn.textContent = "Delete";
         deleteBtn.onclick = function () {
-          if (!confirm('Delete activity "' + a.name + '"? This also removes any relationships referencing it.')) return;
-          window.PCC.store.update(function (data2) {
-            data2.activities = data2.activities.filter(function (item) {
-              return item.id !== a.id;
-            });
-            data2.relationships = data2.relationships.filter(function (rel) {
-              return rel.predecessor_id !== a.id && rel.successor_id !== a.id;
-            });
-          });
-          window.PCC.notify("Activity deleted.", "success");
-          rerender();
+          deleteActivityWithConfirm(a, rerender);
         };
         actions.appendChild(deleteBtn);
 
@@ -1629,10 +2303,11 @@
     if (uiState.editingRelationshipId) {
       var relBeingEdited =
         uiState.editingRelationshipId === "new"
-          ? window.PCC.store.newRelationship({})
+          ? window.PCC.store.newRelationship(uiState.relationshipPrefillId ? { predecessor_id: uiState.relationshipPrefillId } : {})
           : relationships.find(function (r) {
               return r.id === uiState.editingRelationshipId;
             });
+      uiState.relationshipPrefillId = null;
       if (relBeingEdited) renderRelationshipForm(container, relBeingEdited, activities, rerender);
     }
 
@@ -1704,9 +2379,13 @@
   }
 
   // ---------------------------------------------------------------------------------
-  // Gantt tab (Gate 5) — visualization only, built on scheduleGanttLayout.js's pure
-  // row/date computation. No drag-to-reschedule; activities are still edited through
-  // the Activities tab form.
+  // Gantt tab (Gate 5, editing added Gate 8) — built on scheduleGanttLayout.js's pure
+  // row/date computation and drag-math. Activities can still be edited through the
+  // Activities tab form; the Gantt now ALSO supports dragging a bar to reschedule it,
+  // dragging its right edge to resize duration, and clicking it to open a detail panel
+  // — every edit writes to planned_start/planned_finish (never the calculated fields)
+  // and immediately re-runs the CPM engine, same as the toolbar's own "Calculate
+  // Schedule" button, so float/critical-path/project-finish never go stale after a drag.
   // ---------------------------------------------------------------------------------
 
   var SVG_NS = "http://www.w3.org/2000/svg";
@@ -1726,7 +2405,14 @@
     return name.slice(0, maxChars - 1) + "…";
   }
 
-  function ganttPxPerDay(totalSpanDays) {
+  // Gate 8: explicit zoom presets, in addition to the pre-existing "auto" heuristic
+  // (picks a density from the schedule's own span so a 2-week schedule and a 2-year one
+  // both render legibly without the user having to touch the zoom control at all).
+  var GANTT_ZOOM_PX_PER_DAY = { day: 32, week: 16, month: 6, quarter: 2.2, year: 0.7 };
+  var GANTT_ZOOM_LABELS = { auto: "Auto", day: "Daily", week: "Weekly", month: "Monthly", quarter: "Quarterly", year: "Yearly" };
+
+  function ganttPxPerDay(totalSpanDays, zoom) {
+    if (zoom && GANTT_ZOOM_PX_PER_DAY[zoom]) return GANTT_ZOOM_PX_PER_DAY[zoom];
     if (totalSpanDays <= 30) return 24;
     if (totalSpanDays <= 90) return 14;
     if (totalSpanDays <= 180) return 8;
@@ -1744,12 +2430,595 @@
     return (d.getUTCMonth() + 1) + "/" + d.getUTCDate();
   }
 
+  function todayIso() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  /** Gate 8 filters: WBS / Discipline / Contractor / Responsible Person / a single
+   * "quick" status filter (Critical / Near Critical / Delayed / Completed / In Progress
+   * / Not Started / Milestones) / free-text search across Activity ID, Name, WBS,
+   * Contractor, Discipline. "Delayed" means it has a usable finish date that's already
+   * past the schedule's data date (or today, if no data date) and isn't marked complete
+   * — computed at filter time, never stored, same convention every overdue check in
+   * this app already uses. */
+  function activityMatchesGanttFilter(a, wbsItems, filter, referenceDateIso) {
+    if (filter.search) {
+      var needle = filter.search.toLowerCase();
+      var wbs = wbsItems.find(function (w) { return w.id === a.wbs_id; });
+      var haystack = [
+        a.external_id || "",
+        a.name || "",
+        wbs ? (wbs.code || "") + " " + (wbs.name || "") : "",
+        a.contractor || "",
+        a.discipline || "",
+      ].join(" ").toLowerCase();
+      if (haystack.indexOf(needle) === -1) return false;
+    }
+    if (filter.wbsId && a.wbs_id !== filter.wbsId) return false;
+    if (filter.discipline && a.discipline !== filter.discipline) return false;
+    if (filter.contractor && a.contractor !== filter.contractor) return false;
+    if (filter.responsiblePerson && a.responsible_person !== filter.responsiblePerson) return false;
+
+    switch (filter.quick) {
+      case "critical":
+        if (!(a.total_float != null && a.total_float <= 0)) return false;
+        break;
+      case "near_critical":
+        if (!(a.total_float != null && a.total_float > 0 && a.total_float <= (filter.nearCriticalThresholdDays || 5))) return false;
+        break;
+      case "delayed": {
+        var finish = a.early_finish || a.planned_finish;
+        if (!finish || !referenceDateIso || finish >= referenceDateIso || a.status === "complete") return false;
+        break;
+      }
+      case "completed":
+        if (a.status !== "complete") return false;
+        break;
+      case "in_progress":
+        if (a.status !== "in_progress") return false;
+        break;
+      case "not_started":
+        if (a.status !== "not_started") return false;
+        break;
+      case "milestones":
+        if (a.activity_type !== "milestone") return false;
+        break;
+      default:
+        break;
+    }
+    return true;
+  }
+
+  /** Loads (and caches) the trimmed activity snapshot for a baseline so the Gantt can
+   * draw ghost bars behind current activities. Matching uses the same external_id-then-
+   * id precedence scheduleBaselineEngine.js's compareBaselineToCurrent() uses, so a
+   * baseline captured before a re-import still lines up correctly. */
+  function matchKeyFor(a) {
+    if (a.external_id !== null && a.external_id !== undefined && a.external_id !== "") return "ext:" + a.external_id;
+    return "id:" + a.id;
+  }
+
+  function loadBaselineOverlay(baselineId, rerender) {
+    uiState.ganttBaselineLoading = true;
+    rerender();
+    window.PCC.scheduleBaselineStore
+      .getSnapshot(baselineId)
+      .then(function (snapshot) {
+        uiState.ganttBaselineSnapshot = { baselineId: baselineId, activities: snapshot ? snapshot.activities : [] };
+        uiState.ganttBaselineLoading = false;
+        rerender();
+      })
+      .catch(function (err) {
+        console.error("Could not load baseline for Gantt overlay", err);
+        uiState.ganttBaselineLoading = false;
+        uiState.ganttShowBaseline = false;
+        window.PCC.notify("Could not load that baseline's stored data.", "error");
+        rerender();
+      });
+  }
+
+  function renderGanttToolbar(container, data, allActivities, wbsItems, rerender) {
+    var bar = document.createElement("div");
+    bar.className = "toolbar";
+    bar.style.flexWrap = "wrap";
+
+    var search = document.createElement("input");
+    search.type = "text";
+    search.placeholder = "Search ID, name, WBS, contractor, discipline…";
+    search.value = uiState.ganttFilter.search;
+    search.style.minWidth = "220px";
+    search.oninput = function () {
+      uiState.ganttFilter.search = search.value;
+      rerender();
+    };
+    bar.appendChild(search);
+
+    function uniqueValues(key) {
+      var seen = {};
+      var out = [];
+      allActivities.forEach(function (a) {
+        var v = a[key];
+        if (v && !seen[v]) {
+          seen[v] = true;
+          out.push(v);
+        }
+      });
+      return out.sort();
+    }
+
+    function selectFilter(labelText, value, options, onChange) {
+      var sel = document.createElement("select");
+      var allOpt = document.createElement("option");
+      allOpt.value = "";
+      allOpt.textContent = labelText;
+      sel.appendChild(allOpt);
+      options.forEach(function (opt) {
+        var o = document.createElement("option");
+        o.value = opt.value;
+        o.textContent = opt.label;
+        sel.appendChild(o);
+      });
+      sel.value = value || "";
+      sel.onchange = function () {
+        onChange(sel.value);
+        rerender();
+      };
+      return sel;
+    }
+
+    bar.appendChild(
+      selectFilter("WBS: All", uiState.ganttFilter.wbsId, wbsItems.map(function (w) {
+        return { value: w.id, label: w.code ? w.code + " — " + w.name : w.name };
+      }), function (v) { uiState.ganttFilter.wbsId = v; })
+    );
+    bar.appendChild(
+      selectFilter("Discipline: All", uiState.ganttFilter.discipline, uniqueValues("discipline").map(function (v) {
+        return { value: v, label: v };
+      }), function (v) { uiState.ganttFilter.discipline = v; })
+    );
+    bar.appendChild(
+      selectFilter("Contractor: All", uiState.ganttFilter.contractor, uniqueValues("contractor").map(function (v) {
+        return { value: v, label: v };
+      }), function (v) { uiState.ganttFilter.contractor = v; })
+    );
+    bar.appendChild(
+      selectFilter("Responsible: All", uiState.ganttFilter.responsiblePerson, uniqueValues("responsible_person").map(function (v) {
+        return { value: v, label: v };
+      }), function (v) { uiState.ganttFilter.responsiblePerson = v; })
+    );
+    bar.appendChild(
+      selectFilter("Show: All Activities", uiState.ganttFilter.quick, [
+        { value: "critical", label: "Critical" },
+        { value: "near_critical", label: "Near Critical" },
+        { value: "delayed", label: "Delayed" },
+        { value: "completed", label: "Completed" },
+        { value: "in_progress", label: "In Progress" },
+        { value: "not_started", label: "Not Started" },
+        { value: "milestones", label: "Milestones Only" },
+      ], function (v) { uiState.ganttFilter.quick = v; })
+    );
+
+    if (uiState.ganttFilter.search || uiState.ganttFilter.wbsId || uiState.ganttFilter.discipline || uiState.ganttFilter.contractor || uiState.ganttFilter.responsiblePerson || uiState.ganttFilter.quick) {
+      var clearBtn = document.createElement("button");
+      clearBtn.className = "btn btn--ghost";
+      clearBtn.textContent = "Clear Filters";
+      clearBtn.onclick = function () {
+        uiState.ganttFilter = { search: "", wbsId: "", discipline: "", contractor: "", responsiblePerson: "", quick: "" };
+        rerender();
+      };
+      bar.appendChild(clearBtn);
+    }
+
+    container.appendChild(bar);
+
+    // Zoom + jump + baseline-overlay controls, on their own row.
+    var bar2 = document.createElement("div");
+    bar2.className = "toolbar";
+    bar2.style.flexWrap = "wrap";
+    bar2.style.marginTop = "8px";
+
+    var zoomLabel = document.createElement("span");
+    zoomLabel.className = "text-secondary";
+    zoomLabel.style.fontSize = "12px";
+    zoomLabel.style.alignSelf = "center";
+    zoomLabel.textContent = "Zoom:";
+    bar2.appendChild(zoomLabel);
+
+    ["auto", "day", "week", "month", "quarter", "year"].forEach(function (z) {
+      var zBtn = document.createElement("button");
+      zBtn.className = "btn " + (uiState.ganttZoom === z ? "btn--primary" : "btn--ghost");
+      zBtn.textContent = GANTT_ZOOM_LABELS[z];
+      zBtn.onclick = function () {
+        uiState.ganttZoom = z;
+        rerender();
+      };
+      bar2.appendChild(zBtn);
+    });
+
+    var spacer2 = document.createElement("div");
+    spacer2.className = "toolbar__spacer";
+    bar2.appendChild(spacer2);
+
+    var addActivityBtn = document.createElement("button");
+    addActivityBtn.className = "btn btn--ghost";
+    addActivityBtn.textContent = "+ Add Activity";
+    addActivityBtn.onclick = function () {
+      uiState.tab = "activities";
+      uiState.editingActivityId = "new";
+      rerender();
+    };
+    bar2.appendChild(addActivityBtn);
+
+    var addMilestoneBtn = document.createElement("button");
+    addMilestoneBtn.className = "btn btn--ghost";
+    addMilestoneBtn.textContent = "+ Add Milestone";
+    addMilestoneBtn.onclick = function () {
+      uiState.tab = "activities";
+      uiState.editingActivityId = "new";
+      uiState.newActivityTypeHint = "milestone";
+      rerender();
+    };
+    bar2.appendChild(addMilestoneBtn);
+
+    container.appendChild(bar2);
+
+    var projectBaselines = data.schedule_baselines.filter(function (b) {
+      return b.project_id === uiState.projectId;
+    });
+    if (projectBaselines.length > 0) {
+      var bar3 = document.createElement("div");
+      bar3.className = "toolbar";
+      bar3.style.flexWrap = "wrap";
+      bar3.style.marginTop = "8px";
+
+      var baselineToggle = document.createElement("label");
+      baselineToggle.style.display = "flex";
+      baselineToggle.style.alignItems = "center";
+      baselineToggle.style.gap = "6px";
+      baselineToggle.style.fontSize = "13px";
+      var checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = uiState.ganttShowBaseline;
+      checkbox.onchange = function () {
+        uiState.ganttShowBaseline = checkbox.checked;
+        if (uiState.ganttShowBaseline) {
+          if (!uiState.ganttBaselineId) uiState.ganttBaselineId = projectBaselines[0].id;
+          if (!uiState.ganttBaselineSnapshot || uiState.ganttBaselineSnapshot.baselineId !== uiState.ganttBaselineId) {
+            loadBaselineOverlay(uiState.ganttBaselineId, rerender);
+            return;
+          }
+        }
+        rerender();
+      };
+      baselineToggle.appendChild(checkbox);
+      baselineToggle.appendChild(document.createTextNode("Show Baseline"));
+      bar3.appendChild(baselineToggle);
+
+      var baselineSelect = document.createElement("select");
+      projectBaselines.forEach(function (b) {
+        var o = document.createElement("option");
+        o.value = b.id;
+        o.textContent = b.name;
+        baselineSelect.appendChild(o);
+      });
+      baselineSelect.value = uiState.ganttBaselineId || projectBaselines[0].id;
+      baselineSelect.disabled = !uiState.ganttShowBaseline;
+      baselineSelect.onchange = function () {
+        uiState.ganttBaselineId = baselineSelect.value;
+        loadBaselineOverlay(uiState.ganttBaselineId, rerender);
+      };
+      bar3.appendChild(baselineSelect);
+
+      if (uiState.ganttBaselineLoading) {
+        var loadingNote = document.createElement("span");
+        loadingNote.className = "text-secondary";
+        loadingNote.style.fontSize = "12px";
+        loadingNote.style.alignSelf = "center";
+        loadingNote.textContent = "Loading baseline…";
+        bar3.appendChild(loadingNote);
+      }
+
+      container.appendChild(bar3);
+    }
+  }
+
+  /** Gate 10 (Activity Linking): every register that can now optionally carry an
+   * `activity_id` — Risks/Issues/Opportunities, RFI/TQ, Meetings, Documents, Daily
+   * Log, Change Orders — surfaced here as one flat, real, live-queried list. Nothing
+   * duplicated or cached: this reads straight from `data` each render, same as every
+   * other cross-module rollup in this app (Portfolio's Details panel, the Meetings
+   * hub). Each row's "View" button uses that module's own existing expand/navigate
+   * API (added in this same gate for Documents/Daily Log; already existed for the
+   * other four), matching the bidirectional-link pattern Change Orders established
+   * for source_rfi_id/source_risk_id/source_meeting_id. */
+  var LINKED_RECORD_SOURCES = [
+    {
+      module: "risks",
+      label: function (r) { return (r.type === "risk" ? "Risk" : r.type === "issue" ? "Issue" : "Opportunity") + ": " + (r.title || "(untitled)"); },
+      list: function (data, activityId) { return data.risks.filter(function (r) { return r.activity_id === activityId; }); },
+      view: function (r) {
+        if (window.PCC.risks && window.PCC.risks.expandRisk) window.PCC.risks.expandRisk(r.id);
+        window.PCC.router.go("risks");
+      },
+    },
+    {
+      module: "rfis",
+      label: function (r) { return r.number + " — " + (r.subject || "(untitled)"); },
+      list: function (data, activityId) { return data.rfis.filter(function (r) { return r.activity_id === activityId; }); },
+      view: function (r) {
+        if (window.PCC.rfis && window.PCC.rfis.expandRfi) window.PCC.rfis.expandRfi(r.id);
+        window.PCC.router.go("rfis");
+      },
+    },
+    {
+      module: "meetings",
+      label: function (m) { return "Meeting: " + (m.title || "(untitled)") + " (" + m.meeting_date + ")"; },
+      list: function (data, activityId) { return data.meetings.filter(function (m) { return m.activity_id === activityId; }); },
+      view: function (m) {
+        if (window.PCC.meetings) window.PCC.meetings.expandMeeting(m.id);
+        window.PCC.router.go("meetings");
+      },
+    },
+    {
+      module: "documents",
+      label: function (d) { return "Document: " + d.filename; },
+      list: function (data, activityId) { return data.documents.filter(function (d) { return d.activity_id === activityId; }); },
+      view: function (d) {
+        if (window.PCC.documents && window.PCC.documents.expandDocument) window.PCC.documents.expandDocument(d.id);
+        window.PCC.router.go("documents");
+      },
+    },
+    {
+      module: "dailylog",
+      label: function (l) { return "Daily Log: " + l.log_date; },
+      list: function (data, activityId) { return data.daily_logs.filter(function (l) { return l.activity_id === activityId; }); },
+      view: function (l) {
+        if (window.PCC.dailyLog && window.PCC.dailyLog.expandLog) window.PCC.dailyLog.expandLog(l.id);
+        window.PCC.router.go("dailylog");
+      },
+    },
+    {
+      module: "changeOrders",
+      label: function (co) { return co.number + " — " + (co.title || "(untitled)"); },
+      list: function (data, activityId) { return data.change_orders.filter(function (co) { return co.activity_id === activityId; }); },
+      view: function (co) {
+        if (window.PCC.changeOrders && window.PCC.changeOrders.expandChangeOrder) window.PCC.changeOrders.expandChangeOrder(co.id);
+        window.PCC.router.go("changeOrders");
+      },
+    },
+    {
+      // Gate 11: resource assignments link to an activity the same way the other six
+      // sources do (activity_id), so this fits the same array-driven pattern — the
+      // one difference is the assignment record itself doesn't carry a display name,
+      // so list() decorates each match with the resource's name/unit before label()
+      // reads it, rather than label() doing its own lookup with no data reference.
+      module: "resources",
+      label: function (a) { return "Resource: " + a._resourceName + " (" + a.quantity + (a._unit ? " " + a._unit : "") + ")"; },
+      list: function (data, activityId) {
+        return data.resource_assignments
+          .filter(function (a) { return a.activity_id === activityId; })
+          .map(function (a) {
+            var resource = data.resources.find(function (r) { return r.id === a.resource_id; });
+            return Object.assign({}, a, { _resourceName: resource ? resource.name : "(resource deleted)", _unit: resource ? resource.unit : "" });
+          });
+      },
+      view: function (a) {
+        if (window.PCC.resources && window.PCC.resources.expandAssignment) window.PCC.resources.expandAssignment(a.id);
+        window.PCC.router.go("resources");
+      },
+    },
+  ];
+
+  function renderLinkedRecordsSection(activity, data) {
+    var wrap = document.createElement("div");
+    wrap.style.marginTop = "14px";
+    wrap.style.paddingTop = "10px";
+    wrap.style.borderTop = "1px solid var(--divider)";
+
+    var rows = [];
+    LINKED_RECORD_SOURCES.forEach(function (source) {
+      source.list(data, activity.id).forEach(function (record) {
+        rows.push({ text: source.label(record), view: function () { source.view(record); } });
+      });
+    });
+
+    var heading = document.createElement("p");
+    heading.className = "detail-item__label";
+    heading.style.marginBottom = "6px";
+    heading.textContent = "LINKED RECORDS (" + rows.length + ")";
+    wrap.appendChild(heading);
+
+    if (rows.length === 0) {
+      var empty = document.createElement("p");
+      empty.className = "text-secondary";
+      empty.style.fontSize = "12px";
+      empty.textContent = "No Risks/Issues, RFIs, Meetings, Documents, Daily Log entries, or Change Orders are linked to this activity yet — link one from that record's own Add/Edit form.";
+      wrap.appendChild(empty);
+    } else {
+      rows.forEach(function (row) {
+        var rowEl = document.createElement("div");
+        rowEl.style.display = "flex";
+        rowEl.style.justifyContent = "space-between";
+        rowEl.style.alignItems = "center";
+        rowEl.style.fontSize = "13px";
+        rowEl.style.marginBottom = "4px";
+
+        var text = document.createElement("span");
+        text.textContent = row.text;
+        rowEl.appendChild(text);
+
+        var viewBtn = document.createElement("button");
+        viewBtn.className = "btn btn--ghost";
+        viewBtn.textContent = "View";
+        viewBtn.onclick = row.view;
+        rowEl.appendChild(viewBtn);
+
+        wrap.appendChild(rowEl);
+      });
+    }
+
+    return wrap;
+  }
+
+  function renderActivityDetailPanel(container, activity, data, wbsItems, scheduleActivities, relationships, rerender) {
+    var panel = document.createElement("div");
+    panel.className = "panel";
+    panel.style.marginBottom = "16px";
+    panel.style.borderColor = "var(--signal-amber)";
+
+    var header = document.createElement("div");
+    header.style.display = "flex";
+    header.style.justifyContent = "space-between";
+    header.style.alignItems = "flex-start";
+    header.style.marginBottom = "10px";
+    var heading = document.createElement("h3");
+    heading.textContent = activity.name || "(unnamed activity)";
+    header.appendChild(heading);
+    var closeBtn = document.createElement("button");
+    closeBtn.className = "btn btn--ghost";
+    closeBtn.textContent = "Close";
+    closeBtn.onclick = function () {
+      uiState.ganttDetailActivityId = null;
+      rerender();
+    };
+    header.appendChild(closeBtn);
+    panel.appendChild(header);
+
+    var grid = document.createElement("div");
+    grid.className = "detail-grid";
+
+    function item(label, value) {
+      var div = document.createElement("div");
+      var l = document.createElement("span");
+      l.className = "detail-item__label";
+      l.textContent = label;
+      var v = document.createElement("div");
+      v.textContent = value === null || value === undefined || value === "" ? "—" : String(value);
+      div.appendChild(l);
+      div.appendChild(v);
+      grid.appendChild(div);
+    }
+
+    item("Activity ID", activity.external_id || activity.id);
+    item("WBS", wbsName(wbsItems, activity.wbs_id));
+    item("Type", ACTIVITY_TYPE_LABELS[activity.activity_type]);
+    item("Status", ACTIVITY_STATUS_LABELS[activity.status]);
+    item("Duration (days)", activity.duration);
+    item("Remaining Duration (days)", activity.remaining_duration);
+    item("Planned Start", activity.planned_start);
+    item("Planned Finish", activity.planned_finish);
+    item(
+      "Float",
+      activity.total_float == null
+        ? "Not yet calculated"
+        : activity.total_float <= 0
+        ? "Critical (0 float)"
+        : activity.total_float + " day(s) total, " + (activity.free_float == null ? "—" : activity.free_float) + " free"
+    );
+    item("% Complete", (activity.percent_complete || 0) + "%");
+    item("Discipline", activity.discipline);
+    item("Contractor", activity.contractor);
+    item("Responsible Person", activity.responsible_person);
+    item("Constraint", activity.constraint_type ? activity.constraint_type + (activity.constraint_date ? " (" + activity.constraint_date + ")" : "") : "");
+    panel.appendChild(grid);
+
+    if (activity.notes) {
+      var notesP = document.createElement("p");
+      notesP.style.marginTop = "10px";
+      notesP.style.fontSize = "13px";
+      notesP.innerHTML = "<strong>Notes:</strong> " + activity.notes;
+      panel.appendChild(notesP);
+    }
+
+    var preds = relationships.filter(function (r) { return r.successor_id === activity.id; });
+    var succs = relationships.filter(function (r) { return r.predecessor_id === activity.id; });
+
+    var relWrap = document.createElement("div");
+    relWrap.style.marginTop = "12px";
+    relWrap.style.fontSize = "13px";
+    var predLine = document.createElement("p");
+    predLine.innerHTML =
+      "<strong>Predecessors:</strong> " +
+      (preds.length ? preds.map(function (r) { return activityName(scheduleActivities, r.predecessor_id) + " (" + r.type + (r.lag ? ", lag " + r.lag : "") + ")"; }).join(", ") : "none");
+    var succLine = document.createElement("p");
+    succLine.style.marginTop = "4px";
+    succLine.innerHTML =
+      "<strong>Successors:</strong> " +
+      (succs.length ? succs.map(function (r) { return activityName(scheduleActivities, r.successor_id) + " (" + r.type + (r.lag ? ", lag " + r.lag : "") + ")"; }).join(", ") : "none");
+    relWrap.appendChild(predLine);
+    relWrap.appendChild(succLine);
+    panel.appendChild(relWrap);
+
+    panel.appendChild(renderLinkedRecordsSection(activity, data));
+
+    var actions = document.createElement("div");
+    actions.style.display = "flex";
+    actions.style.gap = "10px";
+    actions.style.marginTop = "14px";
+
+    var editBtn = document.createElement("button");
+    editBtn.className = "btn btn--primary";
+    editBtn.textContent = "Edit";
+    editBtn.onclick = function () {
+      uiState.tab = "activities";
+      uiState.editingActivityId = activity.id;
+      rerender();
+    };
+    actions.appendChild(editBtn);
+
+    var addRelBtn = document.createElement("button");
+    addRelBtn.className = "btn btn--ghost";
+    addRelBtn.textContent = "+ Add Relationship";
+    addRelBtn.disabled = scheduleActivities.length < 2;
+    addRelBtn.onclick = function () {
+      uiState.tab = "relationships";
+      uiState.editingRelationshipId = "new";
+      uiState.relationshipPrefillId = activity.id;
+      rerender();
+    };
+    actions.appendChild(addRelBtn);
+
+    var deleteBtn = document.createElement("button");
+    deleteBtn.className = "btn btn--ghost";
+    deleteBtn.textContent = "Delete";
+    deleteBtn.onclick = function () {
+      deleteActivityWithConfirm(activity, rerender);
+    };
+    actions.appendChild(deleteBtn);
+
+    panel.appendChild(actions);
+    container.appendChild(panel);
+  }
+
   function renderGanttTab(container, data, rerender) {
     var schedule = data.schedules.find(function (s) {
       return s.id === uiState.scheduleId;
     });
-    var activities = data.activities.filter(function (a) {
+    var allActivities = data.activities.filter(function (a) {
       return a.schedule_id === uiState.scheduleId;
+    });
+    var wbsItems = data.wbs_items.filter(function (w) {
+      return w.schedule_id === uiState.scheduleId;
+    });
+    var relationships = data.relationships.filter(function (r) {
+      return r.schedule_id === uiState.scheduleId;
+    });
+
+    renderGanttToolbar(container, data, allActivities, wbsItems, rerender);
+
+    if (uiState.ganttDetailActivityId) {
+      var detailActivity = allActivities.find(function (a) { return a.id === uiState.ganttDetailActivityId; });
+      if (detailActivity) {
+        renderActivityDetailPanel(container, detailActivity, data, wbsItems, allActivities, relationships, rerender);
+      } else {
+        uiState.ganttDetailActivityId = null;
+      }
+    }
+
+    var referenceDate = (schedule && schedule.data_date) || todayIso();
+    var nearCriticalThresholdDays = (schedule && schedule.near_critical_threshold_days) || 5;
+    var activities = allActivities.filter(function (a) {
+      return activityMatchesGanttFilter(a, wbsItems, Object.assign({ nearCriticalThresholdDays: nearCriticalThresholdDays }, uiState.ganttFilter), referenceDate);
     });
 
     var layout = window.PCC.scheduleGanttLayout.computeLayout(activities, {
@@ -1760,8 +3029,10 @@
       var empty = document.createElement("div");
       empty.className = "panel empty-state";
       empty.textContent =
-        activities.length === 0
+        allActivities.length === 0
           ? "No activities in this schedule yet. Add some on the Activities tab first."
+          : activities.length === 0
+          ? "No activities match the current filters."
           : "None of this schedule's " + activities.length + " activity(ies) have a Planned Start/Finish " +
             "or a calculated date yet. Add planned dates on the Activities tab, or run “Calculate " +
             "Schedule” above.";
@@ -1782,7 +3053,7 @@
     var diffDays = window.PCC.scheduleGanttLayout.diffDays;
     var bufferDays = 1;
     var totalSpanDays = diffDays(layout.rangeStart, layout.rangeEnd) + 1 + bufferDays * 2;
-    var pxPerDay = ganttPxPerDay(totalSpanDays);
+    var pxPerDay = ganttPxPerDay(totalSpanDays, uiState.ganttZoom === "auto" ? null : uiState.ganttZoom);
     var labelWidth = 200;
     var rowHeight = 26;
     var headerHeight = 28;
@@ -1831,9 +3102,35 @@
       svg.appendChild(ddLabel);
     }
 
+    // Today line — distinct from Data Date (Section 4/7's spec calls out both). Only
+    // drawn when it falls inside the chart's own date range, same guard the Data Date
+    // marker doesn't currently need since it's always derived from within the schedule.
+    var todayMarkerIso = todayIso();
+    if (todayMarkerIso >= layout.rangeStart && todayMarkerIso <= layout.rangeEnd) {
+      var tdx = xForDate(todayMarkerIso);
+      svg.appendChild(
+        svgEl("line", { x1: tdx, y1: 0, x2: tdx, y2: chartHeight, stroke: "var(--status-on-track)", "stroke-width": 2 })
+      );
+      var tdLabel = svgEl("text", { x: tdx + 4, y: headerHeight - 16, "font-size": 10, fill: "var(--status-on-track)", "font-weight": "600" });
+      tdLabel.textContent = "Today";
+      svg.appendChild(tdLabel);
+    }
+
+    // Baseline ghost bars, drawn behind current bars — matched by external_id (falling
+    // back to id) against the loaded snapshot, same precedence scheduleBaselineEngine.js
+    // uses so a baseline captured before a re-import still lines up correctly.
+    var baselineByMatchKey = {};
+    if (uiState.ganttShowBaseline && uiState.ganttBaselineSnapshot && uiState.ganttBaselineSnapshot.baselineId === uiState.ganttBaselineId) {
+      var baselineLayout = window.PCC.scheduleGanttLayout.computeLayout(uiState.ganttBaselineSnapshot.activities, {});
+      baselineLayout.rows.forEach(function (r) {
+        if (r.dateSource !== "none") baselineByMatchKey[matchKeyFor(r)] = r;
+      });
+    }
+
     layout.rows.forEach(function (row, i) {
       var y = headerHeight + i * rowHeight;
       var rowCenter = y + rowHeight / 2;
+      var activity = activities.find(function (a) { return a.id === row.id; });
 
       var divider = svgEl("line", {
         x1: 0, y1: y + rowHeight, x2: chartWidth, y2: y + rowHeight,
@@ -1841,12 +3138,31 @@
       });
       svg.appendChild(divider);
 
-      var labelText = svgEl("text", { x: 6, y: rowCenter + 4, "font-size": 11, fill: "var(--text-primary)" });
+      var labelText = svgEl("text", { x: 6, y: rowCenter + 4, "font-size": 11, fill: "var(--text-primary)", style: "cursor:pointer;" });
       labelText.textContent = truncateLabel(row.name, 26);
       var titleEl = svgEl("title");
       titleEl.textContent = row.name;
       labelText.appendChild(titleEl);
+      labelText.addEventListener("click", function () {
+        uiState.ganttDetailActivityId = row.id;
+        rerender();
+      });
       svg.appendChild(labelText);
+
+      // Baseline ghost, if this row has a matched baseline activity — drawn as a thin
+      // outline directly above/behind the current bar's row, before the current bar so
+      // the current (authoritative) bar always paints on top.
+      var baselineRow = baselineByMatchKey[matchKeyFor(activity || { id: row.id, external_id: null })];
+      if (baselineRow && !baselineRow.isMilestone && !row.isMilestone) {
+        var blBarX = xForDate(baselineRow.start);
+        var blBarW = Math.max((baselineRow.durationDays || 0) * pxPerDay, 3);
+        svg.appendChild(
+          svgEl("rect", {
+            x: blBarX, y: y + rowHeight - 7, width: blBarW, height: 4, rx: 2,
+            fill: "none", stroke: "var(--text-secondary)", "stroke-width": 1.5, "stroke-dasharray": "2,2",
+          })
+        );
+      }
 
       if (row.dateSource === "none") {
         var noneText = svgEl("text", { x: labelWidth + 4, y: rowCenter + 4, "font-size": 11, fill: "var(--text-secondary)", "font-style": "italic" });
@@ -1864,16 +3180,17 @@
       if (row.isMilestone) {
         var cx = xForDate(row.start) + pxPerDay / 2;
         var size = 8;
-        svg.appendChild(
-          svgEl("path", {
-            d: "M " + cx + " " + (rowCenter - size) + " L " + (cx + size) + " " + rowCenter +
-              " L " + cx + " " + (rowCenter + size) + " L " + (cx - size) + " " + rowCenter + " Z",
-            fill: row.isCritical ? "var(--status-critical)" : "var(--signal-amber)",
-            stroke: "var(--bg-paper)",
-            "stroke-width": 1,
-            "data-activity-id": row.id,
-          })
-        );
+        var diamond = svgEl("path", {
+          d: "M " + cx + " " + (rowCenter - size) + " L " + (cx + size) + " " + rowCenter +
+            " L " + cx + " " + (rowCenter + size) + " L " + (cx - size) + " " + rowCenter + " Z",
+          fill: row.isCritical ? "var(--status-critical)" : "var(--signal-amber)",
+          stroke: "var(--bg-paper)",
+          "stroke-width": 1,
+          "data-activity-id": row.id,
+          style: "cursor:grab;",
+        });
+        svg.appendChild(diamond);
+        if (activity) attachGanttDrag(diamond, null, activity, "move", pxPerDay, rerender);
         return;
       }
 
@@ -1882,26 +3199,70 @@
       var barY = y + 5;
       var barH = rowHeight - 10;
 
-      svg.appendChild(
-        svgEl("rect", {
-          x: barX, y: barY, width: barW, height: barH, rx: 3,
-          fill: baseColor, "fill-opacity": 0.28,
-          stroke: baseColor, "stroke-width": 1,
-          "stroke-dasharray": row.dateSource === "planned" ? "4,2" : "none",
-          "data-activity-id": row.id,
-        })
-      );
+      var barRect = svgEl("rect", {
+        x: barX, y: barY, width: barW, height: barH, rx: 3,
+        fill: baseColor, "fill-opacity": 0.28,
+        stroke: baseColor, "stroke-width": 1,
+        "stroke-dasharray": row.dateSource === "planned" ? "4,2" : "none",
+        "data-activity-id": row.id,
+        "data-base-width": barW,
+        style: "cursor:grab;",
+      });
+      svg.appendChild(barRect);
 
+      var progressRect = null;
       if (row.percentComplete > 0) {
         var progressW = Math.max(barW * Math.min(row.percentComplete, 100) / 100, row.percentComplete > 0 ? 2 : 0);
-        svg.appendChild(
-          svgEl("rect", { x: barX, y: barY, width: progressW, height: barH, rx: 3, fill: baseColor })
-        );
+        progressRect = svgEl("rect", { x: barX, y: barY, width: progressW, height: barH, rx: 3, fill: baseColor, style: "pointer-events:none;" });
+        svg.appendChild(progressRect);
+      }
+
+      if (activity) attachGanttDrag(barRect, progressRect, activity, "move", pxPerDay, rerender);
+
+      // Resize handle: a narrow strip at the bar's right edge. Drawn after (on top of)
+      // the bar so it captures the pointerdown for that sliver instead of the move
+      // handler — no stopPropagation needed since SVG hit-testing only fires the
+      // topmost element under the pointer.
+      if (activity) {
+        var handle = svgEl("rect", {
+          x: barX + barW - 3, y: barY, width: 6, height: barH,
+          fill: "transparent", style: "cursor:ew-resize;",
+          "data-resize-handle-for": activity.id,
+        });
+        svg.appendChild(handle);
+        attachGanttDrag(barRect, progressRect, activity, "resize", pxPerDay, rerender, handle);
       }
     });
 
     wrap.appendChild(svg);
     container.appendChild(wrap);
+
+    // Jump controls — scroll the chart's own container to a meaningful date. Built
+    // after the chart so xForDate/wrap are already in scope; appended to the toolbar
+    // area visually via being placed right above the chart panel.
+    var jumpBar = document.createElement("div");
+    jumpBar.style.display = "flex";
+    jumpBar.style.gap = "8px";
+    jumpBar.style.marginTop = "10px";
+    jumpBar.style.marginBottom = "-4px";
+    jumpBar.style.flexWrap = "wrap";
+
+    function jumpButton(label, iso) {
+      var btn = document.createElement("button");
+      btn.className = "btn btn--ghost";
+      btn.textContent = label;
+      btn.disabled = !iso || iso < layout.rangeStart || iso > layout.rangeEnd;
+      btn.onclick = function () {
+        wrap.scrollLeft = Math.max(0, xForDate(iso) - 80);
+      };
+      return btn;
+    }
+
+    jumpBar.appendChild(jumpButton("Today", todayMarkerIso >= layout.rangeStart && todayMarkerIso <= layout.rangeEnd ? todayMarkerIso : null));
+    jumpBar.appendChild(jumpButton("Project Start", layout.rangeStart));
+    jumpBar.appendChild(jumpButton("Project Finish", layout.rangeEnd));
+    if (layout.dataDate) jumpBar.appendChild(jumpButton("Data Date", layout.dataDate));
+    container.insertBefore(jumpBar, wrap);
 
     var legend = document.createElement("div");
     legend.style.display = "flex";
@@ -1911,10 +3272,10 @@
     legend.style.fontSize = "12px";
 
     function legendItem(colorCss, label, dashed) {
-      var item = document.createElement("span");
-      item.style.display = "inline-flex";
-      item.style.alignItems = "center";
-      item.style.gap = "6px";
+      var itemEl = document.createElement("span");
+      itemEl.style.display = "inline-flex";
+      itemEl.style.alignItems = "center";
+      itemEl.style.gap = "6px";
       var swatch = document.createElement("span");
       swatch.style.width = "14px";
       swatch.style.height = "10px";
@@ -1927,9 +3288,9 @@
       var text = document.createElement("span");
       text.className = "text-secondary";
       text.textContent = label;
-      item.appendChild(swatch);
-      item.appendChild(text);
-      return item;
+      itemEl.appendChild(swatch);
+      itemEl.appendChild(text);
+      return itemEl;
     }
 
     legend.appendChild(legendItem("var(--status-critical)", "Critical (0 or negative float)"));
@@ -1937,7 +3298,95 @@
     legend.appendChild(legendItem("var(--text-secondary)", "Planned only — not yet calculated", true));
     legend.appendChild(legendItem("var(--signal-amber)", "Milestone"));
     if (layout.dataDate) legend.appendChild(legendItem("var(--signal-amber)", "Data Date", true));
+    legend.appendChild(legendItem("var(--status-on-track)", "Today"));
+    if (uiState.ganttShowBaseline) legend.appendChild(legendItem("var(--text-secondary)", "Baseline (ghost)", true));
     container.appendChild(legend);
+
+    var dragHint = document.createElement("p");
+    dragHint.className = "text-secondary";
+    dragHint.style.fontSize = "11px";
+    dragHint.style.marginTop = "6px";
+    dragHint.textContent = "Drag a bar to move it, drag its right edge to resize, or click a bar/milestone/label to open its details. Every edit recalculates the schedule automatically.";
+    container.appendChild(dragHint);
+  }
+
+  /** Gate 8 drag interaction. `targetEl` is the element being visually transformed
+   * live during the drag (a bar rect or a milestone diamond); `progressEl` (bar-only)
+   * gets the same translate so its fill tracks the bar during a move, and is hidden
+   * during a resize since its width would otherwise read as stale until the drop
+   * commits and a full rerender fixes it precisely. `hitEl`, when given (the resize
+   * handle), is what actually receives the pointerdown — otherwise `targetEl` does.
+   * pointermove/pointerup are attached to `window` rather than relying on
+   * setPointerCapture (not implemented in every test/embed environment this app runs
+   * in) so a fast drag that leaves the thin bar's hit area is never dropped. */
+  function attachGanttDrag(targetEl, progressEl, activity, mode, pxPerDay, rerender, hitEl) {
+    var CLICK_THRESHOLD_PX = 4;
+    (hitEl || targetEl).addEventListener("pointerdown", function (e) {
+      if (typeof e.button === "number" && e.button !== 0) return;
+      var origStart = activity.planned_start || activity.early_start;
+      var origFinish = activity.planned_finish || activity.early_finish;
+      if (!origStart || !origFinish) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      var startClientX = e.clientX;
+      var baseWidth = Number(targetEl.getAttribute("data-base-width")) || Number(targetEl.getAttribute("width")) || 0;
+      var moved = false;
+
+      function onMove(ev) {
+        var deltaPx = ev.clientX - startClientX;
+        if (Math.abs(deltaPx) >= CLICK_THRESHOLD_PX) moved = true;
+        var dayDelta = window.PCC.scheduleGanttLayout.daysFromPixelDelta(deltaPx, pxPerDay);
+        var snappedPx = dayDelta * pxPerDay;
+        if (mode === "move") {
+          targetEl.setAttribute("transform", "translate(" + snappedPx + ",0)");
+          if (progressEl) progressEl.setAttribute("transform", "translate(" + snappedPx + ",0)");
+        } else {
+          targetEl.setAttribute("width", Math.max(baseWidth + snappedPx, 3));
+          if (progressEl) progressEl.style.display = "none";
+        }
+      }
+
+      function onUp(ev) {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        targetEl.removeAttribute("transform");
+        if (progressEl) {
+          progressEl.removeAttribute("transform");
+          progressEl.style.display = "";
+        }
+        var deltaPx = ev.clientX - startClientX;
+        var dayDelta = window.PCC.scheduleGanttLayout.daysFromPixelDelta(deltaPx, pxPerDay);
+
+        if (!moved || dayDelta === 0) {
+          uiState.ganttDetailActivityId = activity.id;
+          rerender();
+          return;
+        }
+
+        var result =
+          mode === "move"
+            ? window.PCC.scheduleGanttLayout.moveDates(origStart, origFinish, dayDelta)
+            : window.PCC.scheduleGanttLayout.resizeFinish(origStart, origFinish, dayDelta);
+
+        window.PCC.store.update(function (d) {
+          var act = d.activities.find(function (x) { return x.id === activity.id; });
+          if (!act) return;
+          act.planned_start = result.start;
+          act.planned_finish = result.finish;
+          act.duration = window.PCC.scheduleGanttLayout.diffDays(result.start, result.finish);
+          act.updated_at = new Date().toISOString();
+        });
+        window.PCC.notify(
+          (mode === "move" ? "Moved “" : "Resized “") + activity.name + "” by " + Math.abs(dayDelta) + " day(s) — recalculating…",
+          "success"
+        );
+        runCalculation(window.PCC.store.get(), rerender);
+      }
+
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    });
   }
 
   // ---------------------------------------------------------------------------------
@@ -2241,6 +3690,10 @@
       renderImportPanel(outlet, data, rerender);
     }
 
+    if (uiState.excelEditorOpen) {
+      renderExcelEditorPanel(outlet, data, rerender);
+    }
+
     if (uiState.editingScheduleId) {
       var schedBeingEdited =
         uiState.editingScheduleId === "new"
@@ -2280,6 +3733,7 @@
         uiState.editingActivityId = null;
         uiState.editingWbsId = null;
         uiState.editingRelationshipId = null;
+        uiState.ganttDetailActivityId = null;
         rerender();
       };
       tabBar.appendChild(btn);
@@ -2297,4 +3751,18 @@
   }
 
   window.PCC.pages.schedule = render;
+  window.PCC.schedule = {
+    /** Gate 10: the reverse-navigation half of activity linking — every other
+     * register's "View in Gantt" button calls this, then routes to #/schedule. Jumps
+     * straight to the Gantt tab with that activity's own Detail Panel already open,
+     * matching the same "land exactly on the linked record" convention every other
+     * cross-module link in this app already follows (expandRisk/expandRfi/
+     * expandMeeting/expandChangeOrder). */
+    viewActivity: function (projectId, scheduleId, activityId) {
+      uiState.projectId = projectId;
+      uiState.scheduleId = scheduleId;
+      uiState.tab = "gantt";
+      uiState.ganttDetailActivityId = activityId;
+    },
+  };
 })();

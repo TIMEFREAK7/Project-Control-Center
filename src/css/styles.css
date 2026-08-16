@@ -963,6 +963,19 @@ a:focus-visible {
     background: #fff !important;
   }
 
+  /* Gate 9 (Project Executive Center): the one-page Project Snapshot is meant for A4
+     landscape specifically (wide KPI/overview grid), while every other report in this
+     app (Project Status/Portfolio Summary, the Management Pack) stays portrait — a CSS
+     named page targets just the snapshot's own printed pages without changing the
+     default @page setup everything else relies on. */
+  @page snapshot-page {
+    size: A4 landscape;
+    margin: 10mm;
+  }
+  .snapshot-doc {
+    page: snapshot-page;
+  }
+
   .report-doc * {
     color: #000 !important;
     background: transparent !important;

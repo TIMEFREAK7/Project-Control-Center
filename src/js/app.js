@@ -6,6 +6,8 @@
 
     router.register("dashboard", window.PCC.pages.dashboard);
     router.register("portfolio", window.PCC.pages.portfolio);
+    router.register("executiveCenter", window.PCC.pages.executiveCenter);
+    router.register("vendors", window.PCC.pages.vendors);
     router.register("documents", window.PCC.pages.documents);
     router.register("dailylog", window.PCC.pages.dailylog);
     router.register("schedule", window.PCC.pages.schedule);
@@ -14,6 +16,7 @@
     router.register("rfis", window.PCC.pages.rfis);
     router.register("changeOrders", window.PCC.pages.changeOrders);
     router.register("cost", window.PCC.pages.cost);
+    router.register("resources", window.PCC.pages.resources);
     router.register("reports", window.PCC.pages.reports);
     router.register("settings", window.PCC.pages.settings);
     router.register("notfound", window.PCC.pages.notfound);

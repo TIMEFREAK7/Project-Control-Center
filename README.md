@@ -905,19 +905,621 @@ straight line across the whole project.
 **What I have not tested:** this on your actual device. Per the usual gate discipline, treat this
 as built-and-verified-in-this-environment, not confirmed — same standard as every prior gate.
 
+## Gate 8 — Interactive Gantt Editing (2026-08-16)
+
+Gate 5 shipped the Gantt as a read-only visualization, deliberately — "no drag-to-reschedule,
+no inline editing... a separate, later decision." This gate is that later decision: the Gantt
+becomes the primary way to reschedule activities day-to-day, not just view them.
+
+**Scope decided explicitly before building:** drag-to-move, drag-to-resize, and a click-to-open
+detail panel, with every edit auto-recalculating the schedule — matching the spec's "no manual
+refresh should be required." **Deliberately NOT built this pass, and said so in the UI rather than
+silently omitted:** linking an activity to Risks/Issues/RFIs/Meetings/Documents/Vendors/Change
+Orders (none of those registers carry an activity reference — adding one to five-plus modules is
+a schema change on the scale of its own gate) and virtualized rendering for 10,000+ activities
+(current SVG rendering is fine for realistic project sizes but untested at that scale).
+
+**What changed and why:**
+
+- **`scheduleGanttLayout.js` gained three pure, testable functions** — `daysFromPixelDelta()`,
+  `moveDates()`, `resizeFinish()` — same "calculation here, DOM there" split every engine in this
+  app keeps. Both date functions always write to `planned_start`/`planned_finish`, never the
+  calculated early/late fields, matching the Activities tab form's existing rule.
+- **Drag-to-move**: dragging a bar (or a milestone diamond) shifts both dates by the same number
+  of days, preserving duration. **Drag-to-resize**: a narrow handle at a bar's right edge extends
+  only the finish date (and therefore duration) — clamped so finish can never end up before start.
+  Live visual feedback during the drag is a plain SVG `transform`/`width` tweak on the existing
+  elements (no rerender until drop); the commit on pointer-up writes to the store and immediately
+  re-runs `scheduleCpmEngine.calculateSchedule()`, the same call the toolbar's own "Calculate
+  Schedule" button makes, so float/critical-path/project-finish are never stale after an edit.
+  pointermove/pointerup are attached to `window`, not via `setPointerCapture` (not universally
+  available across every environment this app runs in), so a fast drag that leaves the bar's thin
+  hit area is never dropped.
+- **Click vs. drag disambiguation**: a pointer-down/up with no real movement (under a 4px
+  threshold) opens a new **Activity Detail Panel** instead of committing a zero-day edit — ID
+  (external, falling back to the internal id), WBS, type, status, duration, remaining duration,
+  planned dates, float, % complete, discipline, contractor, responsible person, constraint,
+  notes, and a live Predecessors/Successors list, with Edit / + Add Relationship / Delete actions.
+  The panel says explicitly that cross-module linking isn't built yet rather than showing an empty
+  or broken section.
+- **Filters**: WBS, Discipline, Contractor, Responsible Person (all populated from the schedule's
+  own real values, not a fixed list), plus a single "quick" status filter (Critical / Near
+  Critical / Delayed / Completed / In Progress / Not Started / Milestones Only) and free-text
+  search across Activity ID / Name / WBS / Contractor / Discipline. "Delayed" is computed at
+  filter time from the effective (calculated-preferred, planned-fallback) finish date vs. the
+  schedule's data date — never stored, same convention every other overdue check in this app uses.
+- **Zoom presets** (Auto / Daily / Weekly / Monthly / Quarterly / Yearly) alongside the pre-existing
+  size-based "Auto" heuristic, plus **Today / Project Start / Project Finish / Data Date** buttons
+  that scroll the chart's own container to the relevant date. A solid **Today line**, distinct
+  from the existing dashed amber Data Date marker, renders when today falls inside the chart's
+  date range.
+- **Baseline overlay**: a "Show Baseline" toggle (when the project has at least one saved
+  baseline) loads that baseline's IndexedDB snapshot and draws thin dashed ghost bars behind the
+  matching current bars — matched by `external_id` falling back to `id`, the same precedence
+  `scheduleBaselineEngine.js`'s own comparison already uses, so a baseline captured before a
+  re-import still lines up correctly.
+- **Quick-add**: "+ Add Activity" / "+ Add Milestone" buttons jump to the Activities tab's existing
+  form (pre-selecting Milestone as the type for the latter) rather than duplicating the form here.
+
+**Changed:** `scheduleGanttLayout.js` (drag-math functions), `schedule.js` (the Gantt tab
+rewritten with editing/filters/zoom/detail panel/baseline overlay; a shared
+`deleteActivityWithConfirm()` extracted so the Activities tab and the new detail panel delete the
+same way). **New (unused by this gate, prep for Gate 9 below):** `projectHealthEngine.js`, schema
+v20 → v21.
+
+**Tested before delivery (16 + 23 checks, fresh session, all passed clean):**
+
+- **`projectHealthEngine.js`, pure logic** (16 checks) — see Gate 9 below, built alongside this
+  gate but not wired into any UI until Gate 9.
+- **End-to-end against the actual bundled `index.html`** (`test_schedule_gantt_editing_e2e.js`,
+  23 checks, not a reimplementation, real `pointerdown`/`pointermove`/`pointerup` events dispatched
+  with `clientX` set): dragging a bar 3 days right shifts both planned dates and preserves
+  duration; a plain click with no movement opens the detail panel instead of editing dates
+  (checked against the store, not just the UI); resizing a bar's right edge by 5 days extends only
+  the finish date and grows duration; dragging a milestone diamond moves its single date; editing
+  auto-recalculates without a manual "Calculate Schedule" click; the search filter narrows the
+  chart to matching activities only; "+ Add Milestone" pre-selects the Milestone type on the real
+  form; deleting an activity from the detail panel removes it and any relationship referencing it;
+  full route smoke test across every page.
+- **Real-browser verification** (Chromium via Playwright, both themes, desktop and 375px mobile
+  viewports): seeded a five-activity/one-milestone scenario, dragged a bar with real mouse
+  move/down/up events and confirmed the toast + recalculated critical-path count, clicked a bar to
+  open the detail panel and confirmed every field renders correctly in both themes, confirmed the
+  filter/zoom/jump toolbar lays out cleanly — zero console/page errors throughout.
+
+**What I have not tested:** this on your actual device, and Gantt rendering performance at
+10,000+ activities (explicitly out of scope this pass, noted above). Per the usual gate
+discipline, treat this as built-and-verified-in-this-environment, not confirmed.
+
+## Gate 9 — Project Executive Center (2026-08-16)
+
+The management-facing counterpart to Gate 8's operational Gantt: a per-project rollup
+consolidating Portfolio, Schedule, Cost Tracking, Risk Register, RFI/TQ, Change Management, and
+Meetings into one screen, plus printable output for meetings and steering committees.
+
+**Scope decided explicitly before building**, several items deliberately cut and documented rather
+than silently skipped: **no Resource Management KPIs** (that module doesn't exist yet — nothing
+here is a placeholder for it); **Cost KPIs are Budget/Actual/Variance plus EAC when EVM is
+available** — Commitments and Cash Flow have no underlying data model anywhere in PCC and are
+called out as untracked rather than shown as a permanently-empty tile; **EVM tiles/charts only
+render when the project actually has Cost Tracking budget items** — no fabricated PV/EV/CPI for a
+project that's never touched Cost Tracking; **per-activity linking to Risks/Issues/RFIs/Meetings/
+Documents/Vendors/Change Orders is not built** (same reason as Gate 8 — no register carries an
+`activity_id`); **no PDF/Word/Excel library** — Project Snapshot and the Management Pack reuse
+`reports.js`'s existing `window.print()`/`.report-doc` architecture, per the standing decision
+that this app never bundles a document-generation library; **no persisted/logo-customizable report
+templates** — deferred as a separate, later polish item.
+
+**What changed and why:**
+
+- **Schema v20 → v21**: `newProject()` gains `project_type`, `current_phase`, and an optional
+  manual `forecast_finish_date` override (used only when no schedule has been calculated —
+  the Executive Center prefers the CPM engine's live-calculated finish and says which source is
+  in play, same transparency convention as Gantt's dashed "not yet calculated" bars). New
+  `settings.health_score_weights` (defaults below). New `executive_summaries` array +
+  `newExecutiveSummary()` — one record per project, storing only the user's *edited overrides* for
+  the Executive Summary's five sections; the default text is always computed fresh from real data,
+  never stored, so it can't drift stale.
+- **New pure module `projectHealthEngine.js`** (same "calculation only, no DOM" split every other
+  engine here keeps): `computeHealthScore(context, weights)` returns a 0–100 score, a RAG
+  (on_track/at_risk/critical), and a full **breakdown** — every factor's raw inputs, sub-score,
+  weight, and contribution, so the "why" is never hidden, per the spec's explicit requirement. Six
+  factors (Schedule 25 / Cost 20 / Risk 20 / Issue 10 / RFI 15 / Change 10, defaults, editable in
+  the UI and applied portfolio-wide): a factor with no underlying data (e.g. no budget set yet) is
+  marked `available: false` and **excluded** from the score — weights re-normalize over just the
+  available factors, so a project that simply hasn't used Cost Tracking yet doesn't get penalized
+  as if it were over budget. `computeDiagnostics(context)` produces rule-based alerts (SPI/CPI
+  below threshold, EAC over BAC, cost over budget, critical/near-critical activities, milestone
+  slippage, high risks, overdue RFIs, overdue meeting actions, pending change orders) — no AI,
+  every alert traces to a real record.
+- **New page `executiveCenter.js`** (route `#/executiveCenter`, "Executive Center" button on every
+  Portfolio project card, sidebar entry under Overview):
+  - **Project Overview**: name/client/location/sector/project type/contract value/budget (with
+    the same Portfolio-budget-fallback disclosure Cost Tracking already established)/planned and
+    forecast finish/data date/PM/planner/progress, with an RAG health badge.
+  - **KPI cards** grouped Progress / Schedule / Cost / EVM (conditional) / Risks / Issues / RFIs /
+    Changes — Schedule KPIs (critical/near-critical/delayed counts, upcoming milestones, schedule
+    variance) are computed **live** via `scheduleCpmEngine` at render time rather than reading
+    possibly-stale stored `total_float`, so the dashboard reflects reality even if nobody has
+    clicked "Calculate Schedule" recently on the Schedule page — directly satisfying the spec's
+    "if an activity changes, the dashboard must reflect it."
+  - **Health Score panel**: gauge, RAG badge, and the full breakdown table from
+    `projectHealthEngine.js`; weights are editable inline and persist to
+    `settings.health_score_weights`.
+  - **Project Health Diagnostics**: the rule-based alert list, each linking back to its source
+    record (a risk, an RFI, a change order, a meeting) via the same cross-page navigation pattern
+    Portfolio's Details panel and the Meetings hub already use (`window.PCC.<module>.expandX()` +
+    `router.go()`).
+  - **Executive Summary**: five sections (Status/Achievements/Challenges/Management Attention/
+    Upcoming), each showing computed default text unless the user has edited and saved an
+    override — template/data-driven, never AI-generated, per the spec's explicit requirement.
+  - **Charts**, all plain SVG (no charting library, consistent with the Gantt's own approach):
+    Progress S-Curve (a real duration-weighted **planned** cumulative curve — there's no stored
+    day-by-day actual-progress history anywhere in PCC, only current `percent_complete`, so
+    "actual" is a single labeled point rather than a fabricated curve), Critical vs Non-Critical
+    donut, Float Distribution histogram, Milestone Timeline, Risk Heat Map, RFI Open/Closed,
+    Change Order status. Every chart shows "No data available" instead of a misleadingly empty
+    axis when a project has nothing to plot.
+  - **Recent Activity** feed, **Upcoming Items** (configurable 7/14/30/60/90-day range), and a
+    **Management Action List** aggregating delayed activities / high risks / overdue RFIs /
+    pending approvals / outstanding meeting actions / cost warnings / schedule slippage, each
+    linking to its source.
+  - **Project Snapshot**: a fixed one-page **A4 landscape** printable summary (a new CSS named
+    page, `page: snapshot-page`, applied only to `.snapshot-doc` — the existing portrait
+    `@media print` rules for Reports' own output are untouched) for weekly/client/steering-
+    committee use.
+  - **Management Pack**: one click assembles a checkbox-driven, multi-section printable document
+    (cover, executive summary, snapshot, KPI dashboard, progress, schedule, milestones, cost, EVM,
+    risks, issues, RFIs, changes, daily log, meetings) — a section with genuinely no data still
+    renders (with its own "no data" note) if explicitly checked, per the spec's "don't include
+    empty sections unless the user explicitly chooses to."
+
+**Changed:** `build.js` (JS_ORDER), `layout.js` (nav entry + page title), `app.js` (route),
+`portfolio.js` ("Executive Center" button on every project card), `styles.css` (the
+`snapshot-page` named-page print rule). **New:** `projectHealthEngine.js`, `executiveCenter.js`.
+
+**Tested before delivery (31 checks, fresh session, all passed clean):**
+
+- **End-to-end against the actual bundled `index.html`** (`test_executive_center_e2e.js`, not a
+  reimplementation): seeded one project with real data across every rolled-up module (a critical-
+  path activity, a high risk, an overdue RFI, a pending change order, an overdue meeting action, a
+  Cost Tracking budget item linked to an activity) and confirmed — the Executive Center is
+  reachable from Portfolio's own "Executive Center" button; KPI tiles show the real seeded numbers
+  (not fabricated ones); the EVM section renders (because real budget items exist) and disappears
+  entirely for a second, zero-budget-item project (checked directly — "SPI" doesn't appear
+  anywhere on that project's page); the Health Score panel renders a numeric score/RAG/breakdown;
+  editing a weight in "Configure Weights" persists to the store; Diagnostics lists the real risk/
+  RFI/change-order/meeting-action by name/number; the Management Action List surfaces the same
+  real items; the Executive Summary's auto-generated text mentions the real completed activity;
+  editing and saving a summary section persists an override that then displays instead of the
+  auto text; every chart SVG renders without throwing; the Snapshot and Management Pack both
+  render real numbers, "Print / Save as PDF" calls `window.print()`, toggling a Management Pack
+  section checkbox on/off actually adds/removes that section from the assembled document; full
+  route smoke test including the new route.
+- **`projectHealthEngine.js`, pure logic** (16 checks, listed under Gate 8 above since it was
+  built in that same session — a fully healthy project scores 100/on_track; a factor with no
+  underlying data is excluded rather than scored as 0; critical activities/schedule slippage/
+  over-budget/high-risks/critical-issues/overdue-RFIs/pending-COs each measurably lower their own
+  factor; malformed or non-100-summing weights are re-normalized rather than distorting the score;
+  RAG thresholds; every diagnostic rule fires correctly (SPI/CPI/EAC-over-BAC/cost-over-budget/
+  critical-and-near-critical activities/milestone slippage/high risks/overdue RFIs/overdue meeting
+  actions/pending change orders) with a correct severity and a real record link; alerts sort
+  critical-then-warning-then-info; empty/undefined context produces no alerts without throwing).
+- **Real-browser verification** (Chromium via Playwright, both themes, desktop and 375px mobile):
+  seeded a realistic multi-module scenario, confirmed the Overview/KPI/Health-Score/Diagnostics/
+  Executive-Summary/Charts/Recent-Activity/Upcoming/Management-Action sections all render
+  correctly and legibly in both themes and at mobile width; confirmed the Project Snapshot and
+  Management Pack both render with real numbers and every Management Pack section checkbox toggles
+  correctly — zero console/page errors throughout.
+
+**What I have not tested:** this on your actual device. Per the usual gate discipline, treat this
+as built-and-verified-in-this-environment, not confirmed — same standard as every prior gate.
+
+## Gate 10 — Activity Linking (2026-08-16)
+
+Gate 8's Activity Detail Panel shipped with an explicit note that cross-module linking "isn't
+built yet — those registers don't currently carry an activity reference." This gate is that: an
+optional `activity_id` on Risk/Issue/Opportunity, RFI/TQ, Meetings, Documents, Daily Log, and
+Change Orders, plus a real, live Linked Records list in the Gantt's Activity Detail Panel and
+"Linked Activity"/"View in Gantt" on every one of those six registers' own detail views — the
+cross-module drill-down the Gantt was missing.
+
+**Scope decided explicitly before building:** the six registers link, not "Vendors" (no Vendor
+Management module exists in PCC — nothing to link to) and not "Meeting Actions" individually (a
+Meeting links as a whole, same granularity `source_meeting_id` already uses everywhere else in
+this app, rather than introducing action-item-level linking as a one-off). Daily Log links to a
+single optional activity too, even though a day's log realistically touches several — modeling a
+many-to-many would be the only such relationship anywhere in PCC; a single pointer still covers
+the common case and stays consistent with every other register's link shape.
+
+**What changed and why:**
+
+- **Schema v21 → v22**: `activity_id: ""` added to `newRisk()`, `newRfi()`, `newMeeting()`,
+  `newDocument()`, `newDailyLog()`, `newChangeOrder()` — same many-to-one shape
+  `cost_budget_items.activity_id` (Gate 7) already established: several records may point at the
+  same activity, one record can't span several. Unlinked is fully valid and remains the default.
+- **A "Linked Activity (optional)" dropdown** on all six forms, listing that project's activities
+  across every one of its schedule revisions, each labeled with its schedule's name — the exact
+  same `activityOptionsFor()` helper cost.js's Budget Item form established in Gate 7 for linking
+  to a Schedule Activity, duplicated into each module (self-contained page modules, no shared util
+  layer, matching this codebase's existing convention) rather than factored out.
+- **Each register's own detail/expanded view** gains a "LINKED ACTIVITY" row with a "View in
+  Gantt" button when set — same visual pattern as the existing "RAISED IN MEETING"/source-link rows
+  Risk Register, RFI/TQ, and Change Orders already had from earlier gates.
+- **`schedule.js` gained its first public API**, `window.PCC.schedule.viewActivity(projectId,
+  scheduleId, activityId)` — jumps straight to the Gantt tab with that activity's own Detail Panel
+  already open, the reverse-navigation half every "View in Gantt" button calls, matching the same
+  "land exactly on the linked record" convention `expandRisk`/`expandRfi`/`expandMeeting`/
+  `expandChangeOrder` already established.
+- **The Gantt's Activity Detail Panel's old "not built yet" note is now a real "Linked Records"
+  section** — queries all six registers live (`activity_id === this activity's id`, nothing
+  cached or duplicated) and lists every match with its own "View" button that navigates to and
+  expands that exact record. `documents.js` and `dailyLog.js` gained `expandDocument()`/
+  `expandLog()` public exports to support this (the other four already had an equivalent).
+  An activity with nothing linked shows a clear empty state pointing at where to link one, not a
+  blank section.
+
+**Changed:** `store.js` (schema v21→v22), `risks.js`, `rfis.js`, `meetings.js`, `documents.js`,
+`dailyLog.js`, `changeOrders.js` (Linked Activity field + display + navigation on each),
+`schedule.js` (Linked Records section, `window.PCC.schedule` export).
+
+**Tested before delivery (10 + 24 checks, fresh session, all passed clean):**
+
+- **Schema migration** (`test_store_schema_v22_migration.js`, 10 checks, replacing the v21 file
+  per the "one canonical test targeting latest" pattern): a v20 dataset reaches v22 in one pass
+  with Gate 9's fields AND Gate 10's `activity_id` correctly backfilled onto one existing record
+  in every one of the six registers, every other field left untouched; the full legacy migration
+  chain (no `schema_version` at all) still reaches v22 without throwing; a brand-new install;
+  all six factories default `activity_id` to `""`.
+- **End-to-end against the actual bundled `index.html`** (`test_activity_linking_e2e.js`, 24
+  checks, not a reimplementation): each of the six registers' real Add form offers the Linked
+  Activity select (populated with the seeded schedule's activities, labeled with the schedule
+  name) and persists `activity_id` on submit, checked directly against the store; **two full
+  bidirectional round trips** as the deep verification — a Risk's "View in Gantt" button lands on
+  the correct activity's Detail Panel with that risk listed under Linked Records, and from there
+  the RFI's own "View" button navigates to RFI/TQ with that exact entry expanded showing its own
+  "LINKED ACTIVITY" row back; a second, unlinked activity correctly shows "LINKED RECORDS (0)"
+  and the empty-state explanation rather than fabricated content; full route smoke test.
+- **Real-browser verification** (Chromium via Playwright, both themes): seeded a risk and an RFI
+  both linked to one activity, confirmed the Gantt's Linked Records section lists both with
+  working View buttons, and confirmed the Risk Register's own details panel shows "LINKED
+  ACTIVITY" with a working "View in Gantt" button — zero console/page errors throughout.
+
+**What I have not tested:** this on your actual device. Per the usual gate discipline, treat this
+as built-and-verified-in-this-environment, not confirmed — same standard as every prior gate.
+
+## Gate 11 — Resource Management (2026-08-16)
+
+The last item in Tier 2's locked build order: a shared, portfolio-wide resource pool (labor/
+equipment/material), assignments to Schedule activities, and cross-project resource leveling —
+a day-by-day usage histogram plus over-allocation detection, the same kind of resource histogram
+commercial scheduling tools ship.
+
+**Scope decided explicitly before building** (Aditya, this session, asked directly): **full
+leveling**, not a bare register — an Assignments tab plus a Leveling tab with a real histogram and
+over-allocation detection, not just CRUD. **No cost linkage** — quantity/availability only this
+gate; rate × usage feeding Cost Tracking/EVM is deferred, matching the same "reconciliation stays
+a deliberate, separate act" pattern Change Orders and Cost Tracking's Portfolio-budget fallback
+already established.
+
+**What changed and why:**
+
+- **Schema v22 → v23**: two new shapes, deliberately **not** following the "project assignment is
+  mandatory on every register" rule enforced everywhere else in this app. A **Resource**
+  (`newResource`) — name, type (labor/equipment/material), unit, `max_availability` per day — is a
+  shared, reusable ASSET, not an event or artifact that belongs to one project; forcing project
+  assignment on it would be a modeling error. A **ResourceAssignment** (`newResourceAssignment`) —
+  resource_id + activity_id + quantity — IS project-scoped, but transitively, through the activity
+  it points at. That's also what makes real cross-project leveling possible at all: the same crane
+  can be assigned to activities in two different projects' schedules, and the engine can catch the
+  conflict precisely because assignments aren't siloed per project.
+- **New pure module `resourceLevelingEngine.js`** (same "calculation only, no DOM" split every
+  other engine here keeps): `computeResourceUsageTimeline()` does a day-by-day scan across
+  **every** assignment for a resource regardless of which project its activity belongs to,
+  returning allocated quantity per day plus which activities/projects contributed (so a conflict
+  is explainable, not just flagged). `detectOverAllocations()` compares against
+  `max_availability` — unset (null) means "not computable," never "zero capacity," same discipline
+  `projectHealthEngine.js` established for a factor with no underlying data. Milestones and
+  undated/zero-duration activities are excluded from allocation (a point in time doesn't consume a
+  resource over a span) and counted, not silently dropped. `portfolioOverAllocationSummary()`
+  rolls this up across every resource for quick "what's over-allocated right now" signals.
+  `bucketTimeline()` buckets a long day range into weekly/monthly bars for the histogram, taking
+  the **max** per bucket (not average) so a short sharp spike survives the chart.
+- **New page `resources.js`** (route `#/resources`, sidebar entry under Planning): **Register**
+  tab (CRUD, deleting a resource cascades to its assignments with a confirm naming the count, same
+  pattern Activity delete already uses for its relationships); **Assignments** tab (Resource →
+  Project → Activity dependent selects, the same `activityOptionsFor()` pattern Cost Tracking's
+  Budget Item form established in Gate 7, plus a quantity, with "View in Gantt" on each row);
+  **Leveling** tab (a portfolio-wide "currently over-allocated" summary up top, a per-resource
+  picker below with KPI tiles, an SVG usage histogram — red bars where demand exceeds capacity,
+  a dashed line at max availability — and a day-by-day conflict list naming exactly which
+  activities/projects are contending for the resource, so there's something to actually act on,
+  not just a red flag).
+- **Cross-linked into everything Gate 8-10 already built**: resource assignments are a 7th source
+  in the Gantt's Activity Detail Panel's Linked Records section (fits the same `activity_id`-driven
+  array pattern the other six use, decorated with the resource's name since the assignment record
+  itself doesn't carry one); Portfolio's Details panel gets a "RESOURCES ASSIGNED" section listing
+  each resource assigned to that project with a portfolio-wide over-allocation flag when relevant;
+  Executive Center gets a RESOURCES KPI section — **only once `data.resources.length > 0`**,
+  completing the promise Gate 9 made when it explicitly skipped Resource KPIs because the module
+  didn't exist yet.
+
+**Changed:** `build.js` (JS_ORDER), `layout.js` (nav entry + page title), `app.js` (route),
+`schedule.js` (7th Linked Records source), `portfolio.js` (Resources Assigned section),
+`executiveCenter.js` (RESOURCES KPI section + context gathering). **New:**
+`resourceLevelingEngine.js`, `resources.js`.
+
+**Tested before delivery (13 + 15 + 25 checks, fresh session, all passed clean):**
+
+- **Schema migration** (`test_store_schema_v23_migration.js`, 13 checks, replacing the v22 file
+  per the "one canonical test targeting latest" pattern): a v20 dataset reaches v23 in one hop
+  with Gates 9/10/11's fields all correctly added/backfilled; the full legacy chain and a
+  brand-new install both reach v23 cleanly; `newResource()`/`newResourceAssignment()` factory
+  defaults; `RESOURCE_TYPES` has all three types.
+- **Engine, pure logic** (`test_resource_leveling_engine.js`, 15 checks): allocation across a
+  span is start-inclusive/finish-exclusive; calculated dates preferred over planned; two
+  overlapping assignments to the same resource sum correctly; **the core cross-project claim,
+  verified directly** — the same resource assigned to two different projects' activities sums
+  demand across both, with contributors correctly attributed to each project; milestones,
+  undated activities, zero/missing quantity, and a deleted activity are all excluded and counted,
+  never guessed or crashed on; `max_availability` unset correctly reads as "not computable" rather
+  than zero capacity; over-allocated days are flagged exactly and only where demand exceeds
+  capacity; the portfolio summary excludes resources with unset availability and resources with no
+  conflicts; bucketing takes the max (not average) per bucket and handles an empty timeline.
+- **End-to-end against the actual bundled `index.html`** (`test_resources_e2e.js`, 25 checks, not
+  a reimplementation): seeded two projects with **overlapping activities** specifically to prove
+  cross-project detection, not just within-one-schedule double-booking; added a resource and two
+  assignments (one per project) through the real forms; the Leveling tab's portfolio summary and
+  per-resource view both correctly flag the conflict, name the exact overlapping date, and list
+  **both** contributing projects/activities in the conflict detail (the specific claim that proves
+  this isn't just single-project math); the Gantt's Linked Records section lists the assignment
+  and its "View" button lands on the Assignments tab; Portfolio's Details panel shows the
+  over-allocation flag with a working View All link; Executive Center's RESOURCES section shows
+  real assigned/over-allocated counts for a project with assignments, and still renders (correctly,
+  since resources exist app-wide) rather than fabricating zeros for a second, resource-free
+  project; deleting a resource cascades to its assignments with a confirm naming the count; full
+  route smoke test including the new route.
+- **Real-browser verification** (Chromium via Playwright, both themes, desktop and 375px mobile):
+  the same cross-project scenario, confirming the histogram renders with red over-capacity bars
+  and a dashed max-availability line, the KPI tiles and conflict list read cleanly in both themes
+  — zero console/page errors throughout.
+
+**What I have not tested:** this on your actual device. Per the usual gate discipline, treat this
+as built-and-verified-in-this-environment, not confirmed — same standard as every prior gate.
+
+## Gate 12 — In-App Excel Editor for Schedules (2026-08-12)
+
+Requested directly (Aditya): when a schedule's Excel file is imported, it should be attached to
+the project and editable **in PCC itself** — not downloaded, hand-edited in real Excel, and
+re-imported — with the schedule updating automatically from those edits. This sits on top of the
+existing Gate 2 import pipeline rather than replacing it.
+
+**Scope decided before building:** the editable grid covers the same recognized columns Import
+already understands (Activity ID, Name, Type, WBS Code/Name, Duration, dates, Predecessors, %
+Complete, Discipline, Contractor, Responsible, Status, Notes) — not a generic spreadsheet grid with
+arbitrary columns/formulas. Extra columns from the original file were never stored even before this
+gate (Import only ever kept the *parsed* result), so there's nothing to preserve there. Edits apply
+via an explicit "Review Changes" → "Apply to Schedule" step (not live-as-you-type) and update the
+*same* schedule in place — no new revision — matching how hand-editing an Activity already works
+today; only a fresh Import from a new file creates a new revision.
+
+**What changed and why:**
+
+- **The original Excel file is now actually stored.** Import always parsed the file but discarded
+  the bytes afterward; `commitImport()` now writes them to `blobStore` (IndexedDB, keyed by the
+  schedule's id — same store Documents/Photos already use) before writing the schedule record, so a
+  schedule that claims a source file always genuinely has one. Schedules imported before this gate
+  have no stored blob and just don't get an "Edit Excel" option — no attempt to fabricate one.
+- **New "Edit Excel" toolbar button**, enabled only when the selected schedule has
+  `source_file_name` set. Opens an in-page panel (not `window.open`, not a download) — the one thing
+  explicitly ruled out, since Documents' existing "open original file" already downloads/new-tabs
+  Word/Excel files and that's exactly what wasn't wanted here.
+- **The grid is built from the schedule's current Activities/WBS/Relationships, not by re-parsing
+  the stored file's bytes.** After the first Apply, the attached file is regenerated from exactly
+  what was applied, so both stay in sync either way — but sourcing the grid from live data (rather
+  than the file) means there's only ever one source of truth to keep consistent, not two.
+- **Reuses `scheduleImportService.parseRows()` verbatim for Apply** — the grid's "Review Changes"
+  step feeds its rows through the identical parser Import uses (same header-recognition, date/number
+  validation, WBS-hierarchy derivation, predecessor-token parsing, and circular-dependency
+  detection), via a new `CANONICAL_HEADERS` export that's the single source of truth for which
+  columns the grid shows and what labels represent them — so grid edits can never be validated more
+  loosely than a fresh Import.
+- **`buildScheduleRecords()`** factored out of `commitImport()` so both a fresh Import (new schedule)
+  and an Excel-edit Apply (existing schedule, in place) build WBS/Activity/Relationship records
+  through identical logic — no separate, potentially-drifting copy for the "editing" path.
+- **Hand-added-activity safety gate:** an activity added by hand on the Activities tab has no
+  Activity ID, so it can't be represented in the grid at all — and Apply replaces a schedule's full
+  activity list from the grid's contents. Rather than silently deleting such activities, Apply is
+  blocked behind an explicit "N activities aren't from the Excel file — delete them and continue?"
+  warning (same pattern as Import's existing duplicate-file warning) until acknowledged.
+- **`ACTIVITY_TYPE_ALIASES` gained a `wbs_summary` (underscore) alias** — the raw value the app
+  stores internally for that activity type — so a grid `<select>` round-trips through parseRows
+  without tripping the "unrecognized activity type" warning on every single Apply.
+
+**New file:** none (kept inside `scheduleImportService.js` and `schedule.js`, both already Gate 2's
+home). **Changed:** `scheduleImportService.js` (`CANONICAL_HEADERS`, `wbs_summary` alias),
+`schedule.js` (blob storage on import, `buildScheduleRecords()`, the full Excel-editor grid/review/
+apply flow, shared `renderParsedIssuesToggle()`).
+
+**Tested before delivery (4 pure-logic + 21 e2e checks, full suite re-run clean):**
+
+- **Parser round-trip** (`test_schedule_import_service.js`, 4 checks): every `CANONICAL_HEADERS`
+  label maps back to its own key with zero unrecognized-header warnings; the `wbs_summary` alias
+  round-trips without a spurious type warning; status passes through as a raw key with no aliasing,
+  matching what the grid's `<select>` stores.
+- **End-to-end against the actual bundled `index.html`** (`test_schedule_excel_editor_e2e.js`, 21
+  checks): a schedule seeded to look like a real import (source file, blob, two activities with an
+  FS relationship, one WBS item) shows "Edit Excel" enabled and pre-populates the grid correctly,
+  including reconstructing the Predecessors cell from the relationship; editing a name, adding a row,
+  reviewing, and applying updates the store **in place** (same schedule id, revision stays 0) and
+  rewrites the attached blob to a genuinely different value, not the placeholder; the hand-added-
+  activity warning blocks Apply until acknowledged, then deletes it on confirm; full route smoke test
+  across every page.
+- **Real-browser verification** (Chromium via Playwright, screenshots reviewed): the grid, review
+  step, and post-Apply state all render correctly with the dark theme; an edited activity name
+  ("Excavate (Chromium Edit)") applied and appeared in the Activities tab immediately, with the
+  success toast confirming the attached file was updated to match.
+
+**What I have not tested:** this on your actual device. Same standard as every prior gate.
+
+## Gate 13 — Vendor Management Module (2026-08-12)
+
+Requested directly (Aditya) via a full feature spec: a "single source of truth" for vendor
+information across every project — master list, project links, documents, meetings, RFI/TQ, risk,
+and performance, all reachable from one vendor profile. Like Gate 12, this wasn't on the locked Tier
+2/3 roadmap — it's a directly-requested addition, built in a separate parallel session alongside
+Gates 8-11 above and reconciled into `main` together with them here.
+
+**Architecture translation, decided before building:** the spec was written in general ERP language
+("database design," "normalized tables," "foreign keys," "API endpoints," "the project's folder
+structure") that doesn't map onto this app's actual architecture — no server, no SQL, no API layer,
+just one JS object in `localStorage` plus IndexedDB for blobs (see "Architecture" above). Every
+"table" in the spec became a flat array in `store.js` with id-string references, "foreign keys"
+became the same convention every existing register already uses, and "API endpoints" simply doesn't
+apply. "The project's folder structure" doesn't exist in this app either (see "On 'just save files
+to a real folder automatically'" above) — vendor documents use `blobStore.js`, same as every other
+file this app stores.
+
+**Scope decisions made explicitly before building:**
+
+- **Vendor Master is portfolio-wide, not project-scoped** — unlike Documents/Risk/RFI/Change Orders
+  (which are mandatory-project registers per this file's own stated convention), a vendor is closer
+  to a Project itself: one master record, linked to zero or more projects via a join array
+  (`vendor_project_links`), each link carrying its own role/scope of work/contract status.
+- **Vendor<->Meeting/RFI/Risk linking never touches meetings.js/rfis.js/risks.js.** Those three join
+  arrays (`vendor_meeting_links`, `vendor_rfi_links`, `vendor_risk_links`) are populated entirely
+  from the Vendor Profile side, and "open the real record" reuses those modules' own existing public
+  `expandMeeting()`/`expandRfi()`/`expandRisk()` hooks (the same hooks Risk's "raise from meeting"
+  flow already uses) rather than adding a field to their schemas. This is the literal reading of "do
+  not modify or break existing modules" — those three files have zero changes in this gate.
+- **RFIs and Technical Queries are one integration point, not two** — this app already stores them
+  as a single register distinguished by a `type` field (the same "one shape, one type field" pattern
+  this file documents for Risk/Issue/Opportunity), so `vendor_rfi_links` covers both.
+- **Vendor Documents get an OPTIONAL `project_id`, breaking from the mandatory-project rule** on
+  purpose: a vendor's GST certificate or insurance policy isn't "for" any one project, but a
+  project-specific PO or M.O.M. genuinely is. Both needed to be representable, so this register is a
+  deliberate, disclosed exception to that rule rather than an oversight.
+- **Version history is real, not cosmetic:** every upload is its own row; re-uploading over an
+  existing document creates a new row sharing that document's `document_group_id` with
+  `revision_number` incremented. "Latest revision" is computed at render time (highest
+  `revision_number` in the group), not a denormalized `is_latest` flag that could drift.
+- **"Custom document categories added later"** doesn't need a schema change to satisfy: the 19
+  categories from the spec are a fixed list plus "Other" with a free-text `custom_category_label` —
+  the escape hatch a 20th category will need, decided now rather than guessed at.
+- **Skipped:** the "Change Requests" vendor tab from the spec's profile-tabs list — Change Orders
+  wasn't in the spec's own top-level integration list (Portfolio, Documents, Meetings, RFI, Risk,
+  Project) and has no DB table in the spec's own database-design section either, so this reads as a
+  spec inconsistency rather than a real requirement. AI document extraction/OCR/automation were
+  explicitly excluded by the spec itself ("Tier 2... do not implement AI, OCR, document parsing").
+- **"Preview" matches this app's existing behavior for stored files** (View/Download via a new tab —
+  PDFs render inline, other types download, same as Documents' `openStoredFile()`) rather than
+  building a second, richer preview system alongside the one Documents already has.
+- **Overall performance rating is always computed** (average of Quality/Delivery/Communication/
+  Safety, unrated categories excluded rather than dragging the score toward 0), never a
+  separately-editable field that could disagree with its own inputs.
+
+**What changed:** `store.js` (schema v23→v24: nine new arrays — `vendors`, `vendor_contacts`,
+`vendor_project_links`, `vendor_documents`, `vendor_meeting_links`, `vendor_rfi_links`,
+`vendor_risk_links`, `vendor_performance`, `vendor_notes` — plus `VENDOR_STATUSES`,
+`VENDOR_DOCUMENT_CATEGORIES`, `VENDOR_PROJECT_CONTRACT_STATUSES`, `nextVendorCode()`, and nine new
+factory functions). **New file:** `pages/vendors.js` — Dashboard (summary cards + recent activity),
+Vendor Master list (search across vendor/company/contact/trade/project/document name, plus status/
+project/trade/document-type filters), and a tabbed Vendor Profile (Overview, Projects, Contacts,
+Documents, Meetings, RFI/TQ, Risks, Performance, Notes). **Changed:** `app.js` (route registration),
+`layout.js` (sidebar nav under OVERVIEW next to Portfolio, matching its cross-project nature),
+`build.js` (bundle order).
+
+**Tested before delivery (7 pure-logic + 29 e2e checks + updated migration tests, full suite re-run
+clean):**
+
+- **Schema migration** (folded into the canonical `test_store_schema_v24_migration.js` at
+  reconciliation time): a v19 dataset and a very old legacy dataset both migrate cleanly through to
+  schema_version 24 with the new vendor arrays backfilled and no data loss to existing records.
+- **End-to-end against the actual bundled `index.html`** (`test_vendors_e2e.js`, 29 checks): create a
+  vendor with a primary contact (verifying the contact is upserted into `vendor_contacts`, not
+  duplicated onto the vendor record); link a project with role/scope/contract status; add a second
+  contact; a directly-seeded document displays correctly with category/expiry/tags, and uploading a
+  new revision correctly increments `revision_number` while sharing `document_group_id`; linking an
+  existing meeting/RFI/risk and clicking "View X" actually navigates to that module and reuses its
+  real expand hook; a performance review's computed overall rating is hand-verified (4+5+3+4)/4 =
+  4.0; a note is added and listed; the dashboard's summary cards and per-project breakdown reflect
+  seeded data correctly; search-by-trade and status-filter both narrow the list correctly; deleting a
+  vendor cascades to every linked record and its stored blob; full route smoke test.
+- **Real-browser verification** (Chromium via Playwright, screenshots reviewed): the dashboard,
+  vendor form, profile tabs, meeting-linking flow, document upload form, and performance tab all
+  render correctly in the dark theme; a real end-to-end vendor creation → project link → meeting
+  link → performance review flow was hand-verified, including the exact 4.5/5 overall rating
+  computation ((5+4+4+5)/4) matching what real Chromium displayed.
+
+**What I have not tested:** this on your actual device. Same standard as every prior gate.
+
+## Portfolio ↔ Vendor Management linking (2026-08-12)
+
+Requested directly (Aditya): linking a vendor to a project needed to be possible from the **project's
+own page**, not only from the Vendor Profile's Projects tab — and changes from either side had to
+show up on the other automatically.
+
+That last part came for free from Gate 9's own design: `vendor_project_links` is one shared array,
+not two copies, so any UI that reads/writes it is automatically in sync with every other UI that
+does — no separate sync logic needed, ever. This change is purely a second UI surface onto that same
+array.
+
+**What changed:** Portfolio's project details panel (`renderProjectDetails()`) gets a new "VENDORS"
+section, in the same read-summary-plus-"View All" style as its existing Risks/Meetings/Change Orders
+sections — except this one also gets a "+ Link Vendor" quick-action (a plain vendor picker, no role/
+scope/contract-status fields, since editing those stays the Vendor Profile Projects tab's job) and a
+per-row "Unlink," since the ask was specifically for project-side linking capability, not just a
+read-only summary. `renderProjectDetails()` now takes the page's `rerender` callback (previously
+didn't need one, since every other section in it was purely read-only) so the new picker can update
+the view after linking/unlinking. `vendors.js` gained `filterByProject()`, the same "View All" hook
+every other register already exposes.
+
+**Tested:** three new checks added to `test_vendors_e2e.js` (32 total in that file now): linking from
+the Vendor Profile shows up correctly in Portfolio's Vendors section (role included); unlinking from
+Portfolio removes it from the store and re-linking from Portfolio's picker restores it; the
+Portfolio-made link is visible back on the vendor's own Projects tab. Full suite re-run clean.
+Real-browser verification (Chromium via Playwright, screenshots reviewed): the Vendors section and
+its Link Vendor picker render correctly and already-linked vendors are correctly excluded from the
+picker's options.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
 RFI/TQ → Change Management → Basic Reporting → Backup & Recovery
 
-**Tier 2** (in progress — Schedule import, CPM/float engine, Gantt, Cost Tracking, and the EVM
-engine are done; next up is Resource Management): Schedule import (Excel/MSP first) + CPM/float
-engine + Gantt → Cost tracking → EVM engine → Resource Management
+**Tier 2** (complete — Schedule import, CPM/float engine, interactive Gantt, Cost Tracking, the
+EVM engine, and Resource Management are all done): Schedule import (Excel/MSP first) + CPM/float
+engine + Gantt (visualization, then Gate 8's editing) → Cost tracking → EVM engine → Resource
+Management (Gate 11 — register + assignments + cross-project leveling, no cost linkage)
+
+**Project Executive Center** (Gate 9, done) — sits above Tier 2 rather than inside its original
+line items, per the architecture this gate was built against: Project → the operational modules
+(Schedule/Cost/Risk/RFI/Change/Meetings/etc.) → **Project Executive Center** → Management Pack.
+Consumes Tier 2's data, adds nothing that duplicates it. Portfolio-level executive dashboard
+enhancements beyond what Dashboard already shows (portfolio-wide filtering by client/country/
+sector/PM/date range) are still open — noted as follow-on work, not done here.
+
+**Activity Linking** (Gate 10, done) — Risk/Issue/Opportunity, RFI/TQ, Meetings, Documents, Daily
+Log, and Change Orders can each optionally link to one Schedule activity, surfaced bidirectionally
+(each register's own details, and the Gantt's Activity Detail Panel's Linked Records section).
+
+**In-App Excel Editor** (Gate 12, done) and **Vendor Management** (Gate 13, done) — both directly
+requested ad hoc additions, same footing as Executive Center/Activity Linking above rather than
+line items on the original locked Tier 2/3 list. Built in a separate parallel session alongside
+Gates 8-11 and reconciled into `main` together with them (see each gate's own write-up above for
+the schema-numbering note on how the reconciliation renumbered them).
 
 **Tier 3 (deferred until Tier 1 is in daily use):** AI Document Processing, Knowledge Base, AI Project
 Assistant, Lessons Learned, final polish
 
 ## Next phase
 
-Tier 2 continues with Resource Management — scope to be decided explicitly before building, same
-as every prior gate.
+**Tier 2 is now complete**, and Vendor Management / the in-app Excel editor are both done alongside
+it. What's still open, none of it blocking daily use: rate × usage from Resource Management feeding
+Cost Tracking/EVM (explicitly deferred, Gate 11); a persisted/logo-customizable report-template
+system; portfolio-level executive dashboard filtering; 10,000+ activity Gantt virtualization;
+per-activity linking extended to Resource Assignments' own sub-fields if that turns out to matter in
+practice; Vendor↔Cost/Schedule integration beyond the current Vendor↔Project/Meeting/RFI/Risk links,
+if that turns out to matter in practice. Tier 3 (AI Document Processing, Knowledge Base, AI Project
+Assistant, Lessons Learned, final polish) is next per the locked build order, deferred until Tier 1/2
+are in daily use — worth checking in on before starting it.

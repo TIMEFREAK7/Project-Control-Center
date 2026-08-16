@@ -12,6 +12,8 @@
       items: [
         { key: "dashboard", label: "Dashboard", code: "DB" },
         { key: "portfolio", label: "Portfolio", code: "PF" },
+        { key: "executiveCenter", label: "Executive Center", code: "EC" },
+        { key: "vendors", label: "Vendors", code: "VN" },
       ],
     },
     {
@@ -30,6 +32,7 @@
       items: [
         { key: "schedule", label: "Schedule", code: "SC" },
         { key: "cost", label: "Cost Tracking", code: "CT" },
+        { key: "resources", label: "Resources", code: "RS" },
       ],
     },
     {
@@ -44,6 +47,8 @@
   var PAGE_TITLES = {
     dashboard: "Dashboard",
     portfolio: "Portfolio",
+    executiveCenter: "Executive Center",
+    vendors: "Vendor Management",
     documents: "Documents",
     dailylog: "Daily Log",
     risks: "Risk Register",
@@ -51,6 +56,7 @@
     rfis: "RFI / Technical Query",
     changeOrders: "Change Management",
     cost: "Cost Tracking",
+    resources: "Resource Management",
     reports: "Reports",
     schedule: "Schedule",
     settings: "Settings",

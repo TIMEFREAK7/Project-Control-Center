@@ -1,0 +1,195 @@
+/* Resource leveling engine (Gate 11 — Resource Management) — calculation only, no DOM,
+ * no store writes. Same separation every other engine in this app keeps
+ * (scheduleCpmEngine.js, costEvmEngine.js, projectHealthEngine.js): resources.js hands
+ * this plain arrays from the store, gets back a day-by-day usage timeline and
+ * over-allocation detection, and is the only place that renders either.
+ *
+ * SCOPE, DELIBERATELY:
+ * - Cross-project by design. A ResourceAssignment points at one Schedule activity,
+ *   and that activity already belongs to one project/schedule — but this engine is
+ *   handed the FULL `activities` array (every project's), not one project's, because
+ *   the entire point of resource leveling is catching a resource double-booked across
+ *   two different projects' schedules, not just within one. Callers that want a
+ *   single project's view filter the *output*, not the input.
+ * - No cost. Quantity/availability only — see store.js's header comment above
+ *   newResource()/newResourceAssignment() for why rate x usage doesn't feed Cost
+ *   Tracking/EVM this gate.
+ * - Milestones and zero/undated activities don't consume a resource over a span —
+ *   a milestone is a point in time, not work with duration, and an activity with no
+ *   usable dates has nothing to allocate against. Both are skipped, counted, and
+ *   reported back so the caller can say so rather than silently under-counting.
+ * - `max_availability` unset (null) means "not computable," never "zero capacity" —
+ *   same "don't fabricate, mark unavailable" discipline projectHealthEngine.js
+ *   already established for a factor with no underlying data.
+ * - Date precedence matches every other engine in this app: calculated (early_start/
+ *   early_finish) wins when present, falling back to planned dates.
+ */
+(function () {
+  "use strict";
+  window.PCC = window.PCC || {};
+
+  var DAY_MS = 24 * 60 * 60 * 1000;
+
+  function toDayNumber(isoDateStr) {
+    var d = new Date(isoDateStr + "T00:00:00Z");
+    return Math.round(d.getTime() / DAY_MS);
+  }
+  function toIsoDate(dayNumber) {
+    return new Date(dayNumber * DAY_MS).toISOString().slice(0, 10);
+  }
+  function diffDays(fromIso, toIso) {
+    return toDayNumber(toIso) - toDayNumber(fromIso);
+  }
+  function addDays(isoDateStr, days) {
+    return toIsoDate(toDayNumber(isoDateStr) + days);
+  }
+
+  /** Same precedence every engine in this app uses: calculated wins, planned falls
+   * back, milestones/undated activities report source: 'none' (see file header). */
+  function effectiveDates(activity) {
+    if (activity.activity_type === "milestone") return { start: null, finish: null, source: "none" };
+    if (activity.early_start && activity.early_finish) {
+      return { start: activity.early_start, finish: activity.early_finish, source: "calculated" };
+    }
+    if (activity.planned_start && activity.planned_finish) {
+      return { start: activity.planned_start, finish: activity.planned_finish, source: "planned" };
+    }
+    return { start: null, finish: null, source: "none" };
+  }
+
+  /** Builds a day-by-day allocation timeline for one resource across every assignment
+   * that references it, regardless of which project/schedule the assignment's
+   * activity belongs to. `activities` should be the FULL cross-project array (see
+   * file header). A "day worked" is [start, finish) — a 5-day task starting day 0
+   * occupies days 0-4, not day 5, matching how duration is defined everywhere else in
+   * this app (diffDays(start,finish) === duration).
+   *
+   * @returns { days: [{ date, allocated, contributors: [{assignmentId, activityId,
+   *             activityName, projectId, quantity}] }], rangeStart, rangeEnd,
+   *           skippedCount (assignments excluded: milestone/undated/zero-duration/
+   *           no quantity/missing activity) } */
+  function computeResourceUsageTimeline(resource, assignments, activities) {
+    var relevant = assignments.filter(function (a) { return a.resource_id === resource.id; });
+    var activityById = {};
+    activities.forEach(function (a) { activityById[a.id] = a; });
+
+    var dayMap = {}; // dayNumber -> { allocated, contributors: [] }
+    var rangeStartDay = null;
+    var rangeEndDay = null;
+    var skippedCount = 0;
+
+    relevant.forEach(function (assignment) {
+      var activity = activityById[assignment.activity_id];
+      var qty = Number(assignment.quantity);
+      if (!activity || !qty || qty <= 0) {
+        skippedCount++;
+        return;
+      }
+      var dates = effectiveDates(activity);
+      if (dates.source === "none") {
+        skippedCount++;
+        return;
+      }
+      var startDay = toDayNumber(dates.start);
+      var endDay = toDayNumber(dates.finish); // exclusive
+      if (endDay <= startDay) {
+        skippedCount++;
+        return;
+      }
+      if (rangeStartDay === null || startDay < rangeStartDay) rangeStartDay = startDay;
+      if (rangeEndDay === null || endDay > rangeEndDay) rangeEndDay = endDay;
+
+      for (var d = startDay; d < endDay; d++) {
+        if (!dayMap[d]) dayMap[d] = { allocated: 0, contributors: [] };
+        dayMap[d].allocated += qty;
+        dayMap[d].contributors.push({
+          assignmentId: assignment.id,
+          activityId: activity.id,
+          activityName: activity.name || "(unnamed activity)",
+          projectId: activity.project_id,
+          quantity: qty,
+        });
+      }
+    });
+
+    var days = [];
+    if (rangeStartDay !== null) {
+      for (var day = rangeStartDay; day < rangeEndDay; day++) {
+        var entry = dayMap[day] || { allocated: 0, contributors: [] };
+        days.push({ date: toIsoDate(day), allocated: entry.allocated, contributors: entry.contributors });
+      }
+    }
+
+    return {
+      days: days,
+      rangeStart: rangeStartDay !== null ? toIsoDate(rangeStartDay) : null,
+      rangeEnd: rangeEndDay !== null ? toIsoDate(rangeEndDay - 1) : null, // inclusive, for display
+      skippedCount: skippedCount,
+    };
+  }
+
+  /** @returns { available: boolean (false when max_availability isn't set — "not
+   *             computable," never "zero capacity"), overAllocatedDays: [{date,
+   *             allocated, available, overBy, contributors}], count, maxOverBy,
+   *             firstDate, lastDate } */
+  function detectOverAllocations(resource, timeline) {
+    if (resource.max_availability === null || resource.max_availability === undefined) {
+      return { available: false, overAllocatedDays: [], count: 0, maxOverBy: null, firstDate: null, lastDate: null };
+    }
+    var maxAvail = Number(resource.max_availability);
+    var overAllocatedDays = timeline.days
+      .filter(function (d) { return d.allocated > maxAvail; })
+      .map(function (d) {
+        return { date: d.date, allocated: d.allocated, available: maxAvail, overBy: d.allocated - maxAvail, contributors: d.contributors };
+      });
+    var maxOverBy = overAllocatedDays.reduce(function (m, d) { return Math.max(m, d.overBy); }, 0);
+    return {
+      available: true,
+      overAllocatedDays: overAllocatedDays,
+      count: overAllocatedDays.length,
+      maxOverBy: overAllocatedDays.length ? maxOverBy : null,
+      firstDate: overAllocatedDays.length ? overAllocatedDays[0].date : null,
+      lastDate: overAllocatedDays.length ? overAllocatedDays[overAllocatedDays.length - 1].date : null,
+    };
+  }
+
+  /** Portfolio-wide rollup: for every resource, how many over-allocated days does it
+   * have right now, across every project it's assigned in. Used by Executive Center /
+   * Portfolio's Details panel for a quick "N resources over-allocated" signal without
+   * each caller re-running the day-by-day scan itself. Resources with
+   * max_availability unset are excluded (not computable), not counted as 0. */
+  function portfolioOverAllocationSummary(resources, assignments, activities) {
+    return resources
+      .map(function (r) {
+        var timeline = computeResourceUsageTimeline(r, assignments, activities);
+        var result = detectOverAllocations(r, timeline);
+        return { resourceId: r.id, resourceName: r.name || "(unnamed resource)", available: result.available, overAllocatedDayCount: result.count, maxOverBy: result.maxOverBy };
+      })
+      .filter(function (r) { return r.available && r.overAllocatedDayCount > 0; })
+      .sort(function (a, b) { return b.overAllocatedDayCount - a.overAllocatedDayCount; });
+  }
+
+  /** Buckets a day timeline into fixed-size windows (e.g. weekly) for charting long
+   * ranges without one bar per day — takes the MAX allocated within each bucket
+   * (worst case), not the average, since the point of the chart is spotting
+   * over-allocation, and averaging would wash out a short sharp spike. */
+  function bucketTimeline(days, bucketSizeDays) {
+    if (!days.length) return [];
+    var buckets = [];
+    for (var i = 0; i < days.length; i += bucketSizeDays) {
+      var slice = days.slice(i, i + bucketSizeDays);
+      var maxAllocated = slice.reduce(function (m, d) { return Math.max(m, d.allocated); }, 0);
+      buckets.push({ bucketStart: slice[0].date, bucketEnd: slice[slice.length - 1].date, allocatedMax: maxAllocated });
+    }
+    return buckets;
+  }
+
+  window.PCC.resourceLevelingEngine = {
+    computeResourceUsageTimeline: computeResourceUsageTimeline,
+    detectOverAllocations: detectOverAllocations,
+    portfolioOverAllocationSummary: portfolioOverAllocationSummary,
+    bucketTimeline: bucketTimeline,
+    diffDays: diffDays,
+    addDays: addDays,
+  };
+})();

@@ -15,6 +15,7 @@
     formOpen: false,
     pendingFile: null, // { name, size, type, extraction } once read
     pendingProjectId: "",
+    pendingActivityId: "", // Gate 10: optional link to a Schedule activity
     pendingCategory: "contract",
     pendingMeetingId: "", // set by createFromMeeting() when opened via a meeting's "Attach Document" button
     readError: null,
@@ -30,6 +31,30 @@
       return proj.id === projectId;
     });
     return p ? p.name || "(unnamed project)" : "Unassigned";
+  }
+
+  /** Gate 10: see risks.js's identical helper for the full rationale. */
+  function activityOptionsFor(select, data, projectId, selectedActivityId) {
+    select.innerHTML = "";
+    var noneOpt = document.createElement("option");
+    noneOpt.value = "";
+    noneOpt.textContent = "(none)";
+    select.appendChild(noneOpt);
+
+    var scheduleNameById = {};
+    data.schedules
+      .filter(function (s) { return s.project_id === projectId; })
+      .forEach(function (s) { scheduleNameById[s.id] = s.name; });
+
+    data.activities
+      .filter(function (a) { return a.project_id === projectId; })
+      .forEach(function (a) {
+        var opt = document.createElement("option");
+        opt.value = a.id;
+        opt.textContent = (scheduleNameById[a.schedule_id] || "(schedule)") + ": " + (a.name || "(unnamed activity)");
+        select.appendChild(opt);
+      });
+    select.value = selectedActivityId || "";
   }
 
   function formatBytes(bytes) {
@@ -490,6 +515,19 @@
       if (!uiState.pendingProjectId) uiState.pendingProjectId = activeProjectsForDoc[0].id;
       projSelect.value = uiState.pendingProjectId;
     }
+
+    // Linked Activity select (Gate 10) — built before projSelect.onchange below so
+    // that handler can refresh it on project change.
+    var activityField = document.createElement("div");
+    activityField.className = "field";
+    activityField.innerHTML = "<label>Linked Activity (optional)</label>";
+    var activitySelect = document.createElement("select");
+    activityOptionsFor(activitySelect, data, uiState.pendingProjectId, uiState.pendingActivityId);
+    activitySelect.onchange = function () {
+      uiState.pendingActivityId = activitySelect.value;
+    };
+    activityField.appendChild(activitySelect);
+
     projSelect.onchange = function () {
       uiState.pendingProjectId = projSelect.value;
       // Duplicate matching is scoped per-project (see duplicateService docs), so a
@@ -505,11 +543,13 @@
           projectId: uiState.pendingProjectId,
         });
         uiState.duplicateAcknowledged = false;
-        rerender();
       }
+      uiState.pendingActivityId = "";
+      rerender();
     };
     projField.appendChild(projSelect);
     grid.appendChild(projField);
+    grid.appendChild(activityField);
 
     // Category select
     var catField = document.createElement("div");
@@ -627,6 +667,7 @@
 
       var doc = window.PCC.store.newDocument({
         project_id: uiState.pendingProjectId,
+        activity_id: uiState.pendingActivityId || "",
         filename: uiState.pendingFile.name,
         category: uiState.pendingCategory,
         file_size: uiState.pendingFile.size,
@@ -677,6 +718,7 @@
           uiState.formOpen = false;
           uiState.pendingFile = null;
           uiState.pendingProjectId = "";
+          uiState.pendingActivityId = "";
           uiState.pendingCategory = "contract";
           uiState.pendingMeetingId = "";
           uiState.duplicateMatches = [];
@@ -761,6 +803,11 @@
           return m.id === doc.meeting_id;
         })
       : null;
+    var linkedActivity = doc.activity_id
+      ? data.activities.find(function (a) {
+          return a.id === doc.activity_id;
+        })
+      : null;
 
     var main = document.createElement("div");
     main.className = "project-card__main";
@@ -774,6 +821,7 @@
       " \u00b7 " +
       new Date(doc.uploaded_at).toLocaleDateString() +
       (linkedMeeting ? " \u00b7 From meeting: " + linkedMeeting.title : "") +
+      (linkedActivity ? " \u00b7 Linked to activity: " + linkedActivity.name : "") +
       "</div>";
 
     var badge = document.createElement("span");
@@ -825,6 +873,16 @@
         window.PCC.router.go("meetings");
       };
       actions.appendChild(viewMeetingBtn);
+    }
+    if (linkedActivity) {
+      var viewActivityBtn = document.createElement("button");
+      viewActivityBtn.className = "btn btn--ghost";
+      viewActivityBtn.textContent = "View in Gantt";
+      viewActivityBtn.onclick = function () {
+        if (window.PCC.schedule) window.PCC.schedule.viewActivity(doc.project_id, linkedActivity.schedule_id, linkedActivity.id);
+        window.PCC.router.go("schedule");
+      };
+      actions.appendChild(viewActivityBtn);
     }
 
     var deleteBtn = document.createElement("button");
@@ -965,6 +1023,9 @@
       uiState.pendingMeetingId = meetingId;
       uiState.pendingFile = null;
       uiState.readError = null;
+    },
+    expandDocument: function (docId) {
+      uiState.expandedDocId = docId;
     },
   };
 })();

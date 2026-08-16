@@ -5,15 +5,20 @@
  *
  * SCOPE, DELIBERATELY (Gate 5 — Gantt chart view, completing the Tier 2 "Schedule
  * import + CPM/float engine + Gantt" line item):
- * - Visualization only. No drag-to-reschedule, no inline editing — activities are
- *   still edited through the existing Activities tab form. Adding chart-driven editing
- *   would be a separate, later decision, not something to fold in here.
  * - Date precedence matches scheduleBaselineEngine.js's effectiveDates(): calculated
  *   (early_start/early_finish) wins when both are present, falling back to planned
  *   dates, so a schedule that hasn't been through "Calculate Schedule" yet still draws
  *   something meaningful instead of an empty chart.
  * - No calendar/working-days awareness, matching scheduleCpmEngine.js's own documented
  *   scope — a bar's width is calendar days between its two dates, nothing fancier.
+ *
+ * GATE 8 (Interactive Gantt Editing) ADDITION: drag-to-move/drag-to-resize date math
+ * lives here as plain, pure, testable functions — `schedule.js` is the only place that
+ * turns a pointer drag into a pixel delta and calls these, same "calculation here,
+ * rendering there" split the rest of this module already keeps. Both functions always
+ * write to `planned_start`/`planned_finish` (the user-editable source dates), never to
+ * the calculated early/late fields — matching the same rule the Activities tab form
+ * already enforces. Neither function touches the store; the caller commits the result.
  */
 (function () {
   "use strict";
@@ -119,9 +124,39 @@
     };
   }
 
+  /** Pixels-of-drag -> whole days, rounding to the nearest day rather than truncating so
+   * a small drag past the halfway point of a day-column snaps forward, matching how
+   * every commercial Gantt's drag-snap behaves. */
+  function daysFromPixelDelta(deltaPx, pxPerDay) {
+    if (!pxPerDay) return 0;
+    return Math.round(deltaPx / pxPerDay);
+  }
+
+  /** Drag-to-move: shifts both dates by the same number of days, preserving duration.
+   * `startIso`/`finishIso` must both be present (caller seeds from effective dates —
+   * calculated falling back to planned — before starting a drag, same precedence as
+   * the rest of this module) — this function itself does no fallback. */
+  function moveDates(startIso, finishIso, dayDelta) {
+    if (!dayDelta) return { start: startIso, finish: finishIso };
+    return { start: addDays(startIso, dayDelta), finish: addDays(finishIso, dayDelta) };
+  }
+
+  /** Drag-to-resize (right-edge handle): shifts only the finish date, so duration
+   * changes. Clamped so finish can never end up before start — a zero-duration result
+   * is allowed (matches a milestone's own zero-width convention) but negative isn't. */
+  function resizeFinish(startIso, finishIso, dayDelta) {
+    if (!dayDelta) return { start: startIso, finish: finishIso };
+    var newFinish = addDays(finishIso, dayDelta);
+    if (newFinish < startIso) newFinish = startIso;
+    return { start: startIso, finish: newFinish };
+  }
+
   window.PCC.scheduleGanttLayout = {
     computeLayout: computeLayout,
     diffDays: diffDays,
     addDays: addDays,
+    daysFromPixelDelta: daysFromPixelDelta,
+    moveDates: moveDates,
+    resizeFinish: resizeFinish,
   };
 })();
