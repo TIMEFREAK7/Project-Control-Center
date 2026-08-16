@@ -13,6 +13,7 @@
         { key: "dashboard", label: "Dashboard", code: "DB" },
         { key: "portfolio", label: "Portfolio", code: "PF" },
         { key: "executiveCenter", label: "Executive Center", code: "EC" },
+        { key: "vendors", label: "Vendors", code: "VN" },
       ],
     },
     {
@@ -47,6 +48,7 @@
     dashboard: "Dashboard",
     portfolio: "Portfolio",
     executiveCenter: "Executive Center",
+    vendors: "Vendor Management",
     documents: "Documents",
     dailylog: "Daily Log",
     risks: "Risk Register",

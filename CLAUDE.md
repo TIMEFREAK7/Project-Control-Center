@@ -82,16 +82,29 @@ node --check src/js/whatever.js   # quick syntax check on a single file
   other reviewers; a clean PR (tests pass, no review comments) is ready by definition. Still stop
   and ask before merging if there *are* comments to address, or if something is genuinely
   ambiguous about the change itself.
-- **After every gate/phase/tier, compile a distributable zip and hand it over** — not just push to
-  `main`. Rebuild (`node build.js`), run the full suite, then assemble a clean end-user package:
-  `index.html`, `README.md`, and empty `data/`/`files/` placeholder folders (with their own
-  `README.txt`) — **not** `src/`, `build.js`, `tests/`, or `.claude/`, which are dev-only and just
-  add confusion for someone who isn't going to edit the code. Verify the zip actually works before
-  sending it: extract it fresh (not the dev working copy) and open `index.html` in real Chromium —
-  see the Testing conventions section above for why that matters here specifically.
+- **After every gate/phase/tier, compile everything and hand over a zip file Aditya can send to a
+  laptop or to other people and they can use directly** — not just push to `main`. Rebuild
+  (`node build.js`), run the full suite, then assemble a clean end-user package: `index.html`,
+  `README.md`, and empty `data/`/`files/` placeholder folders (with their own `README.txt`) — **not**
+  `src/`, `build.js`, `tests/`, `.claude/`, `CLAUDE.md`, or `HANDOFF.md`, which are dev-only and just
+  add confusion for someone who isn't going to edit the code. The whole point is that the recipient
+  needs zero setup — extract and double-click `index.html`, nothing to install, no dependency on this
+  repo or Claude Code being present. Verify the zip actually works before sending it: extract it
+  fresh (not the dev working copy) and open `index.html` in real Chromium — see the Testing
+  conventions section above for why that matters here specifically.
 - If the branch backing an already-merged PR is reused for the next piece of work, restart it from
   the latest `main` first (`git fetch origin main && git reset --hard origin/main`, or rebase if
   there's already unmerged work sitting on the branch) rather than stacking new commits on old
   history — GitHub doesn't move a branch ref forward on merge, so the local/remote branch will
   otherwise silently drift behind `main`. **Commit before running any `git reset --hard`** — it
   discards uncommitted changes in tracked files with no warning.
+- **After every major upgrade (a gate, a significant follow-up change), update `HANDOFF.md` at the
+  repo root AND hand Aditya the complete updated file directly** (not just leave it committed silently
+  — send it the same way the zip gets sent) with current session context — what shipped, current
+  schema version, test file/check count, exact repo/branch state (ahead-of-main commit list, whether
+  a PR exists, whether it's merged), and any new conventions/gotchas discovered that a fresh session
+  would otherwise have to re-derive from git log and source. Kept at a fixed, discoverable repo path
+  deliberately — a session can't act on a handoff file it doesn't know exists, so it can't live only
+  in an upload/paste that has to be re-supplied each time. If the user separately maintains their own
+  pasted-in handoff copy outside the repo, update that too when asked, but `HANDOFF.md` is the one
+  that persists on its own.

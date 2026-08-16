@@ -1287,6 +1287,201 @@ already established.
 **What I have not tested:** this on your actual device. Per the usual gate discipline, treat this
 as built-and-verified-in-this-environment, not confirmed — same standard as every prior gate.
 
+## Gate 12 — In-App Excel Editor for Schedules (2026-08-12)
+
+Requested directly (Aditya): when a schedule's Excel file is imported, it should be attached to
+the project and editable **in PCC itself** — not downloaded, hand-edited in real Excel, and
+re-imported — with the schedule updating automatically from those edits. This sits on top of the
+existing Gate 2 import pipeline rather than replacing it.
+
+**Scope decided before building:** the editable grid covers the same recognized columns Import
+already understands (Activity ID, Name, Type, WBS Code/Name, Duration, dates, Predecessors, %
+Complete, Discipline, Contractor, Responsible, Status, Notes) — not a generic spreadsheet grid with
+arbitrary columns/formulas. Extra columns from the original file were never stored even before this
+gate (Import only ever kept the *parsed* result), so there's nothing to preserve there. Edits apply
+via an explicit "Review Changes" → "Apply to Schedule" step (not live-as-you-type) and update the
+*same* schedule in place — no new revision — matching how hand-editing an Activity already works
+today; only a fresh Import from a new file creates a new revision.
+
+**What changed and why:**
+
+- **The original Excel file is now actually stored.** Import always parsed the file but discarded
+  the bytes afterward; `commitImport()` now writes them to `blobStore` (IndexedDB, keyed by the
+  schedule's id — same store Documents/Photos already use) before writing the schedule record, so a
+  schedule that claims a source file always genuinely has one. Schedules imported before this gate
+  have no stored blob and just don't get an "Edit Excel" option — no attempt to fabricate one.
+- **New "Edit Excel" toolbar button**, enabled only when the selected schedule has
+  `source_file_name` set. Opens an in-page panel (not `window.open`, not a download) — the one thing
+  explicitly ruled out, since Documents' existing "open original file" already downloads/new-tabs
+  Word/Excel files and that's exactly what wasn't wanted here.
+- **The grid is built from the schedule's current Activities/WBS/Relationships, not by re-parsing
+  the stored file's bytes.** After the first Apply, the attached file is regenerated from exactly
+  what was applied, so both stay in sync either way — but sourcing the grid from live data (rather
+  than the file) means there's only ever one source of truth to keep consistent, not two.
+- **Reuses `scheduleImportService.parseRows()` verbatim for Apply** — the grid's "Review Changes"
+  step feeds its rows through the identical parser Import uses (same header-recognition, date/number
+  validation, WBS-hierarchy derivation, predecessor-token parsing, and circular-dependency
+  detection), via a new `CANONICAL_HEADERS` export that's the single source of truth for which
+  columns the grid shows and what labels represent them — so grid edits can never be validated more
+  loosely than a fresh Import.
+- **`buildScheduleRecords()`** factored out of `commitImport()` so both a fresh Import (new schedule)
+  and an Excel-edit Apply (existing schedule, in place) build WBS/Activity/Relationship records
+  through identical logic — no separate, potentially-drifting copy for the "editing" path.
+- **Hand-added-activity safety gate:** an activity added by hand on the Activities tab has no
+  Activity ID, so it can't be represented in the grid at all — and Apply replaces a schedule's full
+  activity list from the grid's contents. Rather than silently deleting such activities, Apply is
+  blocked behind an explicit "N activities aren't from the Excel file — delete them and continue?"
+  warning (same pattern as Import's existing duplicate-file warning) until acknowledged.
+- **`ACTIVITY_TYPE_ALIASES` gained a `wbs_summary` (underscore) alias** — the raw value the app
+  stores internally for that activity type — so a grid `<select>` round-trips through parseRows
+  without tripping the "unrecognized activity type" warning on every single Apply.
+
+**New file:** none (kept inside `scheduleImportService.js` and `schedule.js`, both already Gate 2's
+home). **Changed:** `scheduleImportService.js` (`CANONICAL_HEADERS`, `wbs_summary` alias),
+`schedule.js` (blob storage on import, `buildScheduleRecords()`, the full Excel-editor grid/review/
+apply flow, shared `renderParsedIssuesToggle()`).
+
+**Tested before delivery (4 pure-logic + 21 e2e checks, full suite re-run clean):**
+
+- **Parser round-trip** (`test_schedule_import_service.js`, 4 checks): every `CANONICAL_HEADERS`
+  label maps back to its own key with zero unrecognized-header warnings; the `wbs_summary` alias
+  round-trips without a spurious type warning; status passes through as a raw key with no aliasing,
+  matching what the grid's `<select>` stores.
+- **End-to-end against the actual bundled `index.html`** (`test_schedule_excel_editor_e2e.js`, 21
+  checks): a schedule seeded to look like a real import (source file, blob, two activities with an
+  FS relationship, one WBS item) shows "Edit Excel" enabled and pre-populates the grid correctly,
+  including reconstructing the Predecessors cell from the relationship; editing a name, adding a row,
+  reviewing, and applying updates the store **in place** (same schedule id, revision stays 0) and
+  rewrites the attached blob to a genuinely different value, not the placeholder; the hand-added-
+  activity warning blocks Apply until acknowledged, then deletes it on confirm; full route smoke test
+  across every page.
+- **Real-browser verification** (Chromium via Playwright, screenshots reviewed): the grid, review
+  step, and post-Apply state all render correctly with the dark theme; an edited activity name
+  ("Excavate (Chromium Edit)") applied and appeared in the Activities tab immediately, with the
+  success toast confirming the attached file was updated to match.
+
+**What I have not tested:** this on your actual device. Same standard as every prior gate.
+
+## Gate 13 — Vendor Management Module (2026-08-12)
+
+Requested directly (Aditya) via a full feature spec: a "single source of truth" for vendor
+information across every project — master list, project links, documents, meetings, RFI/TQ, risk,
+and performance, all reachable from one vendor profile. Like Gate 12, this wasn't on the locked Tier
+2/3 roadmap — it's a directly-requested addition, built in a separate parallel session alongside
+Gates 8-11 above and reconciled into `main` together with them here.
+
+**Architecture translation, decided before building:** the spec was written in general ERP language
+("database design," "normalized tables," "foreign keys," "API endpoints," "the project's folder
+structure") that doesn't map onto this app's actual architecture — no server, no SQL, no API layer,
+just one JS object in `localStorage` plus IndexedDB for blobs (see "Architecture" above). Every
+"table" in the spec became a flat array in `store.js` with id-string references, "foreign keys"
+became the same convention every existing register already uses, and "API endpoints" simply doesn't
+apply. "The project's folder structure" doesn't exist in this app either (see "On 'just save files
+to a real folder automatically'" above) — vendor documents use `blobStore.js`, same as every other
+file this app stores.
+
+**Scope decisions made explicitly before building:**
+
+- **Vendor Master is portfolio-wide, not project-scoped** — unlike Documents/Risk/RFI/Change Orders
+  (which are mandatory-project registers per this file's own stated convention), a vendor is closer
+  to a Project itself: one master record, linked to zero or more projects via a join array
+  (`vendor_project_links`), each link carrying its own role/scope of work/contract status.
+- **Vendor<->Meeting/RFI/Risk linking never touches meetings.js/rfis.js/risks.js.** Those three join
+  arrays (`vendor_meeting_links`, `vendor_rfi_links`, `vendor_risk_links`) are populated entirely
+  from the Vendor Profile side, and "open the real record" reuses those modules' own existing public
+  `expandMeeting()`/`expandRfi()`/`expandRisk()` hooks (the same hooks Risk's "raise from meeting"
+  flow already uses) rather than adding a field to their schemas. This is the literal reading of "do
+  not modify or break existing modules" — those three files have zero changes in this gate.
+- **RFIs and Technical Queries are one integration point, not two** — this app already stores them
+  as a single register distinguished by a `type` field (the same "one shape, one type field" pattern
+  this file documents for Risk/Issue/Opportunity), so `vendor_rfi_links` covers both.
+- **Vendor Documents get an OPTIONAL `project_id`, breaking from the mandatory-project rule** on
+  purpose: a vendor's GST certificate or insurance policy isn't "for" any one project, but a
+  project-specific PO or M.O.M. genuinely is. Both needed to be representable, so this register is a
+  deliberate, disclosed exception to that rule rather than an oversight.
+- **Version history is real, not cosmetic:** every upload is its own row; re-uploading over an
+  existing document creates a new row sharing that document's `document_group_id` with
+  `revision_number` incremented. "Latest revision" is computed at render time (highest
+  `revision_number` in the group), not a denormalized `is_latest` flag that could drift.
+- **"Custom document categories added later"** doesn't need a schema change to satisfy: the 19
+  categories from the spec are a fixed list plus "Other" with a free-text `custom_category_label` —
+  the escape hatch a 20th category will need, decided now rather than guessed at.
+- **Skipped:** the "Change Requests" vendor tab from the spec's profile-tabs list — Change Orders
+  wasn't in the spec's own top-level integration list (Portfolio, Documents, Meetings, RFI, Risk,
+  Project) and has no DB table in the spec's own database-design section either, so this reads as a
+  spec inconsistency rather than a real requirement. AI document extraction/OCR/automation were
+  explicitly excluded by the spec itself ("Tier 2... do not implement AI, OCR, document parsing").
+- **"Preview" matches this app's existing behavior for stored files** (View/Download via a new tab —
+  PDFs render inline, other types download, same as Documents' `openStoredFile()`) rather than
+  building a second, richer preview system alongside the one Documents already has.
+- **Overall performance rating is always computed** (average of Quality/Delivery/Communication/
+  Safety, unrated categories excluded rather than dragging the score toward 0), never a
+  separately-editable field that could disagree with its own inputs.
+
+**What changed:** `store.js` (schema v23→v24: nine new arrays — `vendors`, `vendor_contacts`,
+`vendor_project_links`, `vendor_documents`, `vendor_meeting_links`, `vendor_rfi_links`,
+`vendor_risk_links`, `vendor_performance`, `vendor_notes` — plus `VENDOR_STATUSES`,
+`VENDOR_DOCUMENT_CATEGORIES`, `VENDOR_PROJECT_CONTRACT_STATUSES`, `nextVendorCode()`, and nine new
+factory functions). **New file:** `pages/vendors.js` — Dashboard (summary cards + recent activity),
+Vendor Master list (search across vendor/company/contact/trade/project/document name, plus status/
+project/trade/document-type filters), and a tabbed Vendor Profile (Overview, Projects, Contacts,
+Documents, Meetings, RFI/TQ, Risks, Performance, Notes). **Changed:** `app.js` (route registration),
+`layout.js` (sidebar nav under OVERVIEW next to Portfolio, matching its cross-project nature),
+`build.js` (bundle order).
+
+**Tested before delivery (7 pure-logic + 29 e2e checks + updated migration tests, full suite re-run
+clean):**
+
+- **Schema migration** (folded into the canonical `test_store_schema_v24_migration.js` at
+  reconciliation time): a v19 dataset and a very old legacy dataset both migrate cleanly through to
+  schema_version 24 with the new vendor arrays backfilled and no data loss to existing records.
+- **End-to-end against the actual bundled `index.html`** (`test_vendors_e2e.js`, 29 checks): create a
+  vendor with a primary contact (verifying the contact is upserted into `vendor_contacts`, not
+  duplicated onto the vendor record); link a project with role/scope/contract status; add a second
+  contact; a directly-seeded document displays correctly with category/expiry/tags, and uploading a
+  new revision correctly increments `revision_number` while sharing `document_group_id`; linking an
+  existing meeting/RFI/risk and clicking "View X" actually navigates to that module and reuses its
+  real expand hook; a performance review's computed overall rating is hand-verified (4+5+3+4)/4 =
+  4.0; a note is added and listed; the dashboard's summary cards and per-project breakdown reflect
+  seeded data correctly; search-by-trade and status-filter both narrow the list correctly; deleting a
+  vendor cascades to every linked record and its stored blob; full route smoke test.
+- **Real-browser verification** (Chromium via Playwright, screenshots reviewed): the dashboard,
+  vendor form, profile tabs, meeting-linking flow, document upload form, and performance tab all
+  render correctly in the dark theme; a real end-to-end vendor creation → project link → meeting
+  link → performance review flow was hand-verified, including the exact 4.5/5 overall rating
+  computation ((5+4+4+5)/4) matching what real Chromium displayed.
+
+**What I have not tested:** this on your actual device. Same standard as every prior gate.
+
+## Portfolio ↔ Vendor Management linking (2026-08-12)
+
+Requested directly (Aditya): linking a vendor to a project needed to be possible from the **project's
+own page**, not only from the Vendor Profile's Projects tab — and changes from either side had to
+show up on the other automatically.
+
+That last part came for free from Gate 9's own design: `vendor_project_links` is one shared array,
+not two copies, so any UI that reads/writes it is automatically in sync with every other UI that
+does — no separate sync logic needed, ever. This change is purely a second UI surface onto that same
+array.
+
+**What changed:** Portfolio's project details panel (`renderProjectDetails()`) gets a new "VENDORS"
+section, in the same read-summary-plus-"View All" style as its existing Risks/Meetings/Change Orders
+sections — except this one also gets a "+ Link Vendor" quick-action (a plain vendor picker, no role/
+scope/contract-status fields, since editing those stays the Vendor Profile Projects tab's job) and a
+per-row "Unlink," since the ask was specifically for project-side linking capability, not just a
+read-only summary. `renderProjectDetails()` now takes the page's `rerender` callback (previously
+didn't need one, since every other section in it was purely read-only) so the new picker can update
+the view after linking/unlinking. `vendors.js` gained `filterByProject()`, the same "View All" hook
+every other register already exposes.
+
+**Tested:** three new checks added to `test_vendors_e2e.js` (32 total in that file now): linking from
+the Vendor Profile shows up correctly in Portfolio's Vendors section (role included); unlinking from
+Portfolio removes it from the store and re-linking from Portfolio's picker restores it; the
+Portfolio-made link is visible back on the vendor's own Projects tab. Full suite re-run clean.
+Real-browser verification (Chromium via Playwright, screenshots reviewed): the Vendors section and
+its Link Vendor picker render correctly and already-linked vendors are correctly excluded from the
+picker's options.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
@@ -1308,15 +1503,23 @@ sector/PM/date range) are still open — noted as follow-on work, not done here.
 Log, and Change Orders can each optionally link to one Schedule activity, surfaced bidirectionally
 (each register's own details, and the Gantt's Activity Detail Panel's Linked Records section).
 
+**In-App Excel Editor** (Gate 12, done) and **Vendor Management** (Gate 13, done) — both directly
+requested ad hoc additions, same footing as Executive Center/Activity Linking above rather than
+line items on the original locked Tier 2/3 list. Built in a separate parallel session alongside
+Gates 8-11 and reconciled into `main` together with them (see each gate's own write-up above for
+the schema-numbering note on how the reconciliation renumbered them).
+
 **Tier 3 (deferred until Tier 1 is in daily use):** AI Document Processing, Knowledge Base, AI Project
 Assistant, Lessons Learned, final polish
 
 ## Next phase
 
-**Tier 2 is now complete.** What's still open, none of it blocking daily use: rate × usage from
-Resource Management feeding Cost Tracking/EVM (explicitly deferred, Gate 11); a persisted/logo-
-customizable report-template system; portfolio-level executive dashboard filtering; 10,000+
-activity Gantt virtualization; per-activity linking extended to Resource Assignments' own
-sub-fields if that turns out to matter in practice. Tier 3 (AI Document Processing, Knowledge
-Base, AI Project Assistant, Lessons Learned, final polish) is next per the locked build order,
-deferred until Tier 1/2 are in daily use — worth checking in on before starting it.
+**Tier 2 is now complete**, and Vendor Management / the in-app Excel editor are both done alongside
+it. What's still open, none of it blocking daily use: rate × usage from Resource Management feeding
+Cost Tracking/EVM (explicitly deferred, Gate 11); a persisted/logo-customizable report-template
+system; portfolio-level executive dashboard filtering; 10,000+ activity Gantt virtualization;
+per-activity linking extended to Resource Assignments' own sub-fields if that turns out to matter in
+practice; Vendor↔Cost/Schedule integration beyond the current Vendor↔Project/Meeting/RFI/Risk links,
+if that turns out to matter in practice. Tier 3 (AI Document Processing, Knowledge Base, AI Project
+Assistant, Lessons Learned, final polish) is next per the locked build order, deferred until Tier 1/2
+are in daily use — worth checking in on before starting it.

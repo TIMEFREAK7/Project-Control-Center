@@ -1624,6 +1624,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     summary: "summary",
     "wbs summary": "wbs_summary",
     wbssummary: "wbs_summary",
+    // Underscore form recognized too — it's the raw value the app stores internally
+    // (see store.js's newActivity), so the in-app Excel grid editor (schedule.js) can
+    // round-trip a WBS Summary activity through <select value="wbs_summary"> without a
+    // spurious "unrecognized type" warning on every Apply.
+    wbs_summary: "wbs_summary",
   };
 
   var HEADER_MAP = {
@@ -1676,6 +1681,29 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     notes: "notes",
     comments: "notes",
   };
+
+  // Canonical (key, label) pairs for the recognized schedule columns, in the order
+  // shown throughout the UI (import help text, the in-app Excel grid editor). Every
+  // label here is guaranteed to round-trip through HEADER_MAP back to the same key —
+  // this is the single source of truth for that pairing so the grid editor's column
+  // set and the import-review help text can't drift apart from each other.
+  var CANONICAL_HEADERS = [
+    { key: "external_id", label: "Activity ID" },
+    { key: "name", label: "Activity Name" },
+    { key: "activity_type", label: "Activity Type" },
+    { key: "wbs_code", label: "WBS Code" },
+    { key: "wbs_name", label: "WBS Name" },
+    { key: "duration", label: "Duration" },
+    { key: "planned_start", label: "Planned Start" },
+    { key: "planned_finish", label: "Planned Finish" },
+    { key: "predecessors", label: "Predecessors" },
+    { key: "percent_complete", label: "% Complete" },
+    { key: "discipline", label: "Discipline" },
+    { key: "contractor", label: "Contractor" },
+    { key: "responsible_person", label: "Responsible Person" },
+    { key: "status", label: "Status" },
+    { key: "notes", label: "Notes" },
+  ];
 
   function normalizeHeader(h) {
     return String(h || "").trim().toLowerCase();
@@ -1956,7 +1984,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     };
   }
 
-  window.PCC.scheduleImportService = { parseRows: parseRows };
+  window.PCC.scheduleImportService = { parseRows: parseRows, CANONICAL_HEADERS: CANONICAL_HEADERS };
 })();
 
 
@@ -3469,7 +3497,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 23;
+  var SCHEMA_VERSION = 24;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -3535,6 +3563,23 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       // (not project-scoped) — see the header comment above newResource() for why.
       resources: [],
       resource_assignments: [],
+      // Gate 13 (Vendor Management): Vendor Master is portfolio-wide, not scoped to a
+      // single project the way Documents/Risk/RFI are — vendor_project_links is the
+      // many-to-many join, same shape convention as every other join in this store
+      // (a flat array of link records, not nested arrays on either side). The
+      // vendor_meeting_links / vendor_rfi_links / vendor_risk_links joins deliberately
+      // don't touch meetings.js/rfis.js/risks.js's own schemas at all — linking happens
+      // entirely from the Vendor side, and "open the real record" reuses those modules'
+      // existing public expand*() hooks (see vendors.js) instead of adding fields there.
+      vendors: [],
+      vendor_contacts: [],
+      vendor_project_links: [],
+      vendor_documents: [],
+      vendor_meeting_links: [],
+      vendor_rfi_links: [],
+      vendor_risk_links: [],
+      vendor_performance: [],
+      vendor_notes: [],
     };
   }
 
@@ -4277,6 +4322,255 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     return Object.assign(base, overrides || {});
   }
 
+  // ============================================================
+  // GATE 9 — Vendor Management. Vendor Master is portfolio-wide (like Projects
+  // themselves), not scoped to one project the way Documents/Risk/RFI are — every
+  // vendor<->X relationship below is its own flat join array rather than an array-typed
+  // field on either side, same "flat records + id references, no nested trees" shape
+  // convention this store already uses everywhere else (see wbs_items' parent_wbs_id
+  // comment). vendor_meeting_links / vendor_rfi_links / vendor_risk_links deliberately
+  // don't add any field to meetings/rfis/risks — see vendors.js for how linking reuses
+  // those modules' existing expandMeeting()/expandRfi()/expandRisk() hooks instead.
+  // ============================================================
+
+  var VENDOR_STATUSES = ["active", "inactive", "preferred", "blacklisted"];
+  // Fixed list per the spec, plus "other" as the escape hatch for "custom categories
+  // added later" — see newVendorDocument's custom_category_label below, which avoids a
+  // schema change being needed the day someone actually needs a 20th category.
+  var VENDOR_DOCUMENT_CATEGORIES = [
+    "mom", "boq", "escalation_matrix", "contract", "purchase_order", "quotation",
+    "technical_submittal", "material_approval", "drawing", "method_statement",
+    "inspection_report", "test_certificate", "quality_document", "safety_document",
+    "insurance_document", "bank_details", "invoice", "performance_report", "other",
+  ];
+  var VENDOR_PROJECT_CONTRACT_STATUSES = ["draft", "active", "completed", "terminated"];
+
+  function newVendorId() {
+    return "vn_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  /** Auto-suggested vendor code (V-0001, V-0002, ...), same "highest existing number + 1"
+   * approach as nextRfiNumber/nextChangeOrderNumber so a deleted vendor never causes a
+   * code to be reused. Always editable on the form — "auto-generated or manual" per spec. */
+  function nextVendorCode(existingVendors) {
+    var highest = 0;
+    (existingVendors || []).forEach(function (v) {
+      var match = /^V-(\d+)$/.exec(v.vendor_code || "");
+      if (match) highest = Math.max(highest, parseInt(match[1], 10));
+    });
+    var next = highest + 1;
+    var padded = next < 1000 ? ("000" + next).slice(-4) : String(next);
+    return "V-" + padded;
+  }
+
+  /** The Vendor Master record itself. Deliberately has NO primary-contact fields of its
+   * own (name/mobile/email etc.) even though the spec's "Basic Information" section
+   * lists them alongside vendor identity — those live in vendor_contacts (with one
+   * marked is_primary) so there's exactly one place contact data can live, not a
+   * duplicate copy on the vendor record that could drift out of sync with the Contacts
+   * list. vendors.js's vendor form still presents primary-contact fields inline for a
+   * one-step "add vendor with its main contact" flow; it upserts into vendor_contacts
+   * on save rather than storing them here. category/trade_discipline are free text, not
+   * enums — this app already leaves comparably open-ended classification fields
+   * (Activity's `discipline`, Cost's category is the exception because Cost Tracking
+   * needed a fixed roll-up) as free text rather than guessing a fixed vendor-trade
+   * taxonomy the spec didn't actually enumerate. */
+  function newVendor(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newVendorId(),
+      vendor_code: "",
+      vendor_name: "",
+      company_name: "",
+      category: "",
+      trade_discipline: "",
+      gst_number: "",
+      pan_number: "",
+      registration_number: "",
+      website: "",
+      office_address: "",
+      city: "",
+      state: "",
+      country: "",
+      postal_code: "",
+      status: "active",
+      notes: "",
+      created_at: now,
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  function newVendorContactId() {
+    return "vc_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  function newVendorContact(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newVendorContactId(),
+      vendor_id: "",
+      name: "",
+      designation: "",
+      mobile: "",
+      email: "",
+      is_primary: false,
+      created_at: now,
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  function newVendorProjectLinkId() {
+    return "vpl_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  /** One row per (vendor, project) pairing — a vendor working on 3 projects has 3 of
+   * these, each with its own role/scope/contract_status, rather than one vendor record
+   * trying to hold three parallel arrays in lockstep. */
+  function newVendorProjectLink(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newVendorProjectLinkId(),
+      vendor_id: "",
+      project_id: "",
+      role: "",
+      scope_of_work: "",
+      contract_status: "active",
+      created_at: now,
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  function newVendorDocumentId() {
+    return "vd_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  /** project_id is OPTIONAL (unlike the mandatory-project rule on Documents/Risk/RFI/
+   * Change Orders) — a vendor's GST certificate or insurance policy isn't "for" any one
+   * project, but a project-specific PO or M.O.M. genuinely is, so both need to be
+   * representable. Version history: every upload is its own record; re-uploading over
+   * an existing document creates a NEW row sharing that document's document_group_id
+   * (defaulted to this row's own id for a first upload) with revision_number
+   * incremented — the "latest" revision is whichever row in a group has the highest
+   * revision_number, computed at render time rather than a denormalized "is_latest"
+   * flag that could drift. Binary bytes live in blobStore (IndexedDB), keyed by this
+   * record's id, same as every other file this app stores. */
+  function newVendorDocument(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newVendorDocumentId(),
+      vendor_id: "",
+      project_id: "",
+      document_group_id: "",
+      revision_number: 1,
+      category: "other",
+      custom_category_label: "",
+      filename: "",
+      file_size: 0,
+      mime_type: "",
+      upload_date: now,
+      uploaded_by: "",
+      expiry_date: "",
+      tags: "",
+      comments: "",
+      content_hash: null,
+      hash_method: null,
+      created_at: now,
+      updated_at: now,
+    };
+    var doc = Object.assign(base, overrides || {});
+    if (!doc.document_group_id) doc.document_group_id = doc.id;
+    return doc;
+  }
+
+  function newVendorMeetingLinkId() {
+    return "vml_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  function newVendorMeetingLink(overrides) {
+    var base = {
+      id: newVendorMeetingLinkId(),
+      vendor_id: "",
+      meeting_id: "",
+      created_at: new Date().toISOString(),
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  function newVendorRfiLinkId() {
+    return "vrl_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  function newVendorRfiLink(overrides) {
+    var base = {
+      id: newVendorRfiLinkId(),
+      vendor_id: "",
+      rfi_id: "",
+      created_at: new Date().toISOString(),
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  function newVendorRiskLinkId() {
+    return "vrsk_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  function newVendorRiskLink(overrides) {
+    var base = {
+      id: newVendorRiskLinkId(),
+      vendor_id: "",
+      risk_id: "",
+      created_at: new Date().toISOString(),
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  function newVendorPerformanceId() {
+    return "vp_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  /** One row per review (supports "review history" as multiple rows over time, not one
+   * mutable record). overall_rating is NOT stored — it's always the average of the four
+   * sub-ratings, computed where it's displayed (vendors.js), so it can never disagree
+   * with its own inputs the way a separately-editable "overall" field could. Ratings are
+   * 1-5 integers (0 = not yet rated), the common default scale absent a spec'd one. */
+  function newVendorPerformance(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newVendorPerformanceId(),
+      vendor_id: "",
+      project_id: "",
+      quality_rating: 0,
+      delivery_rating: 0,
+      communication_rating: 0,
+      safety_rating: 0,
+      comments: "",
+      review_date: now.slice(0, 10),
+      reviewed_by: "",
+      created_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  function newVendorNoteId() {
+    return "vnt_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  function newVendorNote(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newVendorNoteId(),
+      vendor_id: "",
+      note_text: "",
+      author: "",
+      created_at: now,
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
   /** Bring older exported/stored data up to the current schema in place. */
   function migrate(loaded) {
     if (!loaded.schema_version) loaded.schema_version = 1;
@@ -4522,6 +4816,24 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       if (!loaded.resources) loaded.resources = [];
       if (!loaded.resource_assignments) loaded.resource_assignments = [];
       loaded.schema_version = 23;
+    }
+
+    if (loaded.schema_version < 24) {
+      // Gate 13: Vendor Management. Nine brand new arrays, nothing to backfill on
+      // existing records — same as every prior gate that introduced a new register.
+      // (Originally built as this branch's "Gate 9" against schema v21 in a parallel
+      // session; renumbered to Gate 13 / v24 when reconciled into main alongside
+      // Gates 9-11 above, which had independently claimed v21-v23 in the meantime.)
+      if (!loaded.vendors) loaded.vendors = [];
+      if (!loaded.vendor_contacts) loaded.vendor_contacts = [];
+      if (!loaded.vendor_project_links) loaded.vendor_project_links = [];
+      if (!loaded.vendor_documents) loaded.vendor_documents = [];
+      if (!loaded.vendor_meeting_links) loaded.vendor_meeting_links = [];
+      if (!loaded.vendor_rfi_links) loaded.vendor_rfi_links = [];
+      if (!loaded.vendor_risk_links) loaded.vendor_risk_links = [];
+      if (!loaded.vendor_performance) loaded.vendor_performance = [];
+      if (!loaded.vendor_notes) loaded.vendor_notes = [];
+      loaded.schema_version = 24;
     }
 
     return loaded;
@@ -4867,6 +5179,19 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     newResource: newResource,
     newResourceAssignment: newResourceAssignment,
     RESOURCE_TYPES: RESOURCE_TYPES,
+    newVendor: newVendor,
+    nextVendorCode: nextVendorCode,
+    VENDOR_STATUSES: VENDOR_STATUSES,
+    newVendorContact: newVendorContact,
+    newVendorProjectLink: newVendorProjectLink,
+    VENDOR_PROJECT_CONTRACT_STATUSES: VENDOR_PROJECT_CONTRACT_STATUSES,
+    newVendorDocument: newVendorDocument,
+    VENDOR_DOCUMENT_CATEGORIES: VENDOR_DOCUMENT_CATEGORIES,
+    newVendorMeetingLink: newVendorMeetingLink,
+    newVendorRfiLink: newVendorRfiLink,
+    newVendorRiskLink: newVendorRiskLink,
+    newVendorPerformance: newVendorPerformance,
+    newVendorNote: newVendorNote,
   };
 })();
 
@@ -4973,6 +5298,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         { key: "dashboard", label: "Dashboard", code: "DB" },
         { key: "portfolio", label: "Portfolio", code: "PF" },
         { key: "executiveCenter", label: "Executive Center", code: "EC" },
+        { key: "vendors", label: "Vendors", code: "VN" },
       ],
     },
     {
@@ -5007,6 +5333,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     dashboard: "Dashboard",
     portfolio: "Portfolio",
     executiveCenter: "Executive Center",
+    vendors: "Vendor Management",
     documents: "Documents",
     dailylog: "Daily Log",
     risks: "Risk Register",
@@ -5723,6 +6050,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     showArchived: false,
     editingId: null, // null = form closed, "new" = creating, otherwise an existing project id
     expandedId: null, // project id whose details panel is open, or null
+    vendorLinkPickerOpen: false, // Gate 9: "+ Link Vendor" inline picker in the Vendors section below
   };
 
   function formatMoney(value, currency) {
@@ -5977,7 +6305,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     { key: "owner", label: "Owner" },
   ];
 
-  function renderProjectDetails(p) {
+  function renderProjectDetails(p, onChanged) {
     var wrap = document.createElement("div");
     wrap.className = "project-details";
 
@@ -6517,6 +6845,191 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     wrap.appendChild(coSection);
 
+    // Gate 9: vendor_project_links is the same shared array Vendor Management's own
+    // Projects tab reads/writes — linking or unlinking here shows up there immediately
+    // and vice versa, since both sides are just views onto the one join array, not two
+    // copies that need to be kept in sync.
+    var vendorContractLabels = { draft: "Draft", active: "Active", completed: "Completed", terminated: "Terminated" };
+    var projectVendorLinks = window.PCC.store
+      .get()
+      .vendor_project_links.filter(function (l) {
+        return l.project_id === p.id;
+      });
+    var allVendors = window.PCC.store.get().vendors;
+
+    var vendorsSection = document.createElement("div");
+    vendorsSection.style.marginTop = "16px";
+    vendorsSection.style.paddingTop = "14px";
+    vendorsSection.style.borderTop = "1px solid var(--divider)";
+
+    var vendorsHeader = document.createElement("div");
+    vendorsHeader.style.display = "flex";
+    vendorsHeader.style.justifyContent = "space-between";
+    vendorsHeader.style.alignItems = "center";
+
+    var vendorsLabel = document.createElement("span");
+    vendorsLabel.className = "detail-item__label";
+    vendorsLabel.textContent = "VENDORS (" + projectVendorLinks.length + ")";
+    vendorsHeader.appendChild(vendorsLabel);
+
+    var vendorsHeaderBtns = document.createElement("div");
+    vendorsHeaderBtns.style.display = "flex";
+    vendorsHeaderBtns.style.gap = "8px";
+
+    var linkVendorBtn = document.createElement("button");
+    linkVendorBtn.className = "btn btn--ghost";
+    linkVendorBtn.textContent = "+ Link Vendor";
+    var unlinkedVendors = allVendors.filter(function (v) {
+      return !projectVendorLinks.some(function (l) {
+        return l.vendor_id === v.id;
+      });
+    });
+    linkVendorBtn.disabled = unlinkedVendors.length === 0;
+    linkVendorBtn.title = unlinkedVendors.length === 0 ? (allVendors.length === 0 ? "Add a vendor in Vendor Management first" : "Every vendor is already linked to this project") : "";
+    linkVendorBtn.onclick = function () {
+      uiState.vendorLinkPickerOpen = true;
+      onChanged();
+    };
+    vendorsHeaderBtns.appendChild(linkVendorBtn);
+
+    if (projectVendorLinks.length > 0) {
+      var viewAllVendorsBtn = document.createElement("button");
+      viewAllVendorsBtn.className = "btn btn--ghost";
+      viewAllVendorsBtn.textContent = "View All";
+      viewAllVendorsBtn.onclick = function () {
+        if (window.PCC.vendors) window.PCC.vendors.filterByProject(p.id);
+        window.PCC.router.go("vendors");
+      };
+      vendorsHeaderBtns.appendChild(viewAllVendorsBtn);
+    }
+
+    vendorsHeader.appendChild(vendorsHeaderBtns);
+    vendorsSection.appendChild(vendorsHeader);
+
+    if (uiState.vendorLinkPickerOpen) {
+      var pickerWrap = document.createElement("div");
+      pickerWrap.style.marginTop = "8px";
+      pickerWrap.style.display = "flex";
+      pickerWrap.style.gap = "8px";
+      pickerWrap.style.alignItems = "center";
+      pickerWrap.style.flexWrap = "wrap";
+
+      var vendorSelect = document.createElement("select");
+      unlinkedVendors.forEach(function (v) {
+        var opt = document.createElement("option");
+        opt.value = v.id;
+        opt.textContent = v.vendor_name || "(unnamed vendor)";
+        vendorSelect.appendChild(opt);
+      });
+      pickerWrap.appendChild(vendorSelect);
+
+      var confirmLinkBtn = document.createElement("button");
+      confirmLinkBtn.className = "btn btn--primary";
+      confirmLinkBtn.textContent = "Link";
+      confirmLinkBtn.onclick = function () {
+        window.PCC.store.update(function (d) {
+          d.vendor_project_links.push(window.PCC.store.newVendorProjectLink({ vendor_id: vendorSelect.value, project_id: p.id }));
+        });
+        uiState.vendorLinkPickerOpen = false;
+        onChanged();
+      };
+      pickerWrap.appendChild(confirmLinkBtn);
+
+      var cancelLinkBtn = document.createElement("button");
+      cancelLinkBtn.className = "btn btn--ghost";
+      cancelLinkBtn.textContent = "Cancel";
+      cancelLinkBtn.onclick = function () {
+        uiState.vendorLinkPickerOpen = false;
+        onChanged();
+      };
+      pickerWrap.appendChild(cancelLinkBtn);
+
+      vendorsSection.appendChild(pickerWrap);
+    }
+
+    if (projectVendorLinks.length === 0) {
+      var noVendorsNote = document.createElement("p");
+      noVendorsNote.className = "text-secondary";
+      noVendorsNote.style.fontSize = "13px";
+      noVendorsNote.style.margin = "6px 0 0";
+      noVendorsNote.textContent = "No vendors linked to this project yet.";
+      vendorsSection.appendChild(noVendorsNote);
+    } else {
+      var vendorsList = document.createElement("div");
+      vendorsList.style.display = "flex";
+      vendorsList.style.flexDirection = "column";
+      vendorsList.style.gap = "6px";
+      vendorsList.style.marginTop = "8px";
+
+      projectVendorLinks.slice(0, 5).forEach(function (link) {
+        var vendor = allVendors.find(function (v) {
+          return v.id === link.vendor_id;
+        });
+
+        var row = document.createElement("div");
+        row.style.display = "flex";
+        row.style.justifyContent = "space-between";
+        row.style.alignItems = "center";
+        row.style.fontSize = "13px";
+        row.style.gap = "8px";
+
+        var nameBtn = document.createElement("button");
+        nameBtn.className = "btn btn--ghost";
+        nameBtn.style.overflow = "hidden";
+        nameBtn.style.textOverflow = "ellipsis";
+        nameBtn.style.whiteSpace = "nowrap";
+        nameBtn.style.padding = "2px 8px";
+        nameBtn.textContent = (vendor ? vendor.vendor_name || "(unnamed vendor)" : "(deleted vendor)") + (link.role ? " — " + link.role : "");
+        nameBtn.disabled = !vendor;
+        nameBtn.onclick = function () {
+          if (window.PCC.vendors) window.PCC.vendors.openProfile(link.vendor_id);
+          window.PCC.router.go("vendors");
+        };
+        row.appendChild(nameBtn);
+
+        var rightSide = document.createElement("div");
+        rightSide.style.display = "flex";
+        rightSide.style.alignItems = "center";
+        rightSide.style.gap = "8px";
+        rightSide.style.flexShrink = "0";
+
+        var statusBadge = document.createElement("span");
+        statusBadge.className = "status-badge " + (link.contract_status === "active" ? "status-badge--on_track" : link.contract_status === "terminated" ? "status-badge--critical" : "status-badge--info");
+        statusBadge.textContent = vendorContractLabels[link.contract_status] || link.contract_status;
+        rightSide.appendChild(statusBadge);
+
+        var unlinkBtn = document.createElement("button");
+        unlinkBtn.className = "btn btn--ghost";
+        unlinkBtn.style.padding = "2px 8px";
+        unlinkBtn.textContent = "Unlink";
+        unlinkBtn.onclick = function () {
+          window.PCC.store.update(function (d) {
+            d.vendor_project_links = d.vendor_project_links.filter(function (x) {
+              return x.id !== link.id;
+            });
+          });
+          onChanged();
+        };
+        rightSide.appendChild(unlinkBtn);
+
+        row.appendChild(rightSide);
+        vendorsList.appendChild(row);
+      });
+
+      vendorsSection.appendChild(vendorsList);
+
+      if (projectVendorLinks.length > 5) {
+        var moreVendorsNote = document.createElement("p");
+        moreVendorsNote.className = "text-secondary";
+        moreVendorsNote.style.fontSize = "11px";
+        moreVendorsNote.style.marginTop = "4px";
+        moreVendorsNote.textContent = "+" + (projectVendorLinks.length - 5) + " more — View All to see the rest.";
+        vendorsSection.appendChild(moreVendorsNote);
+      }
+    }
+
+    wrap.appendChild(vendorsSection);
+
     var costSection = document.createElement("div");
     costSection.style.marginTop = "16px";
     costSection.style.paddingTop = "14px";
@@ -6638,7 +7151,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     entry.className = "project-entry";
     entry.appendChild(renderProjectCard(p, onChanged));
     if (uiState.expandedId === p.id) {
-      entry.appendChild(renderProjectDetails(p));
+      entry.appendChild(renderProjectDetails(p, onChanged));
     }
     return entry;
   }
@@ -8679,6 +9192,2484 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
 
 
+/* ---- js/pages/vendors.js ---- */
+/* Vendor Management — Gate 9.
+ *
+ * The "single source of truth" for vendor information across all projects. Vendor
+ * Master is portfolio-wide (like Projects themselves), not scoped to a single project
+ * the way Documents/Risk/RFI/Change Orders are — see store.js's Gate 9 section header
+ * for why every vendor<->X relationship here is its own flat join array. Meetings/
+ * RFIs/Risks are linked to a vendor entirely from this module's side: linking never
+ * touches meetings.js/rfis.js/risks.js's own schemas, and "open the real record"
+ * reuses their existing public expandMeeting()/expandRfi()/expandRisk() hooks (the
+ * same hooks Risk's own "raise from meeting" flow already uses) instead of adding new
+ * fields there.
+ */
+(function () {
+  "use strict";
+  window.PCC = window.PCC || {};
+  window.PCC.pages = window.PCC.pages || {};
+
+  var VENDOR_STATUS_LABELS = { active: "Active", inactive: "Inactive", preferred: "Preferred Vendor", blacklisted: "Blacklisted" };
+  var CONTRACT_STATUS_LABELS = { draft: "Draft", active: "Active", completed: "Completed", terminated: "Terminated" };
+  var VENDOR_DOCUMENT_CATEGORY_LABELS = {
+    mom: "Minutes of Meeting (M.O.M.)",
+    boq: "BOQ (Bill of Quantities)",
+    escalation_matrix: "Escalation Matrix",
+    contract: "Contract",
+    purchase_order: "Purchase Order",
+    quotation: "Quotation",
+    technical_submittal: "Technical Submittal",
+    material_approval: "Material Approval",
+    drawing: "Drawing",
+    method_statement: "Method Statement",
+    inspection_report: "Inspection Report",
+    test_certificate: "Test Certificate",
+    quality_document: "Quality Document",
+    safety_document: "Safety Document",
+    insurance_document: "Insurance Document",
+    bank_details: "Bank Details",
+    invoice: "Invoice",
+    performance_report: "Performance Report",
+    other: "Other",
+  };
+  var RFI_TYPE_LABELS = { rfi: "RFI", technical_query: "Technical Query" };
+  var RFI_STATUS_LABELS = { open: "Open", answered: "Answered", closed: "Closed" };
+  var EXPIRING_SOON_DAYS = 30;
+
+  var VENDOR_FIELD_CONFIG = [
+    { key: "vendor_code", label: "Vendor Code", type: "text" },
+    { key: "vendor_name", label: "Vendor Name", type: "text", required: true },
+    { key: "company_name", label: "Company Name", type: "text" },
+    { key: "category", label: "Vendor Category", type: "text" },
+    { key: "trade_discipline", label: "Trade / Discipline", type: "text" },
+    { key: "gst_number", label: "GST Number", type: "text" },
+    { key: "pan_number", label: "PAN Number", type: "text" },
+    { key: "registration_number", label: "Registration Number", type: "text" },
+    { key: "website", label: "Website", type: "text" },
+  ];
+  var VENDOR_ADDRESS_FIELD_CONFIG = [
+    { key: "office_address", label: "Office Address", type: "text" },
+    { key: "city", label: "City", type: "text" },
+    { key: "state", label: "State", type: "text" },
+    { key: "country", label: "Country", type: "text" },
+    { key: "postal_code", label: "Postal Code", type: "text" },
+  ];
+
+  var uiState = {
+    view: "dashboard", // 'dashboard' | 'list' | 'profile'
+    // Master list
+    search: "",
+    statusFilter: "",
+    projectFilter: "",
+    tradeFilter: "",
+    docTypeFilter: "",
+    editingVendorId: null, // vendor id, 'new', or null
+    // Profile
+    profileVendorId: null,
+    profileTab: "overview",
+    editingContactId: null,
+    editingProjectLinkId: null,
+    editingPerformanceId: null,
+    editingNoteId: null,
+    noteDraftText: "",
+    // Documents tab
+    uploadFormOpen: false,
+    pendingDocFile: null, // { name, size, type, fileData, hash, hashMethod }
+    pendingDocCategory: "other",
+    pendingDocCustomCategory: "",
+    pendingDocProjectId: "",
+    pendingDocExpiry: "",
+    pendingDocTags: "",
+    pendingDocComments: "",
+    pendingDocGroupId: null, // set when uploading a new revision of an existing document
+    pendingDocReadError: null,
+    expandedDocGroupId: null,
+    // Link pickers (Meetings / RFIs / Risks tabs)
+    meetingPickerOpen: false,
+    rfiPickerOpen: false,
+    riskPickerOpen: false,
+  };
+
+  function today() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  function formatBytes(bytes) {
+    if (!bytes) return "0 KB";
+    var kb = bytes / 1024;
+    if (kb < 1024) return Math.round(kb) + " KB";
+    return (kb / 1024).toFixed(1) + " MB";
+  }
+
+  /** Base64-encodes an ArrayBuffer in fixed-size chunks — same approach documents.js
+   * and schedule.js already each keep their own copy of, matching this codebase's
+   * per-module-copy convention over a shared utils file. */
+  function arrayBufferToBase64(buffer) {
+    var bytes = new Uint8Array(buffer);
+    var chunkSize = 8192;
+    var chunks = [];
+    for (var i = 0; i < bytes.length; i += chunkSize) {
+      chunks.push(String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize)));
+    }
+    return btoa(chunks.join(""));
+  }
+
+  function projectName(projects, projectId) {
+    if (!projectId) return "—";
+    var p = projects.find(function (proj) {
+      return proj.id === projectId;
+    });
+    return p ? p.name || "(unnamed project)" : "(deleted project)";
+  }
+
+  function vendorName(vendors, vendorId) {
+    var v = vendors.find(function (x) {
+      return x.id === vendorId;
+    });
+    return v ? v.vendor_name || "(unnamed vendor)" : "(deleted vendor)";
+  }
+
+  function daysUntil(isoDate) {
+    if (!isoDate) return null;
+    var ms = new Date(isoDate + "T00:00:00").getTime() - new Date(today() + "T00:00:00").getTime();
+    return Math.round(ms / (1000 * 60 * 60 * 24));
+  }
+
+  /** The four sub-ratings are the only stored values — overall is always their average,
+   * computed here rather than trusted from a separately-editable field (see
+   * newVendorPerformance's comment in store.js). Ratings of 0 mean "not rated" and are
+   * excluded from the average so an unrated category doesn't drag the score toward 0. */
+  function overallRating(perf) {
+    var vals = [perf.quality_rating, perf.delivery_rating, perf.communication_rating, perf.safety_rating].filter(function (v) {
+      return v > 0;
+    });
+    if (vals.length === 0) return 0;
+    var sum = vals.reduce(function (a, b) {
+      return a + b;
+    }, 0);
+    return Math.round((sum / vals.length) * 10) / 10;
+  }
+
+  function ratingText(n) {
+    return n > 0 ? n.toFixed(1).replace(/\.0$/, "") + " / 5" : "Not rated";
+  }
+
+  function latestDocumentsForVendor(allVendorDocs, vendorId) {
+    var groups = {};
+    allVendorDocs
+      .filter(function (d) {
+        return d.vendor_id === vendorId;
+      })
+      .forEach(function (d) {
+        var key = d.document_group_id || d.id;
+        if (!groups[key] || d.revision_number > groups[key].revision_number) groups[key] = d;
+      });
+    return Object.keys(groups)
+      .map(function (k) {
+        return groups[k];
+      })
+      .sort(function (a, b) {
+        return (b.upload_date || "").localeCompare(a.upload_date || "");
+      });
+  }
+
+  function documentLabel(doc) {
+    if (doc.category === "other" && doc.custom_category_label) return doc.custom_category_label;
+    return VENDOR_DOCUMENT_CATEGORY_LABELS[doc.category] || doc.category;
+  }
+
+  /** Reconstructs a stored vendor document from blobStore and opens/downloads it —
+   * same approach as documents.js's openStoredFile: PDFs typically render inline in a
+   * new tab, Word/Excel/etc. typically download. That's the existing app-wide
+   * convention for "view a stored file," kept consistent here rather than building a
+   * separate richer preview. */
+  function openStoredVendorDocument(doc) {
+    window.PCC.blobStore
+      .getBlob(doc.id)
+      .then(function (fileData) {
+        if (!fileData) {
+          window.PCC.notify("No file was stored for this document.", "warning");
+          return;
+        }
+        var commaIdx = fileData.indexOf(",");
+        var meta = fileData.slice(0, commaIdx);
+        var b64 = fileData.slice(commaIdx + 1);
+        var mimeMatch = /data:(.*);base64/.exec(meta);
+        var mime = mimeMatch ? mimeMatch[1] : doc.mime_type || "application/octet-stream";
+        var binary = atob(b64);
+        var bytes = new Uint8Array(binary.length);
+        for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        var blob = new Blob([bytes], { type: mime });
+        var url = URL.createObjectURL(blob);
+        window.open(url, "_blank");
+        window.setTimeout(function () {
+          URL.revokeObjectURL(url);
+        }, 30000);
+      })
+      .catch(function (e) {
+        window.PCC.notify("Could not open this file: " + e.message, "error");
+      });
+  }
+
+  // ---------------------------------------------------------------------------------
+  // Vendor Master form
+  // ---------------------------------------------------------------------------------
+
+  function buildField(cfg, record, idPrefix) {
+    var field = document.createElement("div");
+    field.className = "field";
+    var label = document.createElement("label");
+    label.textContent = cfg.label + (cfg.required ? " *" : "");
+    label.setAttribute("for", idPrefix + cfg.key);
+    field.appendChild(label);
+
+    var input;
+    if (cfg.type === "select") {
+      input = document.createElement("select");
+      cfg.options.forEach(function (val) {
+        var opt = document.createElement("option");
+        opt.value = val;
+        opt.textContent = cfg.labels[val] || val;
+        input.appendChild(opt);
+      });
+      input.value = record[cfg.key] || cfg.options[0];
+    } else if (cfg.type === "textarea") {
+      input = document.createElement("textarea");
+      input.rows = 3;
+      input.value = record[cfg.key] || "";
+    } else {
+      input = document.createElement("input");
+      input.type = cfg.type;
+      input.value = record[cfg.key] || "";
+    }
+    input.id = idPrefix + cfg.key;
+    input.name = cfg.key;
+    if (cfg.required) input.required = true;
+    field.appendChild(input);
+    return field;
+  }
+
+  function readFieldValues(formEl, fieldConfig, idPrefix) {
+    var values = {};
+    fieldConfig.forEach(function (cfg) {
+      var el = formEl.querySelector("#" + idPrefix + cfg.key);
+      if (el) values[cfg.key] = el.value;
+    });
+    return values;
+  }
+
+  function renderVendorForm(container, vendor, data, rerender) {
+    var isNew = uiState.editingVendorId === "new";
+    var panel = document.createElement("div");
+    panel.className = "panel";
+    panel.style.marginBottom = "16px";
+
+    var heading = document.createElement("h3");
+    heading.style.marginBottom = "14px";
+    heading.textContent = isNew ? "Add Vendor" : "Edit Vendor";
+    panel.appendChild(heading);
+
+    var form = document.createElement("form");
+
+    var basicHeading = document.createElement("p");
+    basicHeading.className = "text-secondary";
+    basicHeading.style.fontSize = "12px";
+    basicHeading.style.fontWeight = "600";
+    basicHeading.style.marginBottom = "8px";
+    basicHeading.textContent = "BASIC INFORMATION";
+    form.appendChild(basicHeading);
+
+    var basicGrid = document.createElement("div");
+    basicGrid.className = "form-grid";
+    VENDOR_FIELD_CONFIG.forEach(function (cfg) {
+      basicGrid.appendChild(buildField(cfg, vendor, "vendorfield-"));
+    });
+    form.appendChild(basicGrid);
+
+    var existingPrimaryContact = data.vendor_contacts.find(function (c) {
+      return c.vendor_id === vendor.id && c.is_primary;
+    }) || { name: "", designation: "", mobile: "", email: "" };
+
+    var contactHeading = document.createElement("p");
+    contactHeading.className = "text-secondary";
+    contactHeading.style.fontSize = "12px";
+    contactHeading.style.fontWeight = "600";
+    contactHeading.style.marginTop = "16px";
+    contactHeading.style.marginBottom = "8px";
+    contactHeading.textContent = "PRIMARY CONTACT (more contacts can be added from the vendor's Contacts tab after saving)";
+    form.appendChild(contactHeading);
+
+    var contactGrid = document.createElement("div");
+    contactGrid.className = "form-grid";
+    var contactFields = [
+      { key: "name", label: "Contact Person" },
+      { key: "designation", label: "Designation" },
+      { key: "mobile", label: "Mobile Number" },
+      { key: "email", label: "Email Address" },
+    ];
+    contactFields.forEach(function (cfg) {
+      contactGrid.appendChild(
+        buildField({ key: cfg.key, label: cfg.label, type: cfg.key === "email" ? "email" : "text" }, existingPrimaryContact, "vendorfield-contact-")
+      );
+    });
+    form.appendChild(contactGrid);
+
+    var addressHeading = document.createElement("p");
+    addressHeading.className = "text-secondary";
+    addressHeading.style.fontSize = "12px";
+    addressHeading.style.fontWeight = "600";
+    addressHeading.style.marginTop = "16px";
+    addressHeading.style.marginBottom = "8px";
+    addressHeading.textContent = "ADDRESS";
+    form.appendChild(addressHeading);
+
+    var addressGrid = document.createElement("div");
+    addressGrid.className = "form-grid";
+    VENDOR_ADDRESS_FIELD_CONFIG.forEach(function (cfg) {
+      addressGrid.appendChild(buildField(cfg, vendor, "vendorfield-"));
+    });
+    form.appendChild(addressGrid);
+
+    var statusGrid = document.createElement("div");
+    statusGrid.className = "form-grid";
+    statusGrid.style.marginTop = "16px";
+    statusGrid.appendChild(
+      buildField({ key: "status", label: "Status", type: "select", options: window.PCC.store.VENDOR_STATUSES, labels: VENDOR_STATUS_LABELS }, vendor, "vendorfield-")
+    );
+    form.appendChild(statusGrid);
+
+    var notesField = document.createElement("div");
+    notesField.className = "field";
+    notesField.style.marginTop = "10px";
+    notesField.innerHTML = "<label>Notes</label>";
+    var notesArea = document.createElement("textarea");
+    notesArea.id = "vendorfield-notes";
+    notesArea.rows = 2;
+    notesArea.value = vendor.notes || "";
+    notesField.appendChild(notesArea);
+    form.appendChild(notesField);
+
+    var errorMsg = document.createElement("p");
+    errorMsg.style.color = "var(--status-critical)";
+    errorMsg.style.fontSize = "13px";
+    errorMsg.style.display = "none";
+    errorMsg.style.marginTop = "10px";
+    errorMsg.textContent = "Vendor Name is required.";
+    form.appendChild(errorMsg);
+
+    var actions = document.createElement("div");
+    actions.style.display = "flex";
+    actions.style.gap = "10px";
+    actions.style.marginTop = "14px";
+
+    var saveBtn = document.createElement("button");
+    saveBtn.type = "submit";
+    saveBtn.className = "btn btn--primary";
+    saveBtn.textContent = isNew ? "Add Vendor" : "Save Changes";
+
+    var cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.className = "btn btn--ghost";
+    cancelBtn.textContent = "Cancel";
+    cancelBtn.onclick = function () {
+      uiState.editingVendorId = null;
+      rerender();
+    };
+
+    actions.appendChild(saveBtn);
+    actions.appendChild(cancelBtn);
+    form.appendChild(actions);
+
+    form.onsubmit = function (e) {
+      e.preventDefault();
+      var values = readFieldValues(form, VENDOR_FIELD_CONFIG, "vendorfield-");
+      Object.assign(values, readFieldValues(form, VENDOR_ADDRESS_FIELD_CONFIG, "vendorfield-"));
+      values.status = form.querySelector("#vendorfield-status").value;
+      values.notes = notesArea.value;
+
+      if (!values.vendor_name || !values.vendor_name.trim()) {
+        errorMsg.style.display = "block";
+        return;
+      }
+      errorMsg.style.display = "none";
+
+      var contactValues = {
+        name: form.querySelector("#vendorfield-contact-name").value.trim(),
+        designation: form.querySelector("#vendorfield-contact-designation").value.trim(),
+        mobile: form.querySelector("#vendorfield-contact-mobile").value.trim(),
+        email: form.querySelector("#vendorfield-contact-email").value.trim(),
+      };
+      var contactProvided = contactValues.name || contactValues.designation || contactValues.mobile || contactValues.email;
+
+      window.PCC.store.update(function (d) {
+        var vendorId;
+        if (isNew) {
+          var newV = window.PCC.store.newVendor(values);
+          d.vendors.push(newV);
+          vendorId = newV.id;
+        } else {
+          var existing = d.vendors.find(function (v) {
+            return v.id === vendor.id;
+          });
+          if (existing) {
+            Object.assign(existing, values);
+            existing.updated_at = new Date().toISOString();
+          }
+          vendorId = vendor.id;
+        }
+
+        if (contactProvided) {
+          var primary = d.vendor_contacts.find(function (c) {
+            return c.vendor_id === vendorId && c.is_primary;
+          });
+          if (primary) {
+            Object.assign(primary, contactValues);
+            primary.updated_at = new Date().toISOString();
+          } else {
+            d.vendor_contacts.push(window.PCC.store.newVendorContact(Object.assign({ vendor_id: vendorId, is_primary: true }, contactValues)));
+          }
+        }
+
+        uiState._savedVendorId = vendorId;
+      });
+
+      window.PCC.notify(isNew ? "Vendor added." : "Vendor updated.", "success");
+      uiState.editingVendorId = null;
+      if (isNew) {
+        uiState.view = "profile";
+        uiState.profileVendorId = uiState._savedVendorId;
+        uiState.profileTab = "overview";
+      }
+      rerender();
+    };
+
+    panel.appendChild(form);
+    container.appendChild(panel);
+  }
+
+  // ---------------------------------------------------------------------------------
+  // Vendor Master list (search + filters)
+  // ---------------------------------------------------------------------------------
+
+  function vendorHaystack(v, data) {
+    var contacts = data.vendor_contacts.filter(function (c) {
+      return c.vendor_id === v.id;
+    });
+    var projectLinks = data.vendor_project_links.filter(function (l) {
+      return l.vendor_id === v.id;
+    });
+    var docs = data.vendor_documents.filter(function (d) {
+      return d.vendor_id === v.id;
+    });
+    var parts = [
+      v.vendor_name, v.company_name, v.category, v.trade_discipline, v.vendor_code,
+      contacts.map(function (c) { return c.name; }).join(" "),
+      projectLinks.map(function (l) { return projectName(data.projects, l.project_id); }).join(" "),
+      docs.map(function (d) { return d.filename; }).join(" "),
+    ];
+    return parts.join(" ").toLowerCase();
+  }
+
+  function vendorMatchesFilters(v, data) {
+    if (uiState.statusFilter && v.status !== uiState.statusFilter) return false;
+    if (uiState.projectFilter) {
+      var hasProject = data.vendor_project_links.some(function (l) {
+        return l.vendor_id === v.id && l.project_id === uiState.projectFilter;
+      });
+      if (!hasProject) return false;
+    }
+    if (uiState.tradeFilter && (v.trade_discipline || "").toLowerCase() !== uiState.tradeFilter.toLowerCase()) return false;
+    if (uiState.docTypeFilter) {
+      var hasDocType = data.vendor_documents.some(function (d) {
+        return d.vendor_id === v.id && d.category === uiState.docTypeFilter;
+      });
+      if (!hasDocType) return false;
+    }
+    if (uiState.search) {
+      if (vendorHaystack(v, data).indexOf(uiState.search.toLowerCase()) === -1) return false;
+    }
+    return true;
+  }
+
+  function statusBadgeClass(status) {
+    if (status === "preferred") return "status-badge status-badge--on_track";
+    if (status === "blacklisted") return "status-badge status-badge--critical";
+    if (status === "inactive") return "status-badge status-badge--complete";
+    return "status-badge status-badge--info"; // active
+  }
+
+  function renderVendorCard(v, data, rerender) {
+    var card = document.createElement("div");
+    card.className = "project-card";
+
+    var top = document.createElement("div");
+    top.style.display = "flex";
+    top.style.justifyContent = "space-between";
+    top.style.alignItems = "flex-start";
+    top.style.gap = "10px";
+
+    var titleBlock = document.createElement("div");
+    var titleRow = document.createElement("div");
+    titleRow.style.display = "flex";
+    titleRow.style.alignItems = "center";
+    titleRow.style.gap = "8px";
+    var name = document.createElement("strong");
+    name.textContent = v.vendor_name || "(unnamed vendor)";
+    titleRow.appendChild(name);
+    var badge = document.createElement("span");
+    badge.className = statusBadgeClass(v.status);
+    badge.textContent = VENDOR_STATUS_LABELS[v.status] || v.status;
+    titleRow.appendChild(badge);
+    titleBlock.appendChild(titleRow);
+
+    var sub = document.createElement("p");
+    sub.className = "text-secondary";
+    sub.style.fontSize = "12px";
+    sub.style.margin = "4px 0 0";
+    var projectCount = data.vendor_project_links.filter(function (l) {
+      return l.vendor_id === v.id;
+    }).length;
+    sub.textContent =
+      [v.vendor_code, v.company_name, v.trade_discipline].filter(Boolean).join(" · ") +
+      (v.vendor_code || v.company_name || v.trade_discipline ? " · " : "") +
+      projectCount + " project" + (projectCount === 1 ? "" : "s");
+    titleBlock.appendChild(sub);
+    top.appendChild(titleBlock);
+
+    var btnRow = document.createElement("div");
+    btnRow.style.display = "flex";
+    btnRow.style.gap = "8px";
+    btnRow.style.flexShrink = "0";
+
+    var viewBtn = document.createElement("button");
+    viewBtn.className = "btn btn--primary";
+    viewBtn.textContent = "View Profile";
+    viewBtn.onclick = function () {
+      uiState.view = "profile";
+      uiState.profileVendorId = v.id;
+      uiState.profileTab = "overview";
+      rerender();
+    };
+    var editBtn = document.createElement("button");
+    editBtn.className = "btn btn--ghost";
+    editBtn.textContent = "Edit";
+    editBtn.onclick = function () {
+      uiState.editingVendorId = v.id;
+      rerender();
+    };
+    var deleteBtn = document.createElement("button");
+    deleteBtn.className = "btn btn--ghost";
+    deleteBtn.textContent = "Delete";
+    deleteBtn.onclick = function () {
+      if (!window.confirm('Delete vendor "' + v.vendor_name + '"? This also removes its contacts, project links, documents, and performance/notes history. This can\'t be undone.')) return;
+      var docIds = data.vendor_documents.filter(function (d) { return d.vendor_id === v.id; }).map(function (d) { return d.id; });
+      window.PCC.store.update(function (d) {
+        d.vendors = d.vendors.filter(function (x) { return x.id !== v.id; });
+        d.vendor_contacts = d.vendor_contacts.filter(function (x) { return x.vendor_id !== v.id; });
+        d.vendor_project_links = d.vendor_project_links.filter(function (x) { return x.vendor_id !== v.id; });
+        d.vendor_documents = d.vendor_documents.filter(function (x) { return x.vendor_id !== v.id; });
+        d.vendor_meeting_links = d.vendor_meeting_links.filter(function (x) { return x.vendor_id !== v.id; });
+        d.vendor_rfi_links = d.vendor_rfi_links.filter(function (x) { return x.vendor_id !== v.id; });
+        d.vendor_risk_links = d.vendor_risk_links.filter(function (x) { return x.vendor_id !== v.id; });
+        d.vendor_performance = d.vendor_performance.filter(function (x) { return x.vendor_id !== v.id; });
+        d.vendor_notes = d.vendor_notes.filter(function (x) { return x.vendor_id !== v.id; });
+      });
+      docIds.forEach(function (id) {
+        window.PCC.blobStore.deleteBlob(id).catch(function () {});
+      });
+      window.PCC.notify("Vendor deleted.", "success");
+      if (uiState.profileVendorId === v.id) {
+        uiState.view = "list";
+        uiState.profileVendorId = null;
+      }
+      rerender();
+    };
+    btnRow.appendChild(viewBtn);
+    btnRow.appendChild(editBtn);
+    btnRow.appendChild(deleteBtn);
+    top.appendChild(btnRow);
+
+    card.appendChild(top);
+    return card;
+  }
+
+  function renderVendorList(container, data, rerender) {
+    var toolbar = document.createElement("div");
+    toolbar.className = "toolbar";
+
+    var searchInput = document.createElement("input");
+    searchInput.type = "text";
+    searchInput.placeholder = "Search vendor, company, contact, trade, project, document…";
+    searchInput.value = uiState.search;
+    searchInput.oninput = function () {
+      uiState.search = searchInput.value;
+      renderList();
+    };
+
+    var statusSelect = document.createElement("select");
+    var allStatusOpt = document.createElement("option");
+    allStatusOpt.value = "";
+    allStatusOpt.textContent = "All statuses";
+    statusSelect.appendChild(allStatusOpt);
+    window.PCC.store.VENDOR_STATUSES.forEach(function (s) {
+      var opt = document.createElement("option");
+      opt.value = s;
+      opt.textContent = VENDOR_STATUS_LABELS[s];
+      statusSelect.appendChild(opt);
+    });
+    statusSelect.value = uiState.statusFilter;
+    statusSelect.onchange = function () {
+      uiState.statusFilter = statusSelect.value;
+      renderList();
+    };
+
+    var projSelect = document.createElement("select");
+    var allProjOpt = document.createElement("option");
+    allProjOpt.value = "";
+    allProjOpt.textContent = "All projects";
+    projSelect.appendChild(allProjOpt);
+    data.projects.forEach(function (p) {
+      var opt = document.createElement("option");
+      opt.value = p.id;
+      opt.textContent = p.name || "(unnamed project)";
+      projSelect.appendChild(opt);
+    });
+    projSelect.value = uiState.projectFilter;
+    projSelect.onchange = function () {
+      uiState.projectFilter = projSelect.value;
+      renderList();
+    };
+
+    var tradeSelect = document.createElement("select");
+    var allTradeOpt = document.createElement("option");
+    allTradeOpt.value = "";
+    allTradeOpt.textContent = "All trades";
+    tradeSelect.appendChild(allTradeOpt);
+    var distinctTrades = Array.from(
+      new Set(data.vendors.map(function (v) { return (v.trade_discipline || "").trim(); }).filter(Boolean))
+    ).sort();
+    distinctTrades.forEach(function (t) {
+      var opt = document.createElement("option");
+      opt.value = t;
+      opt.textContent = t;
+      tradeSelect.appendChild(opt);
+    });
+    tradeSelect.value = uiState.tradeFilter;
+    tradeSelect.onchange = function () {
+      uiState.tradeFilter = tradeSelect.value;
+      renderList();
+    };
+
+    var docTypeSelect = document.createElement("select");
+    var allDocTypeOpt = document.createElement("option");
+    allDocTypeOpt.value = "";
+    allDocTypeOpt.textContent = "All document types";
+    docTypeSelect.appendChild(allDocTypeOpt);
+    window.PCC.store.VENDOR_DOCUMENT_CATEGORIES.forEach(function (c) {
+      var opt = document.createElement("option");
+      opt.value = c;
+      opt.textContent = VENDOR_DOCUMENT_CATEGORY_LABELS[c];
+      docTypeSelect.appendChild(opt);
+    });
+    docTypeSelect.value = uiState.docTypeFilter;
+    docTypeSelect.onchange = function () {
+      uiState.docTypeFilter = docTypeSelect.value;
+      renderList();
+    };
+
+    var spacer = document.createElement("div");
+    spacer.className = "toolbar__spacer";
+
+    var addBtn = document.createElement("button");
+    addBtn.className = "btn btn--primary";
+    addBtn.textContent = "+ Add Vendor";
+    addBtn.onclick = function () {
+      uiState.editingVendorId = "new";
+      rerender();
+    };
+
+    toolbar.appendChild(searchInput);
+    toolbar.appendChild(statusSelect);
+    toolbar.appendChild(projSelect);
+    toolbar.appendChild(tradeSelect);
+    toolbar.appendChild(docTypeSelect);
+    toolbar.appendChild(spacer);
+    toolbar.appendChild(addBtn);
+    container.appendChild(toolbar);
+
+    if (uiState.editingVendorId) {
+      var vendorBeingEdited =
+        uiState.editingVendorId === "new"
+          ? window.PCC.store.newVendor({ vendor_code: window.PCC.store.nextVendorCode(data.vendors) })
+          : data.vendors.find(function (v) {
+              return v.id === uiState.editingVendorId;
+            });
+      if (vendorBeingEdited) renderVendorForm(container, vendorBeingEdited, data, rerender);
+    }
+
+    var listWrap = document.createElement("div");
+    container.appendChild(listWrap);
+
+    function renderList() {
+      listWrap.innerHTML = "";
+      var filtered = data.vendors.filter(function (v) {
+        return vendorMatchesFilters(v, data);
+      });
+
+      if (filtered.length === 0) {
+        var empty = document.createElement("div");
+        empty.className = "panel empty-state";
+        empty.textContent = data.vendors.length === 0 ? 'No vendors yet. Click "+ Add Vendor" to create your first one.' : "No vendors match this search/filter.";
+        listWrap.appendChild(empty);
+        return;
+      }
+
+      var list = document.createElement("div");
+      list.className = "project-list";
+      filtered.forEach(function (v) {
+        list.appendChild(renderVendorCard(v, data, rerender));
+      });
+      listWrap.appendChild(list);
+    }
+
+    renderList();
+  }
+
+  // ---------------------------------------------------------------------------------
+  // Dashboard
+  // ---------------------------------------------------------------------------------
+
+  function summaryCard(label, value, sub) {
+    var card = document.createElement("div");
+    card.className = "panel";
+    var lab = document.createElement("p");
+    lab.className = "text-secondary";
+    lab.style.fontSize = "11px";
+    lab.style.marginBottom = "6px";
+    lab.textContent = label.toUpperCase();
+    card.appendChild(lab);
+    var val = document.createElement("p");
+    val.style.fontSize = "28px";
+    val.style.fontWeight = "600";
+    val.style.margin = "0";
+    val.textContent = value;
+    card.appendChild(val);
+    if (sub) {
+      var subEl = document.createElement("div");
+      subEl.style.marginTop = "8px";
+      if (typeof sub === "string") {
+        subEl.className = "text-secondary";
+        subEl.style.fontSize = "12px";
+        subEl.textContent = sub;
+      } else {
+        subEl.appendChild(sub);
+      }
+      card.appendChild(subEl);
+    }
+    return card;
+  }
+
+  function miniList(items) {
+    var wrap = document.createElement("div");
+    if (items.length === 0) {
+      var none = document.createElement("p");
+      none.className = "text-secondary";
+      none.style.fontSize = "12px";
+      none.textContent = "None.";
+      wrap.appendChild(none);
+      return wrap;
+    }
+    items.forEach(function (text) {
+      var p = document.createElement("p");
+      p.style.fontSize = "12px";
+      p.style.margin = "0 0 4px";
+      p.textContent = text;
+      wrap.appendChild(p);
+    });
+    return wrap;
+  }
+
+  function renderDashboard(container, data, rerender) {
+    var h3 = document.createElement("h3");
+    h3.style.marginBottom = "12px";
+    h3.textContent = "Vendor Dashboard";
+    container.appendChild(h3);
+
+    var cardsGrid = document.createElement("div");
+    cardsGrid.style.display = "grid";
+    cardsGrid.style.gridTemplateColumns = "repeat(auto-fit, minmax(220px, 1fr))";
+    cardsGrid.style.gap = "12px";
+    cardsGrid.style.marginBottom = "20px";
+
+    var activeCount = data.vendors.filter(function (v) { return v.status === "active"; }).length;
+    var preferredCount = data.vendors.filter(function (v) { return v.status === "preferred"; }).length;
+
+    var perProject = {};
+    data.vendor_project_links.forEach(function (l) {
+      perProject[l.project_id] = perProject[l.project_id] || {};
+      perProject[l.project_id][l.vendor_id] = true;
+    });
+    var perProjectRows = Object.keys(perProject)
+      .map(function (pid) {
+        return { projectId: pid, count: Object.keys(perProject[pid]).length };
+      })
+      .sort(function (a, b) {
+        return b.count - a.count;
+      })
+      .slice(0, 5)
+      .map(function (row) {
+        return projectName(data.projects, row.projectId) + " — " + row.count + " vendor" + (row.count === 1 ? "" : "s");
+      });
+
+    var allLatestByVendor = [];
+    data.vendors.forEach(function (v) {
+      allLatestByVendor = allLatestByVendor.concat(latestDocumentsForVendor(data.vendor_documents, v.id));
+    });
+
+    var expiring = allLatestByVendor
+      .filter(function (d) {
+        if (!d.expiry_date) return false;
+        var diff = daysUntil(d.expiry_date);
+        return diff !== null && diff <= EXPIRING_SOON_DAYS;
+      })
+      .sort(function (a, b) {
+        return a.expiry_date.localeCompare(b.expiry_date);
+      });
+
+    var recentUploads = data.vendor_documents
+      .slice()
+      .sort(function (a, b) {
+        return (b.upload_date || "").localeCompare(a.upload_date || "");
+      })
+      .slice(0, 5);
+
+    cardsGrid.appendChild(summaryCard("Total Vendors", data.vendors.length));
+    cardsGrid.appendChild(summaryCard("Active Vendors", activeCount));
+    cardsGrid.appendChild(summaryCard("Preferred Vendors", preferredCount));
+    cardsGrid.appendChild(summaryCard("Vendors per Project", perProjectRows.length, miniList(perProjectRows)));
+    cardsGrid.appendChild(
+      summaryCard(
+        "Expiring Documents (≤" + EXPIRING_SOON_DAYS + "d)",
+        expiring.length,
+        miniList(
+          expiring.slice(0, 5).map(function (d) {
+            var diff = daysUntil(d.expiry_date);
+            return vendorName(data.vendors, d.vendor_id) + " — " + documentLabel(d) + " — " + (diff < 0 ? "expired " + Math.abs(diff) + "d ago" : diff + "d left");
+          })
+        )
+      )
+    );
+    cardsGrid.appendChild(
+      summaryCard(
+        "Recently Uploaded Documents",
+        recentUploads.length,
+        miniList(
+          recentUploads.map(function (d) {
+            return vendorName(data.vendors, d.vendor_id) + " — " + documentLabel(d);
+          })
+        )
+      )
+    );
+    container.appendChild(cardsGrid);
+
+    var activityPanel = document.createElement("div");
+    activityPanel.className = "panel";
+    var activityHeading = document.createElement("h3");
+    activityHeading.style.marginBottom = "12px";
+    activityHeading.textContent = "Recent Activity";
+    activityPanel.appendChild(activityHeading);
+
+    var activityGrid = document.createElement("div");
+    activityGrid.style.display = "grid";
+    activityGrid.style.gridTemplateColumns = "repeat(auto-fit, minmax(220px, 1fr))";
+    activityGrid.style.gap = "16px";
+
+    function activityColumn(title, items) {
+      var col = document.createElement("div");
+      var t = document.createElement("p");
+      t.style.fontSize = "12px";
+      t.style.fontWeight = "600";
+      t.style.marginBottom = "6px";
+      t.textContent = title;
+      col.appendChild(t);
+      col.appendChild(miniList(items));
+      return col;
+    }
+
+    var recentVendors = data.vendors
+      .slice()
+      .sort(function (a, b) {
+        return (b.created_at || "").localeCompare(a.created_at || "");
+      })
+      .slice(0, 5)
+      .map(function (v) {
+        return v.vendor_name + " (" + new Date(v.created_at).toLocaleDateString() + ")";
+      });
+
+    var recentlyUpdated = data.vendors
+      .filter(function (v) {
+        return v.updated_at !== v.created_at;
+      })
+      .sort(function (a, b) {
+        return (b.updated_at || "").localeCompare(a.updated_at || "");
+      })
+      .slice(0, 5)
+      .map(function (v) {
+        return v.vendor_name + " (" + new Date(v.updated_at).toLocaleDateString() + ")";
+      });
+
+    activityGrid.appendChild(activityColumn("Recently Added Vendors", recentVendors));
+    activityGrid.appendChild(
+      activityColumn(
+        "Recently Uploaded Documents",
+        recentUploads.map(function (d) {
+          return vendorName(data.vendors, d.vendor_id) + " — " + documentLabel(d) + " (" + (d.upload_date || "").slice(0, 10) + ")";
+        })
+      )
+    );
+    activityGrid.appendChild(activityColumn("Recently Updated Vendor Information", recentlyUpdated));
+
+    activityPanel.appendChild(activityGrid);
+    container.appendChild(activityPanel);
+  }
+
+  // ---------------------------------------------------------------------------------
+  // Vendor Profile
+  // ---------------------------------------------------------------------------------
+
+  function profileTabBar(vendor, container, rerender) {
+    var bar = document.createElement("div");
+    bar.className = "tab-bar";
+    bar.style.marginTop = "16px";
+    bar.style.marginBottom = "16px";
+    [
+      { key: "overview", label: "Overview" },
+      { key: "projects", label: "Projects" },
+      { key: "contacts", label: "Contacts" },
+      { key: "documents", label: "Documents" },
+      { key: "meetings", label: "Meetings" },
+      { key: "rfis", label: "RFI / TQ" },
+      { key: "risks", label: "Risks" },
+      { key: "performance", label: "Performance" },
+      { key: "notes", label: "Notes" },
+    ].forEach(function (t) {
+      var btn = document.createElement("button");
+      btn.className = "tab-btn" + (uiState.profileTab === t.key ? " tab-btn--active" : "");
+      btn.textContent = t.label;
+      btn.onclick = function () {
+        uiState.profileTab = t.key;
+        rerender();
+      };
+      bar.appendChild(btn);
+    });
+    container.appendChild(bar);
+  }
+
+  function renderOverviewTab(container, vendor, data) {
+    var panel = document.createElement("div");
+    panel.className = "panel";
+
+    var grid = document.createElement("div");
+    grid.style.display = "grid";
+    grid.style.gridTemplateColumns = "repeat(auto-fit, minmax(200px, 1fr))";
+    grid.style.gap = "14px";
+
+    function row(label, value) {
+      var d = document.createElement("div");
+      var l = document.createElement("p");
+      l.className = "text-secondary";
+      l.style.fontSize = "11px";
+      l.style.marginBottom = "2px";
+      l.textContent = label.toUpperCase();
+      var v = document.createElement("p");
+      v.style.margin = "0";
+      v.textContent = value || "—";
+      d.appendChild(l);
+      d.appendChild(v);
+      return d;
+    }
+
+    grid.appendChild(row("Vendor Code", vendor.vendor_code));
+    grid.appendChild(row("Company Name", vendor.company_name));
+    grid.appendChild(row("Category", vendor.category));
+    grid.appendChild(row("Trade / Discipline", vendor.trade_discipline));
+    grid.appendChild(row("GST Number", vendor.gst_number));
+    grid.appendChild(row("PAN Number", vendor.pan_number));
+    grid.appendChild(row("Registration Number", vendor.registration_number));
+    grid.appendChild(row("Website", vendor.website));
+    grid.appendChild(
+      row("Address", [vendor.office_address, vendor.city, vendor.state, vendor.country, vendor.postal_code].filter(Boolean).join(", "))
+    );
+    panel.appendChild(grid);
+
+    if (vendor.notes) {
+      var notesP = document.createElement("p");
+      notesP.style.marginTop = "14px";
+      notesP.style.whiteSpace = "pre-wrap";
+      notesP.textContent = vendor.notes;
+      panel.appendChild(notesP);
+    }
+
+    var statsRow = document.createElement("div");
+    statsRow.style.display = "flex";
+    statsRow.style.gap = "20px";
+    statsRow.style.marginTop = "16px";
+    statsRow.style.flexWrap = "wrap";
+
+    function stat(label, count) {
+      var s = document.createElement("div");
+      s.innerHTML = "<strong>" + count + "</strong> <span class='text-secondary' style='font-size:12px'>" + label + "</span>";
+      return s;
+    }
+    statsRow.appendChild(stat("Projects", data.vendor_project_links.filter(function (l) { return l.vendor_id === vendor.id; }).length));
+    statsRow.appendChild(stat("Contacts", data.vendor_contacts.filter(function (c) { return c.vendor_id === vendor.id; }).length));
+    statsRow.appendChild(stat("Documents", latestDocumentsForVendor(data.vendor_documents, vendor.id).length));
+    statsRow.appendChild(stat("Meetings", data.vendor_meeting_links.filter(function (l) { return l.vendor_id === vendor.id; }).length));
+    statsRow.appendChild(stat("RFI / TQ", data.vendor_rfi_links.filter(function (l) { return l.vendor_id === vendor.id; }).length));
+    statsRow.appendChild(stat("Risks", data.vendor_risk_links.filter(function (l) { return l.vendor_id === vendor.id; }).length));
+    panel.appendChild(statsRow);
+
+    container.appendChild(panel);
+  }
+
+  function renderProjectsTab(container, vendor, data, rerender) {
+    var addBtn = document.createElement("button");
+    addBtn.className = "btn btn--primary";
+    addBtn.style.marginBottom = "12px";
+    addBtn.textContent = "+ Link Project";
+    addBtn.disabled = data.projects.filter(function (p) { return !p.archived; }).length === 0;
+    addBtn.onclick = function () {
+      uiState.editingProjectLinkId = "new";
+      rerender();
+    };
+    container.appendChild(addBtn);
+
+    if (uiState.editingProjectLinkId) {
+      var link =
+        uiState.editingProjectLinkId === "new"
+          ? window.PCC.store.newVendorProjectLink({ vendor_id: vendor.id })
+          : data.vendor_project_links.find(function (l) {
+              return l.id === uiState.editingProjectLinkId;
+            });
+      if (link) {
+        var panel = document.createElement("div");
+        panel.className = "panel";
+        panel.style.marginBottom = "12px";
+        var form = document.createElement("form");
+
+        var projField = document.createElement("div");
+        projField.className = "field";
+        projField.innerHTML = "<label>Project *</label>";
+        var projSelect = document.createElement("select");
+        var activeProjects = data.projects.filter(function (p) { return !p.archived; });
+        activeProjects.forEach(function (p) {
+          var opt = document.createElement("option");
+          opt.value = p.id;
+          opt.textContent = p.name || "(unnamed project)";
+          projSelect.appendChild(opt);
+        });
+        projSelect.value = link.project_id || (activeProjects[0] && activeProjects[0].id) || "";
+        projField.appendChild(projSelect);
+        form.appendChild(projField);
+
+        var grid = document.createElement("div");
+        grid.className = "form-grid";
+        grid.appendChild(buildField({ key: "role", label: "Vendor Role", type: "text" }, link, "vplfield-"));
+        grid.appendChild(
+          buildField(
+            { key: "contract_status", label: "Contract Status", type: "select", options: window.PCC.store.VENDOR_PROJECT_CONTRACT_STATUSES, labels: CONTRACT_STATUS_LABELS },
+            link,
+            "vplfield-"
+          )
+        );
+        form.appendChild(grid);
+
+        var scopeField = document.createElement("div");
+        scopeField.className = "field";
+        scopeField.innerHTML = "<label>Scope of Work</label>";
+        var scopeArea = document.createElement("textarea");
+        scopeArea.id = "vplfield-scope_of_work";
+        scopeArea.rows = 2;
+        scopeArea.value = link.scope_of_work || "";
+        scopeField.appendChild(scopeArea);
+        form.appendChild(scopeField);
+
+        var actions = document.createElement("div");
+        actions.style.display = "flex";
+        actions.style.gap = "10px";
+        actions.style.marginTop = "12px";
+        var saveBtn = document.createElement("button");
+        saveBtn.type = "submit";
+        saveBtn.className = "btn btn--primary";
+        saveBtn.textContent = uiState.editingProjectLinkId === "new" ? "Link Project" : "Save Changes";
+        var cancelBtn = document.createElement("button");
+        cancelBtn.type = "button";
+        cancelBtn.className = "btn btn--ghost";
+        cancelBtn.textContent = "Cancel";
+        cancelBtn.onclick = function () {
+          uiState.editingProjectLinkId = null;
+          rerender();
+        };
+        actions.appendChild(saveBtn);
+        actions.appendChild(cancelBtn);
+        form.appendChild(actions);
+
+        form.onsubmit = function (e) {
+          e.preventDefault();
+          var values = {
+            project_id: projSelect.value,
+            role: form.querySelector("#vplfield-role").value,
+            contract_status: form.querySelector("#vplfield-contract_status").value,
+            scope_of_work: scopeArea.value,
+          };
+          window.PCC.store.update(function (d) {
+            if (uiState.editingProjectLinkId === "new") {
+              d.vendor_project_links.push(window.PCC.store.newVendorProjectLink(Object.assign({ vendor_id: vendor.id }, values)));
+            } else {
+              var existing = d.vendor_project_links.find(function (l) { return l.id === link.id; });
+              if (existing) {
+                Object.assign(existing, values);
+                existing.updated_at = new Date().toISOString();
+              }
+            }
+          });
+          window.PCC.notify("Project link saved.", "success");
+          uiState.editingProjectLinkId = null;
+          rerender();
+        };
+
+        panel.appendChild(form);
+        container.appendChild(panel);
+      }
+    }
+
+    var links = data.vendor_project_links.filter(function (l) {
+      return l.vendor_id === vendor.id;
+    });
+    if (links.length === 0) {
+      var empty = document.createElement("div");
+      empty.className = "panel empty-state";
+      empty.textContent = "No projects linked yet.";
+      container.appendChild(empty);
+      return;
+    }
+
+    links.forEach(function (l) {
+      var card = document.createElement("div");
+      card.className = "project-card";
+      var top = document.createElement("div");
+      top.style.display = "flex";
+      top.style.justifyContent = "space-between";
+      top.style.alignItems = "flex-start";
+      var left = document.createElement("div");
+      left.innerHTML =
+        "<strong>" + projectName(data.projects, l.project_id) + "</strong>" +
+        "<p class='text-secondary' style='font-size:12px;margin:4px 0 0'>" +
+        (l.role ? "Role: " + l.role + " — " : "") +
+        "Contract: " + (CONTRACT_STATUS_LABELS[l.contract_status] || l.contract_status) +
+        "</p>" +
+        (l.scope_of_work ? "<p style='font-size:13px;margin:6px 0 0'>" + l.scope_of_work + "</p>" : "");
+      top.appendChild(left);
+
+      var btnRow = document.createElement("div");
+      btnRow.style.display = "flex";
+      btnRow.style.gap = "8px";
+      var editBtn = document.createElement("button");
+      editBtn.className = "btn btn--ghost";
+      editBtn.textContent = "Edit";
+      editBtn.onclick = function () {
+        uiState.editingProjectLinkId = l.id;
+        rerender();
+      };
+      var removeBtn = document.createElement("button");
+      removeBtn.className = "btn btn--ghost";
+      removeBtn.textContent = "Remove";
+      removeBtn.onclick = function () {
+        window.PCC.store.update(function (d) {
+          d.vendor_project_links = d.vendor_project_links.filter(function (x) { return x.id !== l.id; });
+        });
+        rerender();
+      };
+      btnRow.appendChild(editBtn);
+      btnRow.appendChild(removeBtn);
+      top.appendChild(btnRow);
+      card.appendChild(top);
+      container.appendChild(card);
+    });
+  }
+
+  function renderContactsTab(container, vendor, data, rerender) {
+    var addBtn = document.createElement("button");
+    addBtn.className = "btn btn--primary";
+    addBtn.style.marginBottom = "12px";
+    addBtn.textContent = "+ Add Contact";
+    addBtn.onclick = function () {
+      uiState.editingContactId = "new";
+      rerender();
+    };
+    container.appendChild(addBtn);
+
+    if (uiState.editingContactId) {
+      var contact =
+        uiState.editingContactId === "new"
+          ? window.PCC.store.newVendorContact({ vendor_id: vendor.id })
+          : data.vendor_contacts.find(function (c) {
+              return c.id === uiState.editingContactId;
+            });
+      if (contact) {
+        var panel = document.createElement("div");
+        panel.className = "panel";
+        panel.style.marginBottom = "12px";
+        var form = document.createElement("form");
+        var grid = document.createElement("div");
+        grid.className = "form-grid";
+        grid.appendChild(buildField({ key: "name", label: "Name", type: "text", required: true }, contact, "vcfield-"));
+        grid.appendChild(buildField({ key: "designation", label: "Designation", type: "text" }, contact, "vcfield-"));
+        grid.appendChild(buildField({ key: "mobile", label: "Mobile", type: "text" }, contact, "vcfield-"));
+        grid.appendChild(buildField({ key: "email", label: "Email", type: "email" }, contact, "vcfield-"));
+        form.appendChild(grid);
+
+        var primaryField = document.createElement("div");
+        primaryField.className = "field";
+        var primaryLabel = document.createElement("label");
+        primaryLabel.style.display = "flex";
+        primaryLabel.style.alignItems = "center";
+        primaryLabel.style.gap = "8px";
+        var primaryCheckbox = document.createElement("input");
+        primaryCheckbox.type = "checkbox";
+        primaryCheckbox.id = "vcfield-is_primary";
+        primaryCheckbox.checked = !!contact.is_primary;
+        primaryLabel.appendChild(primaryCheckbox);
+        primaryLabel.appendChild(document.createTextNode("Primary contact"));
+        primaryField.appendChild(primaryLabel);
+        form.appendChild(primaryField);
+
+        var actions = document.createElement("div");
+        actions.style.display = "flex";
+        actions.style.gap = "10px";
+        actions.style.marginTop = "12px";
+        var saveBtn = document.createElement("button");
+        saveBtn.type = "submit";
+        saveBtn.className = "btn btn--primary";
+        saveBtn.textContent = uiState.editingContactId === "new" ? "Add Contact" : "Save Changes";
+        var cancelBtn = document.createElement("button");
+        cancelBtn.type = "button";
+        cancelBtn.className = "btn btn--ghost";
+        cancelBtn.textContent = "Cancel";
+        cancelBtn.onclick = function () {
+          uiState.editingContactId = null;
+          rerender();
+        };
+        actions.appendChild(saveBtn);
+        actions.appendChild(cancelBtn);
+        form.appendChild(actions);
+
+        form.onsubmit = function (e) {
+          e.preventDefault();
+          var values = readFieldValues(form, [{ key: "name" }, { key: "designation" }, { key: "mobile" }, { key: "email" }], "vcfield-");
+          values.is_primary = primaryCheckbox.checked;
+          if (!values.name || !values.name.trim()) return;
+
+          window.PCC.store.update(function (d) {
+            if (values.is_primary) {
+              d.vendor_contacts.forEach(function (c) {
+                if (c.vendor_id === vendor.id && c.id !== contact.id) c.is_primary = false;
+              });
+            }
+            if (uiState.editingContactId === "new") {
+              d.vendor_contacts.push(window.PCC.store.newVendorContact(Object.assign({ vendor_id: vendor.id }, values)));
+            } else {
+              var existing = d.vendor_contacts.find(function (c) { return c.id === contact.id; });
+              if (existing) {
+                Object.assign(existing, values);
+                existing.updated_at = new Date().toISOString();
+              }
+            }
+          });
+          window.PCC.notify("Contact saved.", "success");
+          uiState.editingContactId = null;
+          rerender();
+        };
+
+        panel.appendChild(form);
+        container.appendChild(panel);
+      }
+    }
+
+    var contacts = data.vendor_contacts.filter(function (c) {
+      return c.vendor_id === vendor.id;
+    });
+    if (contacts.length === 0) {
+      var empty = document.createElement("div");
+      empty.className = "panel empty-state";
+      empty.textContent = "No contacts added yet.";
+      container.appendChild(empty);
+      return;
+    }
+
+    contacts.forEach(function (c) {
+      var card = document.createElement("div");
+      card.className = "project-card";
+      var top = document.createElement("div");
+      top.style.display = "flex";
+      top.style.justifyContent = "space-between";
+      top.style.alignItems = "flex-start";
+      var left = document.createElement("div");
+      left.innerHTML =
+        "<strong>" + (c.name || "(unnamed)") + "</strong>" + (c.is_primary ? " <span class='status-badge status-badge--on_track'>Primary</span>" : "") +
+        "<p class='text-secondary' style='font-size:12px;margin:4px 0 0'>" +
+        [c.designation, c.mobile, c.email].filter(Boolean).join(" · ") +
+        "</p>";
+      top.appendChild(left);
+      var btnRow = document.createElement("div");
+      btnRow.style.display = "flex";
+      btnRow.style.gap = "8px";
+      var editBtn = document.createElement("button");
+      editBtn.className = "btn btn--ghost";
+      editBtn.textContent = "Edit";
+      editBtn.onclick = function () {
+        uiState.editingContactId = c.id;
+        rerender();
+      };
+      var removeBtn = document.createElement("button");
+      removeBtn.className = "btn btn--ghost";
+      removeBtn.textContent = "Remove";
+      removeBtn.onclick = function () {
+        window.PCC.store.update(function (d) {
+          d.vendor_contacts = d.vendor_contacts.filter(function (x) { return x.id !== c.id; });
+        });
+        rerender();
+      };
+      btnRow.appendChild(editBtn);
+      btnRow.appendChild(removeBtn);
+      top.appendChild(btnRow);
+      card.appendChild(top);
+      container.appendChild(card);
+    });
+  }
+
+  function resetDocUploadState() {
+    uiState.uploadFormOpen = false;
+    uiState.pendingDocFile = null;
+    uiState.pendingDocCategory = "other";
+    uiState.pendingDocCustomCategory = "";
+    uiState.pendingDocProjectId = "";
+    uiState.pendingDocExpiry = "";
+    uiState.pendingDocTags = "";
+    uiState.pendingDocComments = "";
+    uiState.pendingDocGroupId = null;
+    uiState.pendingDocReadError = null;
+  }
+
+  function handleDocFileSelected(file, rerender) {
+    uiState.pendingDocReadError = null;
+    var reader = new FileReader();
+    reader.onerror = function () {
+      uiState.pendingDocReadError = "Could not read that file.";
+      rerender();
+    };
+    reader.onload = function () {
+      var buffer = reader.result;
+      var mimeType = file.type || "application/octet-stream";
+      var fileDataUri = "data:" + mimeType + ";base64," + arrayBufferToBase64(buffer);
+      window.PCC.duplicateService.fingerprintFile(buffer, file.name, file.size).then(function (fp) {
+        uiState.pendingDocFile = { name: file.name, size: file.size, type: mimeType, fileData: fileDataUri, hash: fp.hash, hashMethod: fp.method };
+        rerender();
+      });
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function renderDocumentUploadForm(container, vendor, data, rerender) {
+    var panel = document.createElement("div");
+    panel.className = "panel";
+    panel.style.marginBottom = "12px";
+
+    var heading = document.createElement("h4");
+    heading.style.marginBottom = "10px";
+    heading.textContent = uiState.pendingDocGroupId ? "Upload New Revision" : "Upload Document";
+    panel.appendChild(heading);
+
+    var fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.onchange = function () {
+      if (fileInput.files && fileInput.files[0]) handleDocFileSelected(fileInput.files[0], rerender);
+    };
+    panel.appendChild(fileInput);
+
+    if (uiState.pendingDocReadError) {
+      var err = document.createElement("p");
+      err.style.color = "var(--status-critical)";
+      err.style.fontSize = "13px";
+      err.style.marginTop = "8px";
+      err.textContent = uiState.pendingDocReadError;
+      panel.appendChild(err);
+    }
+
+    if (uiState.pendingDocFile) {
+      var fileInfo = document.createElement("p");
+      fileInfo.className = "text-secondary";
+      fileInfo.style.fontSize = "12px";
+      fileInfo.style.margin = "8px 0";
+      fileInfo.textContent = uiState.pendingDocFile.name + " · " + formatBytes(uiState.pendingDocFile.size);
+      panel.appendChild(fileInfo);
+    }
+
+    var grid = document.createElement("div");
+    grid.className = "form-grid";
+    grid.style.marginTop = "10px";
+
+    var catField = document.createElement("div");
+    catField.className = "field";
+    catField.innerHTML = "<label>Document Category</label>";
+    var catSelect = document.createElement("select");
+    catSelect.id = "vdocfield-category";
+    window.PCC.store.VENDOR_DOCUMENT_CATEGORIES.forEach(function (c) {
+      var opt = document.createElement("option");
+      opt.value = c;
+      opt.textContent = VENDOR_DOCUMENT_CATEGORY_LABELS[c];
+      catSelect.appendChild(opt);
+    });
+    catSelect.value = uiState.pendingDocCategory;
+    catSelect.onchange = function () {
+      uiState.pendingDocCategory = catSelect.value;
+      rerender();
+    };
+    catField.appendChild(catSelect);
+    grid.appendChild(catField);
+
+    if (uiState.pendingDocCategory === "other") {
+      var customField = document.createElement("div");
+      customField.className = "field";
+      customField.innerHTML = "<label>Custom Category Label</label>";
+      var customInput = document.createElement("input");
+      customInput.type = "text";
+      customInput.id = "vdocfield-custom_category_label";
+      customInput.value = uiState.pendingDocCustomCategory;
+      customField.appendChild(customInput);
+      grid.appendChild(customField);
+    }
+
+    var projField = document.createElement("div");
+    projField.className = "field";
+    projField.innerHTML = "<label>Project (optional)</label>";
+    var projSelect = document.createElement("select");
+    projSelect.id = "vdocfield-project_id";
+    var noProjOpt = document.createElement("option");
+    noProjOpt.value = "";
+    noProjOpt.textContent = "— Not project-specific —";
+    projSelect.appendChild(noProjOpt);
+    data.projects.forEach(function (p) {
+      var opt = document.createElement("option");
+      opt.value = p.id;
+      opt.textContent = p.name || "(unnamed project)";
+      projSelect.appendChild(opt);
+    });
+    projSelect.value = uiState.pendingDocProjectId;
+    projField.appendChild(projSelect);
+    grid.appendChild(projField);
+
+    var expiryField = document.createElement("div");
+    expiryField.className = "field";
+    expiryField.innerHTML = "<label>Expiry Date (optional)</label>";
+    var expiryInput = document.createElement("input");
+    expiryInput.type = "date";
+    expiryInput.id = "vdocfield-expiry_date";
+    expiryInput.value = uiState.pendingDocExpiry;
+    expiryField.appendChild(expiryInput);
+    grid.appendChild(expiryField);
+
+    var tagsField = document.createElement("div");
+    tagsField.className = "field";
+    tagsField.innerHTML = "<label>Tags (comma-separated)</label>";
+    var tagsInput = document.createElement("input");
+    tagsInput.type = "text";
+    tagsInput.id = "vdocfield-tags";
+    tagsInput.value = uiState.pendingDocTags;
+    tagsField.appendChild(tagsInput);
+    grid.appendChild(tagsField);
+
+    panel.appendChild(grid);
+
+    var commentsField = document.createElement("div");
+    commentsField.className = "field";
+    commentsField.style.marginTop = "8px";
+    commentsField.innerHTML = "<label>Comments</label>";
+    var commentsArea = document.createElement("textarea");
+    commentsArea.id = "vdocfield-comments";
+    commentsArea.rows = 2;
+    commentsArea.value = uiState.pendingDocComments;
+    commentsField.appendChild(commentsArea);
+    panel.appendChild(commentsField);
+
+    var actions = document.createElement("div");
+    actions.style.display = "flex";
+    actions.style.gap = "10px";
+    actions.style.marginTop = "12px";
+
+    var saveBtn = document.createElement("button");
+    saveBtn.className = "btn btn--primary";
+    saveBtn.textContent = "Save Document";
+    saveBtn.disabled = !uiState.pendingDocFile;
+    saveBtn.onclick = function () {
+      if (!uiState.pendingDocFile) return;
+      var category = document.getElementById("vdocfield-category").value;
+      var customLabelEl = document.getElementById("vdocfield-custom_category_label");
+      var revisionNumber = 1;
+      if (uiState.pendingDocGroupId) {
+        var siblings = data.vendor_documents.filter(function (d) {
+          return d.document_group_id === uiState.pendingDocGroupId;
+        });
+        revisionNumber = 1 + siblings.reduce(function (max, d) { return Math.max(max, d.revision_number); }, 0);
+      }
+
+      var newDoc = window.PCC.store.newVendorDocument({
+        vendor_id: vendor.id,
+        document_group_id: uiState.pendingDocGroupId || "",
+        revision_number: revisionNumber,
+        project_id: document.getElementById("vdocfield-project_id").value,
+        category: category,
+        custom_category_label: customLabelEl ? customLabelEl.value.trim() : "",
+        filename: uiState.pendingDocFile.name,
+        file_size: uiState.pendingDocFile.size,
+        mime_type: uiState.pendingDocFile.type,
+        expiry_date: document.getElementById("vdocfield-expiry_date").value,
+        tags: document.getElementById("vdocfield-tags").value,
+        comments: commentsArea.value,
+        content_hash: uiState.pendingDocFile.hash,
+        hash_method: uiState.pendingDocFile.hashMethod,
+      });
+
+      saveBtn.disabled = true;
+      saveBtn.textContent = "Saving…";
+
+      window.PCC.blobStore
+        .putBlob(newDoc.id, uiState.pendingDocFile.fileData)
+        .then(function () {
+          window.PCC.store.update(function (d) {
+            d.vendor_documents.push(newDoc);
+          });
+          window.PCC.notify("Document saved.", "success");
+          resetDocUploadState();
+          rerender();
+        })
+        .catch(function (e) {
+          window.PCC.notify("Could not store the file: " + e.message, "error");
+          saveBtn.disabled = false;
+          saveBtn.textContent = "Save Document";
+        });
+    };
+
+    var cancelBtn = document.createElement("button");
+    cancelBtn.className = "btn btn--ghost";
+    cancelBtn.textContent = "Cancel";
+    cancelBtn.onclick = function () {
+      resetDocUploadState();
+      rerender();
+    };
+
+    actions.appendChild(saveBtn);
+    actions.appendChild(cancelBtn);
+    panel.appendChild(actions);
+
+    container.appendChild(panel);
+  }
+
+  function renderDocumentsTab(container, vendor, data, rerender) {
+    var addBtn = document.createElement("button");
+    addBtn.className = "btn btn--primary";
+    addBtn.style.marginBottom = "12px";
+    addBtn.textContent = "+ Upload Document";
+    addBtn.onclick = function () {
+      resetDocUploadState();
+      uiState.uploadFormOpen = true;
+      rerender();
+    };
+    container.appendChild(addBtn);
+
+    if (uiState.uploadFormOpen) {
+      renderDocumentUploadForm(container, vendor, data, rerender);
+    }
+
+    var latest = latestDocumentsForVendor(data.vendor_documents, vendor.id);
+    if (latest.length === 0) {
+      var empty = document.createElement("div");
+      empty.className = "panel empty-state";
+      empty.textContent = "No documents uploaded yet.";
+      container.appendChild(empty);
+      return;
+    }
+
+    latest.forEach(function (doc) {
+      var groupId = doc.document_group_id;
+      var allRevisions = data.vendor_documents
+        .filter(function (d) {
+          return d.document_group_id === groupId;
+        })
+        .sort(function (a, b) {
+          return b.revision_number - a.revision_number;
+        });
+
+      var card = document.createElement("div");
+      card.className = "project-card";
+
+      var top = document.createElement("div");
+      top.style.display = "flex";
+      top.style.justifyContent = "space-between";
+      top.style.alignItems = "flex-start";
+
+      var left = document.createElement("div");
+      var expiry = doc.expiry_date ? daysUntil(doc.expiry_date) : null;
+      var expiryText = doc.expiry_date
+        ? " · Expires " + doc.expiry_date + (expiry !== null && expiry <= EXPIRING_SOON_DAYS ? (expiry < 0 ? " (EXPIRED)" : " (soon)") : "")
+        : "";
+      left.innerHTML =
+        "<strong>" + documentLabel(doc) + "</strong> <span class='status-badge status-badge--info'>Rev " + doc.revision_number + "</span>" +
+        "<p class='text-secondary' style='font-size:12px;margin:4px 0 0'>" +
+        doc.filename + " · " + formatBytes(doc.file_size) + " · " + (doc.upload_date || "").slice(0, 10) +
+        (doc.project_id ? " · " + projectName(data.projects, doc.project_id) : "") +
+        expiryText +
+        "</p>" +
+        (doc.tags ? "<p style='font-size:12px;margin:4px 0 0'>Tags: " + doc.tags + "</p>" : "") +
+        (doc.comments ? "<p style='font-size:13px;margin:6px 0 0'>" + doc.comments + "</p>" : "");
+      top.appendChild(left);
+
+      var btnRow = document.createElement("div");
+      btnRow.style.display = "flex";
+      btnRow.style.gap = "8px";
+      btnRow.style.flexShrink = "0";
+
+      var viewBtn = document.createElement("button");
+      viewBtn.className = "btn btn--ghost";
+      viewBtn.textContent = "View / Download";
+      viewBtn.onclick = function () {
+        openStoredVendorDocument(doc);
+      };
+      var revisionBtn = document.createElement("button");
+      revisionBtn.className = "btn btn--ghost";
+      revisionBtn.textContent = "New Revision";
+      revisionBtn.onclick = function () {
+        resetDocUploadState();
+        uiState.uploadFormOpen = true;
+        uiState.pendingDocGroupId = groupId;
+        uiState.pendingDocCategory = doc.category;
+        uiState.pendingDocCustomCategory = doc.custom_category_label;
+        uiState.pendingDocProjectId = doc.project_id;
+        rerender();
+      };
+      var historyBtn = document.createElement("button");
+      historyBtn.className = "btn btn--ghost";
+      historyBtn.textContent = allRevisions.length > 1 ? "History (" + allRevisions.length + ")" : "History";
+      historyBtn.onclick = function () {
+        uiState.expandedDocGroupId = uiState.expandedDocGroupId === groupId ? null : groupId;
+        rerender();
+      };
+      var deleteBtn = document.createElement("button");
+      deleteBtn.className = "btn btn--ghost";
+      deleteBtn.textContent = "Delete";
+      deleteBtn.onclick = function () {
+        if (!window.confirm("Delete this document and all its revisions? This can't be undone.")) return;
+        var idsToDelete = allRevisions.map(function (d) { return d.id; });
+        window.PCC.store.update(function (d) {
+          d.vendor_documents = d.vendor_documents.filter(function (x) { return idsToDelete.indexOf(x.id) === -1; });
+        });
+        idsToDelete.forEach(function (id) {
+          window.PCC.blobStore.deleteBlob(id).catch(function () {});
+        });
+        rerender();
+      };
+
+      btnRow.appendChild(viewBtn);
+      btnRow.appendChild(revisionBtn);
+      btnRow.appendChild(historyBtn);
+      btnRow.appendChild(deleteBtn);
+      top.appendChild(btnRow);
+      card.appendChild(top);
+
+      if (uiState.expandedDocGroupId === groupId && allRevisions.length > 1) {
+        var histWrap = document.createElement("div");
+        histWrap.style.marginTop = "10px";
+        histWrap.style.paddingTop = "10px";
+        histWrap.style.borderTop = "1px solid var(--divider)";
+        allRevisions.slice(1).forEach(function (rev) {
+          var revRow = document.createElement("div");
+          revRow.style.display = "flex";
+          revRow.style.justifyContent = "space-between";
+          revRow.style.alignItems = "center";
+          revRow.style.fontSize = "12px";
+          revRow.style.marginBottom = "4px";
+          var revLabel = document.createElement("span");
+          revLabel.textContent = "Rev " + rev.revision_number + " — " + rev.filename + " · " + (rev.upload_date || "").slice(0, 10);
+          var revViewBtn = document.createElement("button");
+          revViewBtn.className = "btn btn--ghost";
+          revViewBtn.textContent = "View";
+          revViewBtn.onclick = function () {
+            openStoredVendorDocument(rev);
+          };
+          revRow.appendChild(revLabel);
+          revRow.appendChild(revViewBtn);
+          histWrap.appendChild(revRow);
+        });
+        card.appendChild(histWrap);
+      }
+
+      container.appendChild(card);
+    });
+  }
+
+  function linkPickerPanel(cfg) {
+    // cfg: { open, items, itemLabel, onLink, onClose, emptyText, buttonText }
+    var panel = document.createElement("div");
+    panel.className = "panel";
+    panel.style.marginBottom = "12px";
+    if (cfg.items.length === 0) {
+      var empty = document.createElement("p");
+      empty.className = "text-secondary";
+      empty.style.fontSize = "12px";
+      empty.textContent = cfg.emptyText;
+      panel.appendChild(empty);
+    } else {
+      var select = document.createElement("select");
+      cfg.items.forEach(function (item) {
+        var opt = document.createElement("option");
+        opt.value = item.id;
+        opt.textContent = cfg.itemLabel(item);
+        select.appendChild(opt);
+      });
+      panel.appendChild(select);
+      var linkBtn = document.createElement("button");
+      linkBtn.className = "btn btn--primary";
+      linkBtn.style.marginLeft = "10px";
+      linkBtn.textContent = cfg.buttonText;
+      linkBtn.onclick = function () {
+        cfg.onLink(select.value);
+      };
+      panel.appendChild(linkBtn);
+    }
+    var cancelBtn = document.createElement("button");
+    cancelBtn.className = "btn btn--ghost";
+    cancelBtn.style.marginLeft = "10px";
+    cancelBtn.textContent = "Cancel";
+    cancelBtn.onclick = cfg.onClose;
+    panel.appendChild(cancelBtn);
+    return panel;
+  }
+
+  function renderMeetingsTab(container, vendor, data, rerender) {
+    var linkedProjectIds = data.vendor_project_links.filter(function (l) { return l.vendor_id === vendor.id; }).map(function (l) { return l.project_id; });
+    var linkedMeetingIds = data.vendor_meeting_links.filter(function (l) { return l.vendor_id === vendor.id; }).map(function (l) { return l.meeting_id; });
+
+    var addBtn = document.createElement("button");
+    addBtn.className = "btn btn--primary";
+    addBtn.style.marginBottom = "12px";
+    addBtn.textContent = "+ Link Existing Meeting";
+    addBtn.onclick = function () {
+      uiState.meetingPickerOpen = true;
+      rerender();
+    };
+    container.appendChild(addBtn);
+
+    if (uiState.meetingPickerOpen) {
+      var candidateMeetings = data.meetings.filter(function (m) {
+        return linkedMeetingIds.indexOf(m.id) === -1 && (linkedProjectIds.length === 0 || linkedProjectIds.indexOf(m.project_id) !== -1);
+      });
+      container.appendChild(
+        linkPickerPanel({
+          items: candidateMeetings,
+          itemLabel: function (m) {
+            return m.meeting_date + " — " + m.title + " (" + projectName(data.projects, m.project_id) + ")";
+          },
+          emptyText: "No meetings available to link (from this vendor's linked projects). Link a project first, or add meetings in the Meetings module.",
+          buttonText: "Link",
+          onLink: function (meetingId) {
+            window.PCC.store.update(function (d) {
+              d.vendor_meeting_links.push(window.PCC.store.newVendorMeetingLink({ vendor_id: vendor.id, meeting_id: meetingId }));
+            });
+            uiState.meetingPickerOpen = false;
+            rerender();
+          },
+          onClose: function () {
+            uiState.meetingPickerOpen = false;
+            rerender();
+          },
+        })
+      );
+    }
+
+    var links = data.vendor_meeting_links.filter(function (l) {
+      return l.vendor_id === vendor.id;
+    });
+    if (links.length === 0) {
+      var empty = document.createElement("div");
+      empty.className = "panel empty-state";
+      empty.textContent = "No meetings linked yet.";
+      container.appendChild(empty);
+      return;
+    }
+
+    links.forEach(function (l) {
+      var m = data.meetings.find(function (x) { return x.id === l.meeting_id; });
+      var card = document.createElement("div");
+      card.className = "project-card";
+      if (!m) {
+        card.innerHTML = "<p class='text-secondary'>(linked meeting was deleted)</p>";
+        var rm = document.createElement("button");
+        rm.className = "btn btn--ghost";
+        rm.textContent = "Remove Link";
+        rm.onclick = function () {
+          window.PCC.store.update(function (d) { d.vendor_meeting_links = d.vendor_meeting_links.filter(function (x) { return x.id !== l.id; }); });
+          rerender();
+        };
+        card.appendChild(rm);
+        container.appendChild(card);
+        return;
+      }
+      var attachmentCount = data.documents.filter(function (doc) { return doc.meeting_id === m.id; }).length;
+      var top = document.createElement("div");
+      top.style.display = "flex";
+      top.style.justifyContent = "space-between";
+      top.style.alignItems = "flex-start";
+      var left = document.createElement("div");
+      left.innerHTML =
+        "<strong>" + m.title + "</strong>" +
+        "<p class='text-secondary' style='font-size:12px;margin:4px 0 0'>" +
+        m.meeting_date + " · Participants: " + (m.attendees || "—") + " · " + attachmentCount + " attachment" + (attachmentCount === 1 ? "" : "s") +
+        "</p>" +
+        (m.minutes ? "<p style='font-size:13px;margin:6px 0 0'>" + m.minutes.slice(0, 200) + (m.minutes.length > 200 ? "…" : "") + "</p>" : "");
+      top.appendChild(left);
+      var btnRow = document.createElement("div");
+      btnRow.style.display = "flex";
+      btnRow.style.gap = "8px";
+      var openBtn = document.createElement("button");
+      openBtn.className = "btn btn--ghost";
+      openBtn.textContent = "View Meeting";
+      openBtn.onclick = function () {
+        window.PCC.router.go("meetings");
+        window.PCC.router.render();
+        if (window.PCC.meetings) window.PCC.meetings.expandMeeting(m.id);
+        window.PCC.router.render();
+      };
+      var removeBtn = document.createElement("button");
+      removeBtn.className = "btn btn--ghost";
+      removeBtn.textContent = "Unlink";
+      removeBtn.onclick = function () {
+        window.PCC.store.update(function (d) { d.vendor_meeting_links = d.vendor_meeting_links.filter(function (x) { return x.id !== l.id; }); });
+        rerender();
+      };
+      btnRow.appendChild(openBtn);
+      btnRow.appendChild(removeBtn);
+      top.appendChild(btnRow);
+      card.appendChild(top);
+      container.appendChild(card);
+    });
+  }
+
+  function renderRfisTab(container, vendor, data, rerender) {
+    var linkedProjectIds = data.vendor_project_links.filter(function (l) { return l.vendor_id === vendor.id; }).map(function (l) { return l.project_id; });
+    var linkedRfiIds = data.vendor_rfi_links.filter(function (l) { return l.vendor_id === vendor.id; }).map(function (l) { return l.rfi_id; });
+    var linkedRfis = data.rfis.filter(function (r) { return linkedRfiIds.indexOf(r.id) !== -1; });
+
+    var counts = { pending: 0, closed: 0, openTq: 0 };
+    linkedRfis.forEach(function (r) {
+      if (r.status === "closed") counts.closed++;
+      else if (r.type === "technical_query") counts.openTq++;
+      else counts.pending++;
+    });
+
+    var countsRow = document.createElement("div");
+    countsRow.style.display = "flex";
+    countsRow.style.gap = "20px";
+    countsRow.style.marginBottom = "12px";
+    countsRow.style.fontSize = "13px";
+    countsRow.innerHTML =
+      "<span><strong>" + counts.pending + "</strong> Pending RFIs</span>" +
+      "<span><strong>" + counts.closed + "</strong> Closed</span>" +
+      "<span><strong>" + counts.openTq + "</strong> Open Technical Queries</span>";
+    container.appendChild(countsRow);
+
+    var addBtn = document.createElement("button");
+    addBtn.className = "btn btn--primary";
+    addBtn.style.marginBottom = "12px";
+    addBtn.textContent = "+ Link Existing RFI / TQ";
+    addBtn.onclick = function () {
+      uiState.rfiPickerOpen = true;
+      rerender();
+    };
+    container.appendChild(addBtn);
+
+    if (uiState.rfiPickerOpen) {
+      var candidateRfis = data.rfis.filter(function (r) {
+        return linkedRfiIds.indexOf(r.id) === -1 && (linkedProjectIds.length === 0 || linkedProjectIds.indexOf(r.project_id) !== -1);
+      });
+      container.appendChild(
+        linkPickerPanel({
+          items: candidateRfis,
+          itemLabel: function (r) {
+            return r.number + " — " + r.subject + " (" + RFI_TYPE_LABELS[r.type] + ", " + RFI_STATUS_LABELS[r.status] + ")";
+          },
+          emptyText: "No RFIs/TQs available to link (from this vendor's linked projects). Link a project first, or add entries in the RFI / TQ module.",
+          buttonText: "Link",
+          onLink: function (rfiId) {
+            window.PCC.store.update(function (d) {
+              d.vendor_rfi_links.push(window.PCC.store.newVendorRfiLink({ vendor_id: vendor.id, rfi_id: rfiId }));
+            });
+            uiState.rfiPickerOpen = false;
+            rerender();
+          },
+          onClose: function () {
+            uiState.rfiPickerOpen = false;
+            rerender();
+          },
+        })
+      );
+    }
+
+    var links = data.vendor_rfi_links.filter(function (l) {
+      return l.vendor_id === vendor.id;
+    });
+    if (links.length === 0) {
+      var empty = document.createElement("div");
+      empty.className = "panel empty-state";
+      empty.textContent = "No RFIs / Technical Queries linked yet.";
+      container.appendChild(empty);
+      return;
+    }
+
+    links.forEach(function (l) {
+      var r = data.rfis.find(function (x) { return x.id === l.rfi_id; });
+      var card = document.createElement("div");
+      card.className = "project-card";
+      if (!r) {
+        card.innerHTML = "<p class='text-secondary'>(linked RFI/TQ was deleted)</p>";
+        var rm = document.createElement("button");
+        rm.className = "btn btn--ghost";
+        rm.textContent = "Remove Link";
+        rm.onclick = function () {
+          window.PCC.store.update(function (d) { d.vendor_rfi_links = d.vendor_rfi_links.filter(function (x) { return x.id !== l.id; }); });
+          rerender();
+        };
+        card.appendChild(rm);
+        container.appendChild(card);
+        return;
+      }
+      var top = document.createElement("div");
+      top.style.display = "flex";
+      top.style.justifyContent = "space-between";
+      top.style.alignItems = "flex-start";
+      var left = document.createElement("div");
+      left.innerHTML =
+        "<strong class='mono'>" + r.number + "</strong> " + r.subject + " <span class='status-badge status-badge--info'>" + RFI_TYPE_LABELS[r.type] + "</span>" +
+        "<p class='text-secondary' style='font-size:12px;margin:4px 0 0'>" +
+        "Status: " + RFI_STATUS_LABELS[r.status] + (r.date_required ? " · Response due: " + r.date_required : "") +
+        "</p>";
+      top.appendChild(left);
+      var btnRow = document.createElement("div");
+      btnRow.style.display = "flex";
+      btnRow.style.gap = "8px";
+      var openBtn = document.createElement("button");
+      openBtn.className = "btn btn--ghost";
+      openBtn.textContent = "View RFI / TQ";
+      openBtn.onclick = function () {
+        window.PCC.router.go("rfis");
+        window.PCC.router.render();
+        if (window.PCC.rfis) window.PCC.rfis.expandRfi(r.id);
+        window.PCC.router.render();
+      };
+      var removeBtn = document.createElement("button");
+      removeBtn.className = "btn btn--ghost";
+      removeBtn.textContent = "Unlink";
+      removeBtn.onclick = function () {
+        window.PCC.store.update(function (d) { d.vendor_rfi_links = d.vendor_rfi_links.filter(function (x) { return x.id !== l.id; }); });
+        rerender();
+      };
+      btnRow.appendChild(openBtn);
+      btnRow.appendChild(removeBtn);
+      top.appendChild(btnRow);
+      card.appendChild(top);
+      container.appendChild(card);
+    });
+  }
+
+  function renderRisksTab(container, vendor, data, rerender) {
+    var linkedProjectIds = data.vendor_project_links.filter(function (l) { return l.vendor_id === vendor.id; }).map(function (l) { return l.project_id; });
+    var linkedRiskIds = data.vendor_risk_links.filter(function (l) { return l.vendor_id === vendor.id; }).map(function (l) { return l.risk_id; });
+
+    var addBtn = document.createElement("button");
+    addBtn.className = "btn btn--primary";
+    addBtn.style.marginBottom = "12px";
+    addBtn.textContent = "+ Link Existing Risk";
+    addBtn.onclick = function () {
+      uiState.riskPickerOpen = true;
+      rerender();
+    };
+    container.appendChild(addBtn);
+
+    if (uiState.riskPickerOpen) {
+      var candidateRisks = data.risks.filter(function (r) {
+        return linkedRiskIds.indexOf(r.id) === -1 && (linkedProjectIds.length === 0 || linkedProjectIds.indexOf(r.project_id) !== -1);
+      });
+      container.appendChild(
+        linkPickerPanel({
+          items: candidateRisks,
+          itemLabel: function (r) {
+            return r.title + " (" + r.type + ", " + r.status + ")";
+          },
+          emptyText: "No risks/issues/opportunities available to link (from this vendor's linked projects). Link a project first, or add entries in the Risk Register.",
+          buttonText: "Link",
+          onLink: function (riskId) {
+            window.PCC.store.update(function (d) {
+              d.vendor_risk_links.push(window.PCC.store.newVendorRiskLink({ vendor_id: vendor.id, risk_id: riskId }));
+            });
+            uiState.riskPickerOpen = false;
+            rerender();
+          },
+          onClose: function () {
+            uiState.riskPickerOpen = false;
+            rerender();
+          },
+        })
+      );
+    }
+
+    var links = data.vendor_risk_links.filter(function (l) {
+      return l.vendor_id === vendor.id;
+    });
+    if (links.length === 0) {
+      var empty = document.createElement("div");
+      empty.className = "panel empty-state";
+      empty.textContent = "No risks, issues, or opportunities linked yet.";
+      container.appendChild(empty);
+      return;
+    }
+
+    links.forEach(function (l) {
+      var r = data.risks.find(function (x) { return x.id === l.risk_id; });
+      var card = document.createElement("div");
+      card.className = "project-card";
+      if (!r) {
+        card.innerHTML = "<p class='text-secondary'>(linked entry was deleted)</p>";
+        var rm = document.createElement("button");
+        rm.className = "btn btn--ghost";
+        rm.textContent = "Remove Link";
+        rm.onclick = function () {
+          window.PCC.store.update(function (d) { d.vendor_risk_links = d.vendor_risk_links.filter(function (x) { return x.id !== l.id; }); });
+          rerender();
+        };
+        card.appendChild(rm);
+        container.appendChild(card);
+        return;
+      }
+      var top = document.createElement("div");
+      top.style.display = "flex";
+      top.style.justifyContent = "space-between";
+      top.style.alignItems = "flex-start";
+      var left = document.createElement("div");
+      left.innerHTML =
+        "<strong>" + r.title + "</strong> <span class='status-badge status-badge--info'>" + r.type + "</span>" +
+        "<p class='text-secondary' style='font-size:12px;margin:4px 0 0'>Status: " + r.status + "</p>";
+      top.appendChild(left);
+      var btnRow = document.createElement("div");
+      btnRow.style.display = "flex";
+      btnRow.style.gap = "8px";
+      var openBtn = document.createElement("button");
+      openBtn.className = "btn btn--ghost";
+      openBtn.textContent = "View Risk";
+      openBtn.onclick = function () {
+        window.PCC.router.go("risks");
+        window.PCC.router.render();
+        if (window.PCC.risks) window.PCC.risks.expandRisk(r.id);
+        window.PCC.router.render();
+      };
+      var removeBtn = document.createElement("button");
+      removeBtn.className = "btn btn--ghost";
+      removeBtn.textContent = "Unlink";
+      removeBtn.onclick = function () {
+        window.PCC.store.update(function (d) { d.vendor_risk_links = d.vendor_risk_links.filter(function (x) { return x.id !== l.id; }); });
+        rerender();
+      };
+      btnRow.appendChild(openBtn);
+      btnRow.appendChild(removeBtn);
+      top.appendChild(btnRow);
+      card.appendChild(top);
+      container.appendChild(card);
+    });
+  }
+
+  function renderPerformanceTab(container, vendor, data, rerender) {
+    var reviews = data.vendor_performance
+      .filter(function (p) { return p.vendor_id === vendor.id; })
+      .sort(function (a, b) { return (b.review_date || "").localeCompare(a.review_date || ""); });
+
+    if (reviews.length > 0) {
+      var avgPanel = document.createElement("div");
+      avgPanel.className = "panel";
+      avgPanel.style.marginBottom = "12px";
+      var runningAvg = Math.round((reviews.reduce(function (sum, r) { return sum + overallRating(r); }, 0) / reviews.length) * 10) / 10;
+      avgPanel.innerHTML =
+        "<p class='text-secondary' style='font-size:11px;margin-bottom:4px'>OVERALL RATING (" + reviews.length + " review" + (reviews.length === 1 ? "" : "s") + ")</p>" +
+        "<p style='font-size:24px;font-weight:600;margin:0'>" + runningAvg.toFixed(1) + " / 5</p>";
+      container.appendChild(avgPanel);
+    }
+
+    var addBtn = document.createElement("button");
+    addBtn.className = "btn btn--primary";
+    addBtn.style.marginBottom = "12px";
+    addBtn.textContent = "+ Add Review";
+    addBtn.onclick = function () {
+      uiState.editingPerformanceId = "new";
+      rerender();
+    };
+    container.appendChild(addBtn);
+
+    if (uiState.editingPerformanceId) {
+      var perf =
+        uiState.editingPerformanceId === "new"
+          ? window.PCC.store.newVendorPerformance({ vendor_id: vendor.id })
+          : data.vendor_performance.find(function (p) { return p.id === uiState.editingPerformanceId; });
+      if (perf) {
+        var panel = document.createElement("div");
+        panel.className = "panel";
+        panel.style.marginBottom = "12px";
+        var form = document.createElement("form");
+        var grid = document.createElement("div");
+        grid.className = "form-grid";
+
+        function ratingSelect(key, label) {
+          var f = document.createElement("div");
+          f.className = "field";
+          f.innerHTML = "<label>" + label + "</label>";
+          var sel = document.createElement("select");
+          sel.id = "vperffield-" + key;
+          [0, 1, 2, 3, 4, 5].forEach(function (n) {
+            var opt = document.createElement("option");
+            opt.value = String(n);
+            opt.textContent = n === 0 ? "Not rated" : n + " / 5";
+            sel.appendChild(opt);
+          });
+          sel.value = String(perf[key] || 0);
+          f.appendChild(sel);
+          return f;
+        }
+        grid.appendChild(ratingSelect("quality_rating", "Quality Rating"));
+        grid.appendChild(ratingSelect("delivery_rating", "Delivery Rating"));
+        grid.appendChild(ratingSelect("communication_rating", "Communication Rating"));
+        grid.appendChild(ratingSelect("safety_rating", "Safety Rating"));
+        grid.appendChild(buildField({ key: "review_date", label: "Review Date", type: "date" }, perf, "vperffield-"));
+        grid.appendChild(buildField({ key: "reviewed_by", label: "Reviewed By", type: "text" }, perf, "vperffield-"));
+        form.appendChild(grid);
+
+        var commentsField = document.createElement("div");
+        commentsField.className = "field";
+        commentsField.style.marginTop = "8px";
+        commentsField.innerHTML = "<label>Comments</label>";
+        var commentsArea = document.createElement("textarea");
+        commentsArea.id = "vperffield-comments";
+        commentsArea.rows = 2;
+        commentsArea.value = perf.comments || "";
+        commentsField.appendChild(commentsArea);
+        form.appendChild(commentsField);
+
+        var actions = document.createElement("div");
+        actions.style.display = "flex";
+        actions.style.gap = "10px";
+        actions.style.marginTop = "12px";
+        var saveBtn = document.createElement("button");
+        saveBtn.type = "submit";
+        saveBtn.className = "btn btn--primary";
+        saveBtn.textContent = uiState.editingPerformanceId === "new" ? "Add Review" : "Save Changes";
+        var cancelBtn = document.createElement("button");
+        cancelBtn.type = "button";
+        cancelBtn.className = "btn btn--ghost";
+        cancelBtn.textContent = "Cancel";
+        cancelBtn.onclick = function () {
+          uiState.editingPerformanceId = null;
+          rerender();
+        };
+        actions.appendChild(saveBtn);
+        actions.appendChild(cancelBtn);
+        form.appendChild(actions);
+
+        form.onsubmit = function (e) {
+          e.preventDefault();
+          var values = {
+            quality_rating: Number(form.querySelector("#vperffield-quality_rating").value),
+            delivery_rating: Number(form.querySelector("#vperffield-delivery_rating").value),
+            communication_rating: Number(form.querySelector("#vperffield-communication_rating").value),
+            safety_rating: Number(form.querySelector("#vperffield-safety_rating").value),
+            review_date: form.querySelector("#vperffield-review_date").value,
+            reviewed_by: form.querySelector("#vperffield-reviewed_by").value,
+            comments: commentsArea.value,
+          };
+          window.PCC.store.update(function (d) {
+            if (uiState.editingPerformanceId === "new") {
+              d.vendor_performance.push(window.PCC.store.newVendorPerformance(Object.assign({ vendor_id: vendor.id }, values)));
+            } else {
+              var existing = d.vendor_performance.find(function (p) { return p.id === perf.id; });
+              if (existing) Object.assign(existing, values);
+            }
+          });
+          window.PCC.notify("Performance review saved.", "success");
+          uiState.editingPerformanceId = null;
+          rerender();
+        };
+
+        panel.appendChild(form);
+        container.appendChild(panel);
+      }
+    }
+
+    if (reviews.length === 0) {
+      var empty = document.createElement("div");
+      empty.className = "panel empty-state";
+      empty.textContent = "No performance reviews yet.";
+      container.appendChild(empty);
+      return;
+    }
+
+    reviews.forEach(function (r) {
+      var card = document.createElement("div");
+      card.className = "project-card";
+      var top = document.createElement("div");
+      top.style.display = "flex";
+      top.style.justifyContent = "space-between";
+      top.style.alignItems = "flex-start";
+      var left = document.createElement("div");
+      left.innerHTML =
+        "<strong>" + ratingText(overallRating(r)) + " overall</strong>" +
+        "<p class='text-secondary' style='font-size:12px;margin:4px 0 0'>" +
+        r.review_date + (r.reviewed_by ? " · " + r.reviewed_by : "") +
+        "</p>" +
+        "<p style='font-size:12px;margin:6px 0 0'>Quality: " + ratingText(r.quality_rating) + " · Delivery: " + ratingText(r.delivery_rating) +
+        " · Communication: " + ratingText(r.communication_rating) + " · Safety: " + ratingText(r.safety_rating) + "</p>" +
+        (r.comments ? "<p style='font-size:13px;margin:6px 0 0'>" + r.comments + "</p>" : "");
+      top.appendChild(left);
+      var btnRow = document.createElement("div");
+      btnRow.style.display = "flex";
+      btnRow.style.gap = "8px";
+      var editBtn = document.createElement("button");
+      editBtn.className = "btn btn--ghost";
+      editBtn.textContent = "Edit";
+      editBtn.onclick = function () {
+        uiState.editingPerformanceId = r.id;
+        rerender();
+      };
+      var removeBtn = document.createElement("button");
+      removeBtn.className = "btn btn--ghost";
+      removeBtn.textContent = "Remove";
+      removeBtn.onclick = function () {
+        window.PCC.store.update(function (d) { d.vendor_performance = d.vendor_performance.filter(function (x) { return x.id !== r.id; }); });
+        rerender();
+      };
+      btnRow.appendChild(editBtn);
+      btnRow.appendChild(removeBtn);
+      top.appendChild(btnRow);
+      card.appendChild(top);
+      container.appendChild(card);
+    });
+  }
+
+  function renderNotesTab(container, vendor, data, rerender) {
+    var panel = document.createElement("div");
+    panel.className = "panel";
+    panel.style.marginBottom = "12px";
+    var textarea = document.createElement("textarea");
+    textarea.rows = 3;
+    textarea.placeholder = "Add a note…";
+    textarea.value = uiState.noteDraftText;
+    textarea.oninput = function () {
+      uiState.noteDraftText = textarea.value;
+    };
+    panel.appendChild(textarea);
+    var addBtn = document.createElement("button");
+    addBtn.className = "btn btn--primary";
+    addBtn.style.marginTop = "8px";
+    addBtn.textContent = "Add Note";
+    addBtn.onclick = function () {
+      if (!textarea.value.trim()) return;
+      window.PCC.store.update(function (d) {
+        d.vendor_notes.push(window.PCC.store.newVendorNote({ vendor_id: vendor.id, note_text: textarea.value.trim() }));
+      });
+      uiState.noteDraftText = "";
+      rerender();
+    };
+    panel.appendChild(addBtn);
+    container.appendChild(panel);
+
+    var notes = data.vendor_notes
+      .filter(function (n) { return n.vendor_id === vendor.id; })
+      .sort(function (a, b) { return (b.created_at || "").localeCompare(a.created_at || ""); });
+
+    if (notes.length === 0) {
+      var empty = document.createElement("div");
+      empty.className = "panel empty-state";
+      empty.textContent = "No notes yet.";
+      container.appendChild(empty);
+      return;
+    }
+
+    notes.forEach(function (n) {
+      var card = document.createElement("div");
+      card.className = "project-card";
+      var top = document.createElement("div");
+      top.style.display = "flex";
+      top.style.justifyContent = "space-between";
+      top.style.alignItems = "flex-start";
+      var left = document.createElement("div");
+      left.innerHTML =
+        "<p style='margin:0;white-space:pre-wrap'>" + n.note_text + "</p>" +
+        "<p class='text-secondary' style='font-size:11px;margin:6px 0 0'>" + new Date(n.created_at).toLocaleString() + "</p>";
+      top.appendChild(left);
+      var removeBtn = document.createElement("button");
+      removeBtn.className = "btn btn--ghost";
+      removeBtn.textContent = "Delete";
+      removeBtn.onclick = function () {
+        window.PCC.store.update(function (d) { d.vendor_notes = d.vendor_notes.filter(function (x) { return x.id !== n.id; }); });
+        rerender();
+      };
+      top.appendChild(removeBtn);
+      card.appendChild(top);
+      container.appendChild(card);
+    });
+  }
+
+  function renderProfile(container, data, rerender) {
+    var vendor = data.vendors.find(function (v) {
+      return v.id === uiState.profileVendorId;
+    });
+    if (!vendor) {
+      uiState.view = "list";
+      uiState.profileVendorId = null;
+      return;
+    }
+
+    var backBtn = document.createElement("button");
+    backBtn.className = "btn btn--ghost";
+    backBtn.textContent = "← Back to Vendor List";
+    backBtn.onclick = function () {
+      uiState.view = "list";
+      uiState.profileVendorId = null;
+      rerender();
+    };
+    container.appendChild(backBtn);
+
+    var headerRow = document.createElement("div");
+    headerRow.style.display = "flex";
+    headerRow.style.justifyContent = "space-between";
+    headerRow.style.alignItems = "center";
+    headerRow.style.marginTop = "12px";
+    var h3 = document.createElement("h3");
+    h3.textContent = vendor.vendor_name;
+    var badge = document.createElement("span");
+    badge.className = statusBadgeClass(vendor.status);
+    badge.style.marginLeft = "10px";
+    badge.textContent = VENDOR_STATUS_LABELS[vendor.status] || vendor.status;
+    var titleWrap = document.createElement("div");
+    titleWrap.style.display = "flex";
+    titleWrap.style.alignItems = "center";
+    titleWrap.appendChild(h3);
+    titleWrap.appendChild(badge);
+    headerRow.appendChild(titleWrap);
+
+    var editBtn = document.createElement("button");
+    editBtn.className = "btn btn--ghost";
+    editBtn.textContent = "Edit Vendor";
+    editBtn.onclick = function () {
+      uiState.editingVendorId = vendor.id;
+      uiState.view = "list";
+      rerender();
+    };
+    headerRow.appendChild(editBtn);
+    container.appendChild(headerRow);
+
+    profileTabBar(vendor, container, rerender);
+
+    var tabContent = document.createElement("div");
+    container.appendChild(tabContent);
+
+    if (uiState.profileTab === "overview") renderOverviewTab(tabContent, vendor, data);
+    else if (uiState.profileTab === "projects") renderProjectsTab(tabContent, vendor, data, rerender);
+    else if (uiState.profileTab === "contacts") renderContactsTab(tabContent, vendor, data, rerender);
+    else if (uiState.profileTab === "documents") renderDocumentsTab(tabContent, vendor, data, rerender);
+    else if (uiState.profileTab === "meetings") renderMeetingsTab(tabContent, vendor, data, rerender);
+    else if (uiState.profileTab === "rfis") renderRfisTab(tabContent, vendor, data, rerender);
+    else if (uiState.profileTab === "risks") renderRisksTab(tabContent, vendor, data, rerender);
+    else if (uiState.profileTab === "performance") renderPerformanceTab(tabContent, vendor, data, rerender);
+    else if (uiState.profileTab === "notes") renderNotesTab(tabContent, vendor, data, rerender);
+  }
+
+  // ---------------------------------------------------------------------------------
+  // Page entry point
+  // ---------------------------------------------------------------------------------
+
+  function render(outlet) {
+    function rerender() {
+      outlet.innerHTML = "";
+      render(outlet);
+    }
+
+    var data = window.PCC.store.get();
+
+    var h1 = document.createElement("h2");
+    h1.textContent = "Vendor Management";
+    h1.style.marginBottom = "6px";
+    outlet.appendChild(h1);
+
+    var subNote = document.createElement("p");
+    subNote.className = "text-secondary";
+    subNote.style.fontSize = "12px";
+    subNote.style.marginBottom = "16px";
+    subNote.textContent =
+      "The single source of truth for vendor information across every project — master list, project links, " +
+      "documents, meetings, RFI/TQ, risks, and performance, all from one profile.";
+    outlet.appendChild(subNote);
+
+    if (uiState.view !== "profile") {
+      var viewToggle = document.createElement("div");
+      viewToggle.className = "tab-bar";
+      viewToggle.style.marginBottom = "16px";
+      [
+        { key: "dashboard", label: "Dashboard" },
+        { key: "list", label: "Vendor List" },
+      ].forEach(function (t) {
+        var btn = document.createElement("button");
+        btn.className = "tab-btn" + (uiState.view === t.key ? " tab-btn--active" : "");
+        btn.textContent = t.label;
+        btn.onclick = function () {
+          uiState.view = t.key;
+          rerender();
+        };
+        viewToggle.appendChild(btn);
+      });
+      outlet.appendChild(viewToggle);
+    }
+
+    if (uiState.view === "dashboard") renderDashboard(outlet, data, rerender);
+    else if (uiState.view === "list") renderVendorList(outlet, data, rerender);
+    else if (uiState.view === "profile") renderProfile(outlet, data, rerender);
+  }
+
+  window.PCC.pages.vendors = render;
+  window.PCC.vendors = {
+    openProfile: function (vendorId) {
+      uiState.view = "profile";
+      uiState.profileVendorId = vendorId;
+      uiState.profileTab = "overview";
+    },
+    // Same "View All" convention every other register exposes (risks.js, meetings.js,
+    // etc.) — Portfolio's project details panel calls this before navigating here.
+    filterByProject: function (projectId) {
+      uiState.view = "list";
+      uiState.projectFilter = projectId;
+      uiState.search = "";
+      uiState.statusFilter = "";
+      uiState.tradeFilter = "";
+      uiState.docTypeFilter = "";
+    },
+  };
+})();
+
+
 /* ---- js/pages/documents.js ---- */
 (function () {
   "use strict";
@@ -10503,13 +13494,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     // Gate 2 import flow
     importPanelOpen: false,
     importStep: "pick", // 'pick' | 'reviewing' | 'importing'
-    importFile: null, // { name, size, buffer, hash, hashMethod }
+    importFile: null, // { name, size, hash, hashMethod, fileData } — fileData is a base64 data URI, stored via blobStore on commit
     importParsed: null, // result of scheduleImportService.parseRows()
     importDuplicateMatches: [], // schedules in this project that appear to be the same source file
     importDuplicateAcknowledged: false,
     importScheduleName: "",
     importError: null,
-    // Gate 8: interactive Gantt editing.
+    importCommitting: false,
+    // Gate 8 (interactive Gantt editing).
     ganttFilter: {
       search: "",
       wbsId: "",
@@ -10525,6 +13517,20 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     ganttBaselineSnapshot: null, // { baselineId, activities } once loaded
     ganttBaselineLoading: false,
     relationshipPrefillId: null, // predecessor id to prefill when "+ Add Relationship" is used from the Gantt detail panel
+    // Gate 12: in-app Excel editor. The attached file (blobStore, keyed by schedule.id)
+    // is edited as a grid of the recognized columns, then re-run through the same
+    // scheduleImportService.parseRows() used at import time and applied back onto the
+    // *same* schedule id — see renderExcelEditorPanel() below.
+    excelEditorOpen: false,
+    excelEditorScheduleId: null,
+    excelEditorStep: "grid", // 'grid' | 'review'
+    excelEditorRows: [], // [{ external_id, name, activity_type, wbs_code, wbs_name, duration, planned_start, planned_finish, predecessors, percent_complete, discipline, contractor, responsible_person, status, notes }]
+    excelEditorHandAddedCount: 0, // activities on this schedule with no external_id — not shown in the grid, deleted if Apply proceeds
+    excelEditorHandAddedAcknowledged: false,
+    excelEditorReview: null, // result of scheduleImportService.parseRows() from the grid's current contents
+    excelEditorError: null,
+    excelEditorSaving: false,
+    excelEditorNextNewSeq: 1, // suggested "NEW-N" external_id for rows added via "+ Add Row"
   };
 
   function projectName(projects, projectId) {
@@ -10730,6 +13736,26 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   // Gate 2 \u2014 Excel import
   // ---------------------------------------------------------------------------------
 
+  /** Base64-encodes an ArrayBuffer in fixed-size chunks (avoids both the slow
+   * per-byte-string-concat path and the call-stack limit of spreading a huge typed
+   * array into String.fromCharCode.apply at once). Same approach as documents.js's
+   * copy of this helper \u2014 kept as a private per-module copy rather than a shared
+   * utility, matching this codebase's existing convention (no shared utils module). */
+  function arrayBufferToBase64(buffer) {
+    var bytes = new Uint8Array(buffer);
+    var chunkSize = 8192;
+    var chunks = [];
+    for (var i = 0; i < bytes.length; i += chunkSize) {
+      chunks.push(String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize)));
+    }
+    return btoa(chunks.join(""));
+  }
+
+  var XLSX_MIME_TYPES = {
+    xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    xls: "application/vnd.ms-excel",
+  };
+
   function resetImportState() {
     uiState.importPanelOpen = false;
     uiState.importStep = "pick";
@@ -10739,6 +13765,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     uiState.importDuplicateAcknowledged = false;
     uiState.importScheduleName = "";
     uiState.importError = null;
+    uiState.importCommitting = false;
   }
 
   function handleImportFileSelected(file, data, rerender) {
@@ -10773,9 +13800,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       }
 
       var parsed = window.PCC.scheduleImportService.parseRows(headers, rows);
+      var fileDataUri = "data:" + (XLSX_MIME_TYPES[ext] || "application/octet-stream") + ";base64," + arrayBufferToBase64(buffer);
 
       window.PCC.duplicateService.fingerprintFile(buffer, file.name, file.size).then(function (fp) {
-        uiState.importFile = { name: file.name, size: file.size, hash: fp.hash, hashMethod: fp.method };
+        uiState.importFile = { name: file.name, size: file.size, hash: fp.hash, hashMethod: fp.method, fileData: fileDataUri };
         uiState.importParsed = parsed;
         uiState.importScheduleName = file.name.replace(/\.(xlsx|xls)$/i, "");
         uiState.importDuplicateAcknowledged = false;
@@ -10794,6 +13822,70 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       });
     };
     reader.readAsArrayBuffer(file);
+  }
+
+  /** Turns a scheduleImportService.parseRows() result into store-shaped WBS/Activity/
+   * Relationship records for one schedule. Shared by commitImport (new schedule, Gate
+   * 2) and applyExcelEdit (existing schedule, Gate 12) so both go through identical
+   * construction logic \u2014 only the target schedule id and whether the records get
+   * pushed as new vs. spliced in as a replacement differs between the two callers. */
+  function buildScheduleRecords(parsed, projectId, scheduleId) {
+    // WBS: create every parsed entry first so a code\u2192id map exists before wiring
+    // parent_wbs_id \u2014 order of creation doesn't matter since parents are resolved by
+    // code lookup afterward, not by creation sequence.
+    var wbsCodeToId = {};
+    var wbsItems = parsed.wbsEntries.map(function (w) {
+      var item = window.PCC.store.newWbsItem({
+        project_id: projectId,
+        schedule_id: scheduleId,
+        code: w.code,
+        name: w.name,
+        level: w.level,
+      });
+      wbsCodeToId[w.code] = item.id;
+      return item;
+    });
+    wbsItems.forEach(function (item, i) {
+      var parentCode = parsed.wbsEntries[i].parent_code;
+      item.parent_wbs_id = parentCode ? wbsCodeToId[parentCode] || null : null;
+    });
+
+    var externalIdToActivityId = {};
+    var activities = parsed.activities.map(function (a) {
+      var activity = window.PCC.store.newActivity({
+        project_id: projectId,
+        schedule_id: scheduleId,
+        wbs_id: a.wbs_code ? wbsCodeToId[a.wbs_code] || null : null,
+        name: a.name,
+        activity_type: a.activity_type,
+        duration: a.duration,
+        remaining_duration: a.duration,
+        original_duration: a.duration,
+        planned_start: a.planned_start,
+        planned_finish: a.planned_finish,
+        percent_complete: a.percent_complete,
+        discipline: a.discipline,
+        contractor: a.contractor,
+        responsible_person: a.responsible_person,
+        status: a.status,
+        notes: a.notes,
+        external_id: a.external_id,
+      });
+      externalIdToActivityId[a.external_id] = activity.id;
+      return activity;
+    });
+
+    var relationships = parsed.relationships.map(function (r) {
+      return window.PCC.store.newRelationship({
+        schedule_id: scheduleId,
+        predecessor_id: externalIdToActivityId[r.predecessor_external_id],
+        successor_id: externalIdToActivityId[r.successor_external_id],
+        type: r.type,
+        lag: r.lag,
+      });
+    });
+
+    return { wbsItems: wbsItems, activities: activities, relationships: relationships };
   }
 
   function commitImport(data, rerender) {
@@ -10821,77 +13913,78 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       hash_method: uiState.importFile.hashMethod,
     });
 
-    // WBS: create every parsed entry first so a code\u2192id map exists before wiring
-    // parent_wbs_id \u2014 order of creation doesn't matter since parents are resolved by
-    // code lookup afterward, not by creation sequence.
-    var wbsCodeToId = {};
-    var newWbsItems = parsed.wbsEntries.map(function (w) {
-      var item = window.PCC.store.newWbsItem({
-        project_id: uiState.projectId,
-        schedule_id: newSchedule.id,
-        code: w.code,
-        name: w.name,
-        level: w.level,
+    var records = buildScheduleRecords(parsed, uiState.projectId, newSchedule.id);
+
+    uiState.importCommitting = true;
+    uiState.importError = null;
+
+    function finishImport() {
+      window.PCC.store.update(function (d) {
+        d.schedules.push(newSchedule);
+        d.wbs_items = d.wbs_items.concat(records.wbsItems);
+        d.activities = d.activities.concat(records.activities);
+        d.relationships = d.relationships.concat(records.relationships);
       });
-      wbsCodeToId[w.code] = item.id;
-      return item;
-    });
-    newWbsItems.forEach(function (item, i) {
-      var parentCode = parsed.wbsEntries[i].parent_code;
-      item.parent_wbs_id = parentCode ? wbsCodeToId[parentCode] || null : null;
-    });
 
-    var externalIdToActivityId = {};
-    var newActivities = parsed.activities.map(function (a) {
-      var activity = window.PCC.store.newActivity({
-        project_id: uiState.projectId,
-        schedule_id: newSchedule.id,
-        wbs_id: a.wbs_code ? wbsCodeToId[a.wbs_code] || null : null,
-        name: a.name,
-        activity_type: a.activity_type,
-        duration: a.duration,
-        remaining_duration: a.duration,
-        original_duration: a.duration,
-        planned_start: a.planned_start,
-        planned_finish: a.planned_finish,
-        percent_complete: a.percent_complete,
-        discipline: a.discipline,
-        contractor: a.contractor,
-        responsible_person: a.responsible_person,
-        status: a.status,
-        notes: a.notes,
-        external_id: a.external_id,
+      window.PCC.notify(
+        "Imported " + records.activities.length + " activities as a new schedule (Rev " + nextRevision +
+          "). The original Excel file is attached \u2014 use \u201cEdit Excel\u201d to update it in place.",
+        "success"
+      );
+
+      uiState.scheduleId = newSchedule.id;
+      uiState.tab = "activities";
+      resetImportState();
+      rerender();
+    }
+
+    // Store the original file first (same precedent as documents.js's Save Document
+    // handler): if IndexedDB write fails, nothing is written to the main store either,
+    // rather than leaving a schedule record that claims a source file that isn't there.
+    window.PCC.blobStore
+      .putBlob(newSchedule.id, uiState.importFile.fileData)
+      .then(finishImport)
+      .catch(function (e) {
+        uiState.importCommitting = false;
+        uiState.importError = "Could not store the original Excel file: " + e.message;
+        rerender();
       });
-      externalIdToActivityId[a.external_id] = activity.id;
-      return activity;
+  }
+
+  /** Renders a collapsible list of a parseRows() result's errors/warnings, or null if
+   * there's nothing to show. Shared by the Import review step and the Excel-editor
+   * review step so the two stay visually identical rather than drifting apart. */
+  function renderParsedIssuesToggle(parsed) {
+    var summary = parsed.summary;
+    if (summary.warnings === 0 && summary.errors === 0) return null;
+
+    var issuesToggle = document.createElement("details");
+    issuesToggle.style.marginBottom = "12px";
+    var summaryTag = document.createElement("summary");
+    summaryTag.style.cursor = "pointer";
+    summaryTag.style.fontSize = "13px";
+    summaryTag.textContent = "View " + (summary.errors + summary.warnings) + " issue(s)";
+    issuesToggle.appendChild(summaryTag);
+    var issuesList = document.createElement("div");
+    issuesList.style.maxHeight = "220px";
+    issuesList.style.overflowY = "auto";
+    issuesList.style.marginTop = "8px";
+    parsed.errors.forEach(function (e) {
+      var p = document.createElement("p");
+      p.style.fontSize = "12px";
+      p.style.color = "var(--status-critical)";
+      p.textContent = (e.row ? "Row " + e.row + ": " : "") + e.message;
+      issuesList.appendChild(p);
     });
-
-    var newRelationships = parsed.relationships.map(function (r) {
-      return window.PCC.store.newRelationship({
-        schedule_id: newSchedule.id,
-        predecessor_id: externalIdToActivityId[r.predecessor_external_id],
-        successor_id: externalIdToActivityId[r.successor_external_id],
-        type: r.type,
-        lag: r.lag,
-      });
+    parsed.warnings.forEach(function (w) {
+      var p = document.createElement("p");
+      p.style.fontSize = "12px";
+      p.style.color = "var(--status-at-risk)";
+      p.textContent = (w.row ? "Row " + w.row + ": " : "") + w.message;
+      issuesList.appendChild(p);
     });
-
-    window.PCC.store.update(function (d) {
-      d.schedules.push(newSchedule);
-      d.wbs_items = d.wbs_items.concat(newWbsItems);
-      d.activities = d.activities.concat(newActivities);
-      d.relationships = d.relationships.concat(newRelationships);
-    });
-
-    window.PCC.notify(
-      "Imported " + newActivities.length + " activities as a new schedule (Rev " + nextRevision + ").",
-      "success"
-    );
-
-    uiState.scheduleId = newSchedule.id;
-    uiState.tab = "activities";
-    resetImportState();
-    rerender();
+    issuesToggle.appendChild(issuesList);
+    return issuesToggle;
   }
 
   function renderImportPanel(container, data, rerender) {
@@ -11013,35 +14106,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         panel.appendChild(errNote);
       }
 
-      if (summary.warnings > 0 || summary.errors > 0) {
-        var issuesToggle = document.createElement("details");
-        issuesToggle.style.marginBottom = "12px";
-        var summaryTag = document.createElement("summary");
-        summaryTag.style.cursor = "pointer";
-        summaryTag.style.fontSize = "13px";
-        summaryTag.textContent = "View " + (summary.errors + summary.warnings) + " issue(s)";
-        issuesToggle.appendChild(summaryTag);
-        var issuesList = document.createElement("div");
-        issuesList.style.maxHeight = "220px";
-        issuesList.style.overflowY = "auto";
-        issuesList.style.marginTop = "8px";
-        parsed.errors.forEach(function (e) {
-          var p = document.createElement("p");
-          p.style.fontSize = "12px";
-          p.style.color = "var(--status-critical)";
-          p.textContent = (e.row ? "Row " + e.row + ": " : "") + e.message;
-          issuesList.appendChild(p);
-        });
-        parsed.warnings.forEach(function (w) {
-          var p = document.createElement("p");
-          p.style.fontSize = "12px";
-          p.style.color = "var(--status-at-risk)";
-          p.textContent = (w.row ? "Row " + w.row + ": " : "") + w.message;
-          issuesList.appendChild(p);
-        });
-        issuesToggle.appendChild(issuesList);
-        panel.appendChild(issuesToggle);
-      }
+      var issuesToggle = renderParsedIssuesToggle(parsed);
+      if (issuesToggle) panel.appendChild(issuesToggle);
 
       var nameField = document.createElement("div");
       nameField.className = "field";
@@ -11063,8 +14129,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
       var confirmBtn = document.createElement("button");
       confirmBtn.className = "btn btn--primary";
-      confirmBtn.textContent = "Confirm Import (" + summary.imported + " activities)";
-      confirmBtn.disabled = summary.imported === 0 || (uiState.importDuplicateMatches.length > 0 && !uiState.importDuplicateAcknowledged);
+      confirmBtn.textContent = uiState.importCommitting ? "Saving…" : "Confirm Import (" + summary.imported + " activities)";
+      confirmBtn.disabled =
+        summary.imported === 0 ||
+        uiState.importCommitting ||
+        (uiState.importDuplicateMatches.length > 0 && !uiState.importDuplicateAcknowledged);
       confirmBtn.onclick = function () {
         commitImport(data, rerender);
       };
@@ -11073,6 +14142,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       var cancelReviewBtn = document.createElement("button");
       cancelReviewBtn.className = "btn btn--ghost";
       cancelReviewBtn.textContent = "Cancel";
+      cancelReviewBtn.disabled = uiState.importCommitting;
       cancelReviewBtn.onclick = function () {
         resetImportState();
         rerender();
@@ -11080,6 +14150,561 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       actions.appendChild(cancelReviewBtn);
 
       panel.appendChild(actions);
+
+      if (uiState.importError) {
+        var reviewErr = document.createElement("p");
+        reviewErr.style.color = "var(--status-critical)";
+        reviewErr.style.fontSize = "13px";
+        reviewErr.style.marginTop = "10px";
+        reviewErr.textContent = uiState.importError;
+        panel.appendChild(reviewErr);
+      }
+    }
+
+    container.appendChild(panel);
+  }
+
+  // ---------------------------------------------------------------------------------
+  // Gate 12 — in-app Excel editor. Only offered on schedules that came from an Excel
+  // import (source_file_name set — see commitImport above), since the whole pipeline
+  // below re-runs scheduleImportService.parseRows() the same way import does, and that
+  // requires every row to carry an Activity ID the way an imported activity always
+  // does. Hand-built (Gate 1 CRUD) activities have no external_id and so aren't
+  // representable in the grid — see the hand-added-activity guard in
+  // renderExcelReviewStep()/applyExcelEdits() below.
+  // ---------------------------------------------------------------------------------
+
+  var EXCEL_GRID_FIELDS = window.PCC.scheduleImportService.CANONICAL_HEADERS;
+
+  function resetExcelEditorState() {
+    uiState.excelEditorOpen = false;
+    uiState.excelEditorScheduleId = null;
+    uiState.excelEditorStep = "grid";
+    uiState.excelEditorRows = [];
+    uiState.excelEditorReview = null;
+    uiState.excelEditorHandAddedAcknowledged = false;
+    uiState.excelEditorError = null;
+    uiState.excelEditorSaving = false;
+    uiState.excelEditorNextNewSeq = 1;
+  }
+
+  /** Reconstructs the "A010FS+2,A020" predecessor token string for one activity from
+   * the schedule's relationship records, the same format parseRows() expects on the
+   * way back in. A predecessor with no external_id (a hand-added activity — see the
+   * module comment above) can't be expressed in this format and is silently dropped
+   * from the string; the hand-added-activity guard elsewhere is what surfaces that
+   * loss to the user before they commit to it, so this function doesn't need to. */
+  function buildPredecessorsString(activity, relationships, activitiesById) {
+    var tokens = relationships
+      .filter(function (r) {
+        return r.successor_id === activity.id;
+      })
+      .map(function (r) {
+        var pred = activitiesById[r.predecessor_id];
+        if (!pred || !pred.external_id) return null;
+        var token = pred.external_id;
+        if (r.type && r.type !== "FS") token += r.type;
+        if (r.lag) token += (r.lag > 0 ? "+" : "") + r.lag;
+        return token;
+      })
+      .filter(function (t) {
+        return t;
+      });
+    return tokens.join(",");
+  }
+
+  /** Builds the editable grid's row data from the schedule's CURRENT Activities/WBS/
+   * Relationships — not by re-reading the attached file's bytes. This means the grid
+   * always reflects whatever's live in the schedule (including any prior Apply), and
+   * the attached Excel file is kept as a byproduct of Apply rather than the source of
+   * truth read on every open. */
+  function openExcelEditor(schedule, data, rerender) {
+    var wbsById = {};
+    data.wbs_items
+      .filter(function (w) {
+        return w.schedule_id === schedule.id;
+      })
+      .forEach(function (w) {
+        wbsById[w.id] = w;
+      });
+    var activitiesById = {};
+    data.activities
+      .filter(function (a) {
+        return a.schedule_id === schedule.id;
+      })
+      .forEach(function (a) {
+        activitiesById[a.id] = a;
+      });
+    var relationships = data.relationships.filter(function (r) {
+      return r.schedule_id === schedule.id;
+    });
+
+    uiState.excelEditorRows = data.activities
+      .filter(function (a) {
+        return a.schedule_id === schedule.id && a.external_id;
+      })
+      .map(function (a) {
+        var wbs = a.wbs_id ? wbsById[a.wbs_id] : null;
+        return {
+          external_id: a.external_id || "",
+          name: a.name || "",
+          activity_type: a.activity_type || "task",
+          wbs_code: wbs ? wbs.code : "",
+          wbs_name: wbs ? wbs.name : "",
+          duration: a.duration != null ? String(a.duration) : "",
+          planned_start: a.planned_start || "",
+          planned_finish: a.planned_finish || "",
+          predecessors: buildPredecessorsString(a, relationships, activitiesById),
+          percent_complete: a.percent_complete != null ? String(a.percent_complete) : "",
+          discipline: a.discipline || "",
+          contractor: a.contractor || "",
+          responsible_person: a.responsible_person || "",
+          status: a.status || "not_started",
+          notes: a.notes || "",
+        };
+      });
+
+    uiState.excelEditorOpen = true;
+    uiState.excelEditorScheduleId = schedule.id;
+    uiState.excelEditorStep = "grid";
+    uiState.excelEditorReview = null;
+    uiState.excelEditorHandAddedAcknowledged = false;
+    uiState.excelEditorError = null;
+    uiState.excelEditorNextNewSeq = 1;
+    rerender();
+  }
+
+  /** Grid cells are read from the DOM only when something needs their current values
+   * (adding/deleting a row, or Review Changes) — not on every keystroke — for the same
+   * reason renderScheduleForm() above reads its fields at submit time instead of
+   * tracking each input in uiState: a full outlet re-render on every keystroke would
+   * blow away focus/cursor position mid-edit. */
+  function syncExcelEditorRowsFromDom() {
+    uiState.excelEditorRows.forEach(function (row, i) {
+      EXCEL_GRID_FIELDS.forEach(function (f) {
+        var el = document.getElementById("excelgrid-" + i + "-" + f.key);
+        if (el) row[f.key] = el.value;
+      });
+    });
+  }
+
+  function excelCellControl(rowIndex, field, value) {
+    var id = "excelgrid-" + rowIndex + "-" + field.key;
+    if (field.key === "activity_type") {
+      var typeSelect = document.createElement("select");
+      typeSelect.id = id;
+      typeSelect.style.width = "100%";
+      ["task", "milestone", "summary", "wbs_summary"].forEach(function (k) {
+        var opt = document.createElement("option");
+        opt.value = k;
+        opt.textContent = ACTIVITY_TYPE_LABELS[k];
+        typeSelect.appendChild(opt);
+      });
+      typeSelect.value = value || "task";
+      return typeSelect;
+    }
+    if (field.key === "status") {
+      var statusSelect = document.createElement("select");
+      statusSelect.id = id;
+      statusSelect.style.width = "100%";
+      Object.keys(ACTIVITY_STATUS_LABELS).forEach(function (k) {
+        var opt = document.createElement("option");
+        opt.value = k;
+        opt.textContent = ACTIVITY_STATUS_LABELS[k];
+        statusSelect.appendChild(opt);
+      });
+      statusSelect.value = value || "not_started";
+      return statusSelect;
+    }
+    var input = document.createElement("input");
+    input.id = id;
+    input.value = value || "";
+    input.style.width = "100%";
+    input.style.boxSizing = "border-box";
+    if (field.key === "planned_start" || field.key === "planned_finish") input.type = "date";
+    else if (field.key === "duration" || field.key === "percent_complete") {
+      input.type = "number";
+      input.step = "any";
+    } else input.type = "text";
+    return input;
+  }
+
+  function renderExcelGridStep(panel, schedule, data, rerender) {
+    var gridActions = document.createElement("div");
+    gridActions.style.display = "flex";
+    gridActions.style.gap = "10px";
+    gridActions.style.marginBottom = "10px";
+
+    var addRowBtn = document.createElement("button");
+    addRowBtn.type = "button";
+    addRowBtn.className = "btn btn--ghost";
+    addRowBtn.textContent = "+ Add Row";
+    addRowBtn.onclick = function () {
+      syncExcelEditorRowsFromDom();
+      var seq = uiState.excelEditorNextNewSeq++;
+      uiState.excelEditorRows.push({
+        external_id: "NEW-" + seq,
+        name: "",
+        activity_type: "task",
+        wbs_code: "",
+        wbs_name: "",
+        duration: "",
+        planned_start: "",
+        planned_finish: "",
+        predecessors: "",
+        percent_complete: "",
+        discipline: "",
+        contractor: "",
+        responsible_person: "",
+        status: "not_started",
+        notes: "",
+      });
+      rerender();
+    };
+    gridActions.appendChild(addRowBtn);
+    panel.appendChild(gridActions);
+
+    if (uiState.excelEditorRows.length === 0) {
+      var emptyNote = document.createElement("p");
+      emptyNote.className = "text-secondary";
+      emptyNote.style.fontSize = "12px";
+      emptyNote.style.marginBottom = "10px";
+      emptyNote.textContent = "No activities from the original Excel file remain on this schedule. Click “+ Add Row” to start adding some, or Close and use the Activities tab instead.";
+      panel.appendChild(emptyNote);
+    }
+
+    var tableWrap = document.createElement("div");
+    tableWrap.style.overflowX = "auto";
+    tableWrap.style.maxHeight = "440px";
+    tableWrap.style.overflowY = "auto";
+    tableWrap.style.border = "1px solid var(--divider)";
+    tableWrap.style.borderRadius = "var(--radius-sm)";
+    tableWrap.style.marginBottom = "12px";
+
+    var table = document.createElement("table");
+    table.style.borderCollapse = "collapse";
+    table.style.width = "100%";
+    table.style.fontSize = "12px";
+
+    var thead = document.createElement("thead");
+    var headRow = document.createElement("tr");
+    EXCEL_GRID_FIELDS.forEach(function (f) {
+      var th = document.createElement("th");
+      th.textContent = f.label;
+      th.style.textAlign = "left";
+      th.style.padding = "6px 8px";
+      th.style.borderBottom = "1px solid var(--divider)";
+      th.style.position = "sticky";
+      th.style.top = "0";
+      th.style.backgroundColor = "var(--bg-paper-raised)";
+      th.style.whiteSpace = "nowrap";
+      headRow.appendChild(th);
+    });
+    var thActions = document.createElement("th");
+    thActions.style.borderBottom = "1px solid var(--divider)";
+    thActions.style.position = "sticky";
+    thActions.style.top = "0";
+    thActions.style.backgroundColor = "var(--bg-paper-raised)";
+    headRow.appendChild(thActions);
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    var tbody = document.createElement("tbody");
+    uiState.excelEditorRows.forEach(function (row, i) {
+      var tr = document.createElement("tr");
+      EXCEL_GRID_FIELDS.forEach(function (f) {
+        var td = document.createElement("td");
+        td.style.padding = "3px 6px";
+        td.style.borderBottom = "1px solid var(--divider)";
+        td.style.minWidth = f.key === "name" || f.key === "notes" ? "160px" : "110px";
+        td.appendChild(excelCellControl(i, f, row[f.key]));
+        tr.appendChild(td);
+      });
+      var tdActions = document.createElement("td");
+      tdActions.style.padding = "3px 6px";
+      tdActions.style.borderBottom = "1px solid var(--divider)";
+      var delBtn = document.createElement("button");
+      delBtn.type = "button";
+      delBtn.className = "btn btn--ghost";
+      delBtn.style.padding = "2px 8px";
+      delBtn.title = "Delete row";
+      delBtn.textContent = "×";
+      delBtn.onclick = function () {
+        syncExcelEditorRowsFromDom();
+        uiState.excelEditorRows.splice(i, 1);
+        rerender();
+      };
+      tdActions.appendChild(delBtn);
+      tr.appendChild(tdActions);
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    tableWrap.appendChild(table);
+    panel.appendChild(tableWrap);
+
+    var bottomActions = document.createElement("div");
+    bottomActions.style.display = "flex";
+    bottomActions.style.gap = "10px";
+
+    var reviewBtn = document.createElement("button");
+    reviewBtn.type = "button";
+    reviewBtn.className = "btn btn--primary";
+    reviewBtn.textContent = "Review Changes";
+    reviewBtn.onclick = function () {
+      syncExcelEditorRowsFromDom();
+      var headerLabels = EXCEL_GRID_FIELDS.map(function (f) {
+        return f.label;
+      });
+      var rowArrays = uiState.excelEditorRows.map(function (row) {
+        return EXCEL_GRID_FIELDS.map(function (f) {
+          return row[f.key] || "";
+        });
+      });
+      uiState.excelEditorReview = window.PCC.scheduleImportService.parseRows(headerLabels, rowArrays);
+      uiState.excelEditorStep = "review";
+      rerender();
+    };
+    bottomActions.appendChild(reviewBtn);
+
+    var closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.className = "btn btn--ghost";
+    closeBtn.textContent = "Close";
+    closeBtn.onclick = function () {
+      resetExcelEditorState();
+      rerender();
+    };
+    bottomActions.appendChild(closeBtn);
+    panel.appendChild(bottomActions);
+
+    if (uiState.excelEditorError) {
+      var gridErr = document.createElement("p");
+      gridErr.style.color = "var(--status-critical)";
+      gridErr.style.fontSize = "13px";
+      gridErr.style.marginTop = "10px";
+      gridErr.textContent = uiState.excelEditorError;
+      panel.appendChild(gridErr);
+    }
+  }
+
+  function renderExcelReviewStep(panel, schedule, data, rerender) {
+    var parsed = uiState.excelEditorReview;
+    var summary = parsed.summary;
+    var handAdded = data.activities.filter(function (a) {
+      return a.schedule_id === schedule.id && !a.external_id;
+    });
+    var blockedByHandAdded = handAdded.length > 0 && !uiState.excelEditorHandAddedAcknowledged;
+
+    if (blockedByHandAdded) {
+      var warnBox = document.createElement("div");
+      warnBox.style.border = "1px solid var(--status-at-risk)";
+      warnBox.style.borderRadius = "8px";
+      warnBox.style.padding = "12px";
+      warnBox.style.marginBottom = "14px";
+      warnBox.style.background = "rgba(230, 162, 60, 0.08)";
+      var warnTitle = document.createElement("p");
+      warnTitle.style.fontWeight = "600";
+      warnTitle.style.fontSize = "13px";
+      warnTitle.textContent =
+        handAdded.length + " activit" + (handAdded.length === 1 ? "y" : "ies") + " on this schedule " +
+        (handAdded.length === 1 ? "isn’t" : "aren’t") + " from the Excel file";
+      warnBox.appendChild(warnTitle);
+      var warnBody = document.createElement("p");
+      warnBody.style.fontSize = "12px";
+      warnBody.style.marginTop = "6px";
+      warnBody.textContent =
+        "They were added by hand on the Activities tab and have no Activity ID, so they can't appear in this " +
+        "grid. Applying replaces this schedule's full activity list from the grid, so continuing will delete them.";
+      warnBox.appendChild(warnBody);
+      var warnActions = document.createElement("div");
+      warnActions.style.display = "flex";
+      warnActions.style.gap = "10px";
+      warnActions.style.marginTop = "10px";
+      var ackBtn = document.createElement("button");
+      ackBtn.type = "button";
+      ackBtn.className = "btn btn--ghost";
+      ackBtn.textContent = "Delete Them and Continue";
+      ackBtn.onclick = function () {
+        uiState.excelEditorHandAddedAcknowledged = true;
+        rerender();
+      };
+      var backFromWarnBtn = document.createElement("button");
+      backFromWarnBtn.type = "button";
+      backFromWarnBtn.className = "btn btn--ghost";
+      backFromWarnBtn.textContent = "Back to Grid";
+      backFromWarnBtn.onclick = function () {
+        uiState.excelEditorStep = "grid";
+        rerender();
+      };
+      warnActions.appendChild(ackBtn);
+      warnActions.appendChild(backFromWarnBtn);
+      warnBox.appendChild(warnActions);
+      panel.appendChild(warnBox);
+    }
+
+    var summaryLine = document.createElement("p");
+    summaryLine.style.fontSize = "14px";
+    summaryLine.style.fontWeight = "600";
+    summaryLine.style.marginBottom = "4px";
+    summaryLine.textContent =
+      summary.imported + " activit" + (summary.imported === 1 ? "y" : "ies") + " will be applied to this schedule, " +
+      summary.warnings + " warning(s), " + summary.errors + " error(s).";
+    panel.appendChild(summaryLine);
+
+    if (summary.errors > 0) {
+      var errNote = document.createElement("p");
+      errNote.className = "text-secondary";
+      errNote.style.fontSize = "12px";
+      errNote.style.marginBottom = "10px";
+      errNote.textContent = "Rows with errors are excluded entirely — go back, fix them in the grid, and click Review Changes again.";
+      panel.appendChild(errNote);
+    }
+
+    var issuesToggle = renderParsedIssuesToggle(parsed);
+    if (issuesToggle) panel.appendChild(issuesToggle);
+
+    var actions = document.createElement("div");
+    actions.style.display = "flex";
+    actions.style.gap = "10px";
+    actions.style.marginTop = "14px";
+
+    var applyBtn = document.createElement("button");
+    applyBtn.type = "button";
+    applyBtn.className = "btn btn--primary";
+    applyBtn.textContent = uiState.excelEditorSaving ? "Applying…" : "Apply to Schedule (" + summary.imported + " activities)";
+    applyBtn.disabled = summary.imported === 0 || uiState.excelEditorSaving || blockedByHandAdded;
+    applyBtn.onclick = function () {
+      applyExcelEdits(schedule, data, rerender);
+    };
+    actions.appendChild(applyBtn);
+
+    var backBtn = document.createElement("button");
+    backBtn.type = "button";
+    backBtn.className = "btn btn--ghost";
+    backBtn.textContent = "Back to Grid";
+    backBtn.disabled = uiState.excelEditorSaving;
+    backBtn.onclick = function () {
+      uiState.excelEditorStep = "grid";
+      rerender();
+    };
+    actions.appendChild(backBtn);
+
+    panel.appendChild(actions);
+
+    if (uiState.excelEditorError) {
+      var reviewErr = document.createElement("p");
+      reviewErr.style.color = "var(--status-critical)";
+      reviewErr.style.fontSize = "13px";
+      reviewErr.style.marginTop = "10px";
+      reviewErr.textContent = uiState.excelEditorError;
+      panel.appendChild(reviewErr);
+    }
+  }
+
+  /** Regenerates the attached Excel file from exactly the header/row data that was
+   * just parsed (same values shown in the review step), so the stored file always
+   * matches what Apply actually committed — never a stale copy of the pre-edit file
+   * or a copy of grid contents that got rejected as errors. */
+  function applyExcelEdits(schedule, data, rerender) {
+    var parsed = uiState.excelEditorReview;
+    if (!parsed) return;
+
+    var headerLabels = EXCEL_GRID_FIELDS.map(function (f) {
+      return f.label;
+    });
+    var rowArrays = uiState.excelEditorRows.map(function (row) {
+      return EXCEL_GRID_FIELDS.map(function (f) {
+        return row[f.key] || "";
+      });
+    });
+
+    var workbook = window.XLSX.utils.book_new();
+    var sheet = window.XLSX.utils.aoa_to_sheet([headerLabels].concat(rowArrays));
+    window.XLSX.utils.book_append_sheet(workbook, sheet, "Schedule");
+    var wbBuffer = window.XLSX.write(workbook, { type: "array", bookType: "xlsx" });
+    var fileDataUri = "data:" + XLSX_MIME_TYPES.xlsx + ";base64," + arrayBufferToBase64(wbBuffer);
+
+    var records = buildScheduleRecords(parsed, schedule.project_id, schedule.id);
+
+    uiState.excelEditorSaving = true;
+    uiState.excelEditorError = null;
+
+    window.PCC.blobStore
+      .putBlob(schedule.id, fileDataUri)
+      .then(function () {
+        window.PCC.store.update(function (d) {
+          d.wbs_items = d.wbs_items.filter(function (w) {
+            return w.schedule_id !== schedule.id;
+          });
+          d.activities = d.activities.filter(function (a) {
+            return a.schedule_id !== schedule.id;
+          });
+          d.relationships = d.relationships.filter(function (r) {
+            return r.schedule_id !== schedule.id;
+          });
+          d.wbs_items = d.wbs_items.concat(records.wbsItems);
+          d.activities = d.activities.concat(records.activities);
+          d.relationships = d.relationships.concat(records.relationships);
+
+          var sched = d.schedules.find(function (s) {
+            return s.id === schedule.id;
+          });
+          if (sched) {
+            sched.source_file_size = wbBuffer.byteLength;
+            sched.updated_at = new Date().toISOString();
+          }
+        });
+
+        window.PCC.notify(
+          "Schedule updated from the edited Excel (" + records.activities.length + " activities). " +
+            "The attached file was updated to match.",
+          "success"
+        );
+
+        uiState.excelEditorSaving = false;
+        resetExcelEditorState();
+        uiState.tab = "activities";
+        rerender();
+      })
+      .catch(function (e) {
+        uiState.excelEditorSaving = false;
+        uiState.excelEditorError = "Could not save changes: " + e.message;
+        rerender();
+      });
+  }
+
+  function renderExcelEditorPanel(container, data, rerender) {
+    var schedule = data.schedules.find(function (s) {
+      return s.id === uiState.excelEditorScheduleId;
+    });
+    if (!schedule) {
+      resetExcelEditorState();
+      return;
+    }
+
+    var panel = document.createElement("div");
+    panel.className = "panel";
+    panel.style.marginBottom = "16px";
+
+    var heading = document.createElement("h3");
+    heading.style.marginBottom = "10px";
+    heading.textContent = "Edit Excel — " + schedule.name;
+    panel.appendChild(heading);
+
+    var help = document.createElement("p");
+    help.className = "text-secondary";
+    help.style.fontSize = "12px";
+    help.style.marginBottom = "10px";
+    help.textContent =
+      "Editing here updates the attached Excel file and this schedule's Activities/WBS/Relationships together — " +
+      "no separate download or re-upload needed. Recognized columns only (same set as Import); extra columns " +
+      "from the original file aren't shown.";
+    panel.appendChild(help);
+
+    if (uiState.excelEditorStep === "grid") {
+      renderExcelGridStep(panel, schedule, data, rerender);
+    } else {
+      renderExcelReviewStep(panel, schedule, data, rerender);
     }
 
     container.appendChild(panel);
@@ -11181,6 +14806,21 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       rerender();
     };
     bar.appendChild(importBtn);
+
+    var currentScheduleForExcelEdit = data.schedules.find(function (s) {
+      return s.id === uiState.scheduleId;
+    });
+    var editExcelBtn = document.createElement("button");
+    editExcelBtn.className = "btn btn--ghost";
+    editExcelBtn.textContent = "Edit Excel";
+    editExcelBtn.title = currentScheduleForExcelEdit && !currentScheduleForExcelEdit.source_file_name
+      ? "This schedule wasn't imported from an Excel file, so there's nothing to edit here."
+      : "";
+    editExcelBtn.disabled = !currentScheduleForExcelEdit || !currentScheduleForExcelEdit.source_file_name;
+    editExcelBtn.onclick = function () {
+      openExcelEditor(currentScheduleForExcelEdit, data, rerender);
+    };
+    bar.appendChild(editExcelBtn);
 
     var calcBtn = document.createElement("button");
     calcBtn.className = "btn btn--ghost";
@@ -13508,6 +17148,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     if (uiState.importPanelOpen) {
       renderImportPanel(outlet, data, rerender);
+    }
+
+    if (uiState.excelEditorOpen) {
+      renderExcelEditorPanel(outlet, data, rerender);
     }
 
     if (uiState.editingScheduleId) {
@@ -19847,6 +23491,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     router.register("dashboard", window.PCC.pages.dashboard);
     router.register("portfolio", window.PCC.pages.portfolio);
     router.register("executiveCenter", window.PCC.pages.executiveCenter);
+    router.register("vendors", window.PCC.pages.vendors);
     router.register("documents", window.PCC.pages.documents);
     router.register("dailylog", window.PCC.pages.dailylog);
     router.register("schedule", window.PCC.pages.schedule);
