@@ -40,6 +40,22 @@
     importDuplicateAcknowledged: false,
     importScheduleName: "",
     importError: null,
+    // Gate 8: interactive Gantt editing.
+    ganttFilter: {
+      search: "",
+      wbsId: "",
+      discipline: "",
+      contractor: "",
+      responsiblePerson: "",
+      quick: "", // '' | 'critical' | 'near_critical' | 'delayed' | 'completed' | 'in_progress' | 'not_started' | 'milestones'
+    },
+    ganttZoom: "auto", // 'auto' | 'day' | 'week' | 'month' | 'quarter' | 'year'
+    ganttDetailActivityId: null,
+    ganttShowBaseline: false,
+    ganttBaselineId: "",
+    ganttBaselineSnapshot: null, // { baselineId, activities } once loaded
+    ganttBaselineLoading: false,
+    relationshipPrefillId: null, // predecessor id to prefill when "+ Add Relationship" is used from the Gantt detail panel
   };
 
   function projectName(projects, projectId) {
@@ -62,6 +78,24 @@
       return x.id === activityId;
     });
     return a ? a.name || "(unnamed activity)" : "(deleted activity)";
+  }
+
+  /** Shared by the Activities tab list and the Gantt tab's detail panel (Gate 8) so
+   * both delete the same way — confirm, then remove the activity and any relationship
+   * referencing it, matching the pattern every other register's delete already uses. */
+  function deleteActivityWithConfirm(activity, rerender) {
+    if (!confirm('Delete activity "' + activity.name + '"? This also removes any relationships referencing it.')) return;
+    window.PCC.store.update(function (data2) {
+      data2.activities = data2.activities.filter(function (item) {
+        return item.id !== activity.id;
+      });
+      data2.relationships = data2.relationships.filter(function (rel) {
+        return rel.predecessor_id !== activity.id && rel.successor_id !== activity.id;
+      });
+    });
+    window.PCC.notify("Activity deleted.", "success");
+    if (uiState.ganttDetailActivityId === activity.id) uiState.ganttDetailActivityId = null;
+    rerender();
   }
 
   // ---------------------------------------------------------------------------------
@@ -1047,10 +1081,11 @@
     if (uiState.editingActivityId) {
       var activityBeingEdited =
         uiState.editingActivityId === "new"
-          ? window.PCC.store.newActivity({})
+          ? window.PCC.store.newActivity(uiState.newActivityTypeHint ? { activity_type: uiState.newActivityTypeHint } : {})
           : scheduleActivities.find(function (a) {
               return a.id === uiState.editingActivityId;
             });
+      uiState.newActivityTypeHint = null;
       if (activityBeingEdited) renderActivityForm(container, activityBeingEdited, wbsItems, rerender);
     }
 
@@ -1165,17 +1200,7 @@
         deleteBtn.className = "btn btn--ghost";
         deleteBtn.textContent = "Delete";
         deleteBtn.onclick = function () {
-          if (!confirm('Delete activity "' + a.name + '"? This also removes any relationships referencing it.')) return;
-          window.PCC.store.update(function (data2) {
-            data2.activities = data2.activities.filter(function (item) {
-              return item.id !== a.id;
-            });
-            data2.relationships = data2.relationships.filter(function (rel) {
-              return rel.predecessor_id !== a.id && rel.successor_id !== a.id;
-            });
-          });
-          window.PCC.notify("Activity deleted.", "success");
-          rerender();
+          deleteActivityWithConfirm(a, rerender);
         };
         actions.appendChild(deleteBtn);
 
@@ -1629,10 +1654,11 @@
     if (uiState.editingRelationshipId) {
       var relBeingEdited =
         uiState.editingRelationshipId === "new"
-          ? window.PCC.store.newRelationship({})
+          ? window.PCC.store.newRelationship(uiState.relationshipPrefillId ? { predecessor_id: uiState.relationshipPrefillId } : {})
           : relationships.find(function (r) {
               return r.id === uiState.editingRelationshipId;
             });
+      uiState.relationshipPrefillId = null;
       if (relBeingEdited) renderRelationshipForm(container, relBeingEdited, activities, rerender);
     }
 
@@ -1704,9 +1730,13 @@
   }
 
   // ---------------------------------------------------------------------------------
-  // Gantt tab (Gate 5) — visualization only, built on scheduleGanttLayout.js's pure
-  // row/date computation. No drag-to-reschedule; activities are still edited through
-  // the Activities tab form.
+  // Gantt tab (Gate 5, editing added Gate 8) — built on scheduleGanttLayout.js's pure
+  // row/date computation and drag-math. Activities can still be edited through the
+  // Activities tab form; the Gantt now ALSO supports dragging a bar to reschedule it,
+  // dragging its right edge to resize duration, and clicking it to open a detail panel
+  // — every edit writes to planned_start/planned_finish (never the calculated fields)
+  // and immediately re-runs the CPM engine, same as the toolbar's own "Calculate
+  // Schedule" button, so float/critical-path/project-finish never go stale after a drag.
   // ---------------------------------------------------------------------------------
 
   var SVG_NS = "http://www.w3.org/2000/svg";
@@ -1726,7 +1756,14 @@
     return name.slice(0, maxChars - 1) + "…";
   }
 
-  function ganttPxPerDay(totalSpanDays) {
+  // Gate 8: explicit zoom presets, in addition to the pre-existing "auto" heuristic
+  // (picks a density from the schedule's own span so a 2-week schedule and a 2-year one
+  // both render legibly without the user having to touch the zoom control at all).
+  var GANTT_ZOOM_PX_PER_DAY = { day: 32, week: 16, month: 6, quarter: 2.2, year: 0.7 };
+  var GANTT_ZOOM_LABELS = { auto: "Auto", day: "Daily", week: "Weekly", month: "Monthly", quarter: "Quarterly", year: "Yearly" };
+
+  function ganttPxPerDay(totalSpanDays, zoom) {
+    if (zoom && GANTT_ZOOM_PX_PER_DAY[zoom]) return GANTT_ZOOM_PX_PER_DAY[zoom];
     if (totalSpanDays <= 30) return 24;
     if (totalSpanDays <= 90) return 14;
     if (totalSpanDays <= 180) return 8;
@@ -1744,12 +1781,464 @@
     return (d.getUTCMonth() + 1) + "/" + d.getUTCDate();
   }
 
+  function todayIso() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  /** Gate 8 filters: WBS / Discipline / Contractor / Responsible Person / a single
+   * "quick" status filter (Critical / Near Critical / Delayed / Completed / In Progress
+   * / Not Started / Milestones) / free-text search across Activity ID, Name, WBS,
+   * Contractor, Discipline. "Delayed" means it has a usable finish date that's already
+   * past the schedule's data date (or today, if no data date) and isn't marked complete
+   * — computed at filter time, never stored, same convention every overdue check in
+   * this app already uses. */
+  function activityMatchesGanttFilter(a, wbsItems, filter, referenceDateIso) {
+    if (filter.search) {
+      var needle = filter.search.toLowerCase();
+      var wbs = wbsItems.find(function (w) { return w.id === a.wbs_id; });
+      var haystack = [
+        a.external_id || "",
+        a.name || "",
+        wbs ? (wbs.code || "") + " " + (wbs.name || "") : "",
+        a.contractor || "",
+        a.discipline || "",
+      ].join(" ").toLowerCase();
+      if (haystack.indexOf(needle) === -1) return false;
+    }
+    if (filter.wbsId && a.wbs_id !== filter.wbsId) return false;
+    if (filter.discipline && a.discipline !== filter.discipline) return false;
+    if (filter.contractor && a.contractor !== filter.contractor) return false;
+    if (filter.responsiblePerson && a.responsible_person !== filter.responsiblePerson) return false;
+
+    switch (filter.quick) {
+      case "critical":
+        if (!(a.total_float != null && a.total_float <= 0)) return false;
+        break;
+      case "near_critical":
+        if (!(a.total_float != null && a.total_float > 0 && a.total_float <= (filter.nearCriticalThresholdDays || 5))) return false;
+        break;
+      case "delayed": {
+        var finish = a.early_finish || a.planned_finish;
+        if (!finish || !referenceDateIso || finish >= referenceDateIso || a.status === "complete") return false;
+        break;
+      }
+      case "completed":
+        if (a.status !== "complete") return false;
+        break;
+      case "in_progress":
+        if (a.status !== "in_progress") return false;
+        break;
+      case "not_started":
+        if (a.status !== "not_started") return false;
+        break;
+      case "milestones":
+        if (a.activity_type !== "milestone") return false;
+        break;
+      default:
+        break;
+    }
+    return true;
+  }
+
+  /** Loads (and caches) the trimmed activity snapshot for a baseline so the Gantt can
+   * draw ghost bars behind current activities. Matching uses the same external_id-then-
+   * id precedence scheduleBaselineEngine.js's compareBaselineToCurrent() uses, so a
+   * baseline captured before a re-import still lines up correctly. */
+  function matchKeyFor(a) {
+    if (a.external_id !== null && a.external_id !== undefined && a.external_id !== "") return "ext:" + a.external_id;
+    return "id:" + a.id;
+  }
+
+  function loadBaselineOverlay(baselineId, rerender) {
+    uiState.ganttBaselineLoading = true;
+    rerender();
+    window.PCC.scheduleBaselineStore
+      .getSnapshot(baselineId)
+      .then(function (snapshot) {
+        uiState.ganttBaselineSnapshot = { baselineId: baselineId, activities: snapshot ? snapshot.activities : [] };
+        uiState.ganttBaselineLoading = false;
+        rerender();
+      })
+      .catch(function (err) {
+        console.error("Could not load baseline for Gantt overlay", err);
+        uiState.ganttBaselineLoading = false;
+        uiState.ganttShowBaseline = false;
+        window.PCC.notify("Could not load that baseline's stored data.", "error");
+        rerender();
+      });
+  }
+
+  function renderGanttToolbar(container, data, allActivities, wbsItems, rerender) {
+    var bar = document.createElement("div");
+    bar.className = "toolbar";
+    bar.style.flexWrap = "wrap";
+
+    var search = document.createElement("input");
+    search.type = "text";
+    search.placeholder = "Search ID, name, WBS, contractor, discipline…";
+    search.value = uiState.ganttFilter.search;
+    search.style.minWidth = "220px";
+    search.oninput = function () {
+      uiState.ganttFilter.search = search.value;
+      rerender();
+    };
+    bar.appendChild(search);
+
+    function uniqueValues(key) {
+      var seen = {};
+      var out = [];
+      allActivities.forEach(function (a) {
+        var v = a[key];
+        if (v && !seen[v]) {
+          seen[v] = true;
+          out.push(v);
+        }
+      });
+      return out.sort();
+    }
+
+    function selectFilter(labelText, value, options, onChange) {
+      var sel = document.createElement("select");
+      var allOpt = document.createElement("option");
+      allOpt.value = "";
+      allOpt.textContent = labelText;
+      sel.appendChild(allOpt);
+      options.forEach(function (opt) {
+        var o = document.createElement("option");
+        o.value = opt.value;
+        o.textContent = opt.label;
+        sel.appendChild(o);
+      });
+      sel.value = value || "";
+      sel.onchange = function () {
+        onChange(sel.value);
+        rerender();
+      };
+      return sel;
+    }
+
+    bar.appendChild(
+      selectFilter("WBS: All", uiState.ganttFilter.wbsId, wbsItems.map(function (w) {
+        return { value: w.id, label: w.code ? w.code + " — " + w.name : w.name };
+      }), function (v) { uiState.ganttFilter.wbsId = v; })
+    );
+    bar.appendChild(
+      selectFilter("Discipline: All", uiState.ganttFilter.discipline, uniqueValues("discipline").map(function (v) {
+        return { value: v, label: v };
+      }), function (v) { uiState.ganttFilter.discipline = v; })
+    );
+    bar.appendChild(
+      selectFilter("Contractor: All", uiState.ganttFilter.contractor, uniqueValues("contractor").map(function (v) {
+        return { value: v, label: v };
+      }), function (v) { uiState.ganttFilter.contractor = v; })
+    );
+    bar.appendChild(
+      selectFilter("Responsible: All", uiState.ganttFilter.responsiblePerson, uniqueValues("responsible_person").map(function (v) {
+        return { value: v, label: v };
+      }), function (v) { uiState.ganttFilter.responsiblePerson = v; })
+    );
+    bar.appendChild(
+      selectFilter("Show: All Activities", uiState.ganttFilter.quick, [
+        { value: "critical", label: "Critical" },
+        { value: "near_critical", label: "Near Critical" },
+        { value: "delayed", label: "Delayed" },
+        { value: "completed", label: "Completed" },
+        { value: "in_progress", label: "In Progress" },
+        { value: "not_started", label: "Not Started" },
+        { value: "milestones", label: "Milestones Only" },
+      ], function (v) { uiState.ganttFilter.quick = v; })
+    );
+
+    if (uiState.ganttFilter.search || uiState.ganttFilter.wbsId || uiState.ganttFilter.discipline || uiState.ganttFilter.contractor || uiState.ganttFilter.responsiblePerson || uiState.ganttFilter.quick) {
+      var clearBtn = document.createElement("button");
+      clearBtn.className = "btn btn--ghost";
+      clearBtn.textContent = "Clear Filters";
+      clearBtn.onclick = function () {
+        uiState.ganttFilter = { search: "", wbsId: "", discipline: "", contractor: "", responsiblePerson: "", quick: "" };
+        rerender();
+      };
+      bar.appendChild(clearBtn);
+    }
+
+    container.appendChild(bar);
+
+    // Zoom + jump + baseline-overlay controls, on their own row.
+    var bar2 = document.createElement("div");
+    bar2.className = "toolbar";
+    bar2.style.flexWrap = "wrap";
+    bar2.style.marginTop = "8px";
+
+    var zoomLabel = document.createElement("span");
+    zoomLabel.className = "text-secondary";
+    zoomLabel.style.fontSize = "12px";
+    zoomLabel.style.alignSelf = "center";
+    zoomLabel.textContent = "Zoom:";
+    bar2.appendChild(zoomLabel);
+
+    ["auto", "day", "week", "month", "quarter", "year"].forEach(function (z) {
+      var zBtn = document.createElement("button");
+      zBtn.className = "btn " + (uiState.ganttZoom === z ? "btn--primary" : "btn--ghost");
+      zBtn.textContent = GANTT_ZOOM_LABELS[z];
+      zBtn.onclick = function () {
+        uiState.ganttZoom = z;
+        rerender();
+      };
+      bar2.appendChild(zBtn);
+    });
+
+    var spacer2 = document.createElement("div");
+    spacer2.className = "toolbar__spacer";
+    bar2.appendChild(spacer2);
+
+    var addActivityBtn = document.createElement("button");
+    addActivityBtn.className = "btn btn--ghost";
+    addActivityBtn.textContent = "+ Add Activity";
+    addActivityBtn.onclick = function () {
+      uiState.tab = "activities";
+      uiState.editingActivityId = "new";
+      rerender();
+    };
+    bar2.appendChild(addActivityBtn);
+
+    var addMilestoneBtn = document.createElement("button");
+    addMilestoneBtn.className = "btn btn--ghost";
+    addMilestoneBtn.textContent = "+ Add Milestone";
+    addMilestoneBtn.onclick = function () {
+      uiState.tab = "activities";
+      uiState.editingActivityId = "new";
+      uiState.newActivityTypeHint = "milestone";
+      rerender();
+    };
+    bar2.appendChild(addMilestoneBtn);
+
+    container.appendChild(bar2);
+
+    var projectBaselines = data.schedule_baselines.filter(function (b) {
+      return b.project_id === uiState.projectId;
+    });
+    if (projectBaselines.length > 0) {
+      var bar3 = document.createElement("div");
+      bar3.className = "toolbar";
+      bar3.style.flexWrap = "wrap";
+      bar3.style.marginTop = "8px";
+
+      var baselineToggle = document.createElement("label");
+      baselineToggle.style.display = "flex";
+      baselineToggle.style.alignItems = "center";
+      baselineToggle.style.gap = "6px";
+      baselineToggle.style.fontSize = "13px";
+      var checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = uiState.ganttShowBaseline;
+      checkbox.onchange = function () {
+        uiState.ganttShowBaseline = checkbox.checked;
+        if (uiState.ganttShowBaseline) {
+          if (!uiState.ganttBaselineId) uiState.ganttBaselineId = projectBaselines[0].id;
+          if (!uiState.ganttBaselineSnapshot || uiState.ganttBaselineSnapshot.baselineId !== uiState.ganttBaselineId) {
+            loadBaselineOverlay(uiState.ganttBaselineId, rerender);
+            return;
+          }
+        }
+        rerender();
+      };
+      baselineToggle.appendChild(checkbox);
+      baselineToggle.appendChild(document.createTextNode("Show Baseline"));
+      bar3.appendChild(baselineToggle);
+
+      var baselineSelect = document.createElement("select");
+      projectBaselines.forEach(function (b) {
+        var o = document.createElement("option");
+        o.value = b.id;
+        o.textContent = b.name;
+        baselineSelect.appendChild(o);
+      });
+      baselineSelect.value = uiState.ganttBaselineId || projectBaselines[0].id;
+      baselineSelect.disabled = !uiState.ganttShowBaseline;
+      baselineSelect.onchange = function () {
+        uiState.ganttBaselineId = baselineSelect.value;
+        loadBaselineOverlay(uiState.ganttBaselineId, rerender);
+      };
+      bar3.appendChild(baselineSelect);
+
+      if (uiState.ganttBaselineLoading) {
+        var loadingNote = document.createElement("span");
+        loadingNote.className = "text-secondary";
+        loadingNote.style.fontSize = "12px";
+        loadingNote.style.alignSelf = "center";
+        loadingNote.textContent = "Loading baseline…";
+        bar3.appendChild(loadingNote);
+      }
+
+      container.appendChild(bar3);
+    }
+  }
+
+  function renderActivityDetailPanel(container, activity, data, wbsItems, scheduleActivities, relationships, rerender) {
+    var panel = document.createElement("div");
+    panel.className = "panel";
+    panel.style.marginBottom = "16px";
+    panel.style.borderColor = "var(--signal-amber)";
+
+    var header = document.createElement("div");
+    header.style.display = "flex";
+    header.style.justifyContent = "space-between";
+    header.style.alignItems = "flex-start";
+    header.style.marginBottom = "10px";
+    var heading = document.createElement("h3");
+    heading.textContent = activity.name || "(unnamed activity)";
+    header.appendChild(heading);
+    var closeBtn = document.createElement("button");
+    closeBtn.className = "btn btn--ghost";
+    closeBtn.textContent = "Close";
+    closeBtn.onclick = function () {
+      uiState.ganttDetailActivityId = null;
+      rerender();
+    };
+    header.appendChild(closeBtn);
+    panel.appendChild(header);
+
+    var grid = document.createElement("div");
+    grid.className = "detail-grid";
+
+    function item(label, value) {
+      var div = document.createElement("div");
+      var l = document.createElement("span");
+      l.className = "detail-item__label";
+      l.textContent = label;
+      var v = document.createElement("div");
+      v.textContent = value === null || value === undefined || value === "" ? "—" : String(value);
+      div.appendChild(l);
+      div.appendChild(v);
+      grid.appendChild(div);
+    }
+
+    item("Activity ID", activity.external_id || activity.id);
+    item("WBS", wbsName(wbsItems, activity.wbs_id));
+    item("Type", ACTIVITY_TYPE_LABELS[activity.activity_type]);
+    item("Status", ACTIVITY_STATUS_LABELS[activity.status]);
+    item("Duration (days)", activity.duration);
+    item("Remaining Duration (days)", activity.remaining_duration);
+    item("Planned Start", activity.planned_start);
+    item("Planned Finish", activity.planned_finish);
+    item(
+      "Float",
+      activity.total_float == null
+        ? "Not yet calculated"
+        : activity.total_float <= 0
+        ? "Critical (0 float)"
+        : activity.total_float + " day(s) total, " + (activity.free_float == null ? "—" : activity.free_float) + " free"
+    );
+    item("% Complete", (activity.percent_complete || 0) + "%");
+    item("Discipline", activity.discipline);
+    item("Contractor", activity.contractor);
+    item("Responsible Person", activity.responsible_person);
+    item("Constraint", activity.constraint_type ? activity.constraint_type + (activity.constraint_date ? " (" + activity.constraint_date + ")" : "") : "");
+    panel.appendChild(grid);
+
+    if (activity.notes) {
+      var notesP = document.createElement("p");
+      notesP.style.marginTop = "10px";
+      notesP.style.fontSize = "13px";
+      notesP.innerHTML = "<strong>Notes:</strong> " + activity.notes;
+      panel.appendChild(notesP);
+    }
+
+    var preds = relationships.filter(function (r) { return r.successor_id === activity.id; });
+    var succs = relationships.filter(function (r) { return r.predecessor_id === activity.id; });
+
+    var relWrap = document.createElement("div");
+    relWrap.style.marginTop = "12px";
+    relWrap.style.fontSize = "13px";
+    var predLine = document.createElement("p");
+    predLine.innerHTML =
+      "<strong>Predecessors:</strong> " +
+      (preds.length ? preds.map(function (r) { return activityName(scheduleActivities, r.predecessor_id) + " (" + r.type + (r.lag ? ", lag " + r.lag : "") + ")"; }).join(", ") : "none");
+    var succLine = document.createElement("p");
+    succLine.style.marginTop = "4px";
+    succLine.innerHTML =
+      "<strong>Successors:</strong> " +
+      (succs.length ? succs.map(function (r) { return activityName(scheduleActivities, r.successor_id) + " (" + r.type + (r.lag ? ", lag " + r.lag : "") + ")"; }).join(", ") : "none");
+    relWrap.appendChild(predLine);
+    relWrap.appendChild(succLine);
+    panel.appendChild(relWrap);
+
+    var note = document.createElement("p");
+    note.className = "text-secondary";
+    note.style.fontSize = "12px";
+    note.style.marginTop = "10px";
+    note.textContent =
+      "Linking this activity to Risks, Issues, RFIs, Meetings, Documents, Vendors, or Change Orders isn't built yet — " +
+      "those registers don't currently carry an activity reference. Deferred to a later phase rather than bolted on here.";
+    panel.appendChild(note);
+
+    var actions = document.createElement("div");
+    actions.style.display = "flex";
+    actions.style.gap = "10px";
+    actions.style.marginTop = "14px";
+
+    var editBtn = document.createElement("button");
+    editBtn.className = "btn btn--primary";
+    editBtn.textContent = "Edit";
+    editBtn.onclick = function () {
+      uiState.tab = "activities";
+      uiState.editingActivityId = activity.id;
+      rerender();
+    };
+    actions.appendChild(editBtn);
+
+    var addRelBtn = document.createElement("button");
+    addRelBtn.className = "btn btn--ghost";
+    addRelBtn.textContent = "+ Add Relationship";
+    addRelBtn.disabled = scheduleActivities.length < 2;
+    addRelBtn.onclick = function () {
+      uiState.tab = "relationships";
+      uiState.editingRelationshipId = "new";
+      uiState.relationshipPrefillId = activity.id;
+      rerender();
+    };
+    actions.appendChild(addRelBtn);
+
+    var deleteBtn = document.createElement("button");
+    deleteBtn.className = "btn btn--ghost";
+    deleteBtn.textContent = "Delete";
+    deleteBtn.onclick = function () {
+      deleteActivityWithConfirm(activity, rerender);
+    };
+    actions.appendChild(deleteBtn);
+
+    panel.appendChild(actions);
+    container.appendChild(panel);
+  }
+
   function renderGanttTab(container, data, rerender) {
     var schedule = data.schedules.find(function (s) {
       return s.id === uiState.scheduleId;
     });
-    var activities = data.activities.filter(function (a) {
+    var allActivities = data.activities.filter(function (a) {
       return a.schedule_id === uiState.scheduleId;
+    });
+    var wbsItems = data.wbs_items.filter(function (w) {
+      return w.schedule_id === uiState.scheduleId;
+    });
+    var relationships = data.relationships.filter(function (r) {
+      return r.schedule_id === uiState.scheduleId;
+    });
+
+    renderGanttToolbar(container, data, allActivities, wbsItems, rerender);
+
+    if (uiState.ganttDetailActivityId) {
+      var detailActivity = allActivities.find(function (a) { return a.id === uiState.ganttDetailActivityId; });
+      if (detailActivity) {
+        renderActivityDetailPanel(container, detailActivity, data, wbsItems, allActivities, relationships, rerender);
+      } else {
+        uiState.ganttDetailActivityId = null;
+      }
+    }
+
+    var referenceDate = (schedule && schedule.data_date) || todayIso();
+    var nearCriticalThresholdDays = (schedule && schedule.near_critical_threshold_days) || 5;
+    var activities = allActivities.filter(function (a) {
+      return activityMatchesGanttFilter(a, wbsItems, Object.assign({ nearCriticalThresholdDays: nearCriticalThresholdDays }, uiState.ganttFilter), referenceDate);
     });
 
     var layout = window.PCC.scheduleGanttLayout.computeLayout(activities, {
@@ -1760,8 +2249,10 @@
       var empty = document.createElement("div");
       empty.className = "panel empty-state";
       empty.textContent =
-        activities.length === 0
+        allActivities.length === 0
           ? "No activities in this schedule yet. Add some on the Activities tab first."
+          : activities.length === 0
+          ? "No activities match the current filters."
           : "None of this schedule's " + activities.length + " activity(ies) have a Planned Start/Finish " +
             "or a calculated date yet. Add planned dates on the Activities tab, or run “Calculate " +
             "Schedule” above.";
@@ -1782,7 +2273,7 @@
     var diffDays = window.PCC.scheduleGanttLayout.diffDays;
     var bufferDays = 1;
     var totalSpanDays = diffDays(layout.rangeStart, layout.rangeEnd) + 1 + bufferDays * 2;
-    var pxPerDay = ganttPxPerDay(totalSpanDays);
+    var pxPerDay = ganttPxPerDay(totalSpanDays, uiState.ganttZoom === "auto" ? null : uiState.ganttZoom);
     var labelWidth = 200;
     var rowHeight = 26;
     var headerHeight = 28;
@@ -1831,9 +2322,35 @@
       svg.appendChild(ddLabel);
     }
 
+    // Today line — distinct from Data Date (Section 4/7's spec calls out both). Only
+    // drawn when it falls inside the chart's own date range, same guard the Data Date
+    // marker doesn't currently need since it's always derived from within the schedule.
+    var todayMarkerIso = todayIso();
+    if (todayMarkerIso >= layout.rangeStart && todayMarkerIso <= layout.rangeEnd) {
+      var tdx = xForDate(todayMarkerIso);
+      svg.appendChild(
+        svgEl("line", { x1: tdx, y1: 0, x2: tdx, y2: chartHeight, stroke: "var(--status-on-track)", "stroke-width": 2 })
+      );
+      var tdLabel = svgEl("text", { x: tdx + 4, y: headerHeight - 16, "font-size": 10, fill: "var(--status-on-track)", "font-weight": "600" });
+      tdLabel.textContent = "Today";
+      svg.appendChild(tdLabel);
+    }
+
+    // Baseline ghost bars, drawn behind current bars — matched by external_id (falling
+    // back to id) against the loaded snapshot, same precedence scheduleBaselineEngine.js
+    // uses so a baseline captured before a re-import still lines up correctly.
+    var baselineByMatchKey = {};
+    if (uiState.ganttShowBaseline && uiState.ganttBaselineSnapshot && uiState.ganttBaselineSnapshot.baselineId === uiState.ganttBaselineId) {
+      var baselineLayout = window.PCC.scheduleGanttLayout.computeLayout(uiState.ganttBaselineSnapshot.activities, {});
+      baselineLayout.rows.forEach(function (r) {
+        if (r.dateSource !== "none") baselineByMatchKey[matchKeyFor(r)] = r;
+      });
+    }
+
     layout.rows.forEach(function (row, i) {
       var y = headerHeight + i * rowHeight;
       var rowCenter = y + rowHeight / 2;
+      var activity = activities.find(function (a) { return a.id === row.id; });
 
       var divider = svgEl("line", {
         x1: 0, y1: y + rowHeight, x2: chartWidth, y2: y + rowHeight,
@@ -1841,12 +2358,31 @@
       });
       svg.appendChild(divider);
 
-      var labelText = svgEl("text", { x: 6, y: rowCenter + 4, "font-size": 11, fill: "var(--text-primary)" });
+      var labelText = svgEl("text", { x: 6, y: rowCenter + 4, "font-size": 11, fill: "var(--text-primary)", style: "cursor:pointer;" });
       labelText.textContent = truncateLabel(row.name, 26);
       var titleEl = svgEl("title");
       titleEl.textContent = row.name;
       labelText.appendChild(titleEl);
+      labelText.addEventListener("click", function () {
+        uiState.ganttDetailActivityId = row.id;
+        rerender();
+      });
       svg.appendChild(labelText);
+
+      // Baseline ghost, if this row has a matched baseline activity — drawn as a thin
+      // outline directly above/behind the current bar's row, before the current bar so
+      // the current (authoritative) bar always paints on top.
+      var baselineRow = baselineByMatchKey[matchKeyFor(activity || { id: row.id, external_id: null })];
+      if (baselineRow && !baselineRow.isMilestone && !row.isMilestone) {
+        var blBarX = xForDate(baselineRow.start);
+        var blBarW = Math.max((baselineRow.durationDays || 0) * pxPerDay, 3);
+        svg.appendChild(
+          svgEl("rect", {
+            x: blBarX, y: y + rowHeight - 7, width: blBarW, height: 4, rx: 2,
+            fill: "none", stroke: "var(--text-secondary)", "stroke-width": 1.5, "stroke-dasharray": "2,2",
+          })
+        );
+      }
 
       if (row.dateSource === "none") {
         var noneText = svgEl("text", { x: labelWidth + 4, y: rowCenter + 4, "font-size": 11, fill: "var(--text-secondary)", "font-style": "italic" });
@@ -1864,16 +2400,17 @@
       if (row.isMilestone) {
         var cx = xForDate(row.start) + pxPerDay / 2;
         var size = 8;
-        svg.appendChild(
-          svgEl("path", {
-            d: "M " + cx + " " + (rowCenter - size) + " L " + (cx + size) + " " + rowCenter +
-              " L " + cx + " " + (rowCenter + size) + " L " + (cx - size) + " " + rowCenter + " Z",
-            fill: row.isCritical ? "var(--status-critical)" : "var(--signal-amber)",
-            stroke: "var(--bg-paper)",
-            "stroke-width": 1,
-            "data-activity-id": row.id,
-          })
-        );
+        var diamond = svgEl("path", {
+          d: "M " + cx + " " + (rowCenter - size) + " L " + (cx + size) + " " + rowCenter +
+            " L " + cx + " " + (rowCenter + size) + " L " + (cx - size) + " " + rowCenter + " Z",
+          fill: row.isCritical ? "var(--status-critical)" : "var(--signal-amber)",
+          stroke: "var(--bg-paper)",
+          "stroke-width": 1,
+          "data-activity-id": row.id,
+          style: "cursor:grab;",
+        });
+        svg.appendChild(diamond);
+        if (activity) attachGanttDrag(diamond, null, activity, "move", pxPerDay, rerender);
         return;
       }
 
@@ -1882,26 +2419,70 @@
       var barY = y + 5;
       var barH = rowHeight - 10;
 
-      svg.appendChild(
-        svgEl("rect", {
-          x: barX, y: barY, width: barW, height: barH, rx: 3,
-          fill: baseColor, "fill-opacity": 0.28,
-          stroke: baseColor, "stroke-width": 1,
-          "stroke-dasharray": row.dateSource === "planned" ? "4,2" : "none",
-          "data-activity-id": row.id,
-        })
-      );
+      var barRect = svgEl("rect", {
+        x: barX, y: barY, width: barW, height: barH, rx: 3,
+        fill: baseColor, "fill-opacity": 0.28,
+        stroke: baseColor, "stroke-width": 1,
+        "stroke-dasharray": row.dateSource === "planned" ? "4,2" : "none",
+        "data-activity-id": row.id,
+        "data-base-width": barW,
+        style: "cursor:grab;",
+      });
+      svg.appendChild(barRect);
 
+      var progressRect = null;
       if (row.percentComplete > 0) {
         var progressW = Math.max(barW * Math.min(row.percentComplete, 100) / 100, row.percentComplete > 0 ? 2 : 0);
-        svg.appendChild(
-          svgEl("rect", { x: barX, y: barY, width: progressW, height: barH, rx: 3, fill: baseColor })
-        );
+        progressRect = svgEl("rect", { x: barX, y: barY, width: progressW, height: barH, rx: 3, fill: baseColor, style: "pointer-events:none;" });
+        svg.appendChild(progressRect);
+      }
+
+      if (activity) attachGanttDrag(barRect, progressRect, activity, "move", pxPerDay, rerender);
+
+      // Resize handle: a narrow strip at the bar's right edge. Drawn after (on top of)
+      // the bar so it captures the pointerdown for that sliver instead of the move
+      // handler — no stopPropagation needed since SVG hit-testing only fires the
+      // topmost element under the pointer.
+      if (activity) {
+        var handle = svgEl("rect", {
+          x: barX + barW - 3, y: barY, width: 6, height: barH,
+          fill: "transparent", style: "cursor:ew-resize;",
+          "data-resize-handle-for": activity.id,
+        });
+        svg.appendChild(handle);
+        attachGanttDrag(barRect, progressRect, activity, "resize", pxPerDay, rerender, handle);
       }
     });
 
     wrap.appendChild(svg);
     container.appendChild(wrap);
+
+    // Jump controls — scroll the chart's own container to a meaningful date. Built
+    // after the chart so xForDate/wrap are already in scope; appended to the toolbar
+    // area visually via being placed right above the chart panel.
+    var jumpBar = document.createElement("div");
+    jumpBar.style.display = "flex";
+    jumpBar.style.gap = "8px";
+    jumpBar.style.marginTop = "10px";
+    jumpBar.style.marginBottom = "-4px";
+    jumpBar.style.flexWrap = "wrap";
+
+    function jumpButton(label, iso) {
+      var btn = document.createElement("button");
+      btn.className = "btn btn--ghost";
+      btn.textContent = label;
+      btn.disabled = !iso || iso < layout.rangeStart || iso > layout.rangeEnd;
+      btn.onclick = function () {
+        wrap.scrollLeft = Math.max(0, xForDate(iso) - 80);
+      };
+      return btn;
+    }
+
+    jumpBar.appendChild(jumpButton("Today", todayMarkerIso >= layout.rangeStart && todayMarkerIso <= layout.rangeEnd ? todayMarkerIso : null));
+    jumpBar.appendChild(jumpButton("Project Start", layout.rangeStart));
+    jumpBar.appendChild(jumpButton("Project Finish", layout.rangeEnd));
+    if (layout.dataDate) jumpBar.appendChild(jumpButton("Data Date", layout.dataDate));
+    container.insertBefore(jumpBar, wrap);
 
     var legend = document.createElement("div");
     legend.style.display = "flex";
@@ -1911,10 +2492,10 @@
     legend.style.fontSize = "12px";
 
     function legendItem(colorCss, label, dashed) {
-      var item = document.createElement("span");
-      item.style.display = "inline-flex";
-      item.style.alignItems = "center";
-      item.style.gap = "6px";
+      var itemEl = document.createElement("span");
+      itemEl.style.display = "inline-flex";
+      itemEl.style.alignItems = "center";
+      itemEl.style.gap = "6px";
       var swatch = document.createElement("span");
       swatch.style.width = "14px";
       swatch.style.height = "10px";
@@ -1927,9 +2508,9 @@
       var text = document.createElement("span");
       text.className = "text-secondary";
       text.textContent = label;
-      item.appendChild(swatch);
-      item.appendChild(text);
-      return item;
+      itemEl.appendChild(swatch);
+      itemEl.appendChild(text);
+      return itemEl;
     }
 
     legend.appendChild(legendItem("var(--status-critical)", "Critical (0 or negative float)"));
@@ -1937,7 +2518,95 @@
     legend.appendChild(legendItem("var(--text-secondary)", "Planned only — not yet calculated", true));
     legend.appendChild(legendItem("var(--signal-amber)", "Milestone"));
     if (layout.dataDate) legend.appendChild(legendItem("var(--signal-amber)", "Data Date", true));
+    legend.appendChild(legendItem("var(--status-on-track)", "Today"));
+    if (uiState.ganttShowBaseline) legend.appendChild(legendItem("var(--text-secondary)", "Baseline (ghost)", true));
     container.appendChild(legend);
+
+    var dragHint = document.createElement("p");
+    dragHint.className = "text-secondary";
+    dragHint.style.fontSize = "11px";
+    dragHint.style.marginTop = "6px";
+    dragHint.textContent = "Drag a bar to move it, drag its right edge to resize, or click a bar/milestone/label to open its details. Every edit recalculates the schedule automatically.";
+    container.appendChild(dragHint);
+  }
+
+  /** Gate 8 drag interaction. `targetEl` is the element being visually transformed
+   * live during the drag (a bar rect or a milestone diamond); `progressEl` (bar-only)
+   * gets the same translate so its fill tracks the bar during a move, and is hidden
+   * during a resize since its width would otherwise read as stale until the drop
+   * commits and a full rerender fixes it precisely. `hitEl`, when given (the resize
+   * handle), is what actually receives the pointerdown — otherwise `targetEl` does.
+   * pointermove/pointerup are attached to `window` rather than relying on
+   * setPointerCapture (not implemented in every test/embed environment this app runs
+   * in) so a fast drag that leaves the thin bar's hit area is never dropped. */
+  function attachGanttDrag(targetEl, progressEl, activity, mode, pxPerDay, rerender, hitEl) {
+    var CLICK_THRESHOLD_PX = 4;
+    (hitEl || targetEl).addEventListener("pointerdown", function (e) {
+      if (typeof e.button === "number" && e.button !== 0) return;
+      var origStart = activity.planned_start || activity.early_start;
+      var origFinish = activity.planned_finish || activity.early_finish;
+      if (!origStart || !origFinish) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      var startClientX = e.clientX;
+      var baseWidth = Number(targetEl.getAttribute("data-base-width")) || Number(targetEl.getAttribute("width")) || 0;
+      var moved = false;
+
+      function onMove(ev) {
+        var deltaPx = ev.clientX - startClientX;
+        if (Math.abs(deltaPx) >= CLICK_THRESHOLD_PX) moved = true;
+        var dayDelta = window.PCC.scheduleGanttLayout.daysFromPixelDelta(deltaPx, pxPerDay);
+        var snappedPx = dayDelta * pxPerDay;
+        if (mode === "move") {
+          targetEl.setAttribute("transform", "translate(" + snappedPx + ",0)");
+          if (progressEl) progressEl.setAttribute("transform", "translate(" + snappedPx + ",0)");
+        } else {
+          targetEl.setAttribute("width", Math.max(baseWidth + snappedPx, 3));
+          if (progressEl) progressEl.style.display = "none";
+        }
+      }
+
+      function onUp(ev) {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        targetEl.removeAttribute("transform");
+        if (progressEl) {
+          progressEl.removeAttribute("transform");
+          progressEl.style.display = "";
+        }
+        var deltaPx = ev.clientX - startClientX;
+        var dayDelta = window.PCC.scheduleGanttLayout.daysFromPixelDelta(deltaPx, pxPerDay);
+
+        if (!moved || dayDelta === 0) {
+          uiState.ganttDetailActivityId = activity.id;
+          rerender();
+          return;
+        }
+
+        var result =
+          mode === "move"
+            ? window.PCC.scheduleGanttLayout.moveDates(origStart, origFinish, dayDelta)
+            : window.PCC.scheduleGanttLayout.resizeFinish(origStart, origFinish, dayDelta);
+
+        window.PCC.store.update(function (d) {
+          var act = d.activities.find(function (x) { return x.id === activity.id; });
+          if (!act) return;
+          act.planned_start = result.start;
+          act.planned_finish = result.finish;
+          act.duration = window.PCC.scheduleGanttLayout.diffDays(result.start, result.finish);
+          act.updated_at = new Date().toISOString();
+        });
+        window.PCC.notify(
+          (mode === "move" ? "Moved “" : "Resized “") + activity.name + "” by " + Math.abs(dayDelta) + " day(s) — recalculating…",
+          "success"
+        );
+        runCalculation(window.PCC.store.get(), rerender);
+      }
+
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    });
   }
 
   // ---------------------------------------------------------------------------------
@@ -2280,6 +2949,7 @@
         uiState.editingActivityId = null;
         uiState.editingWbsId = null;
         uiState.editingRelationshipId = null;
+        uiState.ganttDetailActivityId = null;
         rerender();
       };
       tabBar.appendChild(btn);

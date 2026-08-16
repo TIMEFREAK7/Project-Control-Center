@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 20;
+  var SCHEMA_VERSION = 21;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -27,6 +27,19 @@
         company_name: "",
         backup_reminder_days: 7,
         backup_nudge_dismissed_at: null,
+        // Gate 9 (Project Executive Center): weights for the configurable health score,
+        // one set applied to every project rather than per-project config — the spec
+        // asks for the weighting logic to be configurable and visible, not for each
+        // project to carry its own tuning. Must sum to 100; projectHealthEngine.js
+        // normalizes defensively if a user edits them into an inconsistent state.
+        health_score_weights: {
+          schedule: 25,
+          cost: 20,
+          risk: 20,
+          issue: 10,
+          rfi: 15,
+          change: 10,
+        },
       },
       projects: [],
       documents: [],
@@ -55,6 +68,9 @@
       // later gate per the locked Tier 2 order.
       cost_budget_items: [],
       cost_actuals: [],
+      // Gate 9 (Project Executive Center): editable overrides for the template-based
+      // Executive Summary, one record per project. See newExecutiveSummary() header.
+      executive_summaries: [],
     };
   }
 
@@ -82,6 +98,20 @@
       location: "",
       sector: "",
       contract_type: "",
+      // Gate 9: "Project Type" on the Executive Center's Overview — distinct from
+      // contract_type (which describes the commercial arrangement, e.g. lump sum vs
+      // cost-plus). E.g. "Commercial Building," "Highway," "Water Treatment Plant."
+      project_type: "",
+      // Gate 9: free-text label for the Executive Center's Overview (e.g. "Design,"
+      // "Procurement," "Construction," "Commissioning"). Not an enum — phases vary too
+      // much by industry/project type to force a fixed list.
+      current_phase: "",
+      // Gate 9: optional manual override for "Forecast Finish" on the Executive Center
+      // when no schedule has been calculated yet (or the PM wants to record a forecast
+      // independent of the CPM engine's own projectFinish). The Executive Center prefers
+      // the active schedule's calculated finish when one exists; this is the fallback,
+      // never silently blended with it — see projectHealthEngine.js/executiveCenter.js.
+      forecast_finish_date: "",
       budget: null,
       contract_value: null,
       currency: "",
@@ -487,6 +517,35 @@
   }
 
   // ============================================================
+  // GATE 9 — Project Executive Center: template-based Executive Summary. Not AI-
+  // generated (explicitly out of scope) — executiveCenter.js computes default text for
+  // each section from real project data at render time; this record only stores the
+  // *edited* override for a section, so a user's rewrite survives even as the underlying
+  // data changes. An empty-string override means "still showing the auto-generated text."
+  // One record per project (project_id is unique within this array by convention, not
+  // enforced by the array shape, same as every other "one row per project" record here).
+  // ============================================================
+
+  function newExecutiveSummaryId() {
+    return "es_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  function newExecutiveSummary(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newExecutiveSummaryId(),
+      project_id: "",
+      status_override: "",
+      achievements_override: "",
+      challenges_override: "",
+      management_attention_override: "",
+      upcoming_override: "",
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  // ============================================================
   // GATE 1 — Schedule / WBS / Activity / Relationship data model.
   // Storage and CRUD only. No import parser, no CPM calculation engine \u2014 those are
   // separate, later gates. Fields the calculation engine will eventually populate
@@ -864,6 +923,30 @@
       loaded.schema_version = 20;
     }
 
+    if (loaded.schema_version < 21) {
+      // Gate 9: Project Executive Center. New array + project fields, nothing to
+      // backfill on existing records — same as every prior gate that added a register
+      // or a handful of new project-level fields (defaults below match newProject()'s
+      // own defaults so an old project reads identically to a brand-new one).
+      if (!loaded.executive_summaries) loaded.executive_summaries = [];
+      (loaded.projects || []).forEach(function (p) {
+        if (p.project_type === undefined) p.project_type = "";
+        if (p.current_phase === undefined) p.current_phase = "";
+        if (p.forecast_finish_date === undefined) p.forecast_finish_date = "";
+      });
+      if (loaded.settings && !loaded.settings.health_score_weights) {
+        loaded.settings.health_score_weights = {
+          schedule: 25,
+          cost: 20,
+          risk: 20,
+          issue: 10,
+          rfi: 15,
+          change: 10,
+        };
+      }
+      loaded.schema_version = 21;
+    }
+
     return loaded;
   }
 
@@ -1203,5 +1286,6 @@
     newCostBudgetItem: newCostBudgetItem,
     newCostActual: newCostActual,
     COST_CATEGORIES: COST_CATEGORIES,
+    newExecutiveSummary: newExecutiveSummary,
   };
 })();

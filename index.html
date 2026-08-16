@@ -2568,15 +2568,20 @@ https://github.com/nodeca/pako/blob/main/LICENSE
  *
  * SCOPE, DELIBERATELY (Gate 5 — Gantt chart view, completing the Tier 2 "Schedule
  * import + CPM/float engine + Gantt" line item):
- * - Visualization only. No drag-to-reschedule, no inline editing — activities are
- *   still edited through the existing Activities tab form. Adding chart-driven editing
- *   would be a separate, later decision, not something to fold in here.
  * - Date precedence matches scheduleBaselineEngine.js's effectiveDates(): calculated
  *   (early_start/early_finish) wins when both are present, falling back to planned
  *   dates, so a schedule that hasn't been through "Calculate Schedule" yet still draws
  *   something meaningful instead of an empty chart.
  * - No calendar/working-days awareness, matching scheduleCpmEngine.js's own documented
  *   scope — a bar's width is calendar days between its two dates, nothing fancier.
+ *
+ * GATE 8 (Interactive Gantt Editing) ADDITION: drag-to-move/drag-to-resize date math
+ * lives here as plain, pure, testable functions — `schedule.js` is the only place that
+ * turns a pointer drag into a pixel delta and calls these, same "calculation here,
+ * rendering there" split the rest of this module already keeps. Both functions always
+ * write to `planned_start`/`planned_finish` (the user-editable source dates), never to
+ * the calculated early/late fields — matching the same rule the Activities tab form
+ * already enforces. Neither function touches the store; the caller commits the result.
  */
 (function () {
   "use strict";
@@ -2682,10 +2687,40 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     };
   }
 
+  /** Pixels-of-drag -> whole days, rounding to the nearest day rather than truncating so
+   * a small drag past the halfway point of a day-column snaps forward, matching how
+   * every commercial Gantt's drag-snap behaves. */
+  function daysFromPixelDelta(deltaPx, pxPerDay) {
+    if (!pxPerDay) return 0;
+    return Math.round(deltaPx / pxPerDay);
+  }
+
+  /** Drag-to-move: shifts both dates by the same number of days, preserving duration.
+   * `startIso`/`finishIso` must both be present (caller seeds from effective dates —
+   * calculated falling back to planned — before starting a drag, same precedence as
+   * the rest of this module) — this function itself does no fallback. */
+  function moveDates(startIso, finishIso, dayDelta) {
+    if (!dayDelta) return { start: startIso, finish: finishIso };
+    return { start: addDays(startIso, dayDelta), finish: addDays(finishIso, dayDelta) };
+  }
+
+  /** Drag-to-resize (right-edge handle): shifts only the finish date, so duration
+   * changes. Clamped so finish can never end up before start — a zero-duration result
+   * is allowed (matches a milestone's own zero-width convention) but negative isn't. */
+  function resizeFinish(startIso, finishIso, dayDelta) {
+    if (!dayDelta) return { start: startIso, finish: finishIso };
+    var newFinish = addDays(finishIso, dayDelta);
+    if (newFinish < startIso) newFinish = startIso;
+    return { start: startIso, finish: newFinish };
+  }
+
   window.PCC.scheduleGanttLayout = {
     computeLayout: computeLayout,
     diffDays: diffDays,
     addDays: addDays,
+    daysFromPixelDelta: daysFromPixelDelta,
+    moveDates: moveDates,
+    resizeFinish: resizeFinish,
   };
 })();
 
@@ -2881,6 +2916,336 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 })();
 
 
+/* ---- js/projectHealthEngine.js ---- */
+/* Project Health engine (Gate 9 — Project Executive Center) — calculation only, no DOM,
+ * no store writes. Same separation every other engine in this app keeps
+ * (scheduleCpmEngine.js, scheduleBaselineEngine.js, scheduleGanttLayout.js,
+ * costEvmEngine.js): executiveCenter.js gathers real numbers from the store into a plain
+ * `context` object, this module turns that into a score/RAG/breakdown and a list of
+ * rule-based alerts, and executiveCenter.js is the only place that renders either.
+ *
+ * SCOPE, DELIBERATELY:
+ * - Every input is data that already exists somewhere else in PCC (Schedule/CPM, Cost
+ *   Tracking, EVM, Risk Register, RFI/TQ, Change Management, Meetings). Nothing here
+ *   invents a number — a factor with no underlying data is marked `available: false`
+ *   and excluded from the score (weights re-normalize over just the available factors),
+ *   never silently treated as 0 (which would read as "critical" for a project that
+ *   simply hasn't set a budget yet, say).
+ * - Rule-based only — no AI, no scoring model that isn't a plain documented formula a
+ *   user could recompute by hand. The point of `breakdown` is that the "why" is never
+ *   hidden: every factor's raw inputs, sub-score, weight, and contribution are returned,
+ *   not just the final number.
+ * - Weights are supplied by the caller (from `data.settings.health_score_weights`), not
+ *   hardcoded here, so Settings can expose them as configurable per the spec. This
+ *   module defensively re-normalizes whatever weights it's given (missing/zero/not
+ *   summing to 100) rather than assuming the stored config is well-formed.
+ */
+(function () {
+  "use strict";
+  window.PCC = window.PCC || {};
+
+  var DEFAULT_WEIGHTS = { schedule: 25, cost: 20, risk: 20, issue: 10, rfi: 15, change: 10 };
+  var FACTOR_LABELS = {
+    schedule: "Schedule",
+    cost: "Cost",
+    risk: "Risk",
+    issue: "Issues",
+    rfi: "RFI / TQ",
+    change: "Change Orders",
+  };
+
+  function clamp(n, lo, hi) {
+    return Math.max(lo, Math.min(hi, n));
+  }
+
+  /** Each factor scorer returns { available, score (0-100, 100 = healthiest), note }. */
+  var FACTOR_SCORERS = {
+    schedule: function (ctx) {
+      if (!ctx.totalActivityCount || ctx.totalActivityCount === 0) {
+        return { available: false, score: null, note: "No activities in the active schedule yet." };
+      }
+      var criticalRatio = ctx.criticalCount / ctx.totalActivityCount;
+      var nearCriticalRatio = ctx.nearCriticalCount / ctx.totalActivityCount;
+      var variancePenalty = 0;
+      var varianceNote = "";
+      if (ctx.forecastVarianceDays != null && ctx.plannedDurationDays) {
+        var variancePct = ctx.forecastVarianceDays / ctx.plannedDurationDays;
+        variancePenalty = clamp(variancePct * 100, 0, 50);
+        varianceNote =
+          ctx.forecastVarianceDays > 0
+            ? " Forecast finish is " + ctx.forecastVarianceDays + " day(s) behind plan."
+            : ctx.forecastVarianceDays < 0
+            ? " Forecast finish is " + Math.abs(ctx.forecastVarianceDays) + " day(s) ahead of plan."
+            : " Forecast finish is on plan.";
+      }
+      var score = clamp(100 - criticalRatio * 50 - nearCriticalRatio * 20 - variancePenalty, 0, 100);
+      return {
+        available: true,
+        score: score,
+        note:
+          ctx.criticalCount + " of " + ctx.totalActivityCount + " activities critical, " +
+          ctx.nearCriticalCount + " near-critical." + varianceNote,
+      };
+    },
+    cost: function (ctx) {
+      if (!ctx.budgetTotal || ctx.budgetTotal <= 0) {
+        return { available: false, score: null, note: "No budget recorded yet." };
+      }
+      var variancePct = (ctx.actualTotal - ctx.budgetTotal) / ctx.budgetTotal;
+      var score = clamp(100 - variancePct * 100, 0, 100);
+      return {
+        available: true,
+        score: score,
+        note:
+          variancePct > 0
+            ? "Actual cost is " + (variancePct * 100).toFixed(1) + "% over budget."
+            : "Actual cost is within budget (" + Math.abs(variancePct * 100).toFixed(1) + "% under).",
+      };
+    },
+    risk: function (ctx) {
+      var score = clamp(100 - (ctx.highRiskCount || 0) * 15, 0, 100);
+      return {
+        available: true,
+        score: score,
+        note: (ctx.highRiskCount || 0) + " open high-severity risk(s) of " + (ctx.openRiskCount || 0) + " open total.",
+      };
+    },
+    issue: function (ctx) {
+      var score = clamp(100 - (ctx.criticalIssueCount || 0) * 20, 0, 100);
+      return {
+        available: true,
+        score: score,
+        note: (ctx.criticalIssueCount || 0) + " open critical (high-severity) issue(s) of " + (ctx.openIssueCount || 0) + " open total.",
+      };
+    },
+    rfi: function (ctx) {
+      var score = clamp(100 - (ctx.overdueRfiCount || 0) * 15, 0, 100);
+      return {
+        available: true,
+        score: score,
+        note: (ctx.overdueRfiCount || 0) + " overdue RFI/TQ of " + (ctx.openRfiCount || 0) + " open total.",
+      };
+    },
+    change: function (ctx) {
+      var score = clamp(100 - (ctx.pendingChangeOrderCount || 0) * 10, 0, 100);
+      return {
+        available: true,
+        score: score,
+        note: (ctx.pendingChangeOrderCount || 0) + " Change Order(s) pending decision.",
+      };
+    },
+  };
+
+  function normalizeWeights(weights) {
+    var w = Object.assign({}, DEFAULT_WEIGHTS, weights || {});
+    var total = 0;
+    Object.keys(DEFAULT_WEIGHTS).forEach(function (k) {
+      w[k] = Number(w[k]) || 0;
+      total += w[k];
+    });
+    if (total <= 0) return Object.assign({}, DEFAULT_WEIGHTS);
+    return w;
+  }
+
+  function ragFromScore(score) {
+    if (score == null) return "unknown";
+    if (score >= 80) return "on_track";
+    if (score >= 60) return "at_risk";
+    return "critical";
+  }
+
+  /** @param context  see FACTOR_SCORERS above for every field a caller may supply.
+   *  @param weights  { schedule, cost, risk, issue, rfi, change } — need not sum to 100;
+   *                  re-normalized here. Missing keys fall back to DEFAULT_WEIGHTS.
+   *  @returns { score (0-100 or null), rag, breakdown: [{ key, label, available, score,
+   *             weight, weightPct, contribution, note }] } */
+  function computeHealthScore(context, weights) {
+    var ctx = context || {};
+    var w = normalizeWeights(weights);
+    var totalWeight = Object.keys(w).reduce(function (s, k) { return s + w[k]; }, 0);
+
+    var breakdown = Object.keys(FACTOR_SCORERS).map(function (key) {
+      var result = FACTOR_SCORERS[key](ctx);
+      return {
+        key: key,
+        label: FACTOR_LABELS[key],
+        available: result.available,
+        score: result.score,
+        weight: w[key],
+        note: result.note,
+      };
+    });
+
+    var availableWeightTotal = breakdown
+      .filter(function (f) { return f.available; })
+      .reduce(function (s, f) { return s + f.weight; }, 0);
+
+    if (availableWeightTotal <= 0) {
+      breakdown.forEach(function (f) { f.weightPct = 0; f.contribution = 0; });
+      return { score: null, rag: "unknown", breakdown: breakdown };
+    }
+
+    var weightedSum = 0;
+    breakdown.forEach(function (f) {
+      if (!f.available) {
+        f.weightPct = 0;
+        f.contribution = 0;
+        return;
+      }
+      f.weightPct = (f.weight / availableWeightTotal) * 100;
+      f.contribution = (f.score * f.weightPct) / 100;
+      weightedSum += f.contribution;
+    });
+
+    var score = Math.round(clamp(weightedSum, 0, 100));
+    return { score: score, rag: ragFromScore(score), breakdown: breakdown, totalConfiguredWeight: totalWeight };
+  }
+
+  var SEVERITY = { CRITICAL: "critical", WARNING: "warning", INFO: "info" };
+
+  /** Rule-based diagnostics — every alert traces to a real record the caller passed in
+   * `context`; nothing here is inferred or predicted. `context` fields used (all
+   * optional — an absent array/number just means that rule produces no alerts):
+   *   spi, cpi (EVM, null if not computable), spiThreshold, cpiThreshold (default 0.9)
+   *   criticalActivities: [{id, name}], nearCriticalActivities: [{id, name}]
+   *   slippedMilestones: [{id, name, varianceDays}]
+   *   highRisks: [{id, title}]
+   *   overdueRfis: [{id, number, subject, daysOverdue}]
+   *   overdueMeetingActions: [{meetingId, meetingTitle, description, dueDate}]
+   *   pendingChangeOrders: [{id, number, title}]
+   *   budgetTotal, actualTotal, bac, eac (numbers or null)
+   * @returns [{ id, severity, source, description, date, link }] */
+  function computeDiagnostics(context) {
+    var ctx = context || {};
+    var today = new Date().toISOString().slice(0, 10);
+    var alerts = [];
+    var spiThreshold = ctx.spiThreshold != null ? ctx.spiThreshold : 0.9;
+    var cpiThreshold = ctx.cpiThreshold != null ? ctx.cpiThreshold : 0.9;
+
+    if (ctx.spi != null && ctx.spi < spiThreshold) {
+      alerts.push({
+        id: "spi",
+        severity: SEVERITY.CRITICAL,
+        source: "EVM",
+        description: "Schedule Performance Index (SPI) is " + ctx.spi.toFixed(2) + ", below the " + spiThreshold.toFixed(2) + " threshold — behind schedule on earned value.",
+        date: today,
+        link: { module: "cost", tab: "evm" },
+      });
+    }
+    if (ctx.cpi != null && ctx.cpi < cpiThreshold) {
+      alerts.push({
+        id: "cpi",
+        severity: SEVERITY.CRITICAL,
+        source: "EVM",
+        description: "Cost Performance Index (CPI) is " + ctx.cpi.toFixed(2) + ", below the " + cpiThreshold.toFixed(2) + " threshold — overrunning cost against earned value.",
+        date: today,
+        link: { module: "cost", tab: "evm" },
+      });
+    }
+    if (ctx.bac != null && ctx.eac != null && ctx.eac > ctx.bac) {
+      alerts.push({
+        id: "eac_over_bac",
+        severity: SEVERITY.WARNING,
+        source: "EVM",
+        description: "Estimate at Completion (EAC) exceeds Budget at Completion (BAC) — forecast to finish over budget.",
+        date: today,
+        link: { module: "cost", tab: "evm" },
+      });
+    }
+    if (ctx.budgetTotal != null && ctx.actualTotal != null && ctx.budgetTotal > 0 && ctx.actualTotal > ctx.budgetTotal) {
+      alerts.push({
+        id: "cost_over_budget",
+        severity: SEVERITY.WARNING,
+        source: "Cost",
+        description: "Actual cost has exceeded the recorded budget.",
+        date: today,
+        link: { module: "cost", tab: "summary" },
+      });
+    }
+    if ((ctx.criticalActivities || []).length > 0) {
+      alerts.push({
+        id: "negative_float",
+        severity: SEVERITY.CRITICAL,
+        source: "Schedule",
+        description: ctx.criticalActivities.length + " activity(ies) on the critical path (zero or negative float).",
+        date: today,
+        link: { module: "schedule", tab: "gantt" },
+      });
+    }
+    if ((ctx.nearCriticalActivities || []).length > 0) {
+      alerts.push({
+        id: "near_critical",
+        severity: SEVERITY.INFO,
+        source: "Schedule",
+        description: ctx.nearCriticalActivities.length + " activity(ies) near-critical — little float remaining.",
+        date: today,
+        link: { module: "schedule", tab: "gantt" },
+      });
+    }
+    (ctx.slippedMilestones || []).forEach(function (m) {
+      alerts.push({
+        id: "milestone_slip_" + m.id,
+        severity: SEVERITY.WARNING,
+        source: "Schedule",
+        description: "Milestone “" + m.name + "” has slipped " + m.varianceDays + " day(s) from plan.",
+        date: today,
+        link: { module: "schedule", tab: "gantt", recordId: m.id },
+      });
+    });
+    (ctx.highRisks || []).forEach(function (r) {
+      alerts.push({
+        id: "risk_" + r.id,
+        severity: SEVERITY.WARNING,
+        source: "Risk",
+        description: "High-severity risk open: “" + r.title + "”.",
+        date: today,
+        link: { module: "risks", recordId: r.id },
+      });
+    });
+    (ctx.overdueRfis || []).forEach(function (r) {
+      alerts.push({
+        id: "rfi_" + r.id,
+        severity: SEVERITY.WARNING,
+        source: "RFI",
+        description: r.number + " “" + r.subject + "” is overdue by " + r.daysOverdue + " day(s).",
+        date: today,
+        link: { module: "rfis", recordId: r.id },
+      });
+    });
+    (ctx.overdueMeetingActions || []).forEach(function (a) {
+      alerts.push({
+        id: "action_" + a.meetingId + "_" + (a.description || "").slice(0, 10),
+        severity: SEVERITY.WARNING,
+        source: "Meetings",
+        description: "Overdue action from “" + a.meetingTitle + "”: " + a.description + " (due " + a.dueDate + ").",
+        date: today,
+        link: { module: "meetings", recordId: a.meetingId },
+      });
+    });
+    (ctx.pendingChangeOrders || []).forEach(function (co) {
+      alerts.push({
+        id: "co_" + co.id,
+        severity: SEVERITY.INFO,
+        source: "Change",
+        description: co.number + " “" + co.title + "” is pending a decision.",
+        date: today,
+        link: { module: "changeOrders", recordId: co.id },
+      });
+    });
+
+    var severityRank = { critical: 0, warning: 1, info: 2 };
+    alerts.sort(function (a, b) { return severityRank[a.severity] - severityRank[b.severity]; });
+    return alerts;
+  }
+
+  window.PCC.projectHealthEngine = {
+    computeHealthScore: computeHealthScore,
+    computeDiagnostics: computeDiagnostics,
+    DEFAULT_WEIGHTS: DEFAULT_WEIGHTS,
+  };
+})();
+
+
 /* ---- js/store.js ---- */
 /* Project Control Center — data store.
  * No backend, no server. Everything lives in one JS object (window.PCC.store.data),
@@ -2893,7 +3258,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 20;
+  var SCHEMA_VERSION = 21;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -2911,6 +3276,19 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         company_name: "",
         backup_reminder_days: 7,
         backup_nudge_dismissed_at: null,
+        // Gate 9 (Project Executive Center): weights for the configurable health score,
+        // one set applied to every project rather than per-project config — the spec
+        // asks for the weighting logic to be configurable and visible, not for each
+        // project to carry its own tuning. Must sum to 100; projectHealthEngine.js
+        // normalizes defensively if a user edits them into an inconsistent state.
+        health_score_weights: {
+          schedule: 25,
+          cost: 20,
+          risk: 20,
+          issue: 10,
+          rfi: 15,
+          change: 10,
+        },
       },
       projects: [],
       documents: [],
@@ -2939,6 +3317,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       // later gate per the locked Tier 2 order.
       cost_budget_items: [],
       cost_actuals: [],
+      // Gate 9 (Project Executive Center): editable overrides for the template-based
+      // Executive Summary, one record per project. See newExecutiveSummary() header.
+      executive_summaries: [],
     };
   }
 
@@ -2966,6 +3347,20 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       location: "",
       sector: "",
       contract_type: "",
+      // Gate 9: "Project Type" on the Executive Center's Overview — distinct from
+      // contract_type (which describes the commercial arrangement, e.g. lump sum vs
+      // cost-plus). E.g. "Commercial Building," "Highway," "Water Treatment Plant."
+      project_type: "",
+      // Gate 9: free-text label for the Executive Center's Overview (e.g. "Design,"
+      // "Procurement," "Construction," "Commissioning"). Not an enum — phases vary too
+      // much by industry/project type to force a fixed list.
+      current_phase: "",
+      // Gate 9: optional manual override for "Forecast Finish" on the Executive Center
+      // when no schedule has been calculated yet (or the PM wants to record a forecast
+      // independent of the CPM engine's own projectFinish). The Executive Center prefers
+      // the active schedule's calculated finish when one exists; this is the fallback,
+      // never silently blended with it — see projectHealthEngine.js/executiveCenter.js.
+      forecast_finish_date: "",
       budget: null,
       contract_value: null,
       currency: "",
@@ -3371,6 +3766,35 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   }
 
   // ============================================================
+  // GATE 9 — Project Executive Center: template-based Executive Summary. Not AI-
+  // generated (explicitly out of scope) — executiveCenter.js computes default text for
+  // each section from real project data at render time; this record only stores the
+  // *edited* override for a section, so a user's rewrite survives even as the underlying
+  // data changes. An empty-string override means "still showing the auto-generated text."
+  // One record per project (project_id is unique within this array by convention, not
+  // enforced by the array shape, same as every other "one row per project" record here).
+  // ============================================================
+
+  function newExecutiveSummaryId() {
+    return "es_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  function newExecutiveSummary(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newExecutiveSummaryId(),
+      project_id: "",
+      status_override: "",
+      achievements_override: "",
+      challenges_override: "",
+      management_attention_override: "",
+      upcoming_override: "",
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  // ============================================================
   // GATE 1 — Schedule / WBS / Activity / Relationship data model.
   // Storage and CRUD only. No import parser, no CPM calculation engine \u2014 those are
   // separate, later gates. Fields the calculation engine will eventually populate
@@ -3748,6 +4172,30 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       loaded.schema_version = 20;
     }
 
+    if (loaded.schema_version < 21) {
+      // Gate 9: Project Executive Center. New array + project fields, nothing to
+      // backfill on existing records — same as every prior gate that added a register
+      // or a handful of new project-level fields (defaults below match newProject()'s
+      // own defaults so an old project reads identically to a brand-new one).
+      if (!loaded.executive_summaries) loaded.executive_summaries = [];
+      (loaded.projects || []).forEach(function (p) {
+        if (p.project_type === undefined) p.project_type = "";
+        if (p.current_phase === undefined) p.current_phase = "";
+        if (p.forecast_finish_date === undefined) p.forecast_finish_date = "";
+      });
+      if (loaded.settings && !loaded.settings.health_score_weights) {
+        loaded.settings.health_score_weights = {
+          schedule: 25,
+          cost: 20,
+          risk: 20,
+          issue: 10,
+          rfi: 15,
+          change: 10,
+        };
+      }
+      loaded.schema_version = 21;
+    }
+
     return loaded;
   }
 
@@ -4087,6 +4535,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     newCostBudgetItem: newCostBudgetItem,
     newCostActual: newCostActual,
     COST_CATEGORIES: COST_CATEGORIES,
+    newExecutiveSummary: newExecutiveSummary,
   };
 })();
 
@@ -7602,6 +8051,22 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     importDuplicateAcknowledged: false,
     importScheduleName: "",
     importError: null,
+    // Gate 8: interactive Gantt editing.
+    ganttFilter: {
+      search: "",
+      wbsId: "",
+      discipline: "",
+      contractor: "",
+      responsiblePerson: "",
+      quick: "", // '' | 'critical' | 'near_critical' | 'delayed' | 'completed' | 'in_progress' | 'not_started' | 'milestones'
+    },
+    ganttZoom: "auto", // 'auto' | 'day' | 'week' | 'month' | 'quarter' | 'year'
+    ganttDetailActivityId: null,
+    ganttShowBaseline: false,
+    ganttBaselineId: "",
+    ganttBaselineSnapshot: null, // { baselineId, activities } once loaded
+    ganttBaselineLoading: false,
+    relationshipPrefillId: null, // predecessor id to prefill when "+ Add Relationship" is used from the Gantt detail panel
   };
 
   function projectName(projects, projectId) {
@@ -7624,6 +8089,24 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       return x.id === activityId;
     });
     return a ? a.name || "(unnamed activity)" : "(deleted activity)";
+  }
+
+  /** Shared by the Activities tab list and the Gantt tab's detail panel (Gate 8) so
+   * both delete the same way — confirm, then remove the activity and any relationship
+   * referencing it, matching the pattern every other register's delete already uses. */
+  function deleteActivityWithConfirm(activity, rerender) {
+    if (!confirm('Delete activity "' + activity.name + '"? This also removes any relationships referencing it.')) return;
+    window.PCC.store.update(function (data2) {
+      data2.activities = data2.activities.filter(function (item) {
+        return item.id !== activity.id;
+      });
+      data2.relationships = data2.relationships.filter(function (rel) {
+        return rel.predecessor_id !== activity.id && rel.successor_id !== activity.id;
+      });
+    });
+    window.PCC.notify("Activity deleted.", "success");
+    if (uiState.ganttDetailActivityId === activity.id) uiState.ganttDetailActivityId = null;
+    rerender();
   }
 
   // ---------------------------------------------------------------------------------
@@ -8609,10 +9092,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     if (uiState.editingActivityId) {
       var activityBeingEdited =
         uiState.editingActivityId === "new"
-          ? window.PCC.store.newActivity({})
+          ? window.PCC.store.newActivity(uiState.newActivityTypeHint ? { activity_type: uiState.newActivityTypeHint } : {})
           : scheduleActivities.find(function (a) {
               return a.id === uiState.editingActivityId;
             });
+      uiState.newActivityTypeHint = null;
       if (activityBeingEdited) renderActivityForm(container, activityBeingEdited, wbsItems, rerender);
     }
 
@@ -8727,17 +9211,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         deleteBtn.className = "btn btn--ghost";
         deleteBtn.textContent = "Delete";
         deleteBtn.onclick = function () {
-          if (!confirm('Delete activity "' + a.name + '"? This also removes any relationships referencing it.')) return;
-          window.PCC.store.update(function (data2) {
-            data2.activities = data2.activities.filter(function (item) {
-              return item.id !== a.id;
-            });
-            data2.relationships = data2.relationships.filter(function (rel) {
-              return rel.predecessor_id !== a.id && rel.successor_id !== a.id;
-            });
-          });
-          window.PCC.notify("Activity deleted.", "success");
-          rerender();
+          deleteActivityWithConfirm(a, rerender);
         };
         actions.appendChild(deleteBtn);
 
@@ -9191,10 +9665,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     if (uiState.editingRelationshipId) {
       var relBeingEdited =
         uiState.editingRelationshipId === "new"
-          ? window.PCC.store.newRelationship({})
+          ? window.PCC.store.newRelationship(uiState.relationshipPrefillId ? { predecessor_id: uiState.relationshipPrefillId } : {})
           : relationships.find(function (r) {
               return r.id === uiState.editingRelationshipId;
             });
+      uiState.relationshipPrefillId = null;
       if (relBeingEdited) renderRelationshipForm(container, relBeingEdited, activities, rerender);
     }
 
@@ -9266,9 +9741,13 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   }
 
   // ---------------------------------------------------------------------------------
-  // Gantt tab (Gate 5) — visualization only, built on scheduleGanttLayout.js's pure
-  // row/date computation. No drag-to-reschedule; activities are still edited through
-  // the Activities tab form.
+  // Gantt tab (Gate 5, editing added Gate 8) — built on scheduleGanttLayout.js's pure
+  // row/date computation and drag-math. Activities can still be edited through the
+  // Activities tab form; the Gantt now ALSO supports dragging a bar to reschedule it,
+  // dragging its right edge to resize duration, and clicking it to open a detail panel
+  // — every edit writes to planned_start/planned_finish (never the calculated fields)
+  // and immediately re-runs the CPM engine, same as the toolbar's own "Calculate
+  // Schedule" button, so float/critical-path/project-finish never go stale after a drag.
   // ---------------------------------------------------------------------------------
 
   var SVG_NS = "http://www.w3.org/2000/svg";
@@ -9288,7 +9767,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     return name.slice(0, maxChars - 1) + "…";
   }
 
-  function ganttPxPerDay(totalSpanDays) {
+  // Gate 8: explicit zoom presets, in addition to the pre-existing "auto" heuristic
+  // (picks a density from the schedule's own span so a 2-week schedule and a 2-year one
+  // both render legibly without the user having to touch the zoom control at all).
+  var GANTT_ZOOM_PX_PER_DAY = { day: 32, week: 16, month: 6, quarter: 2.2, year: 0.7 };
+  var GANTT_ZOOM_LABELS = { auto: "Auto", day: "Daily", week: "Weekly", month: "Monthly", quarter: "Quarterly", year: "Yearly" };
+
+  function ganttPxPerDay(totalSpanDays, zoom) {
+    if (zoom && GANTT_ZOOM_PX_PER_DAY[zoom]) return GANTT_ZOOM_PX_PER_DAY[zoom];
     if (totalSpanDays <= 30) return 24;
     if (totalSpanDays <= 90) return 14;
     if (totalSpanDays <= 180) return 8;
@@ -9306,12 +9792,464 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     return (d.getUTCMonth() + 1) + "/" + d.getUTCDate();
   }
 
+  function todayIso() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  /** Gate 8 filters: WBS / Discipline / Contractor / Responsible Person / a single
+   * "quick" status filter (Critical / Near Critical / Delayed / Completed / In Progress
+   * / Not Started / Milestones) / free-text search across Activity ID, Name, WBS,
+   * Contractor, Discipline. "Delayed" means it has a usable finish date that's already
+   * past the schedule's data date (or today, if no data date) and isn't marked complete
+   * — computed at filter time, never stored, same convention every overdue check in
+   * this app already uses. */
+  function activityMatchesGanttFilter(a, wbsItems, filter, referenceDateIso) {
+    if (filter.search) {
+      var needle = filter.search.toLowerCase();
+      var wbs = wbsItems.find(function (w) { return w.id === a.wbs_id; });
+      var haystack = [
+        a.external_id || "",
+        a.name || "",
+        wbs ? (wbs.code || "") + " " + (wbs.name || "") : "",
+        a.contractor || "",
+        a.discipline || "",
+      ].join(" ").toLowerCase();
+      if (haystack.indexOf(needle) === -1) return false;
+    }
+    if (filter.wbsId && a.wbs_id !== filter.wbsId) return false;
+    if (filter.discipline && a.discipline !== filter.discipline) return false;
+    if (filter.contractor && a.contractor !== filter.contractor) return false;
+    if (filter.responsiblePerson && a.responsible_person !== filter.responsiblePerson) return false;
+
+    switch (filter.quick) {
+      case "critical":
+        if (!(a.total_float != null && a.total_float <= 0)) return false;
+        break;
+      case "near_critical":
+        if (!(a.total_float != null && a.total_float > 0 && a.total_float <= (filter.nearCriticalThresholdDays || 5))) return false;
+        break;
+      case "delayed": {
+        var finish = a.early_finish || a.planned_finish;
+        if (!finish || !referenceDateIso || finish >= referenceDateIso || a.status === "complete") return false;
+        break;
+      }
+      case "completed":
+        if (a.status !== "complete") return false;
+        break;
+      case "in_progress":
+        if (a.status !== "in_progress") return false;
+        break;
+      case "not_started":
+        if (a.status !== "not_started") return false;
+        break;
+      case "milestones":
+        if (a.activity_type !== "milestone") return false;
+        break;
+      default:
+        break;
+    }
+    return true;
+  }
+
+  /** Loads (and caches) the trimmed activity snapshot for a baseline so the Gantt can
+   * draw ghost bars behind current activities. Matching uses the same external_id-then-
+   * id precedence scheduleBaselineEngine.js's compareBaselineToCurrent() uses, so a
+   * baseline captured before a re-import still lines up correctly. */
+  function matchKeyFor(a) {
+    if (a.external_id !== null && a.external_id !== undefined && a.external_id !== "") return "ext:" + a.external_id;
+    return "id:" + a.id;
+  }
+
+  function loadBaselineOverlay(baselineId, rerender) {
+    uiState.ganttBaselineLoading = true;
+    rerender();
+    window.PCC.scheduleBaselineStore
+      .getSnapshot(baselineId)
+      .then(function (snapshot) {
+        uiState.ganttBaselineSnapshot = { baselineId: baselineId, activities: snapshot ? snapshot.activities : [] };
+        uiState.ganttBaselineLoading = false;
+        rerender();
+      })
+      .catch(function (err) {
+        console.error("Could not load baseline for Gantt overlay", err);
+        uiState.ganttBaselineLoading = false;
+        uiState.ganttShowBaseline = false;
+        window.PCC.notify("Could not load that baseline's stored data.", "error");
+        rerender();
+      });
+  }
+
+  function renderGanttToolbar(container, data, allActivities, wbsItems, rerender) {
+    var bar = document.createElement("div");
+    bar.className = "toolbar";
+    bar.style.flexWrap = "wrap";
+
+    var search = document.createElement("input");
+    search.type = "text";
+    search.placeholder = "Search ID, name, WBS, contractor, discipline…";
+    search.value = uiState.ganttFilter.search;
+    search.style.minWidth = "220px";
+    search.oninput = function () {
+      uiState.ganttFilter.search = search.value;
+      rerender();
+    };
+    bar.appendChild(search);
+
+    function uniqueValues(key) {
+      var seen = {};
+      var out = [];
+      allActivities.forEach(function (a) {
+        var v = a[key];
+        if (v && !seen[v]) {
+          seen[v] = true;
+          out.push(v);
+        }
+      });
+      return out.sort();
+    }
+
+    function selectFilter(labelText, value, options, onChange) {
+      var sel = document.createElement("select");
+      var allOpt = document.createElement("option");
+      allOpt.value = "";
+      allOpt.textContent = labelText;
+      sel.appendChild(allOpt);
+      options.forEach(function (opt) {
+        var o = document.createElement("option");
+        o.value = opt.value;
+        o.textContent = opt.label;
+        sel.appendChild(o);
+      });
+      sel.value = value || "";
+      sel.onchange = function () {
+        onChange(sel.value);
+        rerender();
+      };
+      return sel;
+    }
+
+    bar.appendChild(
+      selectFilter("WBS: All", uiState.ganttFilter.wbsId, wbsItems.map(function (w) {
+        return { value: w.id, label: w.code ? w.code + " — " + w.name : w.name };
+      }), function (v) { uiState.ganttFilter.wbsId = v; })
+    );
+    bar.appendChild(
+      selectFilter("Discipline: All", uiState.ganttFilter.discipline, uniqueValues("discipline").map(function (v) {
+        return { value: v, label: v };
+      }), function (v) { uiState.ganttFilter.discipline = v; })
+    );
+    bar.appendChild(
+      selectFilter("Contractor: All", uiState.ganttFilter.contractor, uniqueValues("contractor").map(function (v) {
+        return { value: v, label: v };
+      }), function (v) { uiState.ganttFilter.contractor = v; })
+    );
+    bar.appendChild(
+      selectFilter("Responsible: All", uiState.ganttFilter.responsiblePerson, uniqueValues("responsible_person").map(function (v) {
+        return { value: v, label: v };
+      }), function (v) { uiState.ganttFilter.responsiblePerson = v; })
+    );
+    bar.appendChild(
+      selectFilter("Show: All Activities", uiState.ganttFilter.quick, [
+        { value: "critical", label: "Critical" },
+        { value: "near_critical", label: "Near Critical" },
+        { value: "delayed", label: "Delayed" },
+        { value: "completed", label: "Completed" },
+        { value: "in_progress", label: "In Progress" },
+        { value: "not_started", label: "Not Started" },
+        { value: "milestones", label: "Milestones Only" },
+      ], function (v) { uiState.ganttFilter.quick = v; })
+    );
+
+    if (uiState.ganttFilter.search || uiState.ganttFilter.wbsId || uiState.ganttFilter.discipline || uiState.ganttFilter.contractor || uiState.ganttFilter.responsiblePerson || uiState.ganttFilter.quick) {
+      var clearBtn = document.createElement("button");
+      clearBtn.className = "btn btn--ghost";
+      clearBtn.textContent = "Clear Filters";
+      clearBtn.onclick = function () {
+        uiState.ganttFilter = { search: "", wbsId: "", discipline: "", contractor: "", responsiblePerson: "", quick: "" };
+        rerender();
+      };
+      bar.appendChild(clearBtn);
+    }
+
+    container.appendChild(bar);
+
+    // Zoom + jump + baseline-overlay controls, on their own row.
+    var bar2 = document.createElement("div");
+    bar2.className = "toolbar";
+    bar2.style.flexWrap = "wrap";
+    bar2.style.marginTop = "8px";
+
+    var zoomLabel = document.createElement("span");
+    zoomLabel.className = "text-secondary";
+    zoomLabel.style.fontSize = "12px";
+    zoomLabel.style.alignSelf = "center";
+    zoomLabel.textContent = "Zoom:";
+    bar2.appendChild(zoomLabel);
+
+    ["auto", "day", "week", "month", "quarter", "year"].forEach(function (z) {
+      var zBtn = document.createElement("button");
+      zBtn.className = "btn " + (uiState.ganttZoom === z ? "btn--primary" : "btn--ghost");
+      zBtn.textContent = GANTT_ZOOM_LABELS[z];
+      zBtn.onclick = function () {
+        uiState.ganttZoom = z;
+        rerender();
+      };
+      bar2.appendChild(zBtn);
+    });
+
+    var spacer2 = document.createElement("div");
+    spacer2.className = "toolbar__spacer";
+    bar2.appendChild(spacer2);
+
+    var addActivityBtn = document.createElement("button");
+    addActivityBtn.className = "btn btn--ghost";
+    addActivityBtn.textContent = "+ Add Activity";
+    addActivityBtn.onclick = function () {
+      uiState.tab = "activities";
+      uiState.editingActivityId = "new";
+      rerender();
+    };
+    bar2.appendChild(addActivityBtn);
+
+    var addMilestoneBtn = document.createElement("button");
+    addMilestoneBtn.className = "btn btn--ghost";
+    addMilestoneBtn.textContent = "+ Add Milestone";
+    addMilestoneBtn.onclick = function () {
+      uiState.tab = "activities";
+      uiState.editingActivityId = "new";
+      uiState.newActivityTypeHint = "milestone";
+      rerender();
+    };
+    bar2.appendChild(addMilestoneBtn);
+
+    container.appendChild(bar2);
+
+    var projectBaselines = data.schedule_baselines.filter(function (b) {
+      return b.project_id === uiState.projectId;
+    });
+    if (projectBaselines.length > 0) {
+      var bar3 = document.createElement("div");
+      bar3.className = "toolbar";
+      bar3.style.flexWrap = "wrap";
+      bar3.style.marginTop = "8px";
+
+      var baselineToggle = document.createElement("label");
+      baselineToggle.style.display = "flex";
+      baselineToggle.style.alignItems = "center";
+      baselineToggle.style.gap = "6px";
+      baselineToggle.style.fontSize = "13px";
+      var checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = uiState.ganttShowBaseline;
+      checkbox.onchange = function () {
+        uiState.ganttShowBaseline = checkbox.checked;
+        if (uiState.ganttShowBaseline) {
+          if (!uiState.ganttBaselineId) uiState.ganttBaselineId = projectBaselines[0].id;
+          if (!uiState.ganttBaselineSnapshot || uiState.ganttBaselineSnapshot.baselineId !== uiState.ganttBaselineId) {
+            loadBaselineOverlay(uiState.ganttBaselineId, rerender);
+            return;
+          }
+        }
+        rerender();
+      };
+      baselineToggle.appendChild(checkbox);
+      baselineToggle.appendChild(document.createTextNode("Show Baseline"));
+      bar3.appendChild(baselineToggle);
+
+      var baselineSelect = document.createElement("select");
+      projectBaselines.forEach(function (b) {
+        var o = document.createElement("option");
+        o.value = b.id;
+        o.textContent = b.name;
+        baselineSelect.appendChild(o);
+      });
+      baselineSelect.value = uiState.ganttBaselineId || projectBaselines[0].id;
+      baselineSelect.disabled = !uiState.ganttShowBaseline;
+      baselineSelect.onchange = function () {
+        uiState.ganttBaselineId = baselineSelect.value;
+        loadBaselineOverlay(uiState.ganttBaselineId, rerender);
+      };
+      bar3.appendChild(baselineSelect);
+
+      if (uiState.ganttBaselineLoading) {
+        var loadingNote = document.createElement("span");
+        loadingNote.className = "text-secondary";
+        loadingNote.style.fontSize = "12px";
+        loadingNote.style.alignSelf = "center";
+        loadingNote.textContent = "Loading baseline…";
+        bar3.appendChild(loadingNote);
+      }
+
+      container.appendChild(bar3);
+    }
+  }
+
+  function renderActivityDetailPanel(container, activity, data, wbsItems, scheduleActivities, relationships, rerender) {
+    var panel = document.createElement("div");
+    panel.className = "panel";
+    panel.style.marginBottom = "16px";
+    panel.style.borderColor = "var(--signal-amber)";
+
+    var header = document.createElement("div");
+    header.style.display = "flex";
+    header.style.justifyContent = "space-between";
+    header.style.alignItems = "flex-start";
+    header.style.marginBottom = "10px";
+    var heading = document.createElement("h3");
+    heading.textContent = activity.name || "(unnamed activity)";
+    header.appendChild(heading);
+    var closeBtn = document.createElement("button");
+    closeBtn.className = "btn btn--ghost";
+    closeBtn.textContent = "Close";
+    closeBtn.onclick = function () {
+      uiState.ganttDetailActivityId = null;
+      rerender();
+    };
+    header.appendChild(closeBtn);
+    panel.appendChild(header);
+
+    var grid = document.createElement("div");
+    grid.className = "detail-grid";
+
+    function item(label, value) {
+      var div = document.createElement("div");
+      var l = document.createElement("span");
+      l.className = "detail-item__label";
+      l.textContent = label;
+      var v = document.createElement("div");
+      v.textContent = value === null || value === undefined || value === "" ? "—" : String(value);
+      div.appendChild(l);
+      div.appendChild(v);
+      grid.appendChild(div);
+    }
+
+    item("Activity ID", activity.external_id || activity.id);
+    item("WBS", wbsName(wbsItems, activity.wbs_id));
+    item("Type", ACTIVITY_TYPE_LABELS[activity.activity_type]);
+    item("Status", ACTIVITY_STATUS_LABELS[activity.status]);
+    item("Duration (days)", activity.duration);
+    item("Remaining Duration (days)", activity.remaining_duration);
+    item("Planned Start", activity.planned_start);
+    item("Planned Finish", activity.planned_finish);
+    item(
+      "Float",
+      activity.total_float == null
+        ? "Not yet calculated"
+        : activity.total_float <= 0
+        ? "Critical (0 float)"
+        : activity.total_float + " day(s) total, " + (activity.free_float == null ? "—" : activity.free_float) + " free"
+    );
+    item("% Complete", (activity.percent_complete || 0) + "%");
+    item("Discipline", activity.discipline);
+    item("Contractor", activity.contractor);
+    item("Responsible Person", activity.responsible_person);
+    item("Constraint", activity.constraint_type ? activity.constraint_type + (activity.constraint_date ? " (" + activity.constraint_date + ")" : "") : "");
+    panel.appendChild(grid);
+
+    if (activity.notes) {
+      var notesP = document.createElement("p");
+      notesP.style.marginTop = "10px";
+      notesP.style.fontSize = "13px";
+      notesP.innerHTML = "<strong>Notes:</strong> " + activity.notes;
+      panel.appendChild(notesP);
+    }
+
+    var preds = relationships.filter(function (r) { return r.successor_id === activity.id; });
+    var succs = relationships.filter(function (r) { return r.predecessor_id === activity.id; });
+
+    var relWrap = document.createElement("div");
+    relWrap.style.marginTop = "12px";
+    relWrap.style.fontSize = "13px";
+    var predLine = document.createElement("p");
+    predLine.innerHTML =
+      "<strong>Predecessors:</strong> " +
+      (preds.length ? preds.map(function (r) { return activityName(scheduleActivities, r.predecessor_id) + " (" + r.type + (r.lag ? ", lag " + r.lag : "") + ")"; }).join(", ") : "none");
+    var succLine = document.createElement("p");
+    succLine.style.marginTop = "4px";
+    succLine.innerHTML =
+      "<strong>Successors:</strong> " +
+      (succs.length ? succs.map(function (r) { return activityName(scheduleActivities, r.successor_id) + " (" + r.type + (r.lag ? ", lag " + r.lag : "") + ")"; }).join(", ") : "none");
+    relWrap.appendChild(predLine);
+    relWrap.appendChild(succLine);
+    panel.appendChild(relWrap);
+
+    var note = document.createElement("p");
+    note.className = "text-secondary";
+    note.style.fontSize = "12px";
+    note.style.marginTop = "10px";
+    note.textContent =
+      "Linking this activity to Risks, Issues, RFIs, Meetings, Documents, Vendors, or Change Orders isn't built yet — " +
+      "those registers don't currently carry an activity reference. Deferred to a later phase rather than bolted on here.";
+    panel.appendChild(note);
+
+    var actions = document.createElement("div");
+    actions.style.display = "flex";
+    actions.style.gap = "10px";
+    actions.style.marginTop = "14px";
+
+    var editBtn = document.createElement("button");
+    editBtn.className = "btn btn--primary";
+    editBtn.textContent = "Edit";
+    editBtn.onclick = function () {
+      uiState.tab = "activities";
+      uiState.editingActivityId = activity.id;
+      rerender();
+    };
+    actions.appendChild(editBtn);
+
+    var addRelBtn = document.createElement("button");
+    addRelBtn.className = "btn btn--ghost";
+    addRelBtn.textContent = "+ Add Relationship";
+    addRelBtn.disabled = scheduleActivities.length < 2;
+    addRelBtn.onclick = function () {
+      uiState.tab = "relationships";
+      uiState.editingRelationshipId = "new";
+      uiState.relationshipPrefillId = activity.id;
+      rerender();
+    };
+    actions.appendChild(addRelBtn);
+
+    var deleteBtn = document.createElement("button");
+    deleteBtn.className = "btn btn--ghost";
+    deleteBtn.textContent = "Delete";
+    deleteBtn.onclick = function () {
+      deleteActivityWithConfirm(activity, rerender);
+    };
+    actions.appendChild(deleteBtn);
+
+    panel.appendChild(actions);
+    container.appendChild(panel);
+  }
+
   function renderGanttTab(container, data, rerender) {
     var schedule = data.schedules.find(function (s) {
       return s.id === uiState.scheduleId;
     });
-    var activities = data.activities.filter(function (a) {
+    var allActivities = data.activities.filter(function (a) {
       return a.schedule_id === uiState.scheduleId;
+    });
+    var wbsItems = data.wbs_items.filter(function (w) {
+      return w.schedule_id === uiState.scheduleId;
+    });
+    var relationships = data.relationships.filter(function (r) {
+      return r.schedule_id === uiState.scheduleId;
+    });
+
+    renderGanttToolbar(container, data, allActivities, wbsItems, rerender);
+
+    if (uiState.ganttDetailActivityId) {
+      var detailActivity = allActivities.find(function (a) { return a.id === uiState.ganttDetailActivityId; });
+      if (detailActivity) {
+        renderActivityDetailPanel(container, detailActivity, data, wbsItems, allActivities, relationships, rerender);
+      } else {
+        uiState.ganttDetailActivityId = null;
+      }
+    }
+
+    var referenceDate = (schedule && schedule.data_date) || todayIso();
+    var nearCriticalThresholdDays = (schedule && schedule.near_critical_threshold_days) || 5;
+    var activities = allActivities.filter(function (a) {
+      return activityMatchesGanttFilter(a, wbsItems, Object.assign({ nearCriticalThresholdDays: nearCriticalThresholdDays }, uiState.ganttFilter), referenceDate);
     });
 
     var layout = window.PCC.scheduleGanttLayout.computeLayout(activities, {
@@ -9322,8 +10260,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       var empty = document.createElement("div");
       empty.className = "panel empty-state";
       empty.textContent =
-        activities.length === 0
+        allActivities.length === 0
           ? "No activities in this schedule yet. Add some on the Activities tab first."
+          : activities.length === 0
+          ? "No activities match the current filters."
           : "None of this schedule's " + activities.length + " activity(ies) have a Planned Start/Finish " +
             "or a calculated date yet. Add planned dates on the Activities tab, or run “Calculate " +
             "Schedule” above.";
@@ -9344,7 +10284,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var diffDays = window.PCC.scheduleGanttLayout.diffDays;
     var bufferDays = 1;
     var totalSpanDays = diffDays(layout.rangeStart, layout.rangeEnd) + 1 + bufferDays * 2;
-    var pxPerDay = ganttPxPerDay(totalSpanDays);
+    var pxPerDay = ganttPxPerDay(totalSpanDays, uiState.ganttZoom === "auto" ? null : uiState.ganttZoom);
     var labelWidth = 200;
     var rowHeight = 26;
     var headerHeight = 28;
@@ -9393,9 +10333,35 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       svg.appendChild(ddLabel);
     }
 
+    // Today line — distinct from Data Date (Section 4/7's spec calls out both). Only
+    // drawn when it falls inside the chart's own date range, same guard the Data Date
+    // marker doesn't currently need since it's always derived from within the schedule.
+    var todayMarkerIso = todayIso();
+    if (todayMarkerIso >= layout.rangeStart && todayMarkerIso <= layout.rangeEnd) {
+      var tdx = xForDate(todayMarkerIso);
+      svg.appendChild(
+        svgEl("line", { x1: tdx, y1: 0, x2: tdx, y2: chartHeight, stroke: "var(--status-on-track)", "stroke-width": 2 })
+      );
+      var tdLabel = svgEl("text", { x: tdx + 4, y: headerHeight - 16, "font-size": 10, fill: "var(--status-on-track)", "font-weight": "600" });
+      tdLabel.textContent = "Today";
+      svg.appendChild(tdLabel);
+    }
+
+    // Baseline ghost bars, drawn behind current bars — matched by external_id (falling
+    // back to id) against the loaded snapshot, same precedence scheduleBaselineEngine.js
+    // uses so a baseline captured before a re-import still lines up correctly.
+    var baselineByMatchKey = {};
+    if (uiState.ganttShowBaseline && uiState.ganttBaselineSnapshot && uiState.ganttBaselineSnapshot.baselineId === uiState.ganttBaselineId) {
+      var baselineLayout = window.PCC.scheduleGanttLayout.computeLayout(uiState.ganttBaselineSnapshot.activities, {});
+      baselineLayout.rows.forEach(function (r) {
+        if (r.dateSource !== "none") baselineByMatchKey[matchKeyFor(r)] = r;
+      });
+    }
+
     layout.rows.forEach(function (row, i) {
       var y = headerHeight + i * rowHeight;
       var rowCenter = y + rowHeight / 2;
+      var activity = activities.find(function (a) { return a.id === row.id; });
 
       var divider = svgEl("line", {
         x1: 0, y1: y + rowHeight, x2: chartWidth, y2: y + rowHeight,
@@ -9403,12 +10369,31 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       });
       svg.appendChild(divider);
 
-      var labelText = svgEl("text", { x: 6, y: rowCenter + 4, "font-size": 11, fill: "var(--text-primary)" });
+      var labelText = svgEl("text", { x: 6, y: rowCenter + 4, "font-size": 11, fill: "var(--text-primary)", style: "cursor:pointer;" });
       labelText.textContent = truncateLabel(row.name, 26);
       var titleEl = svgEl("title");
       titleEl.textContent = row.name;
       labelText.appendChild(titleEl);
+      labelText.addEventListener("click", function () {
+        uiState.ganttDetailActivityId = row.id;
+        rerender();
+      });
       svg.appendChild(labelText);
+
+      // Baseline ghost, if this row has a matched baseline activity — drawn as a thin
+      // outline directly above/behind the current bar's row, before the current bar so
+      // the current (authoritative) bar always paints on top.
+      var baselineRow = baselineByMatchKey[matchKeyFor(activity || { id: row.id, external_id: null })];
+      if (baselineRow && !baselineRow.isMilestone && !row.isMilestone) {
+        var blBarX = xForDate(baselineRow.start);
+        var blBarW = Math.max((baselineRow.durationDays || 0) * pxPerDay, 3);
+        svg.appendChild(
+          svgEl("rect", {
+            x: blBarX, y: y + rowHeight - 7, width: blBarW, height: 4, rx: 2,
+            fill: "none", stroke: "var(--text-secondary)", "stroke-width": 1.5, "stroke-dasharray": "2,2",
+          })
+        );
+      }
 
       if (row.dateSource === "none") {
         var noneText = svgEl("text", { x: labelWidth + 4, y: rowCenter + 4, "font-size": 11, fill: "var(--text-secondary)", "font-style": "italic" });
@@ -9426,16 +10411,17 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       if (row.isMilestone) {
         var cx = xForDate(row.start) + pxPerDay / 2;
         var size = 8;
-        svg.appendChild(
-          svgEl("path", {
-            d: "M " + cx + " " + (rowCenter - size) + " L " + (cx + size) + " " + rowCenter +
-              " L " + cx + " " + (rowCenter + size) + " L " + (cx - size) + " " + rowCenter + " Z",
-            fill: row.isCritical ? "var(--status-critical)" : "var(--signal-amber)",
-            stroke: "var(--bg-paper)",
-            "stroke-width": 1,
-            "data-activity-id": row.id,
-          })
-        );
+        var diamond = svgEl("path", {
+          d: "M " + cx + " " + (rowCenter - size) + " L " + (cx + size) + " " + rowCenter +
+            " L " + cx + " " + (rowCenter + size) + " L " + (cx - size) + " " + rowCenter + " Z",
+          fill: row.isCritical ? "var(--status-critical)" : "var(--signal-amber)",
+          stroke: "var(--bg-paper)",
+          "stroke-width": 1,
+          "data-activity-id": row.id,
+          style: "cursor:grab;",
+        });
+        svg.appendChild(diamond);
+        if (activity) attachGanttDrag(diamond, null, activity, "move", pxPerDay, rerender);
         return;
       }
 
@@ -9444,26 +10430,70 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       var barY = y + 5;
       var barH = rowHeight - 10;
 
-      svg.appendChild(
-        svgEl("rect", {
-          x: barX, y: barY, width: barW, height: barH, rx: 3,
-          fill: baseColor, "fill-opacity": 0.28,
-          stroke: baseColor, "stroke-width": 1,
-          "stroke-dasharray": row.dateSource === "planned" ? "4,2" : "none",
-          "data-activity-id": row.id,
-        })
-      );
+      var barRect = svgEl("rect", {
+        x: barX, y: barY, width: barW, height: barH, rx: 3,
+        fill: baseColor, "fill-opacity": 0.28,
+        stroke: baseColor, "stroke-width": 1,
+        "stroke-dasharray": row.dateSource === "planned" ? "4,2" : "none",
+        "data-activity-id": row.id,
+        "data-base-width": barW,
+        style: "cursor:grab;",
+      });
+      svg.appendChild(barRect);
 
+      var progressRect = null;
       if (row.percentComplete > 0) {
         var progressW = Math.max(barW * Math.min(row.percentComplete, 100) / 100, row.percentComplete > 0 ? 2 : 0);
-        svg.appendChild(
-          svgEl("rect", { x: barX, y: barY, width: progressW, height: barH, rx: 3, fill: baseColor })
-        );
+        progressRect = svgEl("rect", { x: barX, y: barY, width: progressW, height: barH, rx: 3, fill: baseColor, style: "pointer-events:none;" });
+        svg.appendChild(progressRect);
+      }
+
+      if (activity) attachGanttDrag(barRect, progressRect, activity, "move", pxPerDay, rerender);
+
+      // Resize handle: a narrow strip at the bar's right edge. Drawn after (on top of)
+      // the bar so it captures the pointerdown for that sliver instead of the move
+      // handler — no stopPropagation needed since SVG hit-testing only fires the
+      // topmost element under the pointer.
+      if (activity) {
+        var handle = svgEl("rect", {
+          x: barX + barW - 3, y: barY, width: 6, height: barH,
+          fill: "transparent", style: "cursor:ew-resize;",
+          "data-resize-handle-for": activity.id,
+        });
+        svg.appendChild(handle);
+        attachGanttDrag(barRect, progressRect, activity, "resize", pxPerDay, rerender, handle);
       }
     });
 
     wrap.appendChild(svg);
     container.appendChild(wrap);
+
+    // Jump controls — scroll the chart's own container to a meaningful date. Built
+    // after the chart so xForDate/wrap are already in scope; appended to the toolbar
+    // area visually via being placed right above the chart panel.
+    var jumpBar = document.createElement("div");
+    jumpBar.style.display = "flex";
+    jumpBar.style.gap = "8px";
+    jumpBar.style.marginTop = "10px";
+    jumpBar.style.marginBottom = "-4px";
+    jumpBar.style.flexWrap = "wrap";
+
+    function jumpButton(label, iso) {
+      var btn = document.createElement("button");
+      btn.className = "btn btn--ghost";
+      btn.textContent = label;
+      btn.disabled = !iso || iso < layout.rangeStart || iso > layout.rangeEnd;
+      btn.onclick = function () {
+        wrap.scrollLeft = Math.max(0, xForDate(iso) - 80);
+      };
+      return btn;
+    }
+
+    jumpBar.appendChild(jumpButton("Today", todayMarkerIso >= layout.rangeStart && todayMarkerIso <= layout.rangeEnd ? todayMarkerIso : null));
+    jumpBar.appendChild(jumpButton("Project Start", layout.rangeStart));
+    jumpBar.appendChild(jumpButton("Project Finish", layout.rangeEnd));
+    if (layout.dataDate) jumpBar.appendChild(jumpButton("Data Date", layout.dataDate));
+    container.insertBefore(jumpBar, wrap);
 
     var legend = document.createElement("div");
     legend.style.display = "flex";
@@ -9473,10 +10503,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     legend.style.fontSize = "12px";
 
     function legendItem(colorCss, label, dashed) {
-      var item = document.createElement("span");
-      item.style.display = "inline-flex";
-      item.style.alignItems = "center";
-      item.style.gap = "6px";
+      var itemEl = document.createElement("span");
+      itemEl.style.display = "inline-flex";
+      itemEl.style.alignItems = "center";
+      itemEl.style.gap = "6px";
       var swatch = document.createElement("span");
       swatch.style.width = "14px";
       swatch.style.height = "10px";
@@ -9489,9 +10519,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       var text = document.createElement("span");
       text.className = "text-secondary";
       text.textContent = label;
-      item.appendChild(swatch);
-      item.appendChild(text);
-      return item;
+      itemEl.appendChild(swatch);
+      itemEl.appendChild(text);
+      return itemEl;
     }
 
     legend.appendChild(legendItem("var(--status-critical)", "Critical (0 or negative float)"));
@@ -9499,7 +10529,95 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     legend.appendChild(legendItem("var(--text-secondary)", "Planned only — not yet calculated", true));
     legend.appendChild(legendItem("var(--signal-amber)", "Milestone"));
     if (layout.dataDate) legend.appendChild(legendItem("var(--signal-amber)", "Data Date", true));
+    legend.appendChild(legendItem("var(--status-on-track)", "Today"));
+    if (uiState.ganttShowBaseline) legend.appendChild(legendItem("var(--text-secondary)", "Baseline (ghost)", true));
     container.appendChild(legend);
+
+    var dragHint = document.createElement("p");
+    dragHint.className = "text-secondary";
+    dragHint.style.fontSize = "11px";
+    dragHint.style.marginTop = "6px";
+    dragHint.textContent = "Drag a bar to move it, drag its right edge to resize, or click a bar/milestone/label to open its details. Every edit recalculates the schedule automatically.";
+    container.appendChild(dragHint);
+  }
+
+  /** Gate 8 drag interaction. `targetEl` is the element being visually transformed
+   * live during the drag (a bar rect or a milestone diamond); `progressEl` (bar-only)
+   * gets the same translate so its fill tracks the bar during a move, and is hidden
+   * during a resize since its width would otherwise read as stale until the drop
+   * commits and a full rerender fixes it precisely. `hitEl`, when given (the resize
+   * handle), is what actually receives the pointerdown — otherwise `targetEl` does.
+   * pointermove/pointerup are attached to `window` rather than relying on
+   * setPointerCapture (not implemented in every test/embed environment this app runs
+   * in) so a fast drag that leaves the thin bar's hit area is never dropped. */
+  function attachGanttDrag(targetEl, progressEl, activity, mode, pxPerDay, rerender, hitEl) {
+    var CLICK_THRESHOLD_PX = 4;
+    (hitEl || targetEl).addEventListener("pointerdown", function (e) {
+      if (typeof e.button === "number" && e.button !== 0) return;
+      var origStart = activity.planned_start || activity.early_start;
+      var origFinish = activity.planned_finish || activity.early_finish;
+      if (!origStart || !origFinish) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      var startClientX = e.clientX;
+      var baseWidth = Number(targetEl.getAttribute("data-base-width")) || Number(targetEl.getAttribute("width")) || 0;
+      var moved = false;
+
+      function onMove(ev) {
+        var deltaPx = ev.clientX - startClientX;
+        if (Math.abs(deltaPx) >= CLICK_THRESHOLD_PX) moved = true;
+        var dayDelta = window.PCC.scheduleGanttLayout.daysFromPixelDelta(deltaPx, pxPerDay);
+        var snappedPx = dayDelta * pxPerDay;
+        if (mode === "move") {
+          targetEl.setAttribute("transform", "translate(" + snappedPx + ",0)");
+          if (progressEl) progressEl.setAttribute("transform", "translate(" + snappedPx + ",0)");
+        } else {
+          targetEl.setAttribute("width", Math.max(baseWidth + snappedPx, 3));
+          if (progressEl) progressEl.style.display = "none";
+        }
+      }
+
+      function onUp(ev) {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        targetEl.removeAttribute("transform");
+        if (progressEl) {
+          progressEl.removeAttribute("transform");
+          progressEl.style.display = "";
+        }
+        var deltaPx = ev.clientX - startClientX;
+        var dayDelta = window.PCC.scheduleGanttLayout.daysFromPixelDelta(deltaPx, pxPerDay);
+
+        if (!moved || dayDelta === 0) {
+          uiState.ganttDetailActivityId = activity.id;
+          rerender();
+          return;
+        }
+
+        var result =
+          mode === "move"
+            ? window.PCC.scheduleGanttLayout.moveDates(origStart, origFinish, dayDelta)
+            : window.PCC.scheduleGanttLayout.resizeFinish(origStart, origFinish, dayDelta);
+
+        window.PCC.store.update(function (d) {
+          var act = d.activities.find(function (x) { return x.id === activity.id; });
+          if (!act) return;
+          act.planned_start = result.start;
+          act.planned_finish = result.finish;
+          act.duration = window.PCC.scheduleGanttLayout.diffDays(result.start, result.finish);
+          act.updated_at = new Date().toISOString();
+        });
+        window.PCC.notify(
+          (mode === "move" ? "Moved “" : "Resized “") + activity.name + "” by " + Math.abs(dayDelta) + " day(s) — recalculating…",
+          "success"
+        );
+        runCalculation(window.PCC.store.get(), rerender);
+      }
+
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    });
   }
 
   // ---------------------------------------------------------------------------------
@@ -9842,6 +10960,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         uiState.editingActivityId = null;
         uiState.editingWbsId = null;
         uiState.editingRelationshipId = null;
+        uiState.ganttDetailActivityId = null;
         rerender();
       };
       tabBar.appendChild(btn);
