@@ -2,8 +2,8 @@
 
 Paste this into a new chat to resume work with full context. This file lives in the repo
 (`HANDOFF.md` at the root) specifically so a future session can find it without being told a
-path — see the standing instructions added to `CLAUDE.md` about keeping it current and about
-handing it (and a zip) to Aditya directly after every major upgrade, not just committing quietly.
+path — see the standing instructions in `CLAUDE.md` about keeping it current and about handing
+it (and a zip) to Aditya directly after every major upgrade, not just committing quietly.
 
 ## What this project is
 
@@ -17,167 +17,161 @@ that override default behavior).
 
 - **If a PR has no comments, merge it — don't ask first.** Solo repo, no CI, no other
   reviewers. Only pause to ask if there *are* comments to address, or something about the
-  change itself is genuinely ambiguous.
-- **After every gate/phase/tier, compile everything and hand over a zip file Aditya can send to
-  a laptop or to other people and they can use directly** — not just push to `main`. Rebuild
-  (`node build.js`), run the full test suite, then package `index.html`, `README.md`, and empty
-  `data/`/`files/` placeholder folders (with their own `README.txt`, already present at the repo
-  root — reuse them, don't rewrite) — **not** `src/`, `build.js`, `tests/`, `.claude/`,
-  `CLAUDE.md`, or `HANDOFF.md`. The point is zero setup for the recipient: extract, double-click
-  `index.html`, nothing to install. Verify before sending: extract fresh (not the dev working
-  copy) and open `index.html` in real Chromium.
+  change itself is genuinely ambiguous — e.g. two branches independently claiming the same
+  schema version, which is exactly what happened this round (see below).
+- **After every gate/phase/tier, compile everything and hand over a zip file** — not just push
+  to `main`. Rebuild (`node build.js`), run the full test suite, then package `index.html`,
+  `README.md`, and empty `data/`/`files/` placeholder folders (with their own `README.txt`,
+  already present at the repo root — reuse them) — **not** `src/`, `build.js`, `tests/`,
+  `.claude/`, `CLAUDE.md`, or `HANDOFF.md`. Verify before sending: extract fresh (not the dev
+  working copy) and open `index.html` in real Chromium.
 - **After every major upgrade, update `HANDOFF.md` at the repo root AND hand Aditya the complete
-  updated file directly** (same as the zip — don't just leave it committed silently), so a new
-  session can resume without re-deriving everything from git log and source.
-- Develop on branch `claude/excel-schedule-pcc-editing-dgyy9m` (current branch — see "Repo/
-  branch state" below; this may not match whatever branch name a fresh task assignment gives
-  you, in which case follow the new assignment instead and treat this file as background only).
+  updated file directly**, so a new session can resume without re-deriving everything from git
+  log and source.
+- **If you're picking up a branch for the *next* piece of work, restart it from the latest
+  `main` first** (`git fetch origin main && git reset --hard origin/main`, or rebase if there's
+  unmerged work sitting on it) rather than stacking new commits on stale history.
 
-## Where things stand
+## Where things stand — everything is now merged into `main`
 
-**Tier 2 locked build order** (from README): Schedule import/CPM/Gantt → Cost Tracking → EVM
-engine → Resource Management. **Gates 8 and 9 below were NOT on this list** — both were direct,
-ad hoc feature requests inserted ahead of Resource Management. Resource Management is still the
-last un-started Tier 2 item; nothing has been built for it.
+As of this handoff, **`main` has everything through Gate 13**, `schema_version` is **24**, and
+the full test suite (18 files, **355 checks**) passes clean. There is no other unmerged branch
+carrying app features — `main` is the one place to build from next.
 
-Done so far, in order: Gate 4 (schedule baselines), Gate 5 (Gantt), Gate 6 (Cost Tracking, +
-Portfolio-budget fallback fix), a UI/UX polish pass, Gate 7 (EVM engine), then this session's
-two big ones:
+**How it got here — the two-branch reconciliation:** two sessions worked in parallel off the same
+Gate-7 base without knowing about each other. This session built Gate 8 (interactive Gantt
+editing), Gate 9 (Project Executive Center), Gate 10 (Activity Linking), and Gate 11 (Resource
+Management) — schema v20→v23. A separate session (PR #8) built its own "Gate 8" (in-app Excel
+editor for schedules) and "Gate 9" (Vendor Management) against schema v20→v21 — genuinely good,
+tested work, just numbered as if it were the only branch in flight. When asked to merge
+everything into `main`, this collision surfaced; the user explicitly chose to reconcile both
+into one history rather than pick one and drop the other. The resolution:
 
-- **Gate 8 — In-App Excel Editor for Schedules.** The original Excel file behind an imported
-  schedule is now actually stored (`blobStore`, previously discarded after parsing). A new
-  "Edit Excel" button opens an in-page editable grid (not a download, not `window.open`) built
-  from the schedule's live Activities/WBS/Relationships. Edits go through "Review Changes" →
-  "Apply to Schedule," reusing `scheduleImportService.parseRows()` verbatim via a new
-  `CANONICAL_HEADERS` export, and update the *same* schedule in place (no new revision).
-  Guards against silently deleting hand-added activities (no Activity ID) with an explicit
-  acknowledgment step.
-- **Gate 9 — Vendor Management Module**, plus a same-session follow-up. A portfolio-wide Vendor
-  Master (not project-scoped, like Portfolio itself) with a dashboard, searchable/filterable
-  list, and a 9-tab profile (Overview/Projects/Contacts/Documents/Meetings/RFI-TQ/Risks/
-  Performance/Notes). Vendor↔Meeting/RFI/Risk linking is one-directional from the Vendor side
-  via join arrays — **zero changes** to `meetings.js`/`rfis.js`/`risks.js`; "View X" reuses
-  their existing `expandMeeting()`/`expandRfi()`/`expandRisk()` hooks. Vendor documents get an
-  *optional* project (a GST cert isn't tied to one project) with real revision history
-  (`document_group_id` + `revision_number`). **Follow-up in the same session:** Portfolio's
-  project details panel also got a "VENDORS" section with its own "+ Link Vendor"/"Unlink" —
-  reads/writes the exact same `vendor_project_links` array Vendor Management uses, so linking
-  from either side is immediately visible on the other (no sync code, just two UIs on one array).
-- **This delivery round:** compiled the distributable zip for Gates 8+9 (had been skipped
-  earlier in the session — flagged and caught via this exact handoff process), plus tightened
-  the zip/handoff standing instructions themselves in both `CLAUDE.md` and this file to
-  explicitly say the zip must be laptop/other-people-shareable with zero setup, and that both
-  the zip and this file get handed to Aditya directly, not just committed.
+- Renumbered the other branch's work as **Gate 12** (In-App Excel Editor) and **Gate 13**
+  (Vendor Management) in the README, since 8-11 were already taken here.
+- Ran its schema migration as a new `v23→v24` step (Gate 13) instead of colliding with this
+  branch's `v21` (Gate 9/Executive Center).
+- Merged `schedule.js`/`app.js`/`layout.js`/`build.js`/`store.js`/`tests/package.json` by hand —
+  mostly clean since the two branches touched different insertion points (Gantt editing vs. the
+  Excel editor grid; Executive Center/Resources vs. Vendors). `portfolio.js` merged with zero
+  manual conflict resolution needed.
+- Folded the other branch's schema-migration test assertions into this project's one canonical
+  `tests/test_store_schema_v24_migration.js`, per the existing "one test file targets latest"
+  convention, rather than keeping two schema test files around.
+- PR #9 (`integration/gates-8-13` → `main`) carries the reconciliation commits; merging it
+  automatically resolved PR #8 too, since PR #8's actual commits are now contained in `main`'s
+  history (a real merge, not a squash/rewrite) — GitHub marked it merged on its own.
 
-Nothing from this branch is merged to `main` yet — see "Repo/branch state" below. Schema is at
-`schema_version: 21`. Test suite is at **12 files, ~209 checks**, all passing as of the last run
-(`cd tests && npm test`).
+**Feature summary, in build order:**
+
+- **Gate 8 — Interactive Gantt Editing.** Drag-to-reschedule and resize-to-change-duration
+  directly on the Gantt bars, plus filters (search/WBS/discipline/contractor/responsible
+  person/quick filters like "critical"/"delayed"), zoom presets, an Activity Detail Panel, and a
+  Linked Records section (see Gate 10) right there in the Gantt.
+- **Gate 9 — Project Executive Center.** Per-project KPI rollups, a configurable weighted health
+  score, diagnostics, an editable Executive Summary, SVG charts, and Project Snapshot /
+  Management Pack print views (`window.print()`, no PDF library).
+- **Gate 10 — Activity Linking.** Risk/Issue/Opportunity, RFI/TQ, Meetings, Documents, Daily
+  Log, and Change Orders can each optionally link to one Schedule activity, with bidirectional
+  navigation (each register's own details ↔ the Gantt's Linked Records section).
+- **Gate 11 — Resource Management.** A portfolio-wide (not project-scoped) resource pool,
+  assignments to activities, and cross-project over-allocation detection — genuinely
+  cross-project, not just per-schedule double-booking.
+- **Gate 12 — In-App Excel Editor for Schedules.** The original Excel file behind an imported
+  schedule is now stored (`blobStore`); "Edit Excel" opens an in-page grid built from the live
+  Activities/WBS/Relationships, reusing `scheduleImportService.parseRows()` verbatim so grid
+  edits validate identically to a fresh import. Guards against silently deleting hand-added
+  (no-Activity-ID) activities.
+- **Gate 13 — Vendor Management.** A portfolio-wide Vendor Master with a dashboard,
+  searchable/filterable list, and a 9-tab profile (Overview/Projects/Contacts/Documents/
+  Meetings/RFI-TQ/Risks/Performance/Notes). Vendor↔Meeting/RFI/Risk linking is one-directional
+  from the Vendor side via join arrays with zero changes to `meetings.js`/`rfis.js`/`risks.js`.
+  Portfolio's project details panel got a matching "VENDORS" section (link/unlink from either
+  side, same underlying `vendor_project_links` array).
 
 ## Key technical conventions to carry forward
 
 - `src/` is source of truth; `index.html` is a generated artifact — never hand-edit it. Run
   `node build.js` after every `src/` change (order-sensitive `JS_ORDER` in `build.js`).
 - Pure calculation engines have **zero DOM/store access**: `scheduleCpmEngine.js`,
-  `scheduleBaselineEngine.js`, `scheduleGanttLayout.js`, `costEvmEngine.js`. Follow this
-  pattern for any new engine-style logic (e.g. resource leveling math, if Resource Management
-  needs it).
-- Date precedence convention (used identically everywhere dates are computed): calculated
-  (`early_start`/`early_finish`) wins over planned (`planned_start`/`planned_finish`);
-  milestones with only one date are a zero-width point.
+  `scheduleBaselineEngine.js`, `scheduleGanttLayout.js`, `costEvmEngine.js`,
+  `projectHealthEngine.js`, `resourceLevelingEngine.js`. Each duplicates small helpers rather
+  than sharing a util layer — established convention, not an oversight.
+- Date precedence convention (used identically everywhere): calculated (`early_start`/
+  `early_finish`) wins over planned; milestones with only one date are a zero-width point.
 - Transparency-over-blending: never silently combine numbers of different precision/source —
-  always flag it in the UI (see `usingPortfolioBudget`, `coveragePct`, dashed Gantt bars for
-  planned-only activities).
+  always flag it in the UI.
 - **This app has no server, no SQL, no API layer** — one JS object in `localStorage` +
-  IndexedDB for blobs. If a future feature request is written in generic ERP/backend language
-  ("database tables," "API endpoints," "folder structure"), translate it explicitly before
-  building — see Gate 9's README entry for how that translation was reasoned through and
-  written down as a decision, not just silently assumed.
-- **Cross-module linking pattern (established in Gate 9):** when a new module needs to
-  reference records in an existing module (Meetings/RFI/Risk), prefer a **join array** owned by
-  the new module, populated/managed entirely from the new module's own UI, and reuse the
-  target module's existing public `expand*()`/`filterByProject()` hooks to "open" or "jump to"
-  the real record — don't add new fields to the existing module's schema or forms. Keeps "do
-  not modify existing modules" literal, not just aspirational.
-- Every register module exposes a small public API on `window.PCC.<module>` for cross-module
-  use: `filterByProject(projectId)` (used by Portfolio's "View All" buttons) and often an
-  `expandX(id)` / `openProfile(id)` to jump straight to one record. Match this convention for
-  any new module.
+  IndexedDB for blobs. If a future feature request is written in generic ERP/backend language,
+  translate it explicitly before building (see Gate 13's README entry for how that was reasoned
+  through and written down as a decision).
+- **Cross-module linking pattern:** when a new module needs to reference records in an existing
+  module, prefer a **join array** owned by the new module, populated entirely from the new
+  module's own UI, reusing the target module's existing `expand*()`/`filterByProject()` hooks —
+  don't add fields to the existing module's schema. Gates 10 and 13 both follow this.
+- Every register module exposes a small public API on `window.PCC.<module>`:
+  `filterByProject(projectId)` and often `expandX(id)`/`viewX(id)`/`openProfile(id)`.
 - Register modules (Risk/Issue/Opportunity, RFI/TQ) use "one shape distinguished by a `type`
-  field" — Cost Tracking deliberately does NOT use this for budget items vs. actuals, since
-  they're genuinely different shapes.
-- Project assignment is mandatory on every *existing* register — never add an "Unassigned"
-  option back. Gate 9's Vendor Documents is a **deliberate, disclosed exception** (optional
-  `project_id`) since a vendor's own documents often aren't tied to one project; don't treat
-  that exception as license to relax the rule elsewhere without the same explicit reasoning.
+  field" — Cost Tracking and Vendor Documents deliberately don't, since those are genuinely
+  different shapes.
+- Project assignment is mandatory on every *existing* register — never add "Unassigned" back.
+  Vendor Documents (Gate 13) is a **deliberate, disclosed exception** (optional `project_id`).
 - Change Orders never write back to `contract_value` (deliberate, manual reconciliation only).
-- Reports are printable HTML (`window.print()`), not generated PDFs, to avoid a PDF-library
-  dependency in the single-file build.
-- No File System Access API (desktop-Chrome-only, needs `https://`); export/import-as-JSON is
-  the deliberate cross-platform answer.
-- The distributable zip's `data/README.txt` and `files/README.txt` already exist at the repo
-  root (`/data/README.txt`, `/files/README.txt`) — copy them into the package as-is, don't
-  regenerate their text from scratch each time (drifted wording between deliveries would be
-  its own small bug).
-- Testing: `cd tests && npm test` must pass before anything ships. Pure-logic tests eval the
-  real source file directly (plain Node). E2E tests load the actual bundled `index.html` via
-  jsdom (+ `fake-indexeddb` for IndexedDB-touching code) — never a reimplementation. Also do
-  one real-Chromium pass per gate (`/opt/pw-browsers/chromium-1194/chrome-linux/chrome
-  --no-sandbox`, via the globally installed `playwright` package at
-  `/opt/node22/lib/node_modules/playwright`) — jsdom has already missed real bugs (unstyled CSS
-  class, broken mobile flex layout) that only a real render caught. For the zip specifically,
-  the real-Chromium pass should open the file from the *fresh extraction*
-  (`file:///path/to/extracted/index.html`), not the dev working copy — that's the only way to
-  actually prove "extract and double-click, nothing else needed" rather than assuming it.
-- **jsdom gotcha found in the Gate 8/9 session:** arrays derived from `win.PCC.store.get()`
-  inside a jsdom test are jsdom-realm arrays, not Node-realm arrays.
+- Reports are printable HTML (`window.print()`), not generated PDFs.
+- No File System Access API; export/import-as-JSON is the deliberate cross-platform answer.
+- **Schema migration test convention:** one canonical file targeting the latest version
+  (`tests/test_store_schema_v24_migration.js` as of this handoff) — when you bump
+  `SCHEMA_VERSION`, `git mv` it to the new version number and fold in new assertions, rather than
+  keeping old version-specific files around.
+- Testing: `cd tests && npm test` must pass before anything ships (18 files, 355 checks as of
+  this handoff). Pure-logic tests eval the real source file directly. E2E tests load the actual
+  bundled `index.html` via jsdom (+ `fake-indexeddb` for IndexedDB-touching code). Also do one
+  real-Chromium pass per gate (`/opt/pw-browsers/chromium-1194/chrome-linux/chrome --no-sandbox`,
+  via the globally installed `playwright` package at `/opt/node22/lib/node_modules/playwright`).
+  For a distributable zip specifically, the real-Chromium pass should open the file from a
+  *fresh extraction*, not the dev working copy.
+- **jsdom gotcha:** arrays from `win.PCC.store.get()` inside a jsdom test are jsdom-realm arrays.
   `assert.deepStrictEqual(thatArray, [1, 2])` fails on prototype identity even when every
-  element matches ("Values have same structure but are not reference-equal"). Compare via
-  `.join(",")` against a string, or check length + individual elements, instead of
-  `deepStrictEqual` against a Node-realm array literal.
-- **Playwright gotcha found in the Gate 8/9 session:** `page.locator(tag, { hasText: "X" })` is
-  a *substring* match, not exact — `"Add Vendor"` will also match a `"+ Add Vendor"` button
-  elsewhere on the page, and `.first()` may grab the wrong one. The jsdom test suite's own
-  `findButtonByText()` helper does exact-trim matching and doesn't have this problem; for
-  ad hoc Playwright verification scripts, filter with an anchored regex (`^...$`) if two
-  buttons could share a substring.
+  element matches — compare via `.join(",")` or length + individual elements instead.
+- **Playwright gotcha:** `page.locator(tag, { hasText: "X" })` is a substring match — `"Add
+  Vendor"` also matches `"+ Add Vendor"` elsewhere on the page. Filter with an anchored regex
+  (`^...$`) if two buttons could share a substring, or use the jsdom suite's own
+  `findButtonByText()` helper (exact-trim matching) where possible.
 
 ## Recently fixed bugs worth knowing about
 
-- `formatMoney()` in `cost.js` now caps `maximumFractionDigits: 2` — EAC/VAC are genuinely
-  fractional (division results) and were rendering as `"$3,083.333"` before the fix.
-- CPI/SPI are `null` (not `0`) when nothing is linked yet, guarded by `linkedBac > 0`, so "no
-  data" is never confused with "a real 0% complete with real spend."
-- `.detail-card` had zero CSS for a long time (used in 8+ places) — now styled.
-- `#app-shell` didn't switch to `flex-direction: column` below 780px — mobile layout was
-  broken until this was added to the mobile media query.
-- `ACTIVITY_TYPE_ALIASES` in `scheduleImportService.js` gained a `wbs_summary` (underscore)
-  alias in the Gate 8 session — the raw value the app stores internally for that activity type
-  wasn't previously recognized as an input alias, which would have broken the Excel grid
-  editor's round-trip for WBS Summary activities specifically.
-- The Gate 8/9 delivery zip was skipped in the moment it should have shipped (right after Gate
-  9) and only caught because this exact handoff-file process surfaced it as an outstanding item
-  on the next turn — worth remembering that these standing instructions are easy to let slip
-  mid-session when work keeps flowing straight from one gate into the next; check this file's
-  own outstanding-items list explicitly before considering a delivery "done."
+- `formatMoney()` in `cost.js` caps `maximumFractionDigits: 2` — EAC/VAC are fractional
+  (division results) and would otherwise render as `"$3,083.333"`.
+- CPI/SPI are `null` (not `0`) when nothing is linked yet, guarded by `linkedBac > 0`.
+- `ACTIVITY_TYPE_ALIASES` in `scheduleImportService.js` has a `wbs_summary` (underscore) alias —
+  the raw internal value for that activity type, needed for the Gate 12 Excel grid's round-trip.
+- Gantt drag/resize tests must snapshot primitive date strings *before* dispatching a drag event
+  — a `before` variable holding a live store-object reference gets mutated in place mid-test,
+  producing a doubled/wrong expected date.
+- `router.go()` only sets `window.location.hash`; it does not call `render()` itself in jsdom
+  tests (relies on `hashchange`, which jsdom doesn't reliably fire synchronously). Call
+  `win.PCC.router.render()` explicitly right after any `router.go()`-triggering click in tests.
 
 ## Repo/branch state
 
-Branch `claude/excel-schedule-pcc-editing-dgyy9m` is pushed and in sync with origin. **No PR
-exists for it yet** (confirmed via `list_pull_requests` — empty result), so it's safe to keep
-committing directly on top without any merge/rebase dance. It is ahead of `main` by: `886eaab`
-(Gate 8), `fad1c03` (Gate 9), `4c6abe6` (Portfolio↔Vendor linking follow-up), `3b547a6` (added
-`HANDOFF.md` + the standing instruction in `CLAUDE.md`), plus this round's commit (zip delivered,
-handoff/CLAUDE.md wording tightened). `main` still only has through Gate 7.
+`main` is fully up to date — PR #9 (`integration/gates-8-13` → `main`) merged, which also
+resolved PR #8 automatically. The `integration/gates-8-13` branch and the two original feature
+branches (`claude/phase-11c-planning-executive-frty7j`, `claude/excel-schedule-pcc-editing-dgyy9m`)
+still exist on `origin` but are fully contained in `main`'s history now — safe to delete, not
+urgent.
 
-**Zip delivered this round:** `project-control-center-2026-08-12-gate9.zip` — `index.html` +
-`README.md` + `data/` + `files/` (their existing `README.txt` placeholders), verified via a
-fresh extraction opened in real Chromium (all 13 routes render, zero console/page errors,
-`index.html`'s SHA-256 matches the freshly-built dev copy exactly).
+**Zip delivered this round:** `Project-Control-Center.zip` — `index.html` + `README.md` +
+`data/`/`files/` (existing `README.txt` placeholders), verified via a fresh extraction opened in
+real Chromium (project creation + Vendors/Resources/Executive Center/Schedule/Cost Tracking
+routes all render, zero console/page errors).
 
 **Next steps, in likely priority order:**
-1. Decide whether/when to open a PR for `claude/excel-schedule-pcc-editing-dgyy9m` → `main`, or
-   keep building more on this branch first.
-2. Ask whether to resume the original locked Tier 2 order (Resource Management) or whether more
-   ad hoc requests are coming first.
-3. Going forward: don't let the zip-and-handoff delivery slip again — do it in the same turn a
-   gate/major change finishes, not as an afterthought once asked for.
+1. Start any new work from `main` directly (`git fetch origin main && git checkout -b
+   <new-branch> origin/main`) — there's no other branch to catch up on anymore.
+2. Optional cleanup: delete the now-fully-merged `integration/gates-8-13`,
+   `claude/phase-11c-planning-executive-frty7j`, and `claude/excel-schedule-pcc-editing-dgyy9m`
+   branches on `origin` once Aditya confirms nothing else was mid-flight on them.
+3. Tier 3 (AI Document Processing, Knowledge Base, AI Project Assistant, Lessons Learned, final
+   polish) is next per the locked build order, deferred until Tier 1/2 are in daily use — worth
+   checking in on before starting it, since Vendor Management/Excel Editor were both ad hoc
+   insertions rather than progress toward Tier 3.
