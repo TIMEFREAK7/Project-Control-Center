@@ -225,6 +225,14 @@
     var actions = document.createElement("div");
     actions.className = "project-card__actions";
 
+    var execCenterBtn = document.createElement("button");
+    execCenterBtn.className = "btn btn--ghost";
+    execCenterBtn.textContent = "Executive Center";
+    execCenterBtn.onclick = function () {
+      if (window.PCC.executiveCenter) window.PCC.executiveCenter.viewProject(p.id);
+      window.PCC.router.go("executiveCenter");
+    };
+
     var detailsBtn = document.createElement("button");
     detailsBtn.className = "btn btn--ghost";
     detailsBtn.textContent = uiState.expandedId === p.id ? "Hide Details" : "Details";
@@ -259,6 +267,7 @@
       onChanged();
     };
 
+    actions.appendChild(execCenterBtn);
     actions.appendChild(detailsBtn);
     actions.appendChild(editBtn);
     actions.appendChild(archiveBtn);

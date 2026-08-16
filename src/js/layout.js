@@ -12,6 +12,7 @@
       items: [
         { key: "dashboard", label: "Dashboard", code: "DB" },
         { key: "portfolio", label: "Portfolio", code: "PF" },
+        { key: "executiveCenter", label: "Executive Center", code: "EC" },
       ],
     },
     {
@@ -44,6 +45,7 @@
   var PAGE_TITLES = {
     dashboard: "Dashboard",
     portfolio: "Portfolio",
+    executiveCenter: "Executive Center",
     documents: "Documents",
     dailylog: "Daily Log",
     risks: "Risk Register",
