@@ -1998,6 +1998,69 @@ lookahead, readiness/constraints, reminders, dashboards, executive/portfolio com
 gate only adds "who's expected to submit it," nothing that reads or acts on the assignment yet
 (that's gate 9, Vendor Lookahead).
 
+## Gate 21 — Document Control 7: Schedule↔Document Linking (2026-08-18)
+
+Seventh gate of the 14-gate Document Control spec. Scoped and confirmed via `AskUserQuestion`
+before building, same discipline as every gate in this sub-spec. A requirement can now be tied to
+one of the project's own Schedule activities — purely a link, deliberately doing nothing else:
+no date is read from or written to the linked activity in either direction. Deriving a due date
+FROM the link (and a lead time before it) is explicitly gate 8's job (Schedule-Driven Dates/Lead
+Time), not this one's — collapsing the two would violate the sub-spec's own gate split, the same
+discipline Gate 19 already applied when it kept due dates separate from gate 7/8.
+
+**What changed:**
+
+- `store.js` (schema v31→v32): `project_document_requirements` rows gain an optional `activity_id`
+  (`""` default) pointing at an existing `activities` record, scoped implicitly to the same
+  project (the picker only ever lists that project's own activities). The migration backfills
+  `""` onto every existing row that predates this gate.
+- `pages/portfolio.js`:
+  - New `activityOptionsFor(select, data, projectId, selectedActivityId)` — same helper
+    `documents.js`/`risks.js` already have for their own Gate 10 activity links, duplicated here
+    per this app's established convention (each page module owns its own small helpers rather
+    than sharing a util layer). Labels each option `"<schedule name>: <activity name>"`.
+  - `renderDocumentRequirementsField()` (the Add/Edit Project form's checklist) grows a "Linked
+    Activity" `<select>` next to Gate 6's vendor select, mirrored in a new uncommitted
+    `uiState.formActivityIds` map — same seeded-at-button-click, uncommitted-until-Save treatment
+    as `formDueDates`/`formVendorIds`. For a brand-new project (no id yet), the picker correctly
+    shows no activities — you can't link to a Schedule activity of a project that doesn't exist
+    yet, so this isn't a bug, it's just reality until the project's been saved once.
+  - `renderForm()`'s submit handler reconciles `activity_id` onto each selected type's row in the
+    same `store.update()` call that already reconciles selection, due date, and vendor.
+  - `renderDocumentRequirementsSection()` (Portfolio Details' read-only summary) appends the
+    linked activity's schedule + activity name to each requirement's line when set; looked up
+    defensively (falls back to not showing a link rather than throwing) so a later-deleted
+    activity doesn't break the summary.
+
+**Tested before delivery (2 migration + 6 new e2e checks added to the existing Document Control
+files, full suite re-run clean, 502 checks total):**
+
+- **Schema migration** (`test_store_schema_v32_migration.js`, renamed from the v31 file): the full
+  chain and a legacy/brand-new install land on schema_version 32; `newProjectDocumentRequirement()`
+  defaults `activity_id` to `""`; a dedicated check migrates a v31 dataset with one requirement
+  row missing `activity_id` (backfilled to `""`) and one that already has one linked (survives
+  untouched).
+- **End-to-end against the actual bundled `index.html`** (`test_project_document_requirements_e2e.js`,
+  extended in place again): a checked requirement shows a Linked Activity select listing the
+  project's own seeded activity; Save persists the link atomically with the rest of the
+  requirement *and* leaves `planned_submission_date`/`vendor_id` untouched; re-opening Edit
+  pre-fills the stored link; the read-only Details summary shows the schedule + activity name
+  inline; the master `schedules`/`activities` stay untouched (this feature creates nothing of its
+  own); full 16-route smoke test. Added a small `ensureCardExpanded()` test helper after hitting
+  the same "which project card's 'Details' button" ambiguity Gate 20 flagged — a card already
+  expanded from an earlier check reads "Hide Details," so a later check assuming it still reads
+  plain "Details" clicks nothing and throws; the helper checks first rather than assuming either
+  state.
+- **Real-browser verification** (Chromium via Playwright): seeded a project with a schedule and
+  activity directly via the store, opened Edit, checked BOQ, confirmed both the vendor and the new
+  activity select render on the row, selected the activity, saved, and confirmed the link
+  round-tripped into the store exactly as selected — zero console/page errors.
+
+**What I have not tested:** this on your actual device. Same standard as every prior gate. Not
+done, deliberately: Document Control gates 8-14 (schedule-derived lead time off this link, vendor
+lookahead, readiness/constraints, reminders, dashboards, executive/portfolio compliance) — this
+gate only adds the link itself, nothing reads or acts on it yet.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
@@ -2025,7 +2088,7 @@ line items on the original locked Tier 2/3 list. Built in a separate parallel se
 Gates 8-11 and reconciled into `main` together with them (see each gate's own write-up above for
 the schema-numbering note on how the reconciliation renumbered them).
 
-**Document Control** (Gates 14-20 = Document Control gates 1-6 of a separate 14-gate sub-spec,
+**Document Control** (Gates 14-21 = Document Control gates 1-7 of a separate 14-gate sub-spec,
 done) — same footing as Executive Center/Activity Linking/Vendor Management above: a directly
 requested, explicitly incremental upgrade to Documents, not a Tier 1/2/3 line item. The Master
 Document Repository (the type taxonomy, Gate 14), Project-Specific Document Requirements (which
@@ -2037,10 +2100,11 @@ availability became a computed status instead of anything stored, and ten projec
 document types were added to the master repository. **Gate 19** added a manual, optional planned
 submission date per requirement, with a computed Overdue status alongside Available/Required.
 **Gate 20** added an optional assigned vendor per requirement, reusing the existing Vendor
-Management module rather than a second register. Document Control gates 7-14 (schedule↔document
-linking and lead time, vendor lookahead, readiness/constraints, reminders, dashboards,
-executive/portfolio compliance) are intentionally not started — see Gates 14-20's own write-ups
-above.
+Management module rather than a second register. **Gate 21** added an optional link from a
+requirement to one of the project's own Schedule activities — purely a link, no date derived from
+it either way. Document Control gates 8-14 (schedule-derived lead time off that link, vendor
+lookahead, readiness/constraints, reminders, dashboards, executive/portfolio compliance) are
+intentionally not started — see Gates 14-21's own write-ups above.
 
 **Tier 3 (deferred until Tier 1 is in daily use):** AI Document Processing, Knowledge Base, AI Project
 Assistant, Lessons Learned, final polish
@@ -2049,18 +2113,19 @@ Assistant, Lessons Learned, final polish
 
 **Tier 2 is complete**, and Vendor Management / the in-app Excel editor / the Document Control
 foundation (repository + per-project requirements + classification/nomenclature + status/version
-control + manual due dates + vendor assignment) are all done alongside it. The most likely next
-piece of work is **Document Control gate 7 (schedule↔document linking)** — connecting a
-requirement to an actual Schedule activity, which gate 8's lead-time calculation then builds on —
-per the sub-spec's own locked gate order, but confirm scope before starting it rather than
-assuming, same discipline as every gate before this one. Other open items, none blocking daily
-use: rate × usage from Resource Management feeding Cost Tracking/EVM (explicitly deferred, Gate
-11); a persisted/logo-customizable report-template system; portfolio-level executive dashboard
-filtering; 10,000+ activity Gantt virtualization; per-activity linking extended to Resource
-Assignments' own sub-fields if that turns out to matter in practice; Vendor↔Cost/Schedule
-integration beyond the current Vendor↔Project/Meeting/RFI/Risk links, if that turns out to matter
-in practice; reconciling Documents' `category` / Vendor Management's document categories / the
-Gate 14 master repository into one classification scheme, explicitly deferred twice now (Gates 14
-and 16) — worth revisiting once real usage shows whether it's actually needed. Tier 3 (AI Document
+control + manual due dates + vendor assignment + schedule linking) are all done alongside it. The
+most likely next piece of work is **Document Control gate 8 (Schedule-Driven Dates/Lead Time)** —
+using Gate 21's new activity link plus a configurable lead time to derive/suggest a requirement's
+planned submission date, per the sub-spec's own locked gate order, but confirm scope before
+starting it rather than assuming, same discipline as every gate before this one. Other open items,
+none blocking daily use: rate × usage from Resource Management feeding Cost Tracking/EVM
+(explicitly deferred, Gate 11); a persisted/logo-customizable report-template system;
+portfolio-level executive dashboard filtering; 10,000+ activity Gantt virtualization;
+per-activity linking extended to Resource Assignments' own sub-fields if that turns out to matter
+in practice; Vendor↔Cost/Schedule integration beyond the current Vendor↔Project/Meeting/RFI/Risk
+links, if that turns out to matter in practice; reconciling Documents' `category` / Vendor
+Management's document categories / the Gate 14 master repository into one classification scheme,
+explicitly deferred twice now (Gates 14 and 16) — worth revisiting once real usage shows whether
+it's actually needed. Tier 3 (AI Document
 Processing, Knowledge Base, AI Project Assistant, Lessons Learned, final polish) remains deferred
 until Tier 1/2 are in daily use.

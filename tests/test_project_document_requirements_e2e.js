@@ -54,6 +54,12 @@ function findButtonInCardByText(dom, projectName, buttonText) {
   const buttons = Array.from(card.querySelectorAll("button"));
   return buttons.find((b) => b.textContent.trim() === buttonText);
 }
+// Expands the named project's card if it isn't already (a card that's already expanded
+// reads "Hide Details", not "Details", so a plain click-"Details" would find nothing).
+function ensureCardExpanded(dom, projectName) {
+  const detailsBtn = findButtonInCardByText(dom, projectName, "Details");
+  if (detailsBtn) detailsBtn.click();
+}
 function findLabelContaining(dom, text) {
   const labels = Array.from(dom.window.document.querySelectorAll("label"));
   return labels.find((l) => l.textContent.indexOf(text) !== -1);
@@ -402,6 +408,81 @@ function findFieldByLabel(dom, labelText) {
     var data = win.PCC.store.get();
     assert.strictEqual(data.vendors.length, 1, "Vendor Register must reuse the existing vendor, never create one of its own");
     assert.strictEqual(data.vendors[0].id, testVendorId);
+  });
+
+  // ---- Gate 7 (Document Control 7: Schedule↔Document Linking) ----
+  var testActivityId;
+  await check("seed a schedule and an activity for Vendor Register Test Project via the store", () => {
+    win.PCC.store.update(function (d) {
+      var sch = win.PCC.store.newSchedule({ project_id: vendorProjectId, name: "Gate 7 Test Schedule" });
+      d.schedules.push(sch);
+      var act = win.PCC.store.newActivity({ project_id: vendorProjectId, schedule_id: sch.id, name: "Issue for Construction" });
+      d.activities.push(act);
+      testActivityId = act.id;
+    });
+    assert.ok(testActivityId);
+  });
+
+  await check("a checked requirement in the Edit form shows a Linked Activity select listing the project's own activities", () => {
+    ensureCardExpanded(dom, "Vendor Register Test Project");
+    win.PCC.router.render();
+    findButtonByText(dom, "Edit Requirements").click();
+    win.PCC.router.render();
+
+    var kickoffLabel = findLabelContaining(dom, "Kickoff Checklist");
+    var selects = Array.from(kickoffLabel.querySelectorAll("select"));
+    assert.strictEqual(selects.length, 2, "a checked requirement must now show two selects: vendor, then linked activity");
+    var activitySelect = selects[1];
+    var optionLabels = Array.from(activitySelect.options).map((o) => o.textContent);
+    assert.ok(
+      optionLabels.some((t) => t.indexOf("Issue for Construction") !== -1),
+      "the seeded activity must appear as an option, labeled with its schedule name"
+    );
+    assert.strictEqual(activitySelect.value, "", "must default to unlinked");
+  });
+
+  await check("selecting an activity and saving persists activity_id onto the store row, atomically with the rest of the requirement, without touching planned_submission_date", () => {
+    var kickoffLabel = findLabelContaining(dom, "Kickoff Checklist");
+    var activitySelect = Array.from(kickoffLabel.querySelectorAll("select"))[1];
+    activitySelect.value = testActivityId;
+    activitySelect.dispatchEvent(new win.Event("change"));
+    findButtonByText(dom, "Save Changes").click();
+
+    var data = win.PCC.store.get();
+    var kickoffType = data.document_types.find((t) => t.name === "Kickoff Checklist");
+    var row = data.project_document_requirements.find(
+      (r) => r.project_id === vendorProjectId && r.document_type_id === kickoffType.id
+    );
+    assert.ok(row, "the requirement row must survive the save");
+    assert.strictEqual(row.activity_id, testActivityId, "the linked activity must be persisted");
+    assert.strictEqual(row.vendor_id, testVendorId, "the previously-assigned vendor must be untouched by this save");
+    assert.strictEqual(row.planned_submission_date, null, "linking an activity must not fabricate a due date — that's gate 8's job, not this gate's");
+  });
+
+  await check("Edit Requirements pre-fills the stored activity link back into the form's select", () => {
+    ensureCardExpanded(dom, "Vendor Register Test Project");
+    win.PCC.router.render();
+    findButtonByText(dom, "Edit Requirements").click();
+    win.PCC.router.render();
+
+    var kickoffLabel = findLabelContaining(dom, "Kickoff Checklist");
+    var activitySelect = Array.from(kickoffLabel.querySelectorAll("select"))[1];
+    assert.strictEqual(activitySelect.value, testActivityId, "re-opening Edit must show the previously-linked activity, not blank");
+    findButtonByText(dom, "Cancel").click();
+    win.PCC.router.render();
+  });
+
+  await check("the Details summary shows the linked activity's schedule and name inline", () => {
+    var bodyText = win.document.getElementById("page-outlet").textContent;
+    assert.ok(bodyText.indexOf("Gate 7 Test Schedule") !== -1, "the read-only summary must show the linked activity's schedule name");
+    assert.ok(bodyText.indexOf("Issue for Construction") !== -1, "the read-only summary must show the linked activity's own name");
+  });
+
+  await check("the master schedules/activities are unchanged by any requirement-activity link above (no schedule/activity created/removed by this feature)", () => {
+    var data = win.PCC.store.get();
+    assert.strictEqual(data.schedules.length, 1, "Schedule↔Document Linking must reuse the existing activity, never create one of its own");
+    assert.strictEqual(data.activities.length, 1);
+    assert.strictEqual(data.activities[0].id, testActivityId);
   });
 
   await check("deactivating a document type hides it from the Edit form's checklist but the Details summary still shows its existing requirement", () => {

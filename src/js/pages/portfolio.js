@@ -63,6 +63,10 @@
     // Management module) is expected to submit this document. Same uncommitted-until-
     // Save, seeded-at-button-click treatment as formDueDates.
     formVendorIds: {},
+    // Gate 7 (Document Control 7: Schedule↔Document Linking): uncommitted per-type
+    // linked Schedule activity, keyed by document_type_id. Same treatment as
+    // formDueDates/formVendorIds — purely a link, no date is derived from it here.
+    formActivityIds: {},
   };
 
   function formatMoney(value, currency) {
@@ -153,6 +157,34 @@
     required: { className: "at_risk", label: "Required" },
   };
 
+  /** Gate 7 (Document Control 7: Schedule↔Document Linking). Same helper as
+   * risks.js/documents.js's own activityOptionsFor() — duplicated per this app's
+   * established convention of each page module owning its own small helpers rather
+   * than sharing a util layer. Populates `select` with the given project's Schedule
+   * activities (labeled "<schedule name>: <activity name>"), plus a "(none)" option. */
+  function activityOptionsFor(select, data, projectId, selectedActivityId) {
+    select.innerHTML = "";
+    var noneOpt = document.createElement("option");
+    noneOpt.value = "";
+    noneOpt.textContent = "(none)";
+    select.appendChild(noneOpt);
+
+    var scheduleNameById = {};
+    data.schedules
+      .filter(function (s) { return s.project_id === projectId; })
+      .forEach(function (s) { scheduleNameById[s.id] = s.name; });
+
+    data.activities
+      .filter(function (a) { return a.project_id === projectId; })
+      .forEach(function (a) {
+        var opt = document.createElement("option");
+        opt.value = a.id;
+        opt.textContent = (scheduleNameById[a.schedule_id] || "(schedule)") + ": " + (a.name || "(unnamed activity)");
+        select.appendChild(opt);
+      });
+    select.value = selectedActivityId || "";
+  }
+
   function renderForm(container, project, onSaved) {
     var isNew = uiState.editingId === "new";
     var panel = document.createElement("div");
@@ -235,7 +267,8 @@
         // uncommitted selection, atomically with the project record itself. Gate 5
         // (Document Control 5) additionally reconciles each selected type's planned
         // submission date from uiState.formDueDates; Gate 6 does the same for the
-        // assigned vendor from uiState.formVendorIds.
+        // assigned vendor from uiState.formVendorIds; Gate 7 does the same for the
+        // linked Schedule activity from uiState.formActivityIds.
         var selected = {};
         uiState.formSelectedDocTypeIds.forEach(function (typeId) {
           selected[typeId] = true;
@@ -254,10 +287,12 @@
         Object.keys(selected).forEach(function (typeId) {
           var plannedDate = uiState.formDueDates[typeId] || null;
           var vendorId = uiState.formVendorIds[typeId] || "";
+          var activityId = uiState.formActivityIds[typeId] || "";
           var existingRow = existingByTypeId[typeId];
           if (existingRow) {
             existingRow.planned_submission_date = plannedDate;
             existingRow.vendor_id = vendorId;
+            existingRow.activity_id = activityId;
           } else {
             data.project_document_requirements.push(
               window.PCC.store.newProjectDocumentRequirement({
@@ -265,6 +300,7 @@
                 document_type_id: typeId,
                 planned_submission_date: plannedDate,
                 vendor_id: vendorId,
+                activity_id: activityId,
               })
             );
           }
@@ -353,9 +389,11 @@
       });
       uiState.formDueDates = {};
       uiState.formVendorIds = {};
+      uiState.formActivityIds = {};
       projectRequirements.forEach(function (r) {
         if (r.planned_submission_date) uiState.formDueDates[r.document_type_id] = r.planned_submission_date;
         if (r.vendor_id) uiState.formVendorIds[r.document_type_id] = r.vendor_id;
+        if (r.activity_id) uiState.formActivityIds[r.document_type_id] = r.activity_id;
       });
       uiState.formDocTemplateKey = "";
       uiState.editingId = p.id;
@@ -425,8 +463,10 @@
    * mirrored in uiState.formDueDates the same way selection itself is mirrored in
    * formSelectedDocTypeIds; Gate 6 (Document Control 6: Vendor Register) adds an
    * optional assigned vendor per selected type the same way, in uiState.formVendorIds,
-   * reusing the existing Vendor Management vendor list rather than a new register — all
-   * three are uncommitted until Save. */
+   * reusing the existing Vendor Management vendor list rather than a new register; Gate
+   * 7 (Document Control 7: Schedule↔Document Linking) adds an optional link to one of
+   * this project's own Schedule activities, in uiState.formActivityIds — all four are
+   * uncommitted until Save. */
   function renderDocumentRequirementsField(project) {
     var fieldWrap = document.createElement("div");
     fieldWrap.style.marginTop = "18px";
@@ -575,6 +615,7 @@
               uiState.formSelectedDocTypeIds.splice(idx, 1);
               delete uiState.formDueDates[t.id];
               delete uiState.formVendorIds[t.id];
+              delete uiState.formActivityIds[t.id];
             }
             refresh();
           };
@@ -629,6 +670,23 @@
             };
             row.appendChild(vendorSelect);
 
+            // Gate 7 (Document Control 7: Schedule↔Document Linking): optional link to
+            // one of this project's own Schedule activities, uncommitted until Save.
+            // Purely a link — doesn't read or write formDueDates in either direction.
+            var activitySelect = document.createElement("select");
+            activitySelect.style.fontSize = "12px";
+            activitySelect.style.padding = "2px 4px";
+            activitySelect.title = "Linked Schedule activity (optional)";
+            activityOptionsFor(activitySelect, data, project.id, uiState.formActivityIds[t.id] || "");
+            activitySelect.onchange = function () {
+              if (activitySelect.value) {
+                uiState.formActivityIds[t.id] = activitySelect.value;
+              } else {
+                delete uiState.formActivityIds[t.id];
+              }
+            };
+            row.appendChild(activitySelect);
+
             var status = computeRequirementStatus(data, project.id, t.id, uiState.formDueDates[t.id] || null);
             var badgeInfo = REQUIREMENT_STATUS_BADGE[status];
             var statusBadge = document.createElement("span");
@@ -678,6 +736,17 @@
     data.vendors.forEach(function (v) {
       vendorsById[v.id] = v;
     });
+    // Gate 7 (Document Control 7: Schedule↔Document Linking): same defensive lookup —
+    // a requirement's linked activity keeps showing by name even if that activity is
+    // later deleted from the Schedule (falls back to not showing a link at all).
+    var activitiesById = {};
+    data.activities.forEach(function (a) {
+      activitiesById[a.id] = a;
+    });
+    var scheduleNameByIdForSummary = {};
+    data.schedules.forEach(function (s) {
+      scheduleNameByIdForSummary[s.id] = s.name;
+    });
     var projectRequirements = data.project_document_requirements.filter(function (r) {
       return r.project_id === p.id && typesById[r.document_type_id];
     });
@@ -722,9 +791,11 @@
       });
       uiState.formDueDates = {};
       uiState.formVendorIds = {};
+      uiState.formActivityIds = {};
       projectRequirements.forEach(function (r) {
         if (r.planned_submission_date) uiState.formDueDates[r.document_type_id] = r.planned_submission_date;
         if (r.vendor_id) uiState.formVendorIds[r.document_type_id] = r.vendor_id;
+        if (r.activity_id) uiState.formActivityIds[r.document_type_id] = r.activity_id;
       });
       uiState.formDocTemplateKey = "";
       uiState.editingId = p.id;
@@ -766,12 +837,19 @@
         row.style.fontSize = "13px";
 
         var vendor = r.vendor_id ? vendorsById[r.vendor_id] : null;
+        var linkedActivity = r.activity_id ? activitiesById[r.activity_id] : null;
         var nameSpan = document.createElement("span");
         nameSpan.textContent =
           t.name +
           (t.code ? " (" + t.code + ")" : "") +
           (r.planned_submission_date ? " — due " + r.planned_submission_date : "") +
-          (vendor ? " — " + (vendor.vendor_name || "(unnamed vendor)") : "");
+          (vendor ? " — " + (vendor.vendor_name || "(unnamed vendor)") : "") +
+          (linkedActivity
+            ? " — linked to " +
+              (scheduleNameByIdForSummary[linkedActivity.schedule_id] || "(schedule)") +
+              ": " +
+              (linkedActivity.name || "(unnamed activity)")
+            : "");
         row.appendChild(nameSpan);
 
         var status = computeRequirementStatus(data, p.id, r.document_type_id, r.planned_submission_date);
@@ -1726,6 +1804,7 @@
       uiState.formDocTemplateKey = "";
       uiState.formDueDates = {};
       uiState.formVendorIds = {};
+      uiState.formActivityIds = {};
       uiState.editingId = "new";
       rerender();
     };

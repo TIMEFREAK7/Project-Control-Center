@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 31;
+  var SCHEMA_VERSION = 32;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -1273,14 +1273,20 @@
    * vendor_project_links, not a boolean flag that could exist in a false/undecided
    * state. `planned_submission_date` (Gate 5: Document Control 5, Schedule Due Dates)
    * is a manual, optional due date — deliberately NOT derived from a linked schedule
-   * activity/milestone (that's Document Control gate 7) and no lead-time calculation is
-   * applied to it (gate 8). `vendor_id` (Gate 6: Document Control 6, Vendor Register) is
-   * an optional link to an existing Vendor Management vendor (`vendors`) — which vendor
-   * is expected to submit this document. Deliberately reuses the existing vendor
-   * register rather than introducing a second one; this app already has exactly one
-   * list of vendors. Beyond that, still no status or criticality on the row itself —
-   * those stay later gates' job; this gate only adds "who's submitting it," on top of
-   * "when is this due" and "does this type apply to this project." */
+   * activity/milestone and no lead-time calculation is applied to it (that's gate 8).
+   * `vendor_id` (Gate 6: Document Control 6, Vendor Register) is an optional link to an
+   * existing Vendor Management vendor (`vendors`) — which vendor is expected to submit
+   * this document. Deliberately reuses the existing vendor register rather than
+   * introducing a second one; this app already has exactly one list of vendors.
+   * `activity_id` (Gate 7: Document Control 7, Schedule↔Document Linking) is an optional
+   * link to one of the project's own Schedule activities — same "one linkable field,
+   * cross-module join owned by the new side" pattern Gate 10 established for Documents/
+   * Risks/RFIs/etc. Purely a link: it does not read or write `planned_submission_date`
+   * in either direction — deriving a due date FROM the linked activity's own dates is
+   * explicitly gate 8's job (Schedule-Driven Dates/Lead Time), not this gate's. Beyond
+   * that, still no status or criticality on the row itself — those stay later gates'
+   * job; this gate only adds "which activity governs it," on top of "who's submitting
+   * it," "when is this due," and "does this type apply to this project." */
   function newProjectDocumentRequirement(overrides) {
     var now = new Date().toISOString();
     var base = {
@@ -1289,6 +1295,7 @@
       document_type_id: "",
       planned_submission_date: null,
       vendor_id: "",
+      activity_id: "",
       created_at: now,
     };
     return Object.assign(base, overrides || {});
@@ -1724,6 +1731,17 @@
         if (r.vendor_id === undefined) r.vendor_id = "";
       });
       loaded.schema_version = 31;
+    }
+
+    if (loaded.schema_version < 32) {
+      // Gate 7 (Document Control 7: Schedule↔Document Linking). Adds an optional
+      // activity_id to every existing requirement row — "" (unlinked), same treatment
+      // every linkable register got at Gate 10, since there's no way to infer which
+      // Schedule activity a pre-Gate-7 requirement should be tied to.
+      (loaded.project_document_requirements || []).forEach(function (r) {
+        if (r.activity_id === undefined) r.activity_id = "";
+      });
+      loaded.schema_version = 32;
     }
 
     return loaded;
