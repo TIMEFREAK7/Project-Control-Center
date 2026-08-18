@@ -1482,6 +1482,91 @@ Real-browser verification (Chromium via Playwright, screenshots reviewed): the V
 its Link Vendor picker render correctly and already-linked vendors are correctly excluded from the
 picker's options.
 
+## Gate 14 — Document Control 1: Master Document Repository (2026-08-18)
+
+Requested directly (Aditya) via a full 14-gate Document Control specification: evolve Documents
+from a flat file-upload register into a proper project document control system (requirements
+before submission, revisions, schedule-driven due dates, vendor lookahead, readiness/constraint
+flagging, dashboards, executive/portfolio compliance). Per the spec's own explicit instruction —
+"do NOT build everything at once... start with the FIRST gate that is appropriate" — this delivery
+is only Gate 1 of that 14-gate spec (numbered Gate 14 here, continuing this file's own running
+count): the Master Document Repository. Every later gate in the spec (project-specific
+requirements, nomenclature, status/revision workflow, schedule linking, vendor lookahead,
+dashboards, ...) depends on document TYPES existing as real, addressable records — this gate is
+that foundation, nothing more.
+
+**Inspection before building, per the spec's own "verify first" instruction:** confirmed
+`documents.js` is a flat upload register (project-scoped, 5 hardcoded categories, duplicate
+detection via `duplicateService.js`, no requirement-before-submission concept, no revision
+control, no status lifecycle) and that Vendor Management's `vendor_documents` (Gate 13) already
+has a real revision-history pattern (`document_group_id`/`revision_number`) worth reusing as a
+template later, but isn't linked to schedule activities. Critically: **no user-configurable
+taxonomy register exists anywhere in this app yet** — every prior "types" list
+(`DOCUMENT_CATEGORIES`, `VENDOR_DOCUMENT_CATEGORIES`, `RESOURCE_TYPES`, `COST_CATEGORIES`) is a
+hardcoded JS array the user can't add to, edit, or deactivate. That gap is exactly what Gate 1 of
+the spec asks for, and it's a genuine prerequisite for every later gate — confirming the spec's
+own suggested starting point was also this codebase's actual starting point.
+
+**Scope decided before building:**
+
+- **This is only the master repository** — a flat, portfolio-wide list of document type
+  *definitions* (BOQ, ITP, Method Statement, ...). It does not decide which types apply to which
+  project (a later "project-specific document requirements" gate) and does not touch
+  `documents.js`'s existing `category` field or Vendor Management's `VENDOR_DOCUMENT_CATEGORIES`
+  — reconciling those into one classification scheme is real design work for a later gate, not
+  this one. Nothing existing was changed to make room for this.
+- **Seeded, not empty, on day one** — pre-populated with the ~28 example document types the spec
+  itself enumerated (Contract, BOQ, Specifications, Drawings, ..., Closeout Documents), each with
+  a short code (for a later nomenclature gate), a free-text category bucket, and
+  `default_criticality: "normal"`. Every seeded criticality is deliberately "normal," not guessed
+  higher — that's a project-specific judgment call for the user to set, not something this app
+  should presume on their behalf just because it seeded the type. Fully editable/deactivatable/
+  deletable afterward; this is a starting point, not a locked list.
+- **Deactivate, not just delete, as the primary retirement path** — so a type referenced by id
+  from a later gate's requirements keeps working even if retired from active use. Hard delete is
+  also offered since nothing in the app references `document_types` yet this gate; once a later
+  gate adds real references, delete should get a usage guard the same way Resources' delete
+  already warns about cascading assignment deletes.
+- **`category` and `code` are free text**, not enums — same convention this app already uses for
+  Activity's `discipline` and Vendor's `category`/`trade_discipline` (open-ended classification
+  fields stay free text rather than guessing a fixed taxonomy the spec didn't actually enumerate).
+
+**What changed:** `store.js` (schema v24→v25: `document_types` array, `newDocumentType()`
+factory, `DOCUMENT_TYPE_CRITICALITY_LEVELS` constant, `seedDocumentTypes()` helper shared by
+`emptyData()` and the migration so a fresh install and an upgraded existing install both get the
+same seeded starting point). **New file:** `pages/documentTypes.js` — search/category/active
+filters, add/edit form, deactivate/reactivate toggle, delete, and a small public
+`window.PCC.documentTypes.activeTypes()` API for later gates to read the active portion of the
+repository without reaching into this page's own UI state. **Changed:** `app.js` (route
+registration), `layout.js` (sidebar nav under REGISTERS next to Documents), `build.js` (bundle
+order).
+
+**Tested before delivery (22 pure-logic + 25 e2e checks + updated migration tests, full suite
+re-run clean):**
+
+- **Schema migration** (`test_store_schema_v25_migration.js`, renamed from the v24 file per this
+  project's "one canonical test targeting latest" convention): a v20 dataset and a very old
+  legacy dataset both migrate cleanly through to schema_version 25 with `document_types` seeded
+  (not left empty) and every seeded entry active; a brand-new install gets the same seed list;
+  `newDocumentType()` defaults verified (`active: true`, `default_criticality: "normal"`, unique
+  ids); seed list checked for no duplicate ids.
+- **End-to-end against the actual bundled `index.html`** (`test_document_types_e2e.js`, 25
+  checks): the seeded repository renders on first navigation; add/edit through the real form
+  persists correctly with no duplicate record created on edit; deactivate hides a type from the
+  default (active-only) view and Show Inactive reveals it marked INACTIVE; reactivate restores
+  it; search narrows the list by name/code; `activeTypes()` correctly excludes deactivated types;
+  delete removes the record; full route smoke test across all 16 routes including the new one.
+- **Real-browser verification** (Chromium via Playwright): the seeded list, add form, and
+  deactivate/reactivate toggle all render and function correctly in the dark theme; regression-
+  checked that Documents' existing 5-category upload form and Vendor Management's own document
+  category list are both untouched by this gate.
+
+**What I have not tested:** this on your actual device. Same standard as every prior gate. Also
+not done, deliberately, per the spec's own incremental-gates instruction: everything from Gate 2
+of the Document Control spec onward (project-specific requirements, nomenclature validation,
+status/revision workflow, schedule linking, vendor lookahead, dashboards, executive/portfolio
+compliance) — this delivery is the foundation only.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
@@ -1509,17 +1594,28 @@ line items on the original locked Tier 2/3 list. Built in a separate parallel se
 Gates 8-11 and reconciled into `main` together with them (see each gate's own write-up above for
 the schema-numbering note on how the reconciliation renumbered them).
 
+**Document Control** (Gate 14 = Document Control gate 1 of a separate 14-gate sub-spec, done) —
+same footing as Executive Center/Activity Linking/Vendor Management above: a directly requested,
+explicitly incremental upgrade to Documents, not a Tier 1/2/3 line item. Only the Master Document
+Repository (the type taxonomy) is built; Document Control gates 2-14 (project-specific
+requirements, nomenclature, status/revision workflow, schedule↔document linking, vendor
+lookahead, readiness/constraints, reminders, dashboards, executive/portfolio compliance) are
+intentionally not started — see Gate 14's own write-up above.
+
 **Tier 3 (deferred until Tier 1 is in daily use):** AI Document Processing, Knowledge Base, AI Project
 Assistant, Lessons Learned, final polish
 
 ## Next phase
 
-**Tier 2 is now complete**, and Vendor Management / the in-app Excel editor are both done alongside
-it. What's still open, none of it blocking daily use: rate × usage from Resource Management feeding
-Cost Tracking/EVM (explicitly deferred, Gate 11); a persisted/logo-customizable report-template
-system; portfolio-level executive dashboard filtering; 10,000+ activity Gantt virtualization;
-per-activity linking extended to Resource Assignments' own sub-fields if that turns out to matter in
-practice; Vendor↔Cost/Schedule integration beyond the current Vendor↔Project/Meeting/RFI/Risk links,
-if that turns out to matter in practice. Tier 3 (AI Document Processing, Knowledge Base, AI Project
-Assistant, Lessons Learned, final polish) is next per the locked build order, deferred until Tier 1/2
-are in daily use — worth checking in on before starting it.
+**Tier 2 is complete**, and Vendor Management / the in-app Excel editor / the Document Control
+foundation are all done alongside it. The most likely next piece of work is **Document Control
+gate 2 (project-specific document requirements)** — deciding which of the master repository's
+types apply to a given project, per the sub-spec's own locked gate order — but confirm scope
+before starting it rather than assuming, same discipline as every gate before this one. Other open
+items, none blocking daily use: rate × usage from Resource Management feeding Cost Tracking/EVM
+(explicitly deferred, Gate 11); a persisted/logo-customizable report-template system; portfolio-
+level executive dashboard filtering; 10,000+ activity Gantt virtualization; per-activity linking
+extended to Resource Assignments' own sub-fields if that turns out to matter in practice; Vendor↔
+Cost/Schedule integration beyond the current Vendor↔Project/Meeting/RFI/Risk links, if that turns
+out to matter in practice. Tier 3 (AI Document Processing, Knowledge Base, AI Project Assistant,
+Lessons Learned, final polish) remains deferred until Tier 1/2 are in daily use.

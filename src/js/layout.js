@@ -20,6 +20,7 @@
       label: "REGISTERS",
       items: [
         { key: "documents", label: "Documents", code: "DC" },
+        { key: "documentTypes", label: "Document Types", code: "DT" },
         { key: "dailylog", label: "Daily Log", code: "DL" },
         { key: "risks", label: "Risk Register", code: "RK" },
         { key: "meetings", label: "Meetings", code: "MT" },
@@ -50,6 +51,7 @@
     executiveCenter: "Executive Center",
     vendors: "Vendor Management",
     documents: "Documents",
+    documentTypes: "Document Types",
     dailylog: "Daily Log",
     risks: "Risk Register",
     meetings: "Meetings",

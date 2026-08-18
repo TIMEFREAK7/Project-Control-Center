@@ -9,6 +9,7 @@
     router.register("executiveCenter", window.PCC.pages.executiveCenter);
     router.register("vendors", window.PCC.pages.vendors);
     router.register("documents", window.PCC.pages.documents);
+    router.register("documentTypes", window.PCC.pages.documentTypes);
     router.register("dailylog", window.PCC.pages.dailylog);
     router.register("schedule", window.PCC.pages.schedule);
     router.register("risks", window.PCC.pages.risks);

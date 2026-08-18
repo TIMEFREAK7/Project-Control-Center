@@ -33,6 +33,7 @@ const JS_ORDER = [
   "js/pages/executiveCenter.js",
   "js/pages/vendors.js",
   "js/pages/documents.js",
+  "js/pages/documentTypes.js",
   "js/pages/dailyLog.js",
   "js/pages/schedule.js",
   "js/pages/risks.js",
