@@ -3567,7 +3567,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 29;
+  var SCHEMA_VERSION = 30;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -4829,16 +4829,19 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   /** One row per (project, document_type) the user has marked applicable to that
    * project — same "existence of a row = selected" join convention as
    * vendor_project_links, not a boolean flag that could exist in a false/undecided
-   * state. Deliberately has no fields beyond the pairing itself in this gate (no due
-   * date, status, criticality, submission tracking) — those are later Document Control
-   * gates' job (classification, status/revision workflow, schedule linking); this gate
-   * only answers "does this type apply to this project," nothing more. */
+   * state. `planned_submission_date` (Gate 5: Document Control 5, Schedule Due Dates)
+   * is a manual, optional due date — deliberately NOT derived from a linked schedule
+   * activity/milestone (that's Document Control gate 7) and no lead-time calculation is
+   * applied to it (gate 8). Beyond that, still no status or criticality on the row
+   * itself — those stay later gates' job; this gate only adds "when is this due," on
+   * top of "does this type apply to this project." */
   function newProjectDocumentRequirement(overrides) {
     var now = new Date().toISOString();
     var base = {
       id: newProjectDocumentRequirementId(),
       project_id: "",
       document_type_id: "",
+      planned_submission_date: null,
       created_at: now,
     };
     return Object.assign(base, overrides || {});
@@ -5253,6 +5256,16 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         }
       });
       loaded.schema_version = 29;
+    }
+
+    if (loaded.schema_version < 30) {
+      // Gate 5 (Document Control 5: Schedule Due Dates). Adds an optional, manual
+      // planned_submission_date to every existing requirement row — null (not a guessed
+      // date) since there's nothing to infer it from; the user sets it going forward.
+      (loaded.project_document_requirements || []).forEach(function (r) {
+        if (r.planned_submission_date === undefined) r.planned_submission_date = null;
+      });
+      loaded.schema_version = 30;
     }
 
     return loaded;
@@ -6490,6 +6503,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     // toggle's rerender doesn't wipe out what's already been checked.
     formSelectedDocTypeIds: [],
     formDocTemplateKey: "",
+    // Gate 5 (Document Control 5: Schedule Due Dates): uncommitted per-type planned
+    // submission dates, keyed by document_type_id, mirroring formSelectedDocTypeIds'
+    // "seeded at the button-click moment, never inside render()" treatment.
+    formDueDates: {},
   };
 
   function formatMoney(value, currency) {
@@ -6559,6 +6576,26 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       return d.project_id === projectId && d.document_type_id === documentTypeId;
     });
   }
+
+  // Gate 5 (Document Control 5: Schedule Due Dates). "Overdue" is computed the same
+  // way "Available" is — never stored — by comparing a requirement's manual
+  // planned_submission_date against today, and only applies when the requirement isn't
+  // already available. Returns "available" | "overdue" | "required".
+  function todayIsoDate() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  function computeRequirementStatus(data, projectId, documentTypeId, plannedDate) {
+    if (computeRequirementAvailability(data, projectId, documentTypeId)) return "available";
+    if (plannedDate && plannedDate < todayIsoDate()) return "overdue";
+    return "required";
+  }
+
+  var REQUIREMENT_STATUS_BADGE = {
+    available: { className: "complete", label: "Available" },
+    overdue: { className: "critical", label: "Overdue" },
+    required: { className: "at_risk", label: "Required" },
+  };
 
   function renderForm(container, project, onSaved) {
     var isNew = uiState.editingId === "new";
@@ -6639,26 +6676,36 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         }
 
         // Gate 18: reconcile project_document_requirements against the form's
-        // uncommitted selection, atomically with the project record itself.
+        // uncommitted selection, atomically with the project record itself. Gate 5
+        // (Document Control 5) additionally reconciles each selected type's planned
+        // submission date from uiState.formDueDates.
         var selected = {};
         uiState.formSelectedDocTypeIds.forEach(function (typeId) {
           selected[typeId] = true;
         });
-        var existingTypeIds = {};
+        var existingByTypeId = {};
         data.project_document_requirements
           .filter(function (r) {
             return r.project_id === projectId;
           })
           .forEach(function (r) {
-            existingTypeIds[r.document_type_id] = true;
+            existingByTypeId[r.document_type_id] = r;
           });
         data.project_document_requirements = data.project_document_requirements.filter(function (r) {
           return r.project_id !== projectId || selected[r.document_type_id];
         });
         Object.keys(selected).forEach(function (typeId) {
-          if (!existingTypeIds[typeId]) {
+          var plannedDate = uiState.formDueDates[typeId] || null;
+          var existingRow = existingByTypeId[typeId];
+          if (existingRow) {
+            existingRow.planned_submission_date = plannedDate;
+          } else {
             data.project_document_requirements.push(
-              window.PCC.store.newProjectDocumentRequirement({ project_id: projectId, document_type_id: typeId })
+              window.PCC.store.newProjectDocumentRequirement({
+                project_id: projectId,
+                document_type_id: typeId,
+                planned_submission_date: plannedDate,
+              })
             );
           }
         });
@@ -6738,13 +6785,16 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     editBtn.textContent = "Edit";
     editBtn.onclick = function () {
       var data = window.PCC.store.get();
-      uiState.formSelectedDocTypeIds = data.project_document_requirements
-        .filter(function (r) {
-          return r.project_id === p.id;
-        })
-        .map(function (r) {
-          return r.document_type_id;
-        });
+      var projectRequirements = data.project_document_requirements.filter(function (r) {
+        return r.project_id === p.id;
+      });
+      uiState.formSelectedDocTypeIds = projectRequirements.map(function (r) {
+        return r.document_type_id;
+      });
+      uiState.formDueDates = {};
+      projectRequirements.forEach(function (r) {
+        if (r.planned_submission_date) uiState.formDueDates[r.document_type_id] = r.planned_submission_date;
+      });
       uiState.formDocTemplateKey = "";
       uiState.editingId = p.id;
       onChanged();
@@ -6808,7 +6858,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
    * ADDS ids for types whose name matches one of the template's suggested names among
    * this install's ACTIVE types — it never removes an existing selection. Rebuilds its
    * own subtree on every change (rather than triggering a full form rerender) so
-   * in-progress edits to the other fields above aren't disturbed. */
+   * in-progress edits to the other fields above aren't disturbed. Gate 5 (Document
+   * Control 5: Schedule Due Dates) adds an optional manual due date per selected type,
+   * mirrored in uiState.formDueDates the same way selection itself is mirrored in
+   * formSelectedDocTypeIds — both are uncommitted until Save. */
   function renderDocumentRequirementsField(project) {
     var fieldWrap = document.createElement("div");
     fieldWrap.style.marginTop = "18px";
@@ -6955,6 +7008,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
               if (idx === -1) uiState.formSelectedDocTypeIds.push(t.id);
             } else if (idx !== -1) {
               uiState.formSelectedDocTypeIds.splice(idx, 1);
+              delete uiState.formDueDates[t.id];
             }
             refresh();
           };
@@ -6965,11 +7019,29 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           row.appendChild(textSpan);
 
           if (checked) {
-            var available = computeRequirementAvailability(data, project.id, t.id);
+            // Gate 5 (Document Control 5): manual due date, uncommitted until Save.
+            var dueInput = document.createElement("input");
+            dueInput.type = "date";
+            dueInput.value = uiState.formDueDates[t.id] || "";
+            dueInput.style.fontSize = "12px";
+            dueInput.style.padding = "2px 4px";
+            dueInput.title = "Planned submission date (optional)";
+            dueInput.onchange = function () {
+              if (dueInput.value) {
+                uiState.formDueDates[t.id] = dueInput.value;
+              } else {
+                delete uiState.formDueDates[t.id];
+              }
+              refresh();
+            };
+            row.appendChild(dueInput);
+
+            var status = computeRequirementStatus(data, project.id, t.id, uiState.formDueDates[t.id] || null);
+            var badgeInfo = REQUIREMENT_STATUS_BADGE[status];
             var statusBadge = document.createElement("span");
-            statusBadge.className = "status-badge status-badge--" + (available ? "complete" : "at_risk");
+            statusBadge.className = "status-badge status-badge--" + badgeInfo.className;
             statusBadge.style.fontSize = "11px";
-            statusBadge.textContent = available ? "Available" : "Required";
+            statusBadge.textContent = badgeInfo.label;
             row.appendChild(statusBadge);
           }
 
@@ -6988,10 +7060,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
   /** Gate 18 (Document Control UX refinement): read-only summary of this project's
    * document requirements for the Details panel — selection itself now happens in the
-   * Add/Edit Project form (see renderDocumentRequirementsField() above). "Available" vs
-   * "Required" is never stored; it's computed by checking whether a document already
-   * exists for this project with a matching document_type_id — same "computed at
-   * render time, never denormalized" pattern Gate 13/17 used for "latest revision". */
+   * Add/Edit Project form (see renderDocumentRequirementsField() above). "Available" /
+   * "Overdue" (Gate 5: Document Control 5) / "Required" is never stored; it's computed
+   * from whether a matching document exists and, if not, whether the manual
+   * planned_submission_date has passed — same "computed at render time, never
+   * denormalized" pattern Gate 13/17 used for "latest revision". */
   function renderDocumentRequirementsSection(p, onChanged) {
     var data = window.PCC.store.get();
     // Deliberately keyed off ALL document_types, not just active ones: a requirement
@@ -7010,6 +7083,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var availableCount = projectRequirements.filter(function (r) {
       return computeRequirementAvailability(data, p.id, r.document_type_id);
     }).length;
+    // Gate 5 (Document Control 5: Schedule Due Dates).
+    var overdueCount = projectRequirements.filter(function (r) {
+      return computeRequirementStatus(data, p.id, r.document_type_id, r.planned_submission_date) === "overdue";
+    }).length;
 
     var section = document.createElement("div");
     section.style.marginTop = "16px";
@@ -7026,7 +7103,13 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var label = document.createElement("span");
     label.className = "detail-item__label";
     label.textContent =
-      "DOCUMENT REQUIREMENTS (" + availableCount + " of " + projectRequirements.length + " available)";
+      "DOCUMENT REQUIREMENTS (" +
+      availableCount +
+      " of " +
+      projectRequirements.length +
+      " available" +
+      (overdueCount > 0 ? ", " + overdueCount + " overdue" : "") +
+      ")";
     header.appendChild(label);
 
     var editBtn = document.createElement("button");
@@ -7035,6 +7118,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     editBtn.onclick = function () {
       uiState.formSelectedDocTypeIds = projectRequirements.map(function (r) {
         return r.document_type_id;
+      });
+      uiState.formDueDates = {};
+      projectRequirements.forEach(function (r) {
+        if (r.planned_submission_date) uiState.formDueDates[r.document_type_id] = r.planned_submission_date;
       });
       uiState.formDocTemplateKey = "";
       uiState.editingId = p.id;
@@ -7076,14 +7163,18 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         row.style.fontSize = "13px";
 
         var nameSpan = document.createElement("span");
-        nameSpan.textContent = t.name + (t.code ? " (" + t.code + ")" : "");
+        nameSpan.textContent =
+          t.name +
+          (t.code ? " (" + t.code + ")" : "") +
+          (r.planned_submission_date ? " — due " + r.planned_submission_date : "");
         row.appendChild(nameSpan);
 
-        var available = computeRequirementAvailability(data, p.id, r.document_type_id);
+        var status = computeRequirementStatus(data, p.id, r.document_type_id, r.planned_submission_date);
+        var badgeInfo = REQUIREMENT_STATUS_BADGE[status];
         var statusBadge = document.createElement("span");
-        statusBadge.className = "status-badge status-badge--" + (available ? "complete" : "at_risk");
+        statusBadge.className = "status-badge status-badge--" + badgeInfo.className;
         statusBadge.style.fontSize = "11px";
-        statusBadge.textContent = available ? "Available" : "Required";
+        statusBadge.textContent = badgeInfo.label;
         row.appendChild(statusBadge);
 
         list.appendChild(row);
@@ -8028,6 +8119,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     addBtn.onclick = function () {
       uiState.formSelectedDocTypeIds = [];
       uiState.formDocTemplateKey = "";
+      uiState.formDueDates = {};
       uiState.editingId = "new";
       rerender();
     };

@@ -47,9 +47,10 @@ function loadStoreWith(rawJsonString) {
 // classification fields + project_code + nomenclature settings added (v27, Gate 16);
 // document status + document_group_id/revision_number added (v28, Gate 17); ten
 // project-setup-flavored document types added to the master repository (v29, Gate 18
-// doc-control UX fix).
+// doc-control UX fix); planned_submission_date backfilled onto existing requirement
+// rows (v30, Gate 5: Document Control 5, Schedule Due Dates).
 // ---------------------------------------------------------------------------
-check("a v20 dataset gets Gate 9 + Gate 10 + Gate 11 + Gate 13 + Gate 14 + Gate 15 + Gate 16 + Gate 17 + Gate 18 fields backfilled and lands on schema_version 29", () => {
+check("a v20 dataset gets Gate 9 + Gate 10 + Gate 11 + Gate 13 + Gate 14 + Gate 15 + Gate 16 + Gate 17 + Gate 18 + Gate 5 fields backfilled and lands on schema_version 30", () => {
   const v20 = {
     schema_version: 20,
     meta: { app_name: "x", created_at: "2026-01-01T00:00:00.000Z", last_saved_at: null, last_exported_at: null },
@@ -67,7 +68,7 @@ check("a v20 dataset gets Gate 9 + Gate 10 + Gate 11 + Gate 13 + Gate 14 + Gate 
   const store = loadStoreWith(JSON.stringify(v20));
   const data = store.get();
 
-  assert.strictEqual(data.schema_version, 29);
+  assert.strictEqual(data.schema_version, 30);
   assert.strictEqual(data.projects[0].name, "Existing Project", "existing project fields must survive untouched");
   assert.strictEqual(data.projects[0].project_type, "");
   assert.ok(data.settings.health_score_weights, "health_score_weights must be defaulted");
@@ -151,7 +152,7 @@ check("a v20 dataset gets Gate 9 + Gate 10 + Gate 11 + Gate 13 + Gate 14 + Gate 
 // activity_id backfilled onto existing budget items, nothing else touched, then the
 // rest of the chain (through Gate 13) carries the dataset on to the current version.
 // ---------------------------------------------------------------------------
-check("a v19 dataset gets activity_id backfilled onto existing budget items and lands on schema_version 29", () => {
+check("a v19 dataset gets activity_id backfilled onto existing budget items and lands on schema_version 30", () => {
   const v19 = {
     schema_version: 19,
     meta: { app_name: "x", created_at: "2026-01-01T00:00:00.000Z", last_saved_at: null, last_exported_at: null },
@@ -165,7 +166,7 @@ check("a v19 dataset gets activity_id backfilled onto existing budget items and 
   const store = loadStoreWith(JSON.stringify(v19));
   const data = store.get();
 
-  assert.strictEqual(data.schema_version, 29);
+  assert.strictEqual(data.schema_version, 30);
   assert.strictEqual(data.cost_budget_items.length, 1, "no budget items should be fabricated or dropped");
   assert.strictEqual(data.cost_budget_items[0].activity_id, "", "pre-Gate-7 budget items get an empty (unlinked) activity_id, not undefined");
   assert.strictEqual(data.cost_budget_items[0].name, "Rebar", "existing fields must survive untouched");
@@ -174,16 +175,16 @@ check("a v19 dataset gets activity_id backfilled onto existing budget items and 
 });
 
 // ---------------------------------------------------------------------------
-// Full chain from a very old (v1-shaped) dataset still reaches v29 cleanly
+// Full chain from a very old (v1-shaped) dataset still reaches v30 cleanly
 // ---------------------------------------------------------------------------
-check("a minimal legacy dataset (no schema_version at all) migrates all the way to 29 without throwing", () => {
+check("a minimal legacy dataset (no schema_version at all) migrates all the way to 30 without throwing", () => {
   const legacy = {
     projects: [{ id: "proj_1", name: "Old Project" }],
     documents: [{ id: "doc_1", project_id: "proj_1", filename: "legacy.pdf" }],
   };
   const store = loadStoreWith(JSON.stringify(legacy));
   const data = store.get();
-  assert.strictEqual(data.schema_version, 29);
+  assert.strictEqual(data.schema_version, 30);
   assert.ok(Array.isArray(data.schedule_baselines));
   assert.ok(Array.isArray(data.cost_budget_items));
   assert.ok(Array.isArray(data.cost_actuals));
@@ -209,7 +210,7 @@ check("a minimal legacy dataset (no schema_version at all) migrates all the way 
 check("a brand-new install with no stored data starts with executive_summaries: [] and default health weights", () => {
   const store = loadStoreWith(null);
   const data = store.get();
-  assert.strictEqual(data.schema_version, 29);
+  assert.strictEqual(data.schema_version, 30);
   assert.deepStrictEqual(data.executive_summaries, []);
   assert.deepStrictEqual(data.settings.health_score_weights, {
     schedule: 25, cost: 20, risk: 20, issue: 10, rfi: 15, change: 10,
@@ -420,6 +421,7 @@ check("newProjectDocumentRequirement() produces a well-formed record with a uniq
   assert.ok(r1.id && r2.id && r1.id !== r2.id, "each requirement must get a unique id");
   assert.strictEqual(r1.project_id, "proj_1");
   assert.strictEqual(r1.document_type_id, "dtp_1");
+  assert.strictEqual(r1.planned_submission_date, null, "no due date by default (Gate 5)");
   assert.ok(r1.created_at);
 });
 
@@ -535,11 +537,41 @@ check("migrating a v28 dataset that already has a manually-added 'Project Charte
   };
   const store = loadStoreWith(JSON.stringify(v28));
   const data = store.get();
-  assert.strictEqual(data.schema_version, 29);
+  assert.strictEqual(data.schema_version, 30);
   const charters = data.document_types.filter((t) => t.name === "Project Charter");
   assert.strictEqual(charters.length, 1, "an existing hand-added type with a matching name must not be duplicated by the migration");
   assert.strictEqual(charters[0].id, "dtp_custom_1", "the user's own record must survive untouched, not be replaced by the seeded one");
   assert.ok(data.document_types.find((t) => t.name === "Kickoff Checklist"), "other Gate 18 types with no naming collision must still be added");
+});
+
+// ---------------------------------------------------------------------------
+// Gate 5 (Document Control 5: Schedule Due Dates)
+// ---------------------------------------------------------------------------
+check("migrating a v29 dataset backfills planned_submission_date: null onto existing requirement rows without a value, and leaves one that already has a date untouched", () => {
+  const v29 = {
+    schema_version: 29,
+    meta: { app_name: "x", created_at: "2026-01-01T00:00:00.000Z", last_saved_at: null, last_exported_at: null },
+    settings: { theme: "dark", company_name: "", backup_reminder_days: 7, backup_nudge_dismissed_at: null },
+    projects: [{ id: "proj_1", name: "Existing Project", archived: false, status: "on_track", progress: 0, attachments: [] }],
+    documents: [], risks: [], daily_logs: [], meetings: [], rfis: [], change_orders: [],
+    schedules: [], wbs_items: [], activities: [], relationships: [], schedule_baselines: [],
+    cost_budget_items: [], cost_actuals: [], resources: [], resource_assignments: [],
+    vendors: [], vendor_contacts: [], vendor_project_links: [], vendor_documents: [],
+    vendor_meeting_links: [], vendor_rfi_links: [], vendor_risk_links: [], vendor_performance: [], vendor_notes: [],
+    document_types: [{ id: "dtp_1", name: "BOQ", code: "BOQ", category: "Commercial", active: true, default_criticality: "normal", created_at: "2026-01-01T00:00:00.000Z" }],
+    project_document_requirements: [
+      { id: "pdr_1", project_id: "proj_1", document_type_id: "dtp_1", created_at: "2026-01-01T00:00:00.000Z" },
+      { id: "pdr_2", project_id: "proj_1", document_type_id: "dtp_1", planned_submission_date: "2026-09-01", created_at: "2026-01-01T00:00:00.000Z" },
+    ],
+  };
+  const store = loadStoreWith(JSON.stringify(v29));
+  const data = store.get();
+  assert.strictEqual(data.schema_version, 30);
+  assert.strictEqual(data.project_document_requirements.length, 2, "no requirement should be fabricated or dropped");
+  const r1 = data.project_document_requirements.find((r) => r.id === "pdr_1");
+  const r2 = data.project_document_requirements.find((r) => r.id === "pdr_2");
+  assert.strictEqual(r1.planned_submission_date, null, "a pre-Gate-5 requirement with no due date gets null, not undefined");
+  assert.strictEqual(r2.planned_submission_date, "2026-09-01", "an already-dated requirement must survive the migration untouched");
 });
 
 console.log("\n" + passed + " passed, " + failed + " failed");
