@@ -82,6 +82,12 @@ node --check src/js/whatever.js   # quick syntax check on a single file
   other reviewers; a clean PR (tests pass, no review comments) is ready by definition. Still stop
   and ask before merging if there *are* comments to address, or if something is genuinely
   ambiguous about the change itself.
+- **Always merge the working branch into `main` after completing a gate/phase — don't ask first,
+  don't wait to be told each time.** Rebuild, run the full suite, merge (direct merge is fine,
+  same "solo repo, no CI, no reviewers" reasoning as above — a PR isn't required), push `main`,
+  then restart the working branch from the new `main` before starting the next gate. This is a
+  standing instruction, not a one-off — apply it to every gate/phase from here on without being
+  asked again.
 - **After every gate/phase/tier, compile everything and hand over a zip file Aditya can send to a
   laptop or to other people and they can use directly** — not just push to `main`. Rebuild
   (`node build.js`), run the full suite, then assemble a clean end-user package: `index.html`,
