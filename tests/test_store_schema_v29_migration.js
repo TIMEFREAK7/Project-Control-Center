@@ -45,9 +45,11 @@ function loadStoreWith(rawJsonString) {
 // nine Vendor Management arrays added (v24, Gate 13); document_types repository seeded
 // (v25, Gate 14); project_document_requirements added (v26, Gate 15); document
 // classification fields + project_code + nomenclature settings added (v27, Gate 16);
-// document status + document_group_id/revision_number added (v28, Gate 17).
+// document status + document_group_id/revision_number added (v28, Gate 17); ten
+// project-setup-flavored document types added to the master repository (v29, Gate 18
+// doc-control UX fix).
 // ---------------------------------------------------------------------------
-check("a v20 dataset gets Gate 9 + Gate 10 + Gate 11 + Gate 13 + Gate 14 + Gate 15 + Gate 16 + Gate 17 fields backfilled and lands on schema_version 28", () => {
+check("a v20 dataset gets Gate 9 + Gate 10 + Gate 11 + Gate 13 + Gate 14 + Gate 15 + Gate 16 + Gate 17 + Gate 18 fields backfilled and lands on schema_version 29", () => {
   const v20 = {
     schema_version: 20,
     meta: { app_name: "x", created_at: "2026-01-01T00:00:00.000Z", last_saved_at: null, last_exported_at: null },
@@ -65,7 +67,7 @@ check("a v20 dataset gets Gate 9 + Gate 10 + Gate 11 + Gate 13 + Gate 14 + Gate 
   const store = loadStoreWith(JSON.stringify(v20));
   const data = store.get();
 
-  assert.strictEqual(data.schema_version, 28);
+  assert.strictEqual(data.schema_version, 29);
   assert.strictEqual(data.projects[0].name, "Existing Project", "existing project fields must survive untouched");
   assert.strictEqual(data.projects[0].project_type, "");
   assert.ok(data.settings.health_score_weights, "health_score_weights must be defaulted");
@@ -134,6 +136,14 @@ check("a v20 dataset gets Gate 9 + Gate 10 + Gate 11 + Gate 13 + Gate 14 + Gate 
   assert.strictEqual(data.documents[0].status, "draft");
   assert.strictEqual(data.documents[0].document_group_id, "doc_1", "a pre-existing document with no group id must become its own group, keyed by its own id");
   assert.strictEqual(data.documents[0].revision_number, 1);
+
+  // Gate 18: the project-setup-flavored types are appended to an existing install's
+  // master repository, on top of the Gate 14 seed list, all starting active.
+  const charter = data.document_types.find((t) => t.name === "Project Charter");
+  assert.ok(charter, "Gate 18's project-setup types must be backfilled onto an upgrading install");
+  assert.strictEqual(charter.code, "PC");
+  assert.strictEqual(charter.active, true);
+  assert.ok(data.document_types.find((t) => t.name === "BOQ"), "the original Gate 14 seed list must still be present alongside the Gate 18 additions");
 });
 
 // ---------------------------------------------------------------------------
@@ -141,7 +151,7 @@ check("a v20 dataset gets Gate 9 + Gate 10 + Gate 11 + Gate 13 + Gate 14 + Gate 
 // activity_id backfilled onto existing budget items, nothing else touched, then the
 // rest of the chain (through Gate 13) carries the dataset on to the current version.
 // ---------------------------------------------------------------------------
-check("a v19 dataset gets activity_id backfilled onto existing budget items and lands on schema_version 28", () => {
+check("a v19 dataset gets activity_id backfilled onto existing budget items and lands on schema_version 29", () => {
   const v19 = {
     schema_version: 19,
     meta: { app_name: "x", created_at: "2026-01-01T00:00:00.000Z", last_saved_at: null, last_exported_at: null },
@@ -155,7 +165,7 @@ check("a v19 dataset gets activity_id backfilled onto existing budget items and 
   const store = loadStoreWith(JSON.stringify(v19));
   const data = store.get();
 
-  assert.strictEqual(data.schema_version, 28);
+  assert.strictEqual(data.schema_version, 29);
   assert.strictEqual(data.cost_budget_items.length, 1, "no budget items should be fabricated or dropped");
   assert.strictEqual(data.cost_budget_items[0].activity_id, "", "pre-Gate-7 budget items get an empty (unlinked) activity_id, not undefined");
   assert.strictEqual(data.cost_budget_items[0].name, "Rebar", "existing fields must survive untouched");
@@ -164,16 +174,16 @@ check("a v19 dataset gets activity_id backfilled onto existing budget items and 
 });
 
 // ---------------------------------------------------------------------------
-// Full chain from a very old (v1-shaped) dataset still reaches v28 cleanly
+// Full chain from a very old (v1-shaped) dataset still reaches v29 cleanly
 // ---------------------------------------------------------------------------
-check("a minimal legacy dataset (no schema_version at all) migrates all the way to 28 without throwing", () => {
+check("a minimal legacy dataset (no schema_version at all) migrates all the way to 29 without throwing", () => {
   const legacy = {
     projects: [{ id: "proj_1", name: "Old Project" }],
     documents: [{ id: "doc_1", project_id: "proj_1", filename: "legacy.pdf" }],
   };
   const store = loadStoreWith(JSON.stringify(legacy));
   const data = store.get();
-  assert.strictEqual(data.schema_version, 28);
+  assert.strictEqual(data.schema_version, 29);
   assert.ok(Array.isArray(data.schedule_baselines));
   assert.ok(Array.isArray(data.cost_budget_items));
   assert.ok(Array.isArray(data.cost_actuals));
@@ -188,6 +198,7 @@ check("a minimal legacy dataset (no schema_version at all) migrates all the way 
   assert.strictEqual(data.documents[0].status, "draft", "Gate 17's status must be backfilled by the full chain");
   assert.strictEqual(data.documents[0].document_group_id, "doc_1", "Gate 17's document_group_id must default to the document's own id");
   assert.strictEqual(data.documents[0].revision_number, 1, "Gate 17's revision_number must be backfilled by the full chain");
+  assert.ok(data.document_types.find((t) => t.name === "Project Charter"), "Gate 18's project-setup types must be backfilled by the full chain");
   assert.strictEqual(data.projects[0].name, "Old Project", "pre-existing project must survive the full migration chain");
   assert.strictEqual(data.projects[0].project_type, "");
 });
@@ -198,7 +209,7 @@ check("a minimal legacy dataset (no schema_version at all) migrates all the way 
 check("a brand-new install with no stored data starts with executive_summaries: [] and default health weights", () => {
   const store = loadStoreWith(null);
   const data = store.get();
-  assert.strictEqual(data.schema_version, 28);
+  assert.strictEqual(data.schema_version, 29);
   assert.deepStrictEqual(data.executive_summaries, []);
   assert.deepStrictEqual(data.settings.health_score_weights, {
     schedule: 25, cost: 20, risk: 20, issue: 10, rfi: 15, change: 10,
@@ -207,6 +218,7 @@ check("a brand-new install with no stored data starts with executive_summaries: 
   assert.deepStrictEqual(data.resource_assignments, []);
   assert.deepStrictEqual(data.vendors, []);
   assert.ok(data.document_types.length > 0, "a brand-new install also gets the seeded document_types repository");
+  assert.ok(data.document_types.find((t) => t.name === "Project Charter"), "a brand-new install also gets Gate 18's project-setup types");
   assert.deepStrictEqual(data.project_document_requirements, []);
   assert.strictEqual(data.settings.document_nomenclature_pattern, "PROJECT-DISCIPLINE-DOCUMENTTYPE-NUMBER-REV");
   assert.strictEqual(data.settings.document_nomenclature_enabled, true);
@@ -487,6 +499,47 @@ check("DOCUMENT_STATUSES includes every status from both spec flows", () => {
   ["draft", "submitted", "under_review", "approved", "rejected", "resubmitted", "superseded", "archived"].forEach((s) => {
     assert.ok(store.DOCUMENT_STATUSES.indexOf(s) !== -1, "missing status: " + s);
   });
+});
+
+// ---------------------------------------------------------------------------
+// Gate 18 (Document Control UX refinement) factory/migration behavior: the master
+// repository's original Gate 14 seed list read as execution/vendor-submittal-heavy
+// with nothing representing documents a project generates at its own setup/kickoff —
+// see PROJECT_SETUP_TYPE_SEED's comment in store.js.
+// ---------------------------------------------------------------------------
+check("a brand-new install's document_types repository includes all ten Gate 18 project-setup types", () => {
+  const store = loadStoreWith(null);
+  const names = store.get().document_types.map((t) => t.name);
+  [
+    "Project Charter", "Kickoff Checklist", "Statutory / Regulatory Approvals",
+    "Land / Site Handover", "Insurance Documents", "Permits & Licenses",
+    "Project Organization Chart", "Communication Plan", "Project Execution Plan",
+    "Project Quality Plan",
+  ].forEach((n) => {
+    assert.ok(names.indexOf(n) !== -1, "seed list missing Gate 18 type: " + n);
+  });
+});
+
+check("migrating a v28 dataset that already has a manually-added 'Project Charter' type does not create a duplicate", () => {
+  const v28 = {
+    schema_version: 28,
+    meta: { app_name: "x", created_at: "2026-01-01T00:00:00.000Z", last_saved_at: null, last_exported_at: null },
+    settings: { theme: "dark", company_name: "", backup_reminder_days: 7, backup_nudge_dismissed_at: null },
+    projects: [], documents: [], risks: [], daily_logs: [], meetings: [], rfis: [], change_orders: [],
+    schedules: [], wbs_items: [], activities: [], relationships: [], schedule_baselines: [],
+    cost_budget_items: [], cost_actuals: [], resources: [], resource_assignments: [],
+    vendors: [], vendor_contacts: [], vendor_project_links: [], vendor_documents: [],
+    vendor_meeting_links: [], vendor_rfi_links: [], vendor_risk_links: [], vendor_performance: [], vendor_notes: [],
+    document_types: [{ id: "dtp_custom_1", name: "Project Charter", code: "CUSTOM-PC", category: "Custom", active: true, default_criticality: "normal", created_at: "2026-01-01T00:00:00.000Z" }],
+    project_document_requirements: [],
+  };
+  const store = loadStoreWith(JSON.stringify(v28));
+  const data = store.get();
+  assert.strictEqual(data.schema_version, 29);
+  const charters = data.document_types.filter((t) => t.name === "Project Charter");
+  assert.strictEqual(charters.length, 1, "an existing hand-added type with a matching name must not be duplicated by the migration");
+  assert.strictEqual(charters[0].id, "dtp_custom_1", "the user's own record must survive untouched, not be replaced by the seeded one");
+  assert.ok(data.document_types.find((t) => t.name === "Kickoff Checklist"), "other Gate 18 types with no naming collision must still be added");
 });
 
 console.log("\n" + passed + " passed, " + failed + " failed");

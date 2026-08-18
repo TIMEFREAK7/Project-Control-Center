@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 28;
+  var SCHEMA_VERSION = 29;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -1205,6 +1205,25 @@
    * behalf just because it seeded the type. Fully editable/deactivatable/deletable
    * afterward — this is a starting point, not a locked list. Used by both emptyData()
    * (brand-new install) and the v24->v25 migration (existing install upgrading). */
+  /** Gate 18 (Document Control UX refinement): the original Gate 14 seed list read as
+   * execution/vendor-submittal-heavy (ITP, Method Statement, Material Submittal, ...)
+   * with nothing representing the documents a project itself generates at setup/kickoff
+   * before any vendor is even engaged. A separate constant (not folded into the main
+   * seed array) so both a fresh install's seedDocumentTypes() and an upgrading
+   * install's migration step can reference the exact same list without duplicating it. */
+  var PROJECT_SETUP_TYPE_SEED = [
+    ["Project Charter", "PC", "Setup"],
+    ["Kickoff Checklist", "KOC", "Setup"],
+    ["Statutory / Regulatory Approvals", "REG", "Commercial"],
+    ["Land / Site Handover", "LSH", "Setup"],
+    ["Insurance Documents", "INS", "Commercial"],
+    ["Permits & Licenses", "PL", "Commercial"],
+    ["Project Organization Chart", "ORG", "Setup"],
+    ["Communication Plan", "COMMPLAN", "Setup"],
+    ["Project Execution Plan", "PEP", "Planning"],
+    ["Project Quality Plan", "PQP", "Quality"],
+  ];
+
   function seedDocumentTypes() {
     var seed = [
       ["Contract", "CTR", "Commercial"],
@@ -1235,7 +1254,7 @@
       ["O&M Manuals", "OM", "Closeout"],
       ["As-Built Drawings", "ASB", "Closeout"],
       ["Closeout Documents", "CLO", "Closeout"],
-    ];
+    ].concat(PROJECT_SETUP_TYPE_SEED);
     return seed.map(function (row) {
       return newDocumentType({ name: row[0], code: row[1], category: row[2] });
     });
@@ -1657,6 +1676,25 @@
         if (d.revision_number === undefined) d.revision_number = 1;
       });
       loaded.schema_version = 28;
+    }
+
+    if (loaded.schema_version < 29) {
+      // Gate 18 (Document Control UX refinement): add the project-setup-flavored
+      // document types (see PROJECT_SETUP_TYPE_SEED's own comment) to an existing
+      // install's master repository, same as a fresh install gets from
+      // seedDocumentTypes(). Skips any name the user already has (either because they
+      // added it by hand, or a future re-run of this exact migration step) rather than
+      // creating a duplicate.
+      var existingTypeNames = {};
+      (loaded.document_types || []).forEach(function (t) {
+        existingTypeNames[(t.name || "").toLowerCase()] = true;
+      });
+      PROJECT_SETUP_TYPE_SEED.forEach(function (row) {
+        if (!existingTypeNames[row[0].toLowerCase()]) {
+          loaded.document_types.push(newDocumentType({ name: row[0], code: row[1], category: row[2] }));
+        }
+      });
+      loaded.schema_version = 29;
     }
 
     return loaded;
