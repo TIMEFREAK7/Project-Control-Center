@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 27;
+  var SCHEMA_VERSION = 28;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -132,6 +132,16 @@
 
   var DOCUMENT_CATEGORIES = ["contract", "drawing", "photo", "invoice", "other"];
 
+  // Gate 17 (Document Control 4: Status + Version Control). Both flows from the spec
+  // collapse onto one flat list rather than two separate enums — "rejected" and
+  // "resubmitted" are just as much a document's status as "approved" is, and a plain
+  // select (not an enforced state machine) matches how every other status-like field in
+  // this app already works (VENDOR_STATUSES, PROJECT_STATUSES, ACTIVITY_STATUSES) — warn/
+  // inform, don't gate. "not_started"/"required" from the spec's own flow describe a
+  // document that doesn't exist as a file yet, which is Gate 15's
+  // project_document_requirements territory, not a field on an actual uploaded record.
+  var DOCUMENT_STATUSES = ["draft", "submitted", "under_review", "approved", "rejected", "resubmitted", "superseded", "archived"];
+
   /** Fields default to "" / null rather than being omitted, so forms always have
    * something to bind to and exports/imports have a stable shape. `attachments`
    * holds document ids referencing entries in data.documents (Phase 3). */
@@ -240,8 +250,22 @@
       priority: "medium",
       criticality: "",
       remarks: "",
+      // Gate 17 (Document Control 4: Status + Version Control). `status` is a plain
+      // select, not an enforced workflow — see DOCUMENT_STATUSES's own comment.
+      // `document_group_id`/`revision_number` are the exact same version-history
+      // convention Vendor Management's vendor_documents already established (Gate 13):
+      // every upload is its own row; a "new revision" upload creates a NEW row sharing
+      // this document's document_group_id with revision_number incremented, never
+      // overwriting the previous row. document_group_id defaults to this record's own
+      // id below when not explicitly supplied (first upload in a group), same "default
+      // to your own id" pattern newVendorDocument() uses.
+      status: "draft",
+      document_group_id: "",
+      revision_number: 1,
     };
-    return Object.assign(base, overrides || {});
+    var doc = Object.assign(base, overrides || {});
+    if (!doc.document_group_id) doc.document_group_id = doc.id;
+    return doc;
   }
 
   function newDailyLogId() {
@@ -1619,6 +1643,22 @@
       loaded.schema_version = 27;
     }
 
+    if (loaded.schema_version < 28) {
+      // Gate 17 (Document Control 4): Status + Version Control. Every existing document
+      // becomes its own single-revision group (document_group_id defaults to its own
+      // id, revision_number 1) — there's no way to infer which pre-Gate-17 documents
+      // were actually different revisions of the same thing, so each stays independent
+      // rather than this migration guessing at groupings. status defaults to "draft" —
+      // not a claim about where any given document actually sits in review; the user
+      // can update it once actual status data matters to them.
+      (loaded.documents || []).forEach(function (d) {
+        if (d.status === undefined) d.status = "draft";
+        if (d.document_group_id === undefined || !d.document_group_id) d.document_group_id = d.id;
+        if (d.revision_number === undefined) d.revision_number = 1;
+      });
+      loaded.schema_version = 28;
+    }
+
     return loaded;
   }
 
@@ -1927,6 +1967,7 @@
     PROJECT_STATUSES: PROJECT_STATUSES,
     newDocument: newDocument,
     DOCUMENT_CATEGORIES: DOCUMENT_CATEGORIES,
+    DOCUMENT_STATUSES: DOCUMENT_STATUSES,
     newDailyLog: newDailyLog,
     newDailyLogPhoto: newDailyLogPhoto,
     newRisk: newRisk,

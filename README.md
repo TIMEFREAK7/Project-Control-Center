@@ -1717,6 +1717,83 @@ done, deliberately: Document Control gates 4-14 (status/revision workflow, sched
 linking, vendor lookahead, readiness/constraints, reminders, dashboards, executive/portfolio
 compliance) — this is still the classification foundation, not the workflow on top of it.
 
+## Gate 17 — Document Control 4: Status + Version Control (2026-08-18)
+
+Fourth gate of the 14-gate Document Control spec: documents get a controlled lifecycle status and
+real revision history — re-uploading a revised file no longer means either overwriting the old one
+or letting every historical version clutter the list as its own row.
+
+**Scope decided before building:**
+
+- **Version control reuses Vendor Management's own proven pattern verbatim**
+  (`document_group_id`/`revision_number`, "latest computed at render time, never a denormalized
+  flag") rather than inventing a new convention — Gate 13's `vendor_documents.js` already solved
+  this exact problem, so `documents.js`'s "New Revision"/"History" flow, list-collapsing, and
+  cascading delete are a direct port of that established, tested pattern.
+- **Status is a plain select, not an enforced state machine.** The spec describes two flows
+  (Required→...→Approved, and Under Review→Rejected→Revision→Resubmitted) but every other
+  status-like field in this app (`VENDOR_STATUSES`, `PROJECT_STATUSES`, `ACTIVITY_STATUSES`) is
+  already a free-choice select, not a gated workflow — this gate matches that, letting the user set
+  any status at any time rather than PCC deciding which transitions are "allowed." "Required" and
+  "Not Started" from the spec's own flow describe a document that doesn't exist as a file yet,
+  which is Gate 15's `project_document_requirements` territory, not a field on an actual uploaded
+  record — so `DOCUMENT_STATUSES` starts at `draft`.
+- **Status is editable right on the document's row** (a quick-change select, no separate save
+  step), not just at upload time — a document's lifecycle state is expected to move over time,
+  same "quick toggle" convention as Document Types' Deactivate button and Gate 15's requirement
+  checkboxes.
+- **A new revision never inherits "approved"/"rejected" from the one before it** — it defaults to
+  `draft` regardless of where the prior revision ended up, since the new file hasn't actually been
+  reviewed yet.
+- **Delete removes the whole revision history, not just the visible row** — matching
+  `vendor_documents.js`'s own established delete behavior exactly, so the two "revision history"
+  features in this app don't disagree about what "Delete" means.
+- **Both `documents.js`'s own list and Portfolio's ATTACHMENTS section collapse to latest-per-group
+  only**, via one shared `window.PCC.files.latestOnly()` helper — a document with several revisions
+  now shows as one row in both places instead of one row per historical revision.
+
+**What changed:** `store.js` (schema v27→v28: `status`/`document_group_id`/`revision_number` on
+`newDocument()`; `DOCUMENT_STATUSES` constant). **Changed:** `pages/documents.js` (Status field in
+the upload form; a live Status select on each row; "New Revision" pre-filling the entire
+classification from the latest revision; a "History" expand panel; list rendering collapsed to
+latest-only; delete cascades across the whole group; new `latestDocuments()`/`revisionsFor()`
+helpers, the former exported as `window.PCC.files.latestOnly()`), `pages/portfolio.js`
+(ATTACHMENTS section now uses `latestOnly()` too).
+
+**Tested before delivery (30 pure-logic + 26 e2e checks + updated migration tests, full suite
+re-run clean):**
+
+- **Schema migration** (`test_store_schema_v28_migration.js`, renamed from the v27 file): the
+  full v20→v28 chain and a legacy/brand-new install both land correctly with every existing
+  document backfilled as its own single-revision group (`document_group_id` defaulting to its own
+  id, `revision_number: 1`, `status: "draft"`); `newDocument()`'s group-id-defaulting and
+  explicit-group-id (new-revision) paths both verified.
+- **End-to-end against the actual bundled `index.html`** (`test_document_revision_status_e2e.js`,
+  26 checks): a single-revision document shows no History button; "New Revision" pre-fills
+  classification and resets status to Draft; a second revision collapses the list to latest-only
+  (older filename no longer a top-level row) with a correct "History (2)" count; the History panel
+  lists the older revision; the row's Status select updates the store immediately; Portfolio's
+  ATTACHMENTS section shows the same latest-only view; Delete removes both revisions (confirmed via
+  the actual confirm() warning text mentioning the revision count) and both records; full 16-route
+  smoke test. The real file-driven upload pipeline itself isn't jsdom-testable in this codebase
+  (documented precedent from Gates 10 and 16), so this file covers everything reachable without
+  picking a file, and directly seeds a second revision via the store the way a completed upload
+  would leave it.
+- **Real-browser verification** (Chromium via Playwright, two real minimal-PDF uploads through the
+  actual form): uploaded a first revision (correctly landing on "Revision 1"), then a genuine
+  second "New Revision" upload — which correctly triggered the existing duplicate-detection warning
+  (identical file bytes) requiring "Continue Anyway" before Save enabled, confirming Gate 4's new
+  version-control flow and the pre-existing duplicate-detection feature compose correctly rather
+  than conflicting. After saving, the list correctly showed only "spec-rev01.pdf" / "Revision 2" as
+  the top-level row, "History (2)" expanded to reveal "Rev 1 — spec-rev00.pdf," matching the
+  screenshot exactly.
+
+**What I have not tested:** this on your actual device. Same standard as every prior gate. Not
+done, deliberately: Document Control gates 5-14 (schedule↔document linking and lead time, vendor
+lookahead, readiness/constraints, reminders, dashboards, executive/portfolio compliance) — status
+and version control are the foundation this gate adds; the workflow that reads and acts on them
+comes later.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
@@ -1744,15 +1821,16 @@ line items on the original locked Tier 2/3 list. Built in a separate parallel se
 Gates 8-11 and reconciled into `main` together with them (see each gate's own write-up above for
 the schema-numbering note on how the reconciliation renumbered them).
 
-**Document Control** (Gates 14-16 = Document Control gates 1-3 of a separate 14-gate sub-spec,
+**Document Control** (Gates 14-17 = Document Control gates 1-4 of a separate 14-gate sub-spec,
 done) — same footing as Executive Center/Activity Linking/Vendor Management above: a directly
 requested, explicitly incremental upgrade to Documents, not a Tier 1/2/3 line item. The Master
 Document Repository (the type taxonomy, Gate 14), Project-Specific Document Requirements (which
-types apply to which project, Gate 15), and Classification + Nomenclature (document-level
-metadata + a non-blocking naming-convention check, Gate 16) are built; Document Control gates
-4-14 (status/revision workflow, schedule↔document linking, vendor lookahead,
-readiness/constraints, reminders, dashboards, executive/portfolio compliance) are intentionally
-not started — see Gates 14-16's own write-ups above.
+types apply to which project, Gate 15), Classification + Nomenclature (document-level metadata +
+a non-blocking naming-convention check, Gate 16), and Status + Version Control (a lifecycle status
+plus real revision history, Gate 17) are built; Document Control gates 5-14 (schedule↔document
+linking and lead time, vendor lookahead, readiness/constraints, reminders, dashboards,
+executive/portfolio compliance) are intentionally not started — see Gates 14-17's own write-ups
+above.
 
 **Tier 3 (deferred until Tier 1 is in daily use):** AI Document Processing, Knowledge Base, AI Project
 Assistant, Lessons Learned, final polish
@@ -1760,19 +1838,19 @@ Assistant, Lessons Learned, final polish
 ## Next phase
 
 **Tier 2 is complete**, and Vendor Management / the in-app Excel editor / the Document Control
-foundation (repository + per-project requirements + classification/nomenclature) are all done
-alongside it. The most likely next piece of work is **Document Control gate 4 (status + version
-control)** — a real submission/review/approval lifecycle and revision history for documents,
-following Vendor Management's own `document_group_id`/`revision_number` pattern as the natural
-template — per the sub-spec's own locked gate order, but confirm scope before starting it rather
-than assuming, same discipline as every gate before this one. Other open items, none blocking
-daily use: rate × usage from Resource Management feeding Cost Tracking/EVM (explicitly deferred,
-Gate 11); a persisted/logo-customizable report-template system; portfolio-level executive
-dashboard filtering; 10,000+ activity Gantt virtualization; per-activity linking extended to
-Resource Assignments' own sub-fields if that turns out to matter in practice; Vendor↔Cost/Schedule
-integration beyond the current Vendor↔Project/Meeting/RFI/Risk links, if that turns out to matter
-in practice; reconciling Documents' `category` / Vendor Management's document categories / the
-Gate 14 master repository into one classification scheme, explicitly deferred twice now (Gates 14
-and 16) — worth revisiting once real usage shows whether it's actually needed. Tier 3 (AI Document
+foundation (repository + per-project requirements + classification/nomenclature + status/version
+control) are all done alongside it. The most likely next piece of work is **Document Control gate
+5 (document schedule + due dates, then gate 7's schedule↔document linking)** — connecting a
+document requirement to a Schedule activity with a lead time before it, per the sub-spec's own
+locked gate order, but confirm scope before starting it rather than assuming, same discipline as
+every gate before this one. Other open items, none blocking daily use: rate × usage from Resource
+Management feeding Cost Tracking/EVM (explicitly deferred, Gate 11); a persisted/logo-customizable
+report-template system; portfolio-level executive dashboard filtering; 10,000+ activity Gantt
+virtualization; per-activity linking extended to Resource Assignments' own sub-fields if that
+turns out to matter in practice; Vendor↔Cost/Schedule integration beyond the current Vendor↔
+Project/Meeting/RFI/Risk links, if that turns out to matter in practice; reconciling Documents'
+`category` / Vendor Management's document categories / the Gate 14 master repository into one
+classification scheme, explicitly deferred twice now (Gates 14 and 16) — worth revisiting once
+real usage shows whether it's actually needed. Tier 3 (AI Document
 Processing, Knowledge Base, AI Project Assistant, Lessons Learned, final polish) remains deferred
 until Tier 1/2 are in daily use.

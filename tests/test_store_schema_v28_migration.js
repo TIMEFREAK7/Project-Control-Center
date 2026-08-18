@@ -1,7 +1,7 @@
 // Standalone Node test for store.js's migrate() function, exercised indirectly through
 // load() — same approach every prior version of this file used, replaced here per the
 // "one canonical full-chain test targeting latest" pattern established at Gate 6 (this
-// file supersedes the v26 one, whose checks are folded in below).
+// file supersedes the v27 one, whose checks are folded in below).
 "use strict";
 const fs = require("fs");
 const path = require("path");
@@ -38,15 +38,16 @@ function loadStoreWith(rawJsonString) {
 }
 
 // ---------------------------------------------------------------------------
-// v20 -> v27 in one hop: project_type/current_phase/forecast_finish_date backfilled
+// v20 -> v28 in one hop: project_type/current_phase/forecast_finish_date backfilled
 // onto existing projects, health_score_weights defaulted, executive_summaries added
 // (v21, Gate 9); activity_id backfilled onto every linkable register's existing
 // records (v22, Gate 10); resources/resource_assignments arrays added (v23, Gate 11);
 // nine Vendor Management arrays added (v24, Gate 13); document_types repository seeded
 // (v25, Gate 14); project_document_requirements added (v26, Gate 15); document
-// classification fields + project_code + nomenclature settings added (v27, Gate 16).
+// classification fields + project_code + nomenclature settings added (v27, Gate 16);
+// document status + document_group_id/revision_number added (v28, Gate 17).
 // ---------------------------------------------------------------------------
-check("a v20 dataset gets Gate 9 + Gate 10 + Gate 11 + Gate 13 + Gate 14 + Gate 15 + Gate 16 fields backfilled and lands on schema_version 27", () => {
+check("a v20 dataset gets Gate 9 + Gate 10 + Gate 11 + Gate 13 + Gate 14 + Gate 15 + Gate 16 + Gate 17 fields backfilled and lands on schema_version 28", () => {
   const v20 = {
     schema_version: 20,
     meta: { app_name: "x", created_at: "2026-01-01T00:00:00.000Z", last_saved_at: null, last_exported_at: null },
@@ -64,7 +65,7 @@ check("a v20 dataset gets Gate 9 + Gate 10 + Gate 11 + Gate 13 + Gate 14 + Gate 
   const store = loadStoreWith(JSON.stringify(v20));
   const data = store.get();
 
-  assert.strictEqual(data.schema_version, 27);
+  assert.strictEqual(data.schema_version, 28);
   assert.strictEqual(data.projects[0].name, "Existing Project", "existing project fields must survive untouched");
   assert.strictEqual(data.projects[0].project_type, "");
   assert.ok(data.settings.health_score_weights, "health_score_weights must be defaulted");
@@ -127,6 +128,12 @@ check("a v20 dataset gets Gate 9 + Gate 10 + Gate 11 + Gate 13 + Gate 14 + Gate 
   assert.strictEqual(data.documents[0].remarks, "");
   assert.strictEqual(data.settings.document_nomenclature_pattern, "PROJECT-DISCIPLINE-DOCUMENTTYPE-NUMBER-REV");
   assert.strictEqual(data.settings.document_nomenclature_enabled, true);
+
+  // Gate 17: existing document becomes its own single-revision group; status defaults
+  // to "draft" (not a claim about where it actually sits in review).
+  assert.strictEqual(data.documents[0].status, "draft");
+  assert.strictEqual(data.documents[0].document_group_id, "doc_1", "a pre-existing document with no group id must become its own group, keyed by its own id");
+  assert.strictEqual(data.documents[0].revision_number, 1);
 });
 
 // ---------------------------------------------------------------------------
@@ -134,7 +141,7 @@ check("a v20 dataset gets Gate 9 + Gate 10 + Gate 11 + Gate 13 + Gate 14 + Gate 
 // activity_id backfilled onto existing budget items, nothing else touched, then the
 // rest of the chain (through Gate 13) carries the dataset on to the current version.
 // ---------------------------------------------------------------------------
-check("a v19 dataset gets activity_id backfilled onto existing budget items and lands on schema_version 27", () => {
+check("a v19 dataset gets activity_id backfilled onto existing budget items and lands on schema_version 28", () => {
   const v19 = {
     schema_version: 19,
     meta: { app_name: "x", created_at: "2026-01-01T00:00:00.000Z", last_saved_at: null, last_exported_at: null },
@@ -148,7 +155,7 @@ check("a v19 dataset gets activity_id backfilled onto existing budget items and 
   const store = loadStoreWith(JSON.stringify(v19));
   const data = store.get();
 
-  assert.strictEqual(data.schema_version, 27);
+  assert.strictEqual(data.schema_version, 28);
   assert.strictEqual(data.cost_budget_items.length, 1, "no budget items should be fabricated or dropped");
   assert.strictEqual(data.cost_budget_items[0].activity_id, "", "pre-Gate-7 budget items get an empty (unlinked) activity_id, not undefined");
   assert.strictEqual(data.cost_budget_items[0].name, "Rebar", "existing fields must survive untouched");
@@ -157,16 +164,16 @@ check("a v19 dataset gets activity_id backfilled onto existing budget items and 
 });
 
 // ---------------------------------------------------------------------------
-// Full chain from a very old (v1-shaped) dataset still reaches v27 cleanly
+// Full chain from a very old (v1-shaped) dataset still reaches v28 cleanly
 // ---------------------------------------------------------------------------
-check("a minimal legacy dataset (no schema_version at all) migrates all the way to 27 without throwing", () => {
+check("a minimal legacy dataset (no schema_version at all) migrates all the way to 28 without throwing", () => {
   const legacy = {
     projects: [{ id: "proj_1", name: "Old Project" }],
-    documents: [],
+    documents: [{ id: "doc_1", project_id: "proj_1", filename: "legacy.pdf" }],
   };
   const store = loadStoreWith(JSON.stringify(legacy));
   const data = store.get();
-  assert.strictEqual(data.schema_version, 27);
+  assert.strictEqual(data.schema_version, 28);
   assert.ok(Array.isArray(data.schedule_baselines));
   assert.ok(Array.isArray(data.cost_budget_items));
   assert.ok(Array.isArray(data.cost_actuals));
@@ -178,6 +185,9 @@ check("a minimal legacy dataset (no schema_version at all) migrates all the way 
   assert.ok(Array.isArray(data.document_types) && data.document_types.length > 0, "Gate 14's document_types must be seeded by the full chain");
   assert.ok(Array.isArray(data.project_document_requirements), "Gate 15's project_document_requirements must be backfilled by the full chain");
   assert.strictEqual(data.projects[0].project_code, "", "Gate 16's project_code must be backfilled by the full chain");
+  assert.strictEqual(data.documents[0].status, "draft", "Gate 17's status must be backfilled by the full chain");
+  assert.strictEqual(data.documents[0].document_group_id, "doc_1", "Gate 17's document_group_id must default to the document's own id");
+  assert.strictEqual(data.documents[0].revision_number, 1, "Gate 17's revision_number must be backfilled by the full chain");
   assert.strictEqual(data.projects[0].name, "Old Project", "pre-existing project must survive the full migration chain");
   assert.strictEqual(data.projects[0].project_type, "");
 });
@@ -188,7 +198,7 @@ check("a minimal legacy dataset (no schema_version at all) migrates all the way 
 check("a brand-new install with no stored data starts with executive_summaries: [] and default health weights", () => {
   const store = loadStoreWith(null);
   const data = store.get();
-  assert.strictEqual(data.schema_version, 27);
+  assert.strictEqual(data.schema_version, 28);
   assert.deepStrictEqual(data.executive_summaries, []);
   assert.deepStrictEqual(data.settings.health_score_weights, {
     schedule: 25, cost: 20, risk: 20, issue: 10, rfi: 15, change: 10,
@@ -448,6 +458,35 @@ check("newDocument() defaults every Gate 16 classification field", () => {
   assert.strictEqual(d.remarks, "");
   // category (pre-existing field) must be completely untouched by this gate.
   assert.strictEqual(d.category, "other");
+});
+
+// ---------------------------------------------------------------------------
+// Gate 17 (Document Control 4: Status + Version Control) factory defaults
+// ---------------------------------------------------------------------------
+check("newDocument() defaults status to 'draft' and revision_number to 1, and defaults document_group_id to its own id", () => {
+  const store = loadStoreWith(null);
+  const d1 = store.newDocument({ project_id: "proj_1", filename: "a.pdf" });
+  const d2 = store.newDocument({ project_id: "proj_1", filename: "b.pdf" });
+  assert.strictEqual(d1.status, "draft");
+  assert.strictEqual(d1.revision_number, 1);
+  assert.strictEqual(d1.document_group_id, d1.id, "document_group_id must default to the document's own id when not supplied");
+  assert.notStrictEqual(d1.document_group_id, d2.document_group_id, "two independently-created documents must not share a group");
+});
+
+check("newDocument() honors an explicitly supplied document_group_id (the 'new revision' path)", () => {
+  const store = loadStoreWith(null);
+  const original = store.newDocument({ project_id: "proj_1", filename: "a.pdf" });
+  const revision2 = store.newDocument({ project_id: "proj_1", filename: "a-rev01.pdf", document_group_id: original.document_group_id, revision_number: 2 });
+  assert.strictEqual(revision2.document_group_id, original.document_group_id);
+  assert.strictEqual(revision2.revision_number, 2);
+  assert.notStrictEqual(revision2.id, original.id, "a new revision must still be its own record, never overwriting the original");
+});
+
+check("DOCUMENT_STATUSES includes every status from both spec flows", () => {
+  const store = loadStoreWith(null);
+  ["draft", "submitted", "under_review", "approved", "rejected", "resubmitted", "superseded", "archived"].forEach((s) => {
+    assert.ok(store.DOCUMENT_STATUSES.indexOf(s) !== -1, "missing status: " + s);
+  });
 });
 
 console.log("\n" + passed + " passed, " + failed + " failed");

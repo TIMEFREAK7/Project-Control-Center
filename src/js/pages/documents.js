@@ -17,6 +17,18 @@
   var PRIORITY_LABELS = { low: "Low", medium: "Medium", high: "High" };
   var CRITICALITY_LABELS = { critical: "Critical", major: "Major", normal: "Normal", informational: "Informational" };
 
+  // Gate 17 (Document Control 4): local label/badge maps, same duplicated-per-module
+  // convention as PRIORITY_LABELS above.
+  var STATUS_LABELS = {
+    draft: "Draft",
+    submitted: "Submitted",
+    under_review: "Under Review",
+    approved: "Approved",
+    rejected: "Rejected",
+    resubmitted: "Resubmitted",
+    superseded: "Superseded",
+    archived: "Archived",
+  };
   var uiState = {
     formOpen: false,
     pendingFile: null, // { name, size, type, extraction } once read
@@ -42,6 +54,14 @@
     pendingPriority: "medium",
     pendingCriticality: "",
     pendingRemarks: "",
+    // Gate 17 (Document Control 4): version control. pendingRevisionGroupId is set by
+    // "New Revision" (see documentRow's revisionBtn below) — its presence is what makes
+    // the upload form say "Upload New Revision" instead of "Add Document" and is what
+    // makes the Save handler compute the next revision_number instead of starting at 1.
+    // expandedRevisionsGroupId tracks which document's History panel is open, or null.
+    pendingStatus: "draft",
+    pendingRevisionGroupId: "",
+    expandedRevisionsGroupId: null,
   };
 
   function resetPendingClassification() {
@@ -55,6 +75,8 @@
     uiState.pendingPriority = "medium";
     uiState.pendingCriticality = "";
     uiState.pendingRemarks = "";
+    uiState.pendingStatus = "draft";
+    uiState.pendingRevisionGroupId = "";
   }
 
   function projectName(data, projectId) {
@@ -63,6 +85,34 @@
       return proj.id === projectId;
     });
     return p ? p.name || "(unnamed project)" : "Unassigned";
+  }
+
+  /** Gate 17 (Document Control 4): collapses a flat document list down to just the
+   * highest-revision_number record per document_group_id — the same "latest computed at
+   * render time, never a denormalized flag" convention vendor_documents.js's own
+   * latestDocumentsForVendor() already established. Exported (see window.PCC.files
+   * below) so portfolio.js's ATTACHMENTS section can show the same "latest only" view
+   * instead of listing every historical revision as its own row. */
+  function latestDocuments(documents) {
+    var groups = {};
+    documents.forEach(function (d) {
+      var key = d.document_group_id || d.id;
+      if (!groups[key] || d.revision_number > groups[key].revision_number) groups[key] = d;
+    });
+    return Object.keys(groups).map(function (k) {
+      return groups[k];
+    });
+  }
+
+  /** All revisions in the same group as `doc`, newest first. */
+  function revisionsFor(documents, groupId) {
+    return documents
+      .filter(function (d) {
+        return d.document_group_id === groupId;
+      })
+      .sort(function (a, b) {
+        return b.revision_number - a.revision_number;
+      });
   }
 
   /** Gate 10: see risks.js's identical helper for the full rationale. */
@@ -559,7 +609,7 @@
 
     var heading = document.createElement("h3");
     heading.style.marginBottom = "14px";
-    heading.textContent = "Add Document";
+    heading.textContent = uiState.pendingRevisionGroupId ? "Upload New Revision" : "Add Document";
     panel.appendChild(heading);
 
     if (uiState.pendingMeetingId) {
@@ -826,6 +876,23 @@
     criticalityField.appendChild(criticalitySelect);
     classGrid.appendChild(criticalityField);
 
+    var statusField = document.createElement("div");
+    statusField.className = "field";
+    statusField.innerHTML = "<label>Status</label>";
+    var statusSelect = document.createElement("select");
+    window.PCC.store.DOCUMENT_STATUSES.forEach(function (s) {
+      var opt = document.createElement("option");
+      opt.value = s;
+      opt.textContent = STATUS_LABELS[s] || s;
+      statusSelect.appendChild(opt);
+    });
+    statusSelect.value = uiState.pendingStatus;
+    statusSelect.onchange = function () {
+      uiState.pendingStatus = statusSelect.value;
+    };
+    statusField.appendChild(statusSelect);
+    classGrid.appendChild(statusField);
+
     panel.appendChild(classGrid);
 
     var remarksField = document.createElement("div");
@@ -938,7 +1005,21 @@
           }, null)
         : null;
 
+      // Gate 17: same revision_number computation vendor_documents.js's own upload
+      // handler uses \u2014 1 for a brand-new document, or one more than the highest
+      // existing revision_number sharing this document_group_id for "New Revision".
+      var revisionNumber = 1;
+      if (uiState.pendingRevisionGroupId) {
+        var siblings = data.documents.filter(function (d) {
+          return d.document_group_id === uiState.pendingRevisionGroupId;
+        });
+        revisionNumber = 1 + siblings.reduce(function (max, d) { return Math.max(max, d.revision_number); }, 0);
+      }
+
       var doc = window.PCC.store.newDocument({
+        document_group_id: uiState.pendingRevisionGroupId || "",
+        revision_number: revisionNumber,
+        status: uiState.pendingStatus || "draft",
         project_id: uiState.pendingProjectId,
         activity_id: uiState.pendingActivityId || "",
         filename: uiState.pendingFile.name,
@@ -1083,6 +1164,11 @@
     var card = document.createElement("div");
     card.className = "project-card";
 
+    // Gate 17 (Document Control 4): version control. `doc` passed in here is always the
+    // latest revision (see render()'s use of latestDocuments()) — allRevisions is every
+    // row sharing its document_group_id, newest first, doc itself always allRevisions[0].
+    var allRevisions = revisionsFor(data.documents, doc.document_group_id);
+
     var linkedMeeting = doc.meeting_id
       ? data.meetings.find(function (m) {
           return m.id === doc.meeting_id;
@@ -1122,11 +1208,37 @@
       (doc.discipline ? " \u00b7 " + doc.discipline : "") +
       (doc.document_number ? " \u00b7 " + doc.document_number + (doc.revision ? " Rev " + doc.revision : "") : "") +
       (linkedVendor ? " \u00b7 Vendor: " + (linkedVendor.vendor_name || "(unnamed vendor)") : "") +
+      " \u00b7 Revision " + doc.revision_number +
       "</div>";
 
     var badge = document.createElement("span");
     badge.className = "status-badge status-badge--complete";
     badge.textContent = CATEGORY_LABELS[doc.category] || doc.category;
+
+    // Gate 17: status is editable right on the row \u2014 a document's lifecycle state is
+    // expected to change over time without reopening the whole classification form,
+    // same "quick toggle, no separate save step" convention as Document Types'
+    // Deactivate button and Gate 15's requirement checkboxes.
+    var statusSelect = document.createElement("select");
+    statusSelect.style.marginLeft = "6px";
+    statusSelect.className = "mono";
+    statusSelect.style.fontSize = "12px";
+    window.PCC.store.DOCUMENT_STATUSES.forEach(function (s) {
+      var opt = document.createElement("option");
+      opt.value = s;
+      opt.textContent = STATUS_LABELS[s] || s;
+      statusSelect.appendChild(opt);
+    });
+    statusSelect.value = doc.status;
+    statusSelect.onchange = function () {
+      window.PCC.store.update(function (d) {
+        var existing = d.documents.find(function (item) {
+          return item.id === doc.id;
+        });
+        if (existing) existing.status = statusSelect.value;
+      });
+      onChanged();
+    };
 
     var dupBadge = null;
     if (doc.is_duplicate) {
@@ -1195,15 +1307,65 @@
       actions.appendChild(viewActivityBtn);
     }
 
+    // Gate 17: "New Revision" opens the upload form pre-filled from this (the latest)
+    // revision's own classification, carrying document_group_id forward so Save
+    // computes the next revision_number instead of starting a new group.
+    var newRevisionBtn = document.createElement("button");
+    newRevisionBtn.className = "btn btn--ghost";
+    newRevisionBtn.textContent = "New Revision";
+    newRevisionBtn.onclick = function () {
+      uiState.formOpen = true;
+      uiState.pendingFile = null;
+      uiState.readError = null;
+      uiState.duplicateMatches = [];
+      uiState.duplicateAcknowledged = false;
+      uiState.pendingProjectId = doc.project_id;
+      uiState.pendingActivityId = doc.activity_id || "";
+      uiState.pendingCategory = doc.category;
+      uiState.pendingDocumentTypeId = doc.document_type_id || "";
+      uiState.pendingDiscipline = doc.discipline || "";
+      uiState.pendingDocumentNumber = doc.document_number || "";
+      uiState.pendingRevision = doc.revision || "00";
+      uiState.pendingPackage = doc.package || "";
+      uiState.pendingContractOrPo = doc.contract_or_po || "";
+      uiState.pendingVendorId = doc.vendor_id || "";
+      uiState.pendingPriority = doc.priority || "medium";
+      uiState.pendingCriticality = doc.criticality || "";
+      uiState.pendingRemarks = doc.remarks || "";
+      // A new revision hasn't been reviewed yet, regardless of where the previous one
+      // ended up \u2014 never carries over "approved"/"rejected" from the prior revision.
+      uiState.pendingStatus = "draft";
+      uiState.pendingRevisionGroupId = doc.document_group_id;
+      onChanged();
+    };
+    actions.appendChild(newRevisionBtn);
+
+    if (allRevisions.length > 1) {
+      var historyBtn = document.createElement("button");
+      historyBtn.className = "btn btn--ghost";
+      historyBtn.textContent = "History (" + allRevisions.length + ")";
+      historyBtn.onclick = function () {
+        uiState.expandedRevisionsGroupId = uiState.expandedRevisionsGroupId === doc.document_group_id ? null : doc.document_group_id;
+        onChanged();
+      };
+      actions.appendChild(historyBtn);
+    }
+
     var deleteBtn = document.createElement("button");
     deleteBtn.className = "btn btn--ghost";
     deleteBtn.textContent = "Delete";
     deleteBtn.onclick = function () {
-      var warning = "Delete \u201c" + doc.filename + "\u201d? This removes the stored file and extracted data. This can't be undone.";
+      var allRevisionIds = allRevisions.map(function (item) {
+        return item.id;
+      });
+      var warning =
+        allRevisions.length > 1
+          ? "Delete \u201c" + doc.filename + "\u201d and all " + allRevisions.length + " of its revisions? This removes every stored file and extracted data in this revision history. This can't be undone."
+          : "Delete \u201c" + doc.filename + "\u201d? This removes the stored file and extracted data. This can't be undone.";
       if (!window.confirm(warning)) return;
       window.PCC.store.update(function (d) {
         d.documents = d.documents.filter(function (item) {
-          return item.id !== doc.id;
+          return allRevisionIds.indexOf(item.id) === -1;
         });
         // Keep project.attachments in sync — it's not what rendering reads from (that
         // filters data.documents directly), but leaving stale ids in there would make
@@ -1211,26 +1373,66 @@
         d.projects.forEach(function (p) {
           if (p.attachments) {
             p.attachments = p.attachments.filter(function (id) {
-              return id !== doc.id;
+              return allRevisionIds.indexOf(id) === -1;
             });
           }
         });
       });
-      // Best-effort — the metadata record is already gone either way, so a failed blob
+      // Best-effort — the metadata records are already gone either way, so a failed blob
       // delete here just means an orphaned blob sits harmlessly in IndexedDB rather than
       // blocking the delete the person actually asked for.
-      window.PCC.blobStore.deleteBlob(doc.id).catch(function () {});
-      if (uiState.expandedDocId === doc.id) uiState.expandedDocId = null;
-      window.PCC.notify("Document deleted.", "info");
+      allRevisionIds.forEach(function (id) {
+        window.PCC.blobStore.deleteBlob(id).catch(function () {});
+      });
+      if (allRevisionIds.indexOf(uiState.expandedDocId) !== -1) uiState.expandedDocId = null;
+      if (uiState.expandedRevisionsGroupId === doc.document_group_id) uiState.expandedRevisionsGroupId = null;
+      window.PCC.notify(allRevisions.length > 1 ? "Document and its revision history deleted." : "Document deleted.", "info");
       onChanged();
     };
     actions.appendChild(deleteBtn);
 
     card.appendChild(main);
     card.appendChild(badge);
+    card.appendChild(statusSelect);
     if (dupBadge) card.appendChild(dupBadge);
     card.appendChild(extractionNote);
     card.appendChild(actions);
+
+    if (uiState.expandedRevisionsGroupId === doc.document_group_id && allRevisions.length > 1) {
+      var histWrap = document.createElement("div");
+      histWrap.style.marginTop = "10px";
+      histWrap.style.paddingTop = "10px";
+      histWrap.style.borderTop = "1px solid var(--divider)";
+      // allRevisions[0] is doc itself (already shown above) — only older ones here.
+      allRevisions.slice(1).forEach(function (rev) {
+        var revRow = document.createElement("div");
+        revRow.style.display = "flex";
+        revRow.style.justifyContent = "space-between";
+        revRow.style.alignItems = "center";
+        revRow.style.fontSize = "12px";
+        revRow.style.gap = "8px";
+        revRow.style.marginBottom = "4px";
+
+        var revLabel = document.createElement("span");
+        revLabel.textContent =
+          "Rev " + rev.revision_number + " — " + rev.filename + " · " +
+          (STATUS_LABELS[rev.status] || rev.status) + " · " +
+          new Date(rev.uploaded_at).toLocaleDateString();
+        revRow.appendChild(revLabel);
+
+        var revViewBtn = document.createElement("button");
+        revViewBtn.className = "btn btn--ghost";
+        revViewBtn.textContent = "Open File";
+        revViewBtn.onclick = function () {
+          openStoredFile(rev);
+        };
+        revRow.appendChild(revViewBtn);
+
+        histWrap.appendChild(revRow);
+      });
+      card.appendChild(histWrap);
+    }
+
     return card;
   }
 
@@ -1308,8 +1510,9 @@
 
     var list = document.createElement("div");
     list.className = "project-list";
-    data.documents
-      .slice()
+    // Gate 17: only the latest revision of each document group is a top-level row — see
+    // latestDocuments()'s own header comment. Older revisions are reached via "History".
+    latestDocuments(data.documents)
       .sort(function (a, b) {
         return new Date(b.uploaded_at) - new Date(a.uploaded_at);
       })
@@ -1337,5 +1540,9 @@
     expandDocument: function (docId) {
       uiState.expandedDocId = docId;
     },
+    // Gate 17: latest-revision-per-group only — see latestDocuments()'s own header
+    // comment. portfolio.js's ATTACHMENTS section uses this so a document with several
+    // revisions shows as one row there too, not one row per historical revision.
+    latestOnly: latestDocuments,
   };
 })();

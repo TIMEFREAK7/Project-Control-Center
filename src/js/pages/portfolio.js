@@ -517,11 +517,16 @@
 
     wrap.appendChild(grid);
 
-    var attachedDocs = window.PCC.store
+    // Gate 17 (Document Control 4): latest revision per document group only — so a
+    // document with several revisions still shows as one row here, matching how
+    // documents.js's own list collapses to latest-per-group. Falls back to the raw,
+    // ungrouped filter if documents.js hasn't loaded its public API yet for some reason.
+    var projectDocs = window.PCC.store
       .get()
       .documents.filter(function (d) {
         return d.project_id === p.id;
       });
+    var attachedDocs = window.PCC.files && window.PCC.files.latestOnly ? window.PCC.files.latestOnly(projectDocs) : projectDocs;
 
     var attachmentsSection = document.createElement("div");
     attachmentsSection.style.marginTop = "16px";
