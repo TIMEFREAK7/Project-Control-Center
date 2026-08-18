@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 24;
+  var SCHEMA_VERSION = 25;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -92,6 +92,17 @@
       vendor_risk_links: [],
       vendor_performance: [],
       vendor_notes: [],
+      // Gate 14 (Document Control 1: Master Document Repository): a portfolio-wide,
+      // user-configurable list of document TYPES (BOQ, ITP, Method Statement, ...) that
+      // may be required on a project — the first admin-manageable taxonomy in this app;
+      // every prior "types" list (DOCUMENT_CATEGORIES, VENDOR_DOCUMENT_CATEGORIES,
+      // RESOURCE_TYPES) is a hardcoded JS array, not store-backed. Seeded with a starting
+      // list on first install so the repository isn't empty on day one — see
+      // seedDocumentTypes(). Deliberately NOT linked to documents.js's existing
+      // `category` field or vendors.js's VENDOR_DOCUMENT_CATEGORIES yet; reconciling
+      // those is real design work for a later gate (project-specific requirements,
+      // classification), not this one.
+      document_types: seedDocumentTypes(),
     };
   }
 
@@ -1083,6 +1094,87 @@
     return Object.assign(base, overrides || {});
   }
 
+  // ============================================================
+  // Gate 14 (Document Control 1: Master Document Repository)
+  // ============================================================
+
+  var DOCUMENT_TYPE_CRITICALITY_LEVELS = ["critical", "major", "normal", "informational"];
+
+  function newDocumentTypeId() {
+    return "dtp_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  /** One row per document TYPE in the master repository — e.g. "Method Statement" or
+   * "BOQ" — NOT a document/document requirement itself (those come in later gates).
+   * `category` is a free-text grouping bucket (e.g. "Engineering", "Commercial", "HSE"),
+   * same convention as Activity's `discipline` and Vendor's `category`/`trade_discipline`
+   * — this app leaves open-ended classification fields as free text rather than guessing
+   * a fixed taxonomy. `code` is a short optional abbreviation (e.g. "MS", "ITP") for use
+   * in a later document-numbering/nomenclature gate; not validated for uniqueness here.
+   * `default_criticality` is only ever a suggested starting point for a document
+   * requirement created from this type later — never enforced or read for anything in
+   * this gate. `active: false` is how a type is deactivated (soft, not deleted) so
+   * requirements already referencing it by id keep working; hard delete is also offered
+   * in documentTypes.js since nothing references this table yet in this gate. */
+  function newDocumentType(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newDocumentTypeId(),
+      name: "",
+      code: "",
+      category: "",
+      default_criticality: "normal",
+      description: "",
+      active: true,
+      created_at: now,
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  /** Starting list for the master repository — from the examples enumerated when this
+   * gate was scoped (Contracts, BOQ, Specifications, ... Closeout Documents). Every
+   * `default_criticality` is "normal" deliberately: criticality is a project-specific
+   * judgment call for the user to set, not something this app should presume on their
+   * behalf just because it seeded the type. Fully editable/deactivatable/deletable
+   * afterward — this is a starting point, not a locked list. Used by both emptyData()
+   * (brand-new install) and the v24->v25 migration (existing install upgrading). */
+  function seedDocumentTypes() {
+    var seed = [
+      ["Contract", "CTR", "Commercial"],
+      ["BOQ", "BOQ", "Commercial"],
+      ["Specifications", "SPEC", "Engineering"],
+      ["Drawings", "DWG", "Engineering"],
+      ["Schedules", "SCH", "Planning"],
+      ["Baseline Programme", "BL", "Planning"],
+      ["Lookahead", "LA", "Planning"],
+      ["Progress Reports", "PR", "Reporting"],
+      ["Method Statements", "MS", "Quality"],
+      ["ITP", "ITP", "Quality"],
+      ["Material Submittals", "MSUB", "Procurement"],
+      ["Vendor Documents", "VDOC", "Procurement"],
+      ["GA Drawings", "GA", "Engineering"],
+      ["Shop Drawings", "SHOP", "Engineering"],
+      ["Datasheets", "DS", "Engineering"],
+      ["Test Certificates", "TC", "Quality"],
+      ["Inspection Reports", "IR", "Quality"],
+      ["RFIs", "RFI", "Engineering"],
+      ["TQs", "TQ", "Engineering"],
+      ["MOM", "MOM", "Meetings"],
+      ["Site Reports", "SR", "Reporting"],
+      ["Invoices", "INV", "Commercial"],
+      ["Commercial Documents", "COM", "Commercial"],
+      ["HSE Documents", "HSE", "HSE"],
+      ["Commissioning Documents", "COMM", "Commissioning"],
+      ["O&M Manuals", "OM", "Closeout"],
+      ["As-Built Drawings", "ASB", "Closeout"],
+      ["Closeout Documents", "CLO", "Closeout"],
+    ];
+    return seed.map(function (row) {
+      return newDocumentType({ name: row[0], code: row[1], category: row[2] });
+    });
+  }
+
   /** Bring older exported/stored data up to the current schema in place. */
   function migrate(loaded) {
     if (!loaded.schema_version) loaded.schema_version = 1;
@@ -1346,6 +1438,16 @@
       if (!loaded.vendor_performance) loaded.vendor_performance = [];
       if (!loaded.vendor_notes) loaded.vendor_notes = [];
       loaded.schema_version = 24;
+    }
+
+    if (loaded.schema_version < 25) {
+      // Gate 14 (Document Control 1): Master Document Repository. A brand new array,
+      // seeded with a starting list of document types on upgrade (not left empty) so an
+      // existing install gets the same usable starting point a fresh install does —
+      // same treatment as every prior gate that introduced a new register, plus seed
+      // data since an empty repository would be confusing on day one of the feature.
+      if (!loaded.document_types) loaded.document_types = seedDocumentTypes();
+      loaded.schema_version = 25;
     }
 
     return loaded;
@@ -1704,5 +1806,7 @@
     newVendorRiskLink: newVendorRiskLink,
     newVendorPerformance: newVendorPerformance,
     newVendorNote: newVendorNote,
+    newDocumentType: newDocumentType,
+    DOCUMENT_TYPE_CRITICALITY_LEVELS: DOCUMENT_TYPE_CRITICALITY_LEVELS,
   };
 })();
