@@ -41,6 +41,8 @@
     editingId: null, // null = form closed, "new" = creating, otherwise an existing project id
     expandedId: null, // project id whose details panel is open, or null
     vendorLinkPickerOpen: false, // Gate 9: "+ Link Vendor" inline picker in the Vendors section below
+    docRequirementsOpen: false, // Gate 15: expand/collapse the Document Requirements checklist below
+    docRequirementsTemplate: "", // Gate 15: currently-selected "Apply Template" option
   };
 
   function formatMoney(value, currency) {
@@ -295,6 +297,199 @@
     { key: "owner", label: "Owner" },
   ];
 
+  /** Gate 15 (Document Control 2): which of the master repository's ACTIVE document
+   * types apply to this specific project. A project_document_requirements row's mere
+   * existence for (p.id, typeId) means "applicable" — same join convention as
+   * vendor_project_links — so toggling a checkbox here only ever adds/removes a join
+   * row and never touches document_types itself, keeping the master repository
+   * untouched no matter what a project selects. "Apply Template" (PROJECT_TEMPLATES,
+   * store.js) only ADDS requirements for types whose name matches one of the template's
+   * suggested names among this install's ACTIVE types — it never removes an existing
+   * selection and never fabricates a document_types record for an unmatched name. */
+  function renderDocumentRequirementsSection(p, onChanged) {
+    var data = window.PCC.store.get();
+    var activeTypes = window.PCC.documentTypes ? window.PCC.documentTypes.activeTypes() : [];
+    var projectRequirements = data.project_document_requirements.filter(function (r) {
+      return r.project_id === p.id;
+    });
+    var requiredTypeIds = {};
+    projectRequirements.forEach(function (r) {
+      requiredTypeIds[r.document_type_id] = r.id;
+    });
+
+    var section = document.createElement("div");
+    section.style.marginTop = "16px";
+    section.style.paddingTop = "14px";
+    section.style.borderTop = "1px solid var(--divider)";
+
+    var header = document.createElement("div");
+    header.style.display = "flex";
+    header.style.justifyContent = "space-between";
+    header.style.alignItems = "center";
+    header.style.flexWrap = "wrap";
+    header.style.gap = "8px";
+
+    var label = document.createElement("span");
+    label.className = "detail-item__label";
+    label.textContent = "DOCUMENT REQUIREMENTS (" + projectRequirements.length + " of " + activeTypes.length + ")";
+    header.appendChild(label);
+
+    var toggleBtn = document.createElement("button");
+    toggleBtn.className = "btn btn--ghost";
+    toggleBtn.textContent = uiState.docRequirementsOpen ? "Hide" : "Manage";
+    toggleBtn.onclick = function () {
+      uiState.docRequirementsOpen = !uiState.docRequirementsOpen;
+      onChanged();
+    };
+    header.appendChild(toggleBtn);
+
+    section.appendChild(header);
+
+    if (!uiState.docRequirementsOpen) return section;
+
+    if (activeTypes.length === 0) {
+      var noneNote = document.createElement("p");
+      noneNote.className = "text-secondary";
+      noneNote.style.fontSize = "13px";
+      noneNote.style.margin = "8px 0 0";
+      noneNote.textContent = "No active document types in the master repository yet — add some in Document Types first.";
+      section.appendChild(noneNote);
+      return section;
+    }
+
+    var toolbar = document.createElement("div");
+    toolbar.style.display = "flex";
+    toolbar.style.gap = "8px";
+    toolbar.style.alignItems = "center";
+    toolbar.style.flexWrap = "wrap";
+    toolbar.style.marginTop = "8px";
+
+    var templateSelect = document.createElement("select");
+    var pickOpt = document.createElement("option");
+    pickOpt.value = "";
+    pickOpt.textContent = "Apply a template…";
+    templateSelect.appendChild(pickOpt);
+    window.PCC.store.PROJECT_TEMPLATES.forEach(function (t) {
+      var opt = document.createElement("option");
+      opt.value = t.key;
+      opt.textContent = t.label;
+      templateSelect.appendChild(opt);
+    });
+    templateSelect.value = uiState.docRequirementsTemplate;
+    templateSelect.onchange = function () {
+      uiState.docRequirementsTemplate = templateSelect.value;
+    };
+    toolbar.appendChild(templateSelect);
+
+    var applyTemplateBtn = document.createElement("button");
+    applyTemplateBtn.className = "btn btn--ghost";
+    applyTemplateBtn.textContent = "Apply";
+    applyTemplateBtn.onclick = function () {
+      var template = window.PCC.store.PROJECT_TEMPLATES.find(function (t) {
+        return t.key === templateSelect.value;
+      });
+      if (!template) return;
+      var matchedNames = {};
+      template.suggested_type_names.forEach(function (n) {
+        matchedNames[n.toLowerCase()] = true;
+      });
+      var toAdd = activeTypes.filter(function (t) {
+        return matchedNames[(t.name || "").toLowerCase()] && !requiredTypeIds[t.id];
+      });
+      if (toAdd.length === 0) {
+        window.PCC.notify("Nothing new to add — every matching type from “" + template.label + "” is already selected.", "info");
+        return;
+      }
+      window.PCC.store.update(function (d) {
+        toAdd.forEach(function (t) {
+          d.project_document_requirements.push(
+            window.PCC.store.newProjectDocumentRequirement({ project_id: p.id, document_type_id: t.id })
+          );
+        });
+      });
+      window.PCC.notify("Added " + toAdd.length + " requirement(s) from “" + template.label + "”.", "success");
+      onChanged();
+    };
+    toolbar.appendChild(applyTemplateBtn);
+    section.appendChild(toolbar);
+
+    var byCategory = {};
+    var categoryOrder = [];
+    activeTypes
+      .slice()
+      .sort(function (a, b) {
+        return (a.name || "").localeCompare(b.name || "");
+      })
+      .forEach(function (t) {
+        var cat = t.category || "(uncategorized)";
+        if (!byCategory[cat]) {
+          byCategory[cat] = [];
+          categoryOrder.push(cat);
+        }
+        byCategory[cat].push(t);
+      });
+    categoryOrder.sort();
+
+    var checklist = document.createElement("div");
+    checklist.style.marginTop = "10px";
+    checklist.style.display = "flex";
+    checklist.style.flexDirection = "column";
+    checklist.style.gap = "10px";
+
+    categoryOrder.forEach(function (cat) {
+      var group = document.createElement("div");
+
+      var groupLabel = document.createElement("div");
+      groupLabel.className = "text-secondary";
+      groupLabel.style.fontSize = "11px";
+      groupLabel.style.fontWeight = "600";
+      groupLabel.style.marginBottom = "4px";
+      groupLabel.textContent = cat.toUpperCase();
+      group.appendChild(groupLabel);
+
+      byCategory[cat].forEach(function (t) {
+        var row = document.createElement("label");
+        row.style.display = "flex";
+        row.style.alignItems = "center";
+        row.style.gap = "8px";
+        row.style.fontSize = "13px";
+        row.style.padding = "2px 0";
+
+        var checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = !!requiredTypeIds[t.id];
+        checkbox.onchange = function () {
+          window.PCC.store.update(function (d) {
+            if (checkbox.checked) {
+              if (!d.project_document_requirements.some(function (r) { return r.project_id === p.id && r.document_type_id === t.id; })) {
+                d.project_document_requirements.push(
+                  window.PCC.store.newProjectDocumentRequirement({ project_id: p.id, document_type_id: t.id })
+                );
+              }
+            } else {
+              d.project_document_requirements = d.project_document_requirements.filter(function (r) {
+                return !(r.project_id === p.id && r.document_type_id === t.id);
+              });
+            }
+          });
+          onChanged();
+        };
+        row.appendChild(checkbox);
+
+        var textSpan = document.createElement("span");
+        textSpan.textContent = t.name + (t.code ? " (" + t.code + ")" : "");
+        row.appendChild(textSpan);
+
+        group.appendChild(row);
+      });
+
+      checklist.appendChild(group);
+    });
+
+    section.appendChild(checklist);
+    return section;
+  }
+
   function renderProjectDetails(p, onChanged) {
     var wrap = document.createElement("div");
     wrap.className = "project-details";
@@ -393,6 +588,7 @@
     }
 
     wrap.appendChild(attachmentsSection);
+    wrap.appendChild(renderDocumentRequirementsSection(p, onChanged));
 
     var projectLogs = window.PCC.store
       .get()

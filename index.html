@@ -3497,7 +3497,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 25;
+  var SCHEMA_VERSION = 26;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -3591,6 +3591,13 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       // those is real design work for a later gate (project-specific requirements,
       // classification), not this one.
       document_types: seedDocumentTypes(),
+      // Gate 15 (Document Control 2: Project-Specific Document Requirements): a flat
+      // join, same "existence of a row = selected" convention as vendor_project_links —
+      // one row per (project, document_type) pairing the user has marked applicable to
+      // that project. NOT every master-repository type applies to every project (per
+      // spec); this array is how "applies here" is recorded without ever touching
+      // document_types itself. See newProjectDocumentRequirement() below.
+      project_document_requirements: [],
     };
   }
 
@@ -4663,6 +4670,94 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     });
   }
 
+  // ============================================================
+  // Gate 15 (Document Control 2: Project-Specific Document Requirements)
+  // ============================================================
+
+  function newProjectDocumentRequirementId() {
+    return "pdr_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  /** One row per (project, document_type) the user has marked applicable to that
+   * project — same "existence of a row = selected" join convention as
+   * vendor_project_links, not a boolean flag that could exist in a false/undecided
+   * state. Deliberately has no fields beyond the pairing itself in this gate (no due
+   * date, status, criticality, submission tracking) — those are later Document Control
+   * gates' job (classification, status/revision workflow, schedule linking); this gate
+   * only answers "does this type apply to this project," nothing more. */
+  function newProjectDocumentRequirement(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newProjectDocumentRequirementId(),
+      project_id: "",
+      document_type_id: "",
+      created_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  /** Suggested starting requirement lists per project type, per spec section 2
+   * ("Ideally support project templates... Templates should only provide SUGGESTED
+   * document requirements. I must still be able to modify them."). Matched against the
+   * master repository's document_types BY NAME (case-insensitive) at apply-time in
+   * documentTypesPortfolio wiring — never used to create/edit document_types records
+   * themselves, so applying a template can never modify the master repository, and a
+   * name with no matching active type in a given install is silently skipped rather
+   * than fabricating one. These lists are curated suggestions, not requirements enforced
+   * anywhere; a user can freely add/remove requirements after applying one. */
+  var PROJECT_TEMPLATES = [
+    {
+      key: "epc",
+      label: "EPC",
+      suggested_type_names: [
+        "Contract", "BOQ", "Specifications", "Drawings", "Schedules", "Baseline Programme",
+        "Lookahead", "Progress Reports", "Method Statements", "ITP", "Material Submittals",
+        "Vendor Documents", "GA Drawings", "Shop Drawings", "Test Certificates",
+        "Inspection Reports", "RFIs", "TQs", "MOM", "HSE Documents",
+        "Commissioning Documents", "O&M Manuals", "As-Built Drawings", "Closeout Documents",
+      ],
+    },
+    {
+      key: "industrial_construction",
+      label: "Industrial Construction",
+      suggested_type_names: [
+        "Contract", "BOQ", "Drawings", "Schedules", "Method Statements", "ITP",
+        "Material Submittals", "GA Drawings", "Shop Drawings", "Test Certificates",
+        "Inspection Reports", "RFIs", "MOM", "Site Reports", "HSE Documents",
+        "As-Built Drawings", "Closeout Documents",
+      ],
+    },
+    {
+      key: "manufacturing",
+      label: "Manufacturing",
+      suggested_type_names: [
+        "Contract", "Specifications", "Datasheets", "Material Submittals",
+        "Test Certificates", "Inspection Reports", "MOM", "Progress Reports",
+        "HSE Documents", "O&M Manuals",
+      ],
+    },
+    {
+      key: "infrastructure",
+      label: "Infrastructure",
+      suggested_type_names: [
+        "Contract", "BOQ", "Drawings", "Schedules", "Baseline Programme", "Lookahead",
+        "Method Statements", "ITP", "GA Drawings", "Test Certificates",
+        "Inspection Reports", "RFIs", "TQs", "Site Reports", "Progress Reports",
+        "HSE Documents", "As-Built Drawings", "Closeout Documents",
+      ],
+    },
+    {
+      key: "energy",
+      label: "Energy",
+      suggested_type_names: [
+        "Contract", "BOQ", "Specifications", "Drawings", "Schedules", "Method Statements",
+        "ITP", "Material Submittals", "Vendor Documents", "GA Drawings",
+        "Test Certificates", "Inspection Reports", "Commissioning Documents",
+        "O&M Manuals", "As-Built Drawings", "HSE Documents",
+      ],
+    },
+  ];
+
   /** Bring older exported/stored data up to the current schema in place. */
   function migrate(loaded) {
     if (!loaded.schema_version) loaded.schema_version = 1;
@@ -4936,6 +5031,15 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       // data since an empty repository would be confusing on day one of the feature.
       if (!loaded.document_types) loaded.document_types = seedDocumentTypes();
       loaded.schema_version = 25;
+    }
+
+    if (loaded.schema_version < 26) {
+      // Gate 15 (Document Control 2): Project-Specific Document Requirements. A brand
+      // new join array, nothing to backfill — an existing project simply has no
+      // requirements selected yet, same as a brand-new project would, rather than this
+      // gate guessing which of its documents "count" as requirements.
+      if (!loaded.project_document_requirements) loaded.project_document_requirements = [];
+      loaded.schema_version = 26;
     }
 
     return loaded;
@@ -5296,6 +5400,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     newVendorNote: newVendorNote,
     newDocumentType: newDocumentType,
     DOCUMENT_TYPE_CRITICALITY_LEVELS: DOCUMENT_TYPE_CRITICALITY_LEVELS,
+    newProjectDocumentRequirement: newProjectDocumentRequirement,
+    PROJECT_TEMPLATES: PROJECT_TEMPLATES,
   };
 })();
 
@@ -6157,6 +6263,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     editingId: null, // null = form closed, "new" = creating, otherwise an existing project id
     expandedId: null, // project id whose details panel is open, or null
     vendorLinkPickerOpen: false, // Gate 9: "+ Link Vendor" inline picker in the Vendors section below
+    docRequirementsOpen: false, // Gate 15: expand/collapse the Document Requirements checklist below
+    docRequirementsTemplate: "", // Gate 15: currently-selected "Apply Template" option
   };
 
   function formatMoney(value, currency) {
@@ -6411,6 +6519,199 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     { key: "owner", label: "Owner" },
   ];
 
+  /** Gate 15 (Document Control 2): which of the master repository's ACTIVE document
+   * types apply to this specific project. A project_document_requirements row's mere
+   * existence for (p.id, typeId) means "applicable" — same join convention as
+   * vendor_project_links — so toggling a checkbox here only ever adds/removes a join
+   * row and never touches document_types itself, keeping the master repository
+   * untouched no matter what a project selects. "Apply Template" (PROJECT_TEMPLATES,
+   * store.js) only ADDS requirements for types whose name matches one of the template's
+   * suggested names among this install's ACTIVE types — it never removes an existing
+   * selection and never fabricates a document_types record for an unmatched name. */
+  function renderDocumentRequirementsSection(p, onChanged) {
+    var data = window.PCC.store.get();
+    var activeTypes = window.PCC.documentTypes ? window.PCC.documentTypes.activeTypes() : [];
+    var projectRequirements = data.project_document_requirements.filter(function (r) {
+      return r.project_id === p.id;
+    });
+    var requiredTypeIds = {};
+    projectRequirements.forEach(function (r) {
+      requiredTypeIds[r.document_type_id] = r.id;
+    });
+
+    var section = document.createElement("div");
+    section.style.marginTop = "16px";
+    section.style.paddingTop = "14px";
+    section.style.borderTop = "1px solid var(--divider)";
+
+    var header = document.createElement("div");
+    header.style.display = "flex";
+    header.style.justifyContent = "space-between";
+    header.style.alignItems = "center";
+    header.style.flexWrap = "wrap";
+    header.style.gap = "8px";
+
+    var label = document.createElement("span");
+    label.className = "detail-item__label";
+    label.textContent = "DOCUMENT REQUIREMENTS (" + projectRequirements.length + " of " + activeTypes.length + ")";
+    header.appendChild(label);
+
+    var toggleBtn = document.createElement("button");
+    toggleBtn.className = "btn btn--ghost";
+    toggleBtn.textContent = uiState.docRequirementsOpen ? "Hide" : "Manage";
+    toggleBtn.onclick = function () {
+      uiState.docRequirementsOpen = !uiState.docRequirementsOpen;
+      onChanged();
+    };
+    header.appendChild(toggleBtn);
+
+    section.appendChild(header);
+
+    if (!uiState.docRequirementsOpen) return section;
+
+    if (activeTypes.length === 0) {
+      var noneNote = document.createElement("p");
+      noneNote.className = "text-secondary";
+      noneNote.style.fontSize = "13px";
+      noneNote.style.margin = "8px 0 0";
+      noneNote.textContent = "No active document types in the master repository yet — add some in Document Types first.";
+      section.appendChild(noneNote);
+      return section;
+    }
+
+    var toolbar = document.createElement("div");
+    toolbar.style.display = "flex";
+    toolbar.style.gap = "8px";
+    toolbar.style.alignItems = "center";
+    toolbar.style.flexWrap = "wrap";
+    toolbar.style.marginTop = "8px";
+
+    var templateSelect = document.createElement("select");
+    var pickOpt = document.createElement("option");
+    pickOpt.value = "";
+    pickOpt.textContent = "Apply a template…";
+    templateSelect.appendChild(pickOpt);
+    window.PCC.store.PROJECT_TEMPLATES.forEach(function (t) {
+      var opt = document.createElement("option");
+      opt.value = t.key;
+      opt.textContent = t.label;
+      templateSelect.appendChild(opt);
+    });
+    templateSelect.value = uiState.docRequirementsTemplate;
+    templateSelect.onchange = function () {
+      uiState.docRequirementsTemplate = templateSelect.value;
+    };
+    toolbar.appendChild(templateSelect);
+
+    var applyTemplateBtn = document.createElement("button");
+    applyTemplateBtn.className = "btn btn--ghost";
+    applyTemplateBtn.textContent = "Apply";
+    applyTemplateBtn.onclick = function () {
+      var template = window.PCC.store.PROJECT_TEMPLATES.find(function (t) {
+        return t.key === templateSelect.value;
+      });
+      if (!template) return;
+      var matchedNames = {};
+      template.suggested_type_names.forEach(function (n) {
+        matchedNames[n.toLowerCase()] = true;
+      });
+      var toAdd = activeTypes.filter(function (t) {
+        return matchedNames[(t.name || "").toLowerCase()] && !requiredTypeIds[t.id];
+      });
+      if (toAdd.length === 0) {
+        window.PCC.notify("Nothing new to add — every matching type from “" + template.label + "” is already selected.", "info");
+        return;
+      }
+      window.PCC.store.update(function (d) {
+        toAdd.forEach(function (t) {
+          d.project_document_requirements.push(
+            window.PCC.store.newProjectDocumentRequirement({ project_id: p.id, document_type_id: t.id })
+          );
+        });
+      });
+      window.PCC.notify("Added " + toAdd.length + " requirement(s) from “" + template.label + "”.", "success");
+      onChanged();
+    };
+    toolbar.appendChild(applyTemplateBtn);
+    section.appendChild(toolbar);
+
+    var byCategory = {};
+    var categoryOrder = [];
+    activeTypes
+      .slice()
+      .sort(function (a, b) {
+        return (a.name || "").localeCompare(b.name || "");
+      })
+      .forEach(function (t) {
+        var cat = t.category || "(uncategorized)";
+        if (!byCategory[cat]) {
+          byCategory[cat] = [];
+          categoryOrder.push(cat);
+        }
+        byCategory[cat].push(t);
+      });
+    categoryOrder.sort();
+
+    var checklist = document.createElement("div");
+    checklist.style.marginTop = "10px";
+    checklist.style.display = "flex";
+    checklist.style.flexDirection = "column";
+    checklist.style.gap = "10px";
+
+    categoryOrder.forEach(function (cat) {
+      var group = document.createElement("div");
+
+      var groupLabel = document.createElement("div");
+      groupLabel.className = "text-secondary";
+      groupLabel.style.fontSize = "11px";
+      groupLabel.style.fontWeight = "600";
+      groupLabel.style.marginBottom = "4px";
+      groupLabel.textContent = cat.toUpperCase();
+      group.appendChild(groupLabel);
+
+      byCategory[cat].forEach(function (t) {
+        var row = document.createElement("label");
+        row.style.display = "flex";
+        row.style.alignItems = "center";
+        row.style.gap = "8px";
+        row.style.fontSize = "13px";
+        row.style.padding = "2px 0";
+
+        var checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = !!requiredTypeIds[t.id];
+        checkbox.onchange = function () {
+          window.PCC.store.update(function (d) {
+            if (checkbox.checked) {
+              if (!d.project_document_requirements.some(function (r) { return r.project_id === p.id && r.document_type_id === t.id; })) {
+                d.project_document_requirements.push(
+                  window.PCC.store.newProjectDocumentRequirement({ project_id: p.id, document_type_id: t.id })
+                );
+              }
+            } else {
+              d.project_document_requirements = d.project_document_requirements.filter(function (r) {
+                return !(r.project_id === p.id && r.document_type_id === t.id);
+              });
+            }
+          });
+          onChanged();
+        };
+        row.appendChild(checkbox);
+
+        var textSpan = document.createElement("span");
+        textSpan.textContent = t.name + (t.code ? " (" + t.code + ")" : "");
+        row.appendChild(textSpan);
+
+        group.appendChild(row);
+      });
+
+      checklist.appendChild(group);
+    });
+
+    section.appendChild(checklist);
+    return section;
+  }
+
   function renderProjectDetails(p, onChanged) {
     var wrap = document.createElement("div");
     wrap.className = "project-details";
@@ -6509,6 +6810,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     }
 
     wrap.appendChild(attachmentsSection);
+    wrap.appendChild(renderDocumentRequirementsSection(p, onChanged));
 
     var projectLogs = window.PCC.store
       .get()

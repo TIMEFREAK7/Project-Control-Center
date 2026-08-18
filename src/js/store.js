@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 25;
+  var SCHEMA_VERSION = 26;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -103,6 +103,13 @@
       // those is real design work for a later gate (project-specific requirements,
       // classification), not this one.
       document_types: seedDocumentTypes(),
+      // Gate 15 (Document Control 2: Project-Specific Document Requirements): a flat
+      // join, same "existence of a row = selected" convention as vendor_project_links —
+      // one row per (project, document_type) pairing the user has marked applicable to
+      // that project. NOT every master-repository type applies to every project (per
+      // spec); this array is how "applies here" is recorded without ever touching
+      // document_types itself. See newProjectDocumentRequirement() below.
+      project_document_requirements: [],
     };
   }
 
@@ -1175,6 +1182,94 @@
     });
   }
 
+  // ============================================================
+  // Gate 15 (Document Control 2: Project-Specific Document Requirements)
+  // ============================================================
+
+  function newProjectDocumentRequirementId() {
+    return "pdr_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  /** One row per (project, document_type) the user has marked applicable to that
+   * project — same "existence of a row = selected" join convention as
+   * vendor_project_links, not a boolean flag that could exist in a false/undecided
+   * state. Deliberately has no fields beyond the pairing itself in this gate (no due
+   * date, status, criticality, submission tracking) — those are later Document Control
+   * gates' job (classification, status/revision workflow, schedule linking); this gate
+   * only answers "does this type apply to this project," nothing more. */
+  function newProjectDocumentRequirement(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newProjectDocumentRequirementId(),
+      project_id: "",
+      document_type_id: "",
+      created_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  /** Suggested starting requirement lists per project type, per spec section 2
+   * ("Ideally support project templates... Templates should only provide SUGGESTED
+   * document requirements. I must still be able to modify them."). Matched against the
+   * master repository's document_types BY NAME (case-insensitive) at apply-time in
+   * documentTypesPortfolio wiring — never used to create/edit document_types records
+   * themselves, so applying a template can never modify the master repository, and a
+   * name with no matching active type in a given install is silently skipped rather
+   * than fabricating one. These lists are curated suggestions, not requirements enforced
+   * anywhere; a user can freely add/remove requirements after applying one. */
+  var PROJECT_TEMPLATES = [
+    {
+      key: "epc",
+      label: "EPC",
+      suggested_type_names: [
+        "Contract", "BOQ", "Specifications", "Drawings", "Schedules", "Baseline Programme",
+        "Lookahead", "Progress Reports", "Method Statements", "ITP", "Material Submittals",
+        "Vendor Documents", "GA Drawings", "Shop Drawings", "Test Certificates",
+        "Inspection Reports", "RFIs", "TQs", "MOM", "HSE Documents",
+        "Commissioning Documents", "O&M Manuals", "As-Built Drawings", "Closeout Documents",
+      ],
+    },
+    {
+      key: "industrial_construction",
+      label: "Industrial Construction",
+      suggested_type_names: [
+        "Contract", "BOQ", "Drawings", "Schedules", "Method Statements", "ITP",
+        "Material Submittals", "GA Drawings", "Shop Drawings", "Test Certificates",
+        "Inspection Reports", "RFIs", "MOM", "Site Reports", "HSE Documents",
+        "As-Built Drawings", "Closeout Documents",
+      ],
+    },
+    {
+      key: "manufacturing",
+      label: "Manufacturing",
+      suggested_type_names: [
+        "Contract", "Specifications", "Datasheets", "Material Submittals",
+        "Test Certificates", "Inspection Reports", "MOM", "Progress Reports",
+        "HSE Documents", "O&M Manuals",
+      ],
+    },
+    {
+      key: "infrastructure",
+      label: "Infrastructure",
+      suggested_type_names: [
+        "Contract", "BOQ", "Drawings", "Schedules", "Baseline Programme", "Lookahead",
+        "Method Statements", "ITP", "GA Drawings", "Test Certificates",
+        "Inspection Reports", "RFIs", "TQs", "Site Reports", "Progress Reports",
+        "HSE Documents", "As-Built Drawings", "Closeout Documents",
+      ],
+    },
+    {
+      key: "energy",
+      label: "Energy",
+      suggested_type_names: [
+        "Contract", "BOQ", "Specifications", "Drawings", "Schedules", "Method Statements",
+        "ITP", "Material Submittals", "Vendor Documents", "GA Drawings",
+        "Test Certificates", "Inspection Reports", "Commissioning Documents",
+        "O&M Manuals", "As-Built Drawings", "HSE Documents",
+      ],
+    },
+  ];
+
   /** Bring older exported/stored data up to the current schema in place. */
   function migrate(loaded) {
     if (!loaded.schema_version) loaded.schema_version = 1;
@@ -1448,6 +1543,15 @@
       // data since an empty repository would be confusing on day one of the feature.
       if (!loaded.document_types) loaded.document_types = seedDocumentTypes();
       loaded.schema_version = 25;
+    }
+
+    if (loaded.schema_version < 26) {
+      // Gate 15 (Document Control 2): Project-Specific Document Requirements. A brand
+      // new join array, nothing to backfill — an existing project simply has no
+      // requirements selected yet, same as a brand-new project would, rather than this
+      // gate guessing which of its documents "count" as requirements.
+      if (!loaded.project_document_requirements) loaded.project_document_requirements = [];
+      loaded.schema_version = 26;
     }
 
     return loaded;
@@ -1808,5 +1912,7 @@
     newVendorNote: newVendorNote,
     newDocumentType: newDocumentType,
     DOCUMENT_TYPE_CRITICALITY_LEVELS: DOCUMENT_TYPE_CRITICALITY_LEVELS,
+    newProjectDocumentRequirement: newProjectDocumentRequirement,
+    PROJECT_TEMPLATES: PROJECT_TEMPLATES,
   };
 })();

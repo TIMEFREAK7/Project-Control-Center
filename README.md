@@ -1567,6 +1567,74 @@ of the Document Control spec onward (project-specific requirements, nomenclature
 status/revision workflow, schedule linking, vendor lookahead, dashboards, executive/portfolio
 compliance) — this delivery is the foundation only.
 
+## Gate 15 — Document Control 2: Project-Specific Document Requirements (2026-08-18)
+
+Second gate of the 14-gate Document Control spec: not every document type in Gate 14's master
+repository applies to every project — a manufacturing project has no use for a Baseline Programme
+the way an EPC contract does. This gate is where a project's applicable subset gets selected,
+kept editable throughout the project's life, and — per the spec's own explicit constraint — never
+written back into the master repository itself.
+
+**Scope decided before building:**
+
+- **A flat join, same convention as `vendor_project_links`:** `project_document_requirements` is
+  one row per (project, document_type) pairing, and a row's mere existence means "applicable to
+  this project." No boolean flag that could sit in a false/undecided state, no fields beyond the
+  pairing itself — due dates, status, and submission tracking are later Document Control gates'
+  job (schedule linking, status/revision workflow), not this one. This gate only answers "does
+  this type apply to this project."
+- **Lives in Portfolio's project details panel**, not a new page — a new "DOCUMENT REQUIREMENTS"
+  section next to the existing ATTACHMENTS/VENDORS/RESOURCES ASSIGNED sections, collapsed by
+  default behind a "Manage" toggle (a full checklist of every active type would otherwise
+  dominate an already-dense panel). Checking/unchecking a box toggles the join row immediately —
+  no separate save step, matching how every other quick-toggle in this panel already works.
+- **"Apply Template" is additive-only, and matches by name, never by touching `document_types`.**
+  The five suggested templates (EPC, Industrial Construction, Manufacturing, Infrastructure,
+  Energy — `PROJECT_TEMPLATES` in `store.js`) are hardcoded lists of suggested type *names*.
+  Applying one adds a requirement for every ACTIVE type whose name matches, skips a name with no
+  matching active type rather than fabricating one, and never removes an existing selection or
+  edits a `document_types` record — "templates should only provide suggested document
+  requirements... I must still be able to modify them," per the spec. Re-applying the same
+  template is a safe no-op past the first pass (nothing to add twice).
+- **Deactivating a document type (Gate 14's own control) hides it from the checklist going
+  forward, but does not retroactively delete a requirement a project already selected for it** —
+  a project's existing decision isn't silently revoked just because the type was later retired
+  from the active list; it simply stops being offered as a *new* selection.
+
+**What changed:** `store.js` (schema v25→v26: `project_document_requirements` array,
+`newProjectDocumentRequirement()` factory, `PROJECT_TEMPLATES` constant — five templates whose
+suggested names were all verified to match Gate 14's own seed list, so templates are usable out
+of the box on a fresh install, not just in principle). **Changed:** `pages/portfolio.js` — new
+`renderDocumentRequirementsSection()`, inserted into `renderProjectDetails()` right after
+ATTACHMENTS; two new `uiState` fields (`docRequirementsOpen`, `docRequirementsTemplate`).
+
+**Tested before delivery (25 pure-logic + 26 e2e checks + updated migration tests, full suite
+re-run clean):**
+
+- **Schema migration** (`test_store_schema_v26_migration.js`, renamed from the v25 file): the
+  full v20→v26 chain and a legacy/brand-new install both land correctly with
+  `project_document_requirements: []`; `newProjectDocumentRequirement()` factory defaults
+  verified; every `PROJECT_TEMPLATES` suggested name checked against the actual seeded
+  `document_types` list so a mismatched template name would fail this suite, not surface silently
+  as "nothing happened" in the UI later.
+- **End-to-end against the actual bundled `index.html`** (`test_project_document_requirements_e2e.js`,
+  26 checks): a new project starts at 0 of N requirements; the checklist is collapsed by default
+  and expands via Manage; checking/unchecking a box adds/removes exactly one join row (not a
+  hidden flag); applying the EPC template adds exactly the matching-name count with zero
+  duplicates on a second apply; the master `document_types` array is byte-for-byte unchanged
+  (same length, same ids) after every operation above; deactivating a type removes it from the
+  checklist's "of N" total while leaving an already-selected project's requirement for it intact;
+  full 16-route smoke test.
+- **Real-browser verification** (Chromium via Playwright): the checklist renders grouped by
+  category with correct checkbox state; applying the Infrastructure template visibly checked
+  exactly its 18 matching types with a toast confirmation; regression-checked that Documents'
+  upload form, Document Types' master list, and Vendor Management are all untouched.
+
+**What I have not tested:** this on your actual device. Same standard as every prior gate. Not
+done, deliberately: Document Control gates 3-14 (nomenclature, status/revision workflow, schedule
+linking, vendor lookahead, dashboards, executive/portfolio compliance) — still just the next
+incremental piece of the foundation, not the whole system.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
@@ -1594,13 +1662,14 @@ line items on the original locked Tier 2/3 list. Built in a separate parallel se
 Gates 8-11 and reconciled into `main` together with them (see each gate's own write-up above for
 the schema-numbering note on how the reconciliation renumbered them).
 
-**Document Control** (Gate 14 = Document Control gate 1 of a separate 14-gate sub-spec, done) —
-same footing as Executive Center/Activity Linking/Vendor Management above: a directly requested,
-explicitly incremental upgrade to Documents, not a Tier 1/2/3 line item. Only the Master Document
-Repository (the type taxonomy) is built; Document Control gates 2-14 (project-specific
-requirements, nomenclature, status/revision workflow, schedule↔document linking, vendor
-lookahead, readiness/constraints, reminders, dashboards, executive/portfolio compliance) are
-intentionally not started — see Gate 14's own write-up above.
+**Document Control** (Gates 14-15 = Document Control gates 1-2 of a separate 14-gate sub-spec,
+done) — same footing as Executive Center/Activity Linking/Vendor Management above: a directly
+requested, explicitly incremental upgrade to Documents, not a Tier 1/2/3 line item. The Master
+Document Repository (the type taxonomy, Gate 14) and Project-Specific Document Requirements
+(which types apply to which project, Gate 15) are built; Document Control gates 3-14
+(nomenclature, status/revision workflow, schedule↔document linking, vendor lookahead,
+readiness/constraints, reminders, dashboards, executive/portfolio compliance) are intentionally
+not started — see Gates 14 and 15's own write-ups above.
 
 **Tier 3 (deferred until Tier 1 is in daily use):** AI Document Processing, Knowledge Base, AI Project
 Assistant, Lessons Learned, final polish
@@ -1608,14 +1677,16 @@ Assistant, Lessons Learned, final polish
 ## Next phase
 
 **Tier 2 is complete**, and Vendor Management / the in-app Excel editor / the Document Control
-foundation are all done alongside it. The most likely next piece of work is **Document Control
-gate 2 (project-specific document requirements)** — deciding which of the master repository's
-types apply to a given project, per the sub-spec's own locked gate order — but confirm scope
-before starting it rather than assuming, same discipline as every gate before this one. Other open
-items, none blocking daily use: rate × usage from Resource Management feeding Cost Tracking/EVM
-(explicitly deferred, Gate 11); a persisted/logo-customizable report-template system; portfolio-
-level executive dashboard filtering; 10,000+ activity Gantt virtualization; per-activity linking
-extended to Resource Assignments' own sub-fields if that turns out to matter in practice; Vendor↔
-Cost/Schedule integration beyond the current Vendor↔Project/Meeting/RFI/Risk links, if that turns
-out to matter in practice. Tier 3 (AI Document Processing, Knowledge Base, AI Project Assistant,
-Lessons Learned, final polish) remains deferred until Tier 1/2 are in daily use.
+foundation (repository + per-project requirements) are all done alongside it. The most likely
+next piece of work is **Document Control gate 3 (classification + nomenclature)** — reconciling
+Documents' existing 5-category field and Vendor Management's own document categories with the
+Gate 14 master repository, plus filename-pattern validation on upload — per the sub-spec's own
+locked gate order, but confirm scope before starting it rather than assuming, same discipline as
+every gate before this one. Other open items, none blocking daily use: rate × usage from Resource
+Management feeding Cost Tracking/EVM (explicitly deferred, Gate 11); a persisted/logo-customizable
+report-template system; portfolio-level executive dashboard filtering; 10,000+ activity Gantt
+virtualization; per-activity linking extended to Resource Assignments' own sub-fields if that
+turns out to matter in practice; Vendor↔Cost/Schedule integration beyond the current Vendor↔
+Project/Meeting/RFI/Risk links, if that turns out to matter in practice. Tier 3 (AI Document
+Processing, Knowledge Base, AI Project Assistant, Lessons Learned, final polish) remains deferred
+until Tier 1/2 are in daily use.
