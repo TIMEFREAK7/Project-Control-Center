@@ -37,10 +37,10 @@ that override default behavior).
   wait for "yes, build it," then build exactly that and stop. Four gates in as of this handoff
   (see below); do not jump ahead to a later gate's fields "while you're in there."
 
-## Where things stand — everything is merged into `main`, Document Control gates 1-4 done
+## Where things stand — everything is merged into `main`, Document Control gates 1-4 done + a UX fix
 
-As of this handoff, **`main` has everything through Gate 17**, `schema_version` is **28**, and
-the full test suite (**23 files, 477 checks**) passes clean. There is no other unmerged branch
+As of this handoff, **`main` has everything through Gate 18**, `schema_version` is **29**, and
+the full test suite (**23 files, 482 checks**) passes clean. There is no other unmerged branch
 carrying app features — `main` is the one place to build from next.
 
 **Feature summary, in build order (Gates 1-13 summarized; Gates 14-17 — Document Control — in
@@ -108,6 +108,25 @@ Gate 5 onward, not be skipped.
   latest version and resets status to draft; "History" shows older revisions; the document list
   (and Portfolio's ATTACHMENTS section) collapse to latest-revision-per-group via a new shared
   `window.PCC.files.latestOnly()` helper; Delete removes the whole revision history at once.
+- **Gate 18 — Document Control UX Refinement (not a numbered spec gate — direct user feedback on
+  Gate 14/15's shipped UX, fixed before starting Gate 5).** Aditya's feedback, verbatim: *"There
+  is a issue the document types sits separately I wanted it to be part of project creation. Where
+  I will select which documents are currently available and which I will required later on. Also
+  there are only vendor related documents. There is no project creation related documents."*
+  Confirmed scope via `AskUserQuestion` (three separate questions) before touching code, then:
+  requirement selection moved from a separately-toggled Portfolio Details section into the
+  Add/Edit Project form itself (`renderDocumentRequirementsField()`, operating on an uncommitted
+  `uiState.formSelectedDocTypeIds` array reconciled into `project_document_requirements`
+  atomically with the project record on Save); "Available"/"Required" became a **computed** status
+  (`computeRequirementAvailability()` — does a document with a matching `document_type_id` exist
+  for this project? — never stored); ten project-setup-flavored types added to the master
+  repository (`PROJECT_SETUP_TYPE_SEED` in `store.js` — Project Charter, Kickoff Checklist,
+  Statutory/Regulatory Approvals, Land/Site Handover, Insurance Documents, Permits & Licenses,
+  Project Organization Chart, Communication Plan, Project Execution Plan, Project Quality Plan)
+  alongside the original vendor/execution-submittal-heavy seed list, seeded fresh and backfilled
+  on upgrade with dedup-by-name. Portfolio Details' section is now read-only (status summary +
+  an "Edit Requirements" button into the form), not a second live-editing surface for the same
+  data.
 
 **Deliberately still open / explicitly deferred, don't assume these got done:**
 - Reconciling Documents' `category` / Vendor's `VENDOR_DOCUMENT_CATEGORIES` / the Gate 14 master
@@ -142,6 +161,17 @@ Gate 5 onward, not be skipped.
   auto-suggests from its linked document type's `default_criticality` (Gate 16) but stays
   independently editable. Match this shape for any future "smart default" — offer it, never lock
   it in.
+- **"Computed at render time, never denormalized" extends beyond version history**: Gate 18's
+  `computeRequirementAvailability()` (does a matching document exist for this project+type?)
+  follows the exact same shape Gate 13/17 established for "latest revision" — no new stored field,
+  recomputed from existing data on every render. Reach for this pattern before adding a stored
+  status flag anywhere a value can be derived instead.
+- **Uncommitted per-form working state must be initialized at the button-click moment the form
+  opens, never inside `render()`/`renderForm()` itself** (Gate 18): `render()` rebuilds a fresh
+  placeholder object on every rerender, so any temp array/flag tied to an open form (like Gate 18's
+  `uiState.formSelectedDocTypeIds`) has to be seeded once by the "+ Add"/"Edit" button handler —
+  seeding it inside the render path would wipe out a user's in-progress checkbox toggles on their
+  next keystroke-triggered rerender.
 - Date precedence convention (used identically everywhere): calculated (`early_start`/
   `early_finish`) wins over planned; milestones with only one date are a zero-width point.
 - Transparency-over-blending: never silently combine numbers of different precision/source —
@@ -170,10 +200,10 @@ Gate 5 onward, not be skipped.
 - Reports are printable HTML (`window.print()`), not generated PDFs.
 - No File System Access API; export/import-as-JSON is the deliberate cross-platform answer.
 - **Schema migration test convention:** one canonical file targeting the latest version
-  (`tests/test_store_schema_v28_migration.js` as of this handoff) — when you bump
+  (`tests/test_store_schema_v29_migration.js` as of this handoff) — when you bump
   `SCHEMA_VERSION`, `git mv` it to the new version number and fold in new assertions, rather than
   keeping old version-specific files around.
-- Testing: `cd tests && npm test` must pass before anything ships (23 files, 477 checks as of
+- Testing: `cd tests && npm test` must pass before anything ships (23 files, 482 checks as of
   this handoff). Pure-logic tests eval the real source file directly. E2E tests load the actual
   bundled `index.html` via jsdom (+ `fake-indexeddb` for IndexedDB-touching code). Also do one
   real-Chromium pass per gate (`/opt/pw-browsers/chromium-1194/chrome-linux/chrome --no-sandbox`,
@@ -228,10 +258,13 @@ Gate 5 onward, not be skipped.
 
 ## Repo/branch state
 
-`main` is fully up to date through Gate 17 (`8c774e5`). PRs #9 through #13 are all merged
-(Gates 8-13 reconciliation, then Gates 14/15/16/17 each as their own PR). No other branch carries
-unmerged app features — start any new work from `main` directly:
-`git fetch origin main && git checkout -b <new-branch> origin/main`.
+`main` is fully up to date through Gate 18 (`8f62f7b`, merge of PR #14). PRs #9 through #14 are
+all merged (Gates 8-13 reconciliation, then Gates 14/15/16/17/18 each as their own PR). No other
+branch carries unmerged app features — start any new work from `main` directly:
+`git fetch origin main && git checkout -b <new-branch> origin/main`. Note:
+`claude/phase-11c-planning-executive-frty7j` (this session's designated branch) was reset to
+`main` and used for Gate 18's commit/PR — it's fully merged again as of this handoff, same as
+every other gate branch below.
 
 **Zip delivered this round:** `Project-Control-Center.zip` — `index.html` + `README.md` +
 `data/`/`files/` (existing `README.txt` placeholders), verified via a fresh extraction opened in
