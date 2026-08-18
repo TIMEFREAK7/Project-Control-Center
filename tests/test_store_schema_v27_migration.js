@@ -1,7 +1,7 @@
 // Standalone Node test for store.js's migrate() function, exercised indirectly through
 // load() — same approach every prior version of this file used, replaced here per the
 // "one canonical full-chain test targeting latest" pattern established at Gate 6 (this
-// file supersedes the v25 one, whose checks are folded in below).
+// file supersedes the v26 one, whose checks are folded in below).
 "use strict";
 const fs = require("fs");
 const path = require("path");
@@ -38,14 +38,15 @@ function loadStoreWith(rawJsonString) {
 }
 
 // ---------------------------------------------------------------------------
-// v20 -> v26 in one hop: project_type/current_phase/forecast_finish_date backfilled
+// v20 -> v27 in one hop: project_type/current_phase/forecast_finish_date backfilled
 // onto existing projects, health_score_weights defaulted, executive_summaries added
 // (v21, Gate 9); activity_id backfilled onto every linkable register's existing
 // records (v22, Gate 10); resources/resource_assignments arrays added (v23, Gate 11);
 // nine Vendor Management arrays added (v24, Gate 13); document_types repository seeded
-// (v25, Gate 14); project_document_requirements added (v26, Gate 15).
+// (v25, Gate 14); project_document_requirements added (v26, Gate 15); document
+// classification fields + project_code + nomenclature settings added (v27, Gate 16).
 // ---------------------------------------------------------------------------
-check("a v20 dataset gets Gate 9 + Gate 10 + Gate 11 + Gate 13 + Gate 14 + Gate 15 fields backfilled and lands on schema_version 26", () => {
+check("a v20 dataset gets Gate 9 + Gate 10 + Gate 11 + Gate 13 + Gate 14 + Gate 15 + Gate 16 fields backfilled and lands on schema_version 27", () => {
   const v20 = {
     schema_version: 20,
     meta: { app_name: "x", created_at: "2026-01-01T00:00:00.000Z", last_saved_at: null, last_exported_at: null },
@@ -63,7 +64,7 @@ check("a v20 dataset gets Gate 9 + Gate 10 + Gate 11 + Gate 13 + Gate 14 + Gate 
   const store = loadStoreWith(JSON.stringify(v20));
   const data = store.get();
 
-  assert.strictEqual(data.schema_version, 26);
+  assert.strictEqual(data.schema_version, 27);
   assert.strictEqual(data.projects[0].name, "Existing Project", "existing project fields must survive untouched");
   assert.strictEqual(data.projects[0].project_type, "");
   assert.ok(data.settings.health_score_weights, "health_score_weights must be defaulted");
@@ -110,6 +111,22 @@ check("a v20 dataset gets Gate 9 + Gate 10 + Gate 11 + Gate 13 + Gate 14 + Gate 
   // Gate 15: brand new join array, nothing to backfill — an existing project simply
   // starts with no requirements selected.
   assert.deepStrictEqual(data.project_document_requirements, []);
+
+  // Gate 16: project_code backfilled onto the existing project; classification fields
+  // backfilled onto the existing document; nomenclature settings defaulted.
+  assert.strictEqual(data.projects[0].project_code, "");
+  assert.strictEqual(data.documents[0].document_type_id, "");
+  assert.strictEqual(data.documents[0].discipline, "");
+  assert.strictEqual(data.documents[0].document_number, "");
+  assert.strictEqual(data.documents[0].revision, "00");
+  assert.strictEqual(data.documents[0].package, "");
+  assert.strictEqual(data.documents[0].contract_or_po, "");
+  assert.strictEqual(data.documents[0].vendor_id, "");
+  assert.strictEqual(data.documents[0].priority, "medium");
+  assert.strictEqual(data.documents[0].criticality, "");
+  assert.strictEqual(data.documents[0].remarks, "");
+  assert.strictEqual(data.settings.document_nomenclature_pattern, "PROJECT-DISCIPLINE-DOCUMENTTYPE-NUMBER-REV");
+  assert.strictEqual(data.settings.document_nomenclature_enabled, true);
 });
 
 // ---------------------------------------------------------------------------
@@ -117,7 +134,7 @@ check("a v20 dataset gets Gate 9 + Gate 10 + Gate 11 + Gate 13 + Gate 14 + Gate 
 // activity_id backfilled onto existing budget items, nothing else touched, then the
 // rest of the chain (through Gate 13) carries the dataset on to the current version.
 // ---------------------------------------------------------------------------
-check("a v19 dataset gets activity_id backfilled onto existing budget items and lands on schema_version 26", () => {
+check("a v19 dataset gets activity_id backfilled onto existing budget items and lands on schema_version 27", () => {
   const v19 = {
     schema_version: 19,
     meta: { app_name: "x", created_at: "2026-01-01T00:00:00.000Z", last_saved_at: null, last_exported_at: null },
@@ -131,7 +148,7 @@ check("a v19 dataset gets activity_id backfilled onto existing budget items and 
   const store = loadStoreWith(JSON.stringify(v19));
   const data = store.get();
 
-  assert.strictEqual(data.schema_version, 26);
+  assert.strictEqual(data.schema_version, 27);
   assert.strictEqual(data.cost_budget_items.length, 1, "no budget items should be fabricated or dropped");
   assert.strictEqual(data.cost_budget_items[0].activity_id, "", "pre-Gate-7 budget items get an empty (unlinked) activity_id, not undefined");
   assert.strictEqual(data.cost_budget_items[0].name, "Rebar", "existing fields must survive untouched");
@@ -140,16 +157,16 @@ check("a v19 dataset gets activity_id backfilled onto existing budget items and 
 });
 
 // ---------------------------------------------------------------------------
-// Full chain from a very old (v1-shaped) dataset still reaches v26 cleanly
+// Full chain from a very old (v1-shaped) dataset still reaches v27 cleanly
 // ---------------------------------------------------------------------------
-check("a minimal legacy dataset (no schema_version at all) migrates all the way to 26 without throwing", () => {
+check("a minimal legacy dataset (no schema_version at all) migrates all the way to 27 without throwing", () => {
   const legacy = {
     projects: [{ id: "proj_1", name: "Old Project" }],
     documents: [],
   };
   const store = loadStoreWith(JSON.stringify(legacy));
   const data = store.get();
-  assert.strictEqual(data.schema_version, 26);
+  assert.strictEqual(data.schema_version, 27);
   assert.ok(Array.isArray(data.schedule_baselines));
   assert.ok(Array.isArray(data.cost_budget_items));
   assert.ok(Array.isArray(data.cost_actuals));
@@ -160,6 +177,7 @@ check("a minimal legacy dataset (no schema_version at all) migrates all the way 
   assert.ok(Array.isArray(data.vendor_documents));
   assert.ok(Array.isArray(data.document_types) && data.document_types.length > 0, "Gate 14's document_types must be seeded by the full chain");
   assert.ok(Array.isArray(data.project_document_requirements), "Gate 15's project_document_requirements must be backfilled by the full chain");
+  assert.strictEqual(data.projects[0].project_code, "", "Gate 16's project_code must be backfilled by the full chain");
   assert.strictEqual(data.projects[0].name, "Old Project", "pre-existing project must survive the full migration chain");
   assert.strictEqual(data.projects[0].project_type, "");
 });
@@ -170,7 +188,7 @@ check("a minimal legacy dataset (no schema_version at all) migrates all the way 
 check("a brand-new install with no stored data starts with executive_summaries: [] and default health weights", () => {
   const store = loadStoreWith(null);
   const data = store.get();
-  assert.strictEqual(data.schema_version, 26);
+  assert.strictEqual(data.schema_version, 27);
   assert.deepStrictEqual(data.executive_summaries, []);
   assert.deepStrictEqual(data.settings.health_score_weights, {
     schedule: 25, cost: 20, risk: 20, issue: 10, rfi: 15, change: 10,
@@ -180,6 +198,8 @@ check("a brand-new install with no stored data starts with executive_summaries: 
   assert.deepStrictEqual(data.vendors, []);
   assert.ok(data.document_types.length > 0, "a brand-new install also gets the seeded document_types repository");
   assert.deepStrictEqual(data.project_document_requirements, []);
+  assert.strictEqual(data.settings.document_nomenclature_pattern, "PROJECT-DISCIPLINE-DOCUMENTTYPE-NUMBER-REV");
+  assert.strictEqual(data.settings.document_nomenclature_enabled, true);
 });
 
 // ---------------------------------------------------------------------------
@@ -402,6 +422,32 @@ check("every PROJECT_TEMPLATES suggested name matches a seeded document type by 
       assert.ok(seededNames.indexOf(n.toLowerCase()) !== -1, "template " + t.key + "'s \"" + n + "\" does not match any seeded document type name");
     });
   });
+});
+
+// ---------------------------------------------------------------------------
+// Gate 16 (Document Control 3: Classification + Nomenclature) factory defaults
+// ---------------------------------------------------------------------------
+check("newProject() defaults project_code to an empty string", () => {
+  const store = loadStoreWith(null);
+  const p = store.newProject({ name: "New Project" });
+  assert.strictEqual(p.project_code, "");
+});
+
+check("newDocument() defaults every Gate 16 classification field", () => {
+  const store = loadStoreWith(null);
+  const d = store.newDocument({ project_id: "proj_1", filename: "x.pdf" });
+  assert.strictEqual(d.document_type_id, "");
+  assert.strictEqual(d.discipline, "");
+  assert.strictEqual(d.document_number, "");
+  assert.strictEqual(d.revision, "00");
+  assert.strictEqual(d.package, "");
+  assert.strictEqual(d.contract_or_po, "");
+  assert.strictEqual(d.vendor_id, "");
+  assert.strictEqual(d.priority, "medium");
+  assert.strictEqual(d.criticality, "");
+  assert.strictEqual(d.remarks, "");
+  // category (pre-existing field) must be completely untouched by this gate.
+  assert.strictEqual(d.category, "other");
 });
 
 console.log("\n" + passed + " passed, " + failed + " failed");

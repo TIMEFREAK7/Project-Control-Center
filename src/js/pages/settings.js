@@ -42,6 +42,54 @@
     generalPanel.appendChild(companyField);
     wrap.appendChild(generalPanel);
 
+    // --- Document Nomenclature (Gate 16) ---
+    var nomenPanel = document.createElement("div");
+    nomenPanel.className = "panel";
+    nomenPanel.style.maxWidth = "480px";
+    nomenPanel.innerHTML =
+      "<h3 style='margin-bottom:6px;'>Document Nomenclature</h3>" +
+      "<p class='text-secondary' style='margin-top:0; font-size:13px;'>When uploading a document, its filename " +
+      "is checked against this pattern and a non-blocking warning is shown on a mismatch — uploads are never " +
+      "rejected. Use the literal tokens PROJECT, DISCIPLINE, DOCUMENTTYPE, NUMBER, and REV; any other characters " +
+      "(like “-”) pass through as your own separators. Example: " +
+      "<span class='mono'>ABC-ELE-RFI-001-REV02</span>.</p>";
+
+    var nomenEnabledLabel = document.createElement("label");
+    nomenEnabledLabel.style.display = "flex";
+    nomenEnabledLabel.style.alignItems = "center";
+    nomenEnabledLabel.style.gap = "8px";
+    nomenEnabledLabel.style.fontSize = "13px";
+    nomenEnabledLabel.style.marginTop = "8px";
+    var nomenEnabledCheckbox = document.createElement("input");
+    nomenEnabledCheckbox.type = "checkbox";
+    nomenEnabledCheckbox.checked = data.settings.document_nomenclature_enabled !== false;
+    nomenEnabledCheckbox.onchange = function () {
+      store.update(function (d) {
+        d.settings.document_nomenclature_enabled = nomenEnabledCheckbox.checked;
+      });
+    };
+    nomenEnabledLabel.appendChild(nomenEnabledCheckbox);
+    nomenEnabledLabel.appendChild(document.createTextNode("Check filenames against the pattern on upload"));
+    nomenPanel.appendChild(nomenEnabledLabel);
+
+    var patternField = document.createElement("div");
+    patternField.className = "field";
+    patternField.style.marginTop = "10px";
+    patternField.innerHTML = "<label>Pattern</label>";
+    var patternInput = document.createElement("input");
+    patternInput.type = "text";
+    patternInput.className = "mono";
+    patternInput.value = data.settings.document_nomenclature_pattern || "";
+    patternInput.placeholder = "PROJECT-DISCIPLINE-DOCUMENTTYPE-NUMBER-REV";
+    patternInput.onchange = function () {
+      store.update(function (d) {
+        d.settings.document_nomenclature_pattern = patternInput.value.trim() || "PROJECT-DISCIPLINE-DOCUMENTTYPE-NUMBER-REV";
+      });
+    };
+    patternField.appendChild(patternInput);
+    nomenPanel.appendChild(patternField);
+    wrap.appendChild(nomenPanel);
+
     // --- Data management ---
     var dataPanel = document.createElement("div");
     dataPanel.className = "panel";

@@ -11,6 +11,12 @@
     other: "Other",
   };
 
+  // Gate 16 (Document Control 3): local label map, same "duplicated per module, no
+  // shared util layer" convention every other module's own PRIORITY_LABELS already uses
+  // (see schedule.js).
+  var PRIORITY_LABELS = { low: "Low", medium: "Medium", high: "High" };
+  var CRITICALITY_LABELS = { critical: "Critical", major: "Major", normal: "Normal", informational: "Informational" };
+
   var uiState = {
     formOpen: false,
     pendingFile: null, // { name, size, type, extraction } once read
@@ -23,7 +29,33 @@
     expandedDocId: null, // document id whose extracted data/text is expanded, or null
     duplicateMatches: [], // [{ record, reason, strength }] for the current pendingFile, or []
     duplicateAcknowledged: false, // true once the user clicks "Continue Anyway" on a warning
+    // Gate 16 (Document Control 3): classification fields, all optional, additive on top
+    // of pendingCategory above (untouched). See newDocument()'s own header comment in
+    // store.js for why `package`/`contract_or_po` are free text rather than real entities.
+    pendingDocumentTypeId: "",
+    pendingDiscipline: "",
+    pendingDocumentNumber: "",
+    pendingRevision: "00",
+    pendingPackage: "",
+    pendingContractOrPo: "",
+    pendingVendorId: "",
+    pendingPriority: "medium",
+    pendingCriticality: "",
+    pendingRemarks: "",
   };
+
+  function resetPendingClassification() {
+    uiState.pendingDocumentTypeId = "";
+    uiState.pendingDiscipline = "";
+    uiState.pendingDocumentNumber = "";
+    uiState.pendingRevision = "00";
+    uiState.pendingPackage = "";
+    uiState.pendingContractOrPo = "";
+    uiState.pendingVendorId = "";
+    uiState.pendingPriority = "medium";
+    uiState.pendingCriticality = "";
+    uiState.pendingRemarks = "";
+  }
 
   function projectName(data, projectId) {
     if (!projectId) return "Unassigned";
@@ -463,6 +495,63 @@
     return box;
   }
 
+  /** Gate 16 (Document Control 3: Nomenclature). "REV" + a zero-padded 2-digit number
+   * for a purely numeric revision (matching the spec's own "REV02" example and this
+   * app's "00" default), or "REV" + whatever was typed for anything else — never
+   * silently drops a non-numeric revision label. */
+  function formatRevisionToken(revision) {
+    var trimmed = (revision || "").trim();
+    if (!trimmed) return "";
+    if (/^\d+$/.test(trimmed)) {
+      return "REV" + (trimmed.length < 2 ? "0" + trimmed : trimmed);
+    }
+    return "REV" + trimmed;
+  }
+
+  /** Non-blocking only — see documents.js's own header note and the spec's explicit
+   * "do not silently reject the document" instruction. Returns null (renders nothing)
+   * when nomenclature checking is off, no pattern is configured, or no file is picked
+   * yet; otherwise always shows either a match confirmation or a mismatch warning with
+   * the expected name, even if every classification field is still blank — an
+   * all-blank "expected" string is itself informative (see documentNomenclatureEngine.js
+   * header comment). */
+  function renderNomenclatureNotice(data, uiState) {
+    if (!data.settings.document_nomenclature_enabled) return null;
+    var pattern = data.settings.document_nomenclature_pattern;
+    if (!pattern || !uiState.pendingFile) return null;
+
+    var project = data.projects.find(function (p) { return p.id === uiState.pendingProjectId; });
+    var documentType = data.document_types.find(function (t) { return t.id === uiState.pendingDocumentTypeId; });
+    var tokens = {
+      PROJECT: project ? project.project_code : "",
+      DISCIPLINE: uiState.pendingDiscipline,
+      DOCUMENTTYPE: documentType ? documentType.code : "",
+      NUMBER: uiState.pendingDocumentNumber,
+      REV: formatRevisionToken(uiState.pendingRevision),
+    };
+    var result = window.PCC.documentNomenclatureEngine.checkFilename(pattern, uiState.pendingFile.name, tokens);
+
+    var box = document.createElement("div");
+    box.style.borderRadius = "8px";
+    box.style.padding = "10px 12px";
+    box.style.marginTop = "8px";
+    box.style.fontSize = "12px";
+
+    if (result.matches) {
+      box.style.border = "1px solid var(--status-on_track, #3fa66a)";
+      box.style.background = "rgba(63, 166, 106, 0.08)";
+      box.textContent = "Filename matches the configured naming convention.";
+    } else {
+      box.style.border = "1px solid var(--status-at-risk)";
+      box.style.background = "rgba(230, 162, 60, 0.08)";
+      box.textContent =
+        "Filename doesn't match the configured naming convention. Expected: “" +
+        result.expected +
+        "” (got “" + result.stem + "”). This is a warning only — the document can still be saved as-is.";
+    }
+    return box;
+  }
+
   function renderUploadForm(container, data, rerender) {
     var panel = document.createElement("div");
     panel.className = "panel";
@@ -571,6 +660,187 @@
 
     panel.appendChild(grid);
 
+    // Gate 16 (Document Control 3): classification fields, all optional, kept in their
+    // own labeled sub-section below the core Project/Activity/Category grid above so
+    // this doesn't read as more mandatory fields than it is.
+    var classHeading = document.createElement("h4");
+    classHeading.style.margin = "14px 0 8px";
+    classHeading.style.fontSize = "13px";
+    classHeading.className = "text-secondary";
+    classHeading.textContent = "Classification (optional)";
+    panel.appendChild(classHeading);
+
+    var classGrid = document.createElement("div");
+    classGrid.className = "form-grid";
+
+    var docTypeField = document.createElement("div");
+    docTypeField.className = "field";
+    docTypeField.innerHTML = "<label>Document Type</label>";
+    var docTypeSelect = document.createElement("select");
+    var noDocTypeOpt = document.createElement("option");
+    noDocTypeOpt.value = "";
+    noDocTypeOpt.textContent = "(none)";
+    docTypeSelect.appendChild(noDocTypeOpt);
+    var activeDocTypes = window.PCC.documentTypes ? window.PCC.documentTypes.activeTypes() : [];
+    activeDocTypes.forEach(function (t) {
+      var opt = document.createElement("option");
+      opt.value = t.id;
+      opt.textContent = t.name + (t.code ? " (" + t.code + ")" : "");
+      docTypeSelect.appendChild(opt);
+    });
+    docTypeSelect.value = uiState.pendingDocumentTypeId;
+    docTypeSelect.onchange = function () {
+      uiState.pendingDocumentTypeId = docTypeSelect.value;
+      // Suggest this type's own default criticality — still freely overridable via the
+      // Criticality select below, same "suggested, not enforced" relationship Gate 15's
+      // templates have with the master repository.
+      var chosen = activeDocTypes.find(function (t) { return t.id === docTypeSelect.value; });
+      uiState.pendingCriticality = chosen ? chosen.default_criticality : "";
+      rerender();
+    };
+    docTypeField.appendChild(docTypeSelect);
+    classGrid.appendChild(docTypeField);
+
+    var disciplineField = document.createElement("div");
+    disciplineField.className = "field";
+    disciplineField.innerHTML = "<label>Discipline</label>";
+    var disciplineInput = document.createElement("input");
+    disciplineInput.type = "text";
+    disciplineInput.value = uiState.pendingDiscipline;
+    disciplineInput.oninput = function () {
+      uiState.pendingDiscipline = disciplineInput.value;
+    };
+    // Refresh on blur (not every keystroke, matching this app's usual text-input
+    // convention of not rerendering while typing) so the nomenclature notice below
+    // reflects the latest value once the user tabs/clicks away.
+    disciplineInput.onblur = rerender;
+    disciplineField.appendChild(disciplineInput);
+    classGrid.appendChild(disciplineField);
+
+    var docNumberField = document.createElement("div");
+    docNumberField.className = "field";
+    docNumberField.innerHTML = "<label>Document Number</label>";
+    var docNumberInput = document.createElement("input");
+    docNumberInput.type = "text";
+    docNumberInput.value = uiState.pendingDocumentNumber;
+    docNumberInput.oninput = function () {
+      uiState.pendingDocumentNumber = docNumberInput.value;
+    };
+    docNumberInput.onblur = rerender;
+    docNumberField.appendChild(docNumberInput);
+    classGrid.appendChild(docNumberField);
+
+    var revisionField = document.createElement("div");
+    revisionField.className = "field";
+    revisionField.innerHTML = "<label>Revision</label>";
+    var revisionInput = document.createElement("input");
+    revisionInput.type = "text";
+    revisionInput.value = uiState.pendingRevision;
+    revisionInput.oninput = function () {
+      uiState.pendingRevision = revisionInput.value;
+    };
+    revisionInput.onblur = rerender;
+    revisionField.appendChild(revisionInput);
+    classGrid.appendChild(revisionField);
+
+    var packageField = document.createElement("div");
+    packageField.className = "field";
+    packageField.innerHTML = "<label>Package</label>";
+    var packageInput = document.createElement("input");
+    packageInput.type = "text";
+    packageInput.value = uiState.pendingPackage;
+    packageInput.oninput = function () {
+      uiState.pendingPackage = packageInput.value;
+    };
+    packageField.appendChild(packageInput);
+    classGrid.appendChild(packageField);
+
+    var contractField = document.createElement("div");
+    contractField.className = "field";
+    contractField.innerHTML = "<label>Contract / PO</label>";
+    var contractInput = document.createElement("input");
+    contractInput.type = "text";
+    contractInput.value = uiState.pendingContractOrPo;
+    contractInput.oninput = function () {
+      uiState.pendingContractOrPo = contractInput.value;
+    };
+    contractField.appendChild(contractInput);
+    classGrid.appendChild(contractField);
+
+    var vendorField = document.createElement("div");
+    vendorField.className = "field";
+    vendorField.innerHTML = "<label>Vendor</label>";
+    var vendorSelect = document.createElement("select");
+    var noVendorOpt = document.createElement("option");
+    noVendorOpt.value = "";
+    noVendorOpt.textContent = "(none)";
+    vendorSelect.appendChild(noVendorOpt);
+    data.vendors.forEach(function (v) {
+      var opt = document.createElement("option");
+      opt.value = v.id;
+      opt.textContent = v.vendor_name || "(unnamed vendor)";
+      vendorSelect.appendChild(opt);
+    });
+    vendorSelect.value = uiState.pendingVendorId;
+    vendorSelect.onchange = function () {
+      uiState.pendingVendorId = vendorSelect.value;
+    };
+    vendorField.appendChild(vendorSelect);
+    classGrid.appendChild(vendorField);
+
+    var priorityField = document.createElement("div");
+    priorityField.className = "field";
+    priorityField.innerHTML = "<label>Priority</label>";
+    var prioritySelect = document.createElement("select");
+    ["low", "medium", "high"].forEach(function (p) {
+      var opt = document.createElement("option");
+      opt.value = p;
+      opt.textContent = PRIORITY_LABELS[p];
+      prioritySelect.appendChild(opt);
+    });
+    prioritySelect.value = uiState.pendingPriority;
+    prioritySelect.onchange = function () {
+      uiState.pendingPriority = prioritySelect.value;
+    };
+    priorityField.appendChild(prioritySelect);
+    classGrid.appendChild(priorityField);
+
+    var criticalityField = document.createElement("div");
+    criticalityField.className = "field";
+    criticalityField.innerHTML = "<label>Criticality</label>";
+    var criticalitySelect = document.createElement("select");
+    var noCritOpt = document.createElement("option");
+    noCritOpt.value = "";
+    noCritOpt.textContent = "(not set)";
+    criticalitySelect.appendChild(noCritOpt);
+    window.PCC.store.DOCUMENT_TYPE_CRITICALITY_LEVELS.forEach(function (c) {
+      var opt = document.createElement("option");
+      opt.value = c;
+      opt.textContent = CRITICALITY_LABELS[c] || c;
+      criticalitySelect.appendChild(opt);
+    });
+    criticalitySelect.value = uiState.pendingCriticality;
+    criticalitySelect.onchange = function () {
+      uiState.pendingCriticality = criticalitySelect.value;
+    };
+    criticalityField.appendChild(criticalitySelect);
+    classGrid.appendChild(criticalityField);
+
+    panel.appendChild(classGrid);
+
+    var remarksField = document.createElement("div");
+    remarksField.className = "field";
+    remarksField.style.marginTop = "8px";
+    remarksField.innerHTML = "<label>Remarks</label>";
+    var remarksArea = document.createElement("textarea");
+    remarksArea.rows = 2;
+    remarksArea.value = uiState.pendingRemarks;
+    remarksArea.oninput = function () {
+      uiState.pendingRemarks = remarksArea.value;
+    };
+    remarksField.appendChild(remarksArea);
+    panel.appendChild(remarksField);
+
     // File input
     var fileField = document.createElement("div");
     fileField.className = "field";
@@ -624,6 +894,9 @@
       if (uiState.duplicateMatches.length > 0 && !uiState.duplicateAcknowledged) {
         panel.appendChild(renderDuplicateWarning(uiState.duplicateMatches, data, rerender));
       }
+
+      var nomenclatureNotice = renderNomenclatureNotice(data, uiState);
+      if (nomenclatureNotice) panel.appendChild(nomenclatureNotice);
 
       if (uiState.pendingFile.extraction && uiState.pendingFile.extraction.type === "excel") {
         panel.appendChild(renderExcelPreview(uiState.pendingFile.extraction));
@@ -683,6 +956,16 @@
         duplicate_group_id: strongestMatch
           ? strongestMatch.record.duplicate_group_id || window.PCC.duplicateService.newGroupId()
           : null,
+        document_type_id: uiState.pendingDocumentTypeId || "",
+        discipline: uiState.pendingDiscipline || "",
+        document_number: uiState.pendingDocumentNumber || "",
+        revision: uiState.pendingRevision || "00",
+        package: uiState.pendingPackage || "",
+        contract_or_po: uiState.pendingContractOrPo || "",
+        vendor_id: uiState.pendingVendorId || "",
+        priority: uiState.pendingPriority || "medium",
+        criticality: uiState.pendingCriticality || "",
+        remarks: uiState.pendingRemarks || "",
       });
 
       saveBtn.disabled = true;
@@ -723,6 +1006,7 @@
           uiState.pendingMeetingId = "";
           uiState.duplicateMatches = [];
           uiState.duplicateAcknowledged = false;
+          resetPendingClassification();
           rerender();
         })
         .catch(function (e) {
@@ -742,6 +1026,7 @@
       uiState.readError = null;
       uiState.duplicateMatches = [];
       uiState.duplicateAcknowledged = false;
+      resetPendingClassification();
       rerender();
     };
 
@@ -808,6 +1093,17 @@
           return a.id === doc.activity_id;
         })
       : null;
+    // Gate 16 (Document Control 3): classification metadata, all optional.
+    var linkedDocType = doc.document_type_id
+      ? data.document_types.find(function (t) {
+          return t.id === doc.document_type_id;
+        })
+      : null;
+    var linkedVendor = doc.vendor_id
+      ? data.vendors.find(function (v) {
+          return v.id === doc.vendor_id;
+        })
+      : null;
 
     var main = document.createElement("div");
     main.className = "project-card__main";
@@ -822,6 +1118,10 @@
       new Date(doc.uploaded_at).toLocaleDateString() +
       (linkedMeeting ? " \u00b7 From meeting: " + linkedMeeting.title : "") +
       (linkedActivity ? " \u00b7 Linked to activity: " + linkedActivity.name : "") +
+      (linkedDocType ? " \u00b7 Type: " + linkedDocType.name : "") +
+      (doc.discipline ? " \u00b7 " + doc.discipline : "") +
+      (doc.document_number ? " \u00b7 " + doc.document_number + (doc.revision ? " Rev " + doc.revision : "") : "") +
+      (linkedVendor ? " \u00b7 Vendor: " + (linkedVendor.vendor_name || "(unnamed vendor)") : "") +
       "</div>";
 
     var badge = document.createElement("span");
@@ -873,6 +1173,16 @@
         window.PCC.router.go("meetings");
       };
       actions.appendChild(viewMeetingBtn);
+    }
+    if (linkedVendor) {
+      var viewVendorBtn = document.createElement("button");
+      viewVendorBtn.className = "btn btn--ghost";
+      viewVendorBtn.textContent = "View Vendor";
+      viewVendorBtn.onclick = function () {
+        if (window.PCC.vendors) window.PCC.vendors.openProfile(linkedVendor.id);
+        window.PCC.router.go("vendors");
+      };
+      actions.appendChild(viewVendorBtn);
     }
     if (linkedActivity) {
       var viewActivityBtn = document.createElement("button");

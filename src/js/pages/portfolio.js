@@ -12,6 +12,10 @@
 
   var FIELD_CONFIG = [
     { key: "name", label: "Project Name", type: "text", required: true },
+    // Gate 16 (Document Control 3: Nomenclature): short code used as the PROJECT token
+    // in the document naming pattern — see documentNomenclatureEngine.js. Optional; a
+    // project with no code just can't be validated on that segment yet.
+    { key: "project_code", label: "Project Code", type: "text" },
     { key: "client", label: "Client", type: "text" },
     { key: "company", label: "Company", type: "text" },
     { key: "country", label: "Country", type: "text" },
@@ -284,6 +288,7 @@
   }
 
   var DETAIL_FIELDS = [
+    { key: "project_code", label: "Project Code" },
     { key: "sector", label: "Sector" },
     { key: "contract_type", label: "Contract Type" },
     { key: "contract_value", label: "Contract Value", money: true },

@@ -3485,6 +3485,76 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 })();
 
 
+/* ---- js/documentNomenclatureEngine.js ---- */
+/* Document Nomenclature engine (Gate 16 — Document Control 3: Classification +
+ * Nomenclature) — calculation only, no DOM, no store access. Same separation every other
+ * engine in this app keeps (scheduleCpmEngine.js, costEvmEngine.js,
+ * projectHealthEngine.js, resourceLevelingEngine.js): documents.js gathers the real
+ * pattern/tokens/filename from the store and the upload form, this module does pure
+ * string substitution and comparison, and documents.js is the only place that renders
+ * the result (a non-blocking warning — see its own header comment for why this never
+ * rejects an upload).
+ *
+ * SCOPE, DELIBERATELY:
+ * - The pattern is a template string containing the literal tokens PROJECT, DISCIPLINE,
+ *   DOCUMENTTYPE, NUMBER, REV (e.g. "PROJECT-DISCIPLINE-DOCUMENTTYPE-NUMBER-REV").
+ *   Anything else in the pattern (separators like "-" or "_", or a token in a different
+ *   order) passes through untouched, so a user can adopt any convention without a schema
+ *   or code change — see settings.js.
+ * - Comparison is case-insensitive and ignores the file extension (the pattern itself
+ *   never encodes one), matching the spec's own example
+ *   ("ABC-ELE-RFI-001-REV02.pdf" checked against "PROJECT-DISCIPLINE-DOCUMENTTYPE-
+ *   NUMBER-REV").
+ * - A token whose underlying value is blank (e.g. a project with no project_code set)
+ *   still participates in the comparison as an empty string — checkFilename() doesn't
+ *   silently skip it. This is deliberate: it makes an unset token visible in the
+ *   "expected" string shown to the user (e.g. "-ELE-RFI-001-REV02"), which is a more
+ *   honest nudge to go set it than pretending the check passed.
+ */
+(function () {
+  "use strict";
+  window.PCC = window.PCC || {};
+
+  var TOKEN_PATTERN = /PROJECT|DISCIPLINE|DOCUMENTTYPE|NUMBER|REV/g;
+
+  /** Substitutes every recognized token in `pattern` with its value from `tokens`
+   * (an object like { PROJECT, DISCIPLINE, DOCUMENTTYPE, NUMBER, REV }, any of which may
+   * be missing/blank). Non-token characters (separators) pass through unchanged. */
+  function buildExpectedName(pattern, tokens) {
+    tokens = tokens || {};
+    return String(pattern || "").replace(TOKEN_PATTERN, function (token) {
+      return tokens[token] || "";
+    });
+  }
+
+  /** Strips a filename's extension (last ".ext" segment) so comparison is against the
+   * name stem only, matching how the pattern itself never encodes an extension. A
+   * filename with no extension (or a leading dot only, e.g. ".gitignore"-shaped edge
+   * case) is returned unchanged. */
+  function stripExtension(filename) {
+    var m = /^(.+)\.[^.]+$/.exec(String(filename || ""));
+    return m ? m[1] : String(filename || "");
+  }
+
+  /** Returns { matches, expected, stem }. `matches` is a case-insensitive comparison of
+   * the filename's stem against the pattern with tokens substituted in. Never throws on
+   * a blank pattern/filename/tokens — callers (documents.js) decide whether to even show
+   * this when nomenclature checking is disabled or nothing's been entered yet. */
+  function checkFilename(pattern, filename, tokens) {
+    var stem = stripExtension(filename);
+    var expected = buildExpectedName(pattern, tokens);
+    var matches = stem.toLowerCase() === expected.toLowerCase();
+    return { matches: matches, expected: expected, stem: stem };
+  }
+
+  window.PCC.documentNomenclatureEngine = {
+    buildExpectedName: buildExpectedName,
+    stripExtension: stripExtension,
+    checkFilename: checkFilename,
+  };
+})();
+
+
 /* ---- js/store.js ---- */
 /* Project Control Center — data store.
  * No backend, no server. Everything lives in one JS object (window.PCC.store.data),
@@ -3497,7 +3567,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 26;
+  var SCHEMA_VERSION = 27;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -3528,6 +3598,15 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           rfi: 15,
           change: 10,
         },
+        // Gate 16 (Document Control 3: Nomenclature): a single portfolio-wide naming
+        // pattern (not per-project) checked against an uploaded document's filename —
+        // matches how health_score_weights above is one shared config, not per-project
+        // tuning. Tokens (PROJECT/DISCIPLINE/DOCUMENTTYPE/NUMBER/REV) are substituted by
+        // documentNomenclatureEngine.js; any other characters in the pattern (separators
+        // like "-") pass through unchanged, so a user can adopt any separator/order they
+        // want without a schema change. Warn-only, never enforced — see documents.js.
+        document_nomenclature_pattern: "PROJECT-DISCIPLINE-DOCUMENTTYPE-NUMBER-REV",
+        document_nomenclature_enabled: true,
       },
       projects: [],
       documents: [],
@@ -3619,6 +3698,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var base = {
       id: newProjectId(),
       name: "",
+      // Gate 16 (Document Control 3: Nomenclature): a short code (e.g. "ABC") used as
+      // the PROJECT token in the document naming pattern — optional; nomenclature
+      // checking simply can't validate the PROJECT segment for a project that hasn't
+      // set one (see documents.js), rather than fabricating one from `name`.
+      project_code: "",
       client: "",
       company: "",
       country: "",
@@ -3693,6 +3777,27 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       duplicate_reason: null,
       // Gate 10: optional link to one Schedule activity — see newRisk()'s comment.
       activity_id: "",
+      // Gate 16 (Document Control 3: Classification). All optional, additive on top of
+      // the existing `category` field above (untouched, still what upload-form/list
+      // filtering use) — reconciling the two into one classification scheme is a later
+      // gate's job, not this one. `document_type_id` links to Gate 14's master
+      // repository; `criticality` defaults from that type's own default_criticality at
+      // upload time (documents.js) but stays independently editable per document, same
+      // "suggested, not enforced" relationship Gate 15's templates have with the master
+      // repository. `package`/`contract_or_po` are free text — no Package/Contract/PO
+      // entity exists anywhere in this app yet, and inventing one is out of scope for a
+      // classification gate; free text is the honest choice until/unless a real Package
+      // or Commercial module makes it worth modeling properly.
+      document_type_id: "",
+      discipline: "",
+      document_number: "",
+      revision: "00",
+      package: "",
+      contract_or_po: "",
+      vendor_id: "",
+      priority: "medium",
+      criticality: "",
+      remarks: "",
     };
     return Object.assign(base, overrides || {});
   }
@@ -5042,6 +5147,36 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       loaded.schema_version = 26;
     }
 
+    if (loaded.schema_version < 27) {
+      // Gate 16 (Document Control 3): Classification + Nomenclature. Backfills the new
+      // optional classification fields onto every existing document (empty/default —
+      // nothing to infer from an old record), project_code onto every existing project,
+      // and the nomenclature settings — same "" / default treatment as every prior gate
+      // that added optional fields to an existing register.
+      (loaded.projects || []).forEach(function (p) {
+        if (p.project_code === undefined) p.project_code = "";
+      });
+      (loaded.documents || []).forEach(function (d) {
+        if (d.document_type_id === undefined) d.document_type_id = "";
+        if (d.discipline === undefined) d.discipline = "";
+        if (d.document_number === undefined) d.document_number = "";
+        if (d.revision === undefined) d.revision = "00";
+        if (d.package === undefined) d.package = "";
+        if (d.contract_or_po === undefined) d.contract_or_po = "";
+        if (d.vendor_id === undefined) d.vendor_id = "";
+        if (d.priority === undefined) d.priority = "medium";
+        if (d.criticality === undefined) d.criticality = "";
+        if (d.remarks === undefined) d.remarks = "";
+      });
+      if (loaded.settings && loaded.settings.document_nomenclature_pattern === undefined) {
+        loaded.settings.document_nomenclature_pattern = "PROJECT-DISCIPLINE-DOCUMENTTYPE-NUMBER-REV";
+      }
+      if (loaded.settings && loaded.settings.document_nomenclature_enabled === undefined) {
+        loaded.settings.document_nomenclature_enabled = true;
+      }
+      loaded.schema_version = 27;
+    }
+
     return loaded;
   }
 
@@ -6234,6 +6369,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
   var FIELD_CONFIG = [
     { key: "name", label: "Project Name", type: "text", required: true },
+    // Gate 16 (Document Control 3: Nomenclature): short code used as the PROJECT token
+    // in the document naming pattern — see documentNomenclatureEngine.js. Optional; a
+    // project with no code just can't be validated on that segment yet.
+    { key: "project_code", label: "Project Code", type: "text" },
     { key: "client", label: "Client", type: "text" },
     { key: "company", label: "Company", type: "text" },
     { key: "country", label: "Country", type: "text" },
@@ -6506,6 +6645,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   }
 
   var DETAIL_FIELDS = [
+    { key: "project_code", label: "Project Code" },
     { key: "sector", label: "Sector" },
     { key: "contract_type", label: "Contract Type" },
     { key: "contract_value", label: "Contract Value", money: true },
@@ -12092,6 +12232,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     other: "Other",
   };
 
+  // Gate 16 (Document Control 3): local label map, same "duplicated per module, no
+  // shared util layer" convention every other module's own PRIORITY_LABELS already uses
+  // (see schedule.js).
+  var PRIORITY_LABELS = { low: "Low", medium: "Medium", high: "High" };
+  var CRITICALITY_LABELS = { critical: "Critical", major: "Major", normal: "Normal", informational: "Informational" };
+
   var uiState = {
     formOpen: false,
     pendingFile: null, // { name, size, type, extraction } once read
@@ -12104,7 +12250,33 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     expandedDocId: null, // document id whose extracted data/text is expanded, or null
     duplicateMatches: [], // [{ record, reason, strength }] for the current pendingFile, or []
     duplicateAcknowledged: false, // true once the user clicks "Continue Anyway" on a warning
+    // Gate 16 (Document Control 3): classification fields, all optional, additive on top
+    // of pendingCategory above (untouched). See newDocument()'s own header comment in
+    // store.js for why `package`/`contract_or_po` are free text rather than real entities.
+    pendingDocumentTypeId: "",
+    pendingDiscipline: "",
+    pendingDocumentNumber: "",
+    pendingRevision: "00",
+    pendingPackage: "",
+    pendingContractOrPo: "",
+    pendingVendorId: "",
+    pendingPriority: "medium",
+    pendingCriticality: "",
+    pendingRemarks: "",
   };
+
+  function resetPendingClassification() {
+    uiState.pendingDocumentTypeId = "";
+    uiState.pendingDiscipline = "";
+    uiState.pendingDocumentNumber = "";
+    uiState.pendingRevision = "00";
+    uiState.pendingPackage = "";
+    uiState.pendingContractOrPo = "";
+    uiState.pendingVendorId = "";
+    uiState.pendingPriority = "medium";
+    uiState.pendingCriticality = "";
+    uiState.pendingRemarks = "";
+  }
 
   function projectName(data, projectId) {
     if (!projectId) return "Unassigned";
@@ -12544,6 +12716,63 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     return box;
   }
 
+  /** Gate 16 (Document Control 3: Nomenclature). "REV" + a zero-padded 2-digit number
+   * for a purely numeric revision (matching the spec's own "REV02" example and this
+   * app's "00" default), or "REV" + whatever was typed for anything else — never
+   * silently drops a non-numeric revision label. */
+  function formatRevisionToken(revision) {
+    var trimmed = (revision || "").trim();
+    if (!trimmed) return "";
+    if (/^\d+$/.test(trimmed)) {
+      return "REV" + (trimmed.length < 2 ? "0" + trimmed : trimmed);
+    }
+    return "REV" + trimmed;
+  }
+
+  /** Non-blocking only — see documents.js's own header note and the spec's explicit
+   * "do not silently reject the document" instruction. Returns null (renders nothing)
+   * when nomenclature checking is off, no pattern is configured, or no file is picked
+   * yet; otherwise always shows either a match confirmation or a mismatch warning with
+   * the expected name, even if every classification field is still blank — an
+   * all-blank "expected" string is itself informative (see documentNomenclatureEngine.js
+   * header comment). */
+  function renderNomenclatureNotice(data, uiState) {
+    if (!data.settings.document_nomenclature_enabled) return null;
+    var pattern = data.settings.document_nomenclature_pattern;
+    if (!pattern || !uiState.pendingFile) return null;
+
+    var project = data.projects.find(function (p) { return p.id === uiState.pendingProjectId; });
+    var documentType = data.document_types.find(function (t) { return t.id === uiState.pendingDocumentTypeId; });
+    var tokens = {
+      PROJECT: project ? project.project_code : "",
+      DISCIPLINE: uiState.pendingDiscipline,
+      DOCUMENTTYPE: documentType ? documentType.code : "",
+      NUMBER: uiState.pendingDocumentNumber,
+      REV: formatRevisionToken(uiState.pendingRevision),
+    };
+    var result = window.PCC.documentNomenclatureEngine.checkFilename(pattern, uiState.pendingFile.name, tokens);
+
+    var box = document.createElement("div");
+    box.style.borderRadius = "8px";
+    box.style.padding = "10px 12px";
+    box.style.marginTop = "8px";
+    box.style.fontSize = "12px";
+
+    if (result.matches) {
+      box.style.border = "1px solid var(--status-on_track, #3fa66a)";
+      box.style.background = "rgba(63, 166, 106, 0.08)";
+      box.textContent = "Filename matches the configured naming convention.";
+    } else {
+      box.style.border = "1px solid var(--status-at-risk)";
+      box.style.background = "rgba(230, 162, 60, 0.08)";
+      box.textContent =
+        "Filename doesn't match the configured naming convention. Expected: “" +
+        result.expected +
+        "” (got “" + result.stem + "”). This is a warning only — the document can still be saved as-is.";
+    }
+    return box;
+  }
+
   function renderUploadForm(container, data, rerender) {
     var panel = document.createElement("div");
     panel.className = "panel";
@@ -12652,6 +12881,187 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     panel.appendChild(grid);
 
+    // Gate 16 (Document Control 3): classification fields, all optional, kept in their
+    // own labeled sub-section below the core Project/Activity/Category grid above so
+    // this doesn't read as more mandatory fields than it is.
+    var classHeading = document.createElement("h4");
+    classHeading.style.margin = "14px 0 8px";
+    classHeading.style.fontSize = "13px";
+    classHeading.className = "text-secondary";
+    classHeading.textContent = "Classification (optional)";
+    panel.appendChild(classHeading);
+
+    var classGrid = document.createElement("div");
+    classGrid.className = "form-grid";
+
+    var docTypeField = document.createElement("div");
+    docTypeField.className = "field";
+    docTypeField.innerHTML = "<label>Document Type</label>";
+    var docTypeSelect = document.createElement("select");
+    var noDocTypeOpt = document.createElement("option");
+    noDocTypeOpt.value = "";
+    noDocTypeOpt.textContent = "(none)";
+    docTypeSelect.appendChild(noDocTypeOpt);
+    var activeDocTypes = window.PCC.documentTypes ? window.PCC.documentTypes.activeTypes() : [];
+    activeDocTypes.forEach(function (t) {
+      var opt = document.createElement("option");
+      opt.value = t.id;
+      opt.textContent = t.name + (t.code ? " (" + t.code + ")" : "");
+      docTypeSelect.appendChild(opt);
+    });
+    docTypeSelect.value = uiState.pendingDocumentTypeId;
+    docTypeSelect.onchange = function () {
+      uiState.pendingDocumentTypeId = docTypeSelect.value;
+      // Suggest this type's own default criticality — still freely overridable via the
+      // Criticality select below, same "suggested, not enforced" relationship Gate 15's
+      // templates have with the master repository.
+      var chosen = activeDocTypes.find(function (t) { return t.id === docTypeSelect.value; });
+      uiState.pendingCriticality = chosen ? chosen.default_criticality : "";
+      rerender();
+    };
+    docTypeField.appendChild(docTypeSelect);
+    classGrid.appendChild(docTypeField);
+
+    var disciplineField = document.createElement("div");
+    disciplineField.className = "field";
+    disciplineField.innerHTML = "<label>Discipline</label>";
+    var disciplineInput = document.createElement("input");
+    disciplineInput.type = "text";
+    disciplineInput.value = uiState.pendingDiscipline;
+    disciplineInput.oninput = function () {
+      uiState.pendingDiscipline = disciplineInput.value;
+    };
+    // Refresh on blur (not every keystroke, matching this app's usual text-input
+    // convention of not rerendering while typing) so the nomenclature notice below
+    // reflects the latest value once the user tabs/clicks away.
+    disciplineInput.onblur = rerender;
+    disciplineField.appendChild(disciplineInput);
+    classGrid.appendChild(disciplineField);
+
+    var docNumberField = document.createElement("div");
+    docNumberField.className = "field";
+    docNumberField.innerHTML = "<label>Document Number</label>";
+    var docNumberInput = document.createElement("input");
+    docNumberInput.type = "text";
+    docNumberInput.value = uiState.pendingDocumentNumber;
+    docNumberInput.oninput = function () {
+      uiState.pendingDocumentNumber = docNumberInput.value;
+    };
+    docNumberInput.onblur = rerender;
+    docNumberField.appendChild(docNumberInput);
+    classGrid.appendChild(docNumberField);
+
+    var revisionField = document.createElement("div");
+    revisionField.className = "field";
+    revisionField.innerHTML = "<label>Revision</label>";
+    var revisionInput = document.createElement("input");
+    revisionInput.type = "text";
+    revisionInput.value = uiState.pendingRevision;
+    revisionInput.oninput = function () {
+      uiState.pendingRevision = revisionInput.value;
+    };
+    revisionInput.onblur = rerender;
+    revisionField.appendChild(revisionInput);
+    classGrid.appendChild(revisionField);
+
+    var packageField = document.createElement("div");
+    packageField.className = "field";
+    packageField.innerHTML = "<label>Package</label>";
+    var packageInput = document.createElement("input");
+    packageInput.type = "text";
+    packageInput.value = uiState.pendingPackage;
+    packageInput.oninput = function () {
+      uiState.pendingPackage = packageInput.value;
+    };
+    packageField.appendChild(packageInput);
+    classGrid.appendChild(packageField);
+
+    var contractField = document.createElement("div");
+    contractField.className = "field";
+    contractField.innerHTML = "<label>Contract / PO</label>";
+    var contractInput = document.createElement("input");
+    contractInput.type = "text";
+    contractInput.value = uiState.pendingContractOrPo;
+    contractInput.oninput = function () {
+      uiState.pendingContractOrPo = contractInput.value;
+    };
+    contractField.appendChild(contractInput);
+    classGrid.appendChild(contractField);
+
+    var vendorField = document.createElement("div");
+    vendorField.className = "field";
+    vendorField.innerHTML = "<label>Vendor</label>";
+    var vendorSelect = document.createElement("select");
+    var noVendorOpt = document.createElement("option");
+    noVendorOpt.value = "";
+    noVendorOpt.textContent = "(none)";
+    vendorSelect.appendChild(noVendorOpt);
+    data.vendors.forEach(function (v) {
+      var opt = document.createElement("option");
+      opt.value = v.id;
+      opt.textContent = v.vendor_name || "(unnamed vendor)";
+      vendorSelect.appendChild(opt);
+    });
+    vendorSelect.value = uiState.pendingVendorId;
+    vendorSelect.onchange = function () {
+      uiState.pendingVendorId = vendorSelect.value;
+    };
+    vendorField.appendChild(vendorSelect);
+    classGrid.appendChild(vendorField);
+
+    var priorityField = document.createElement("div");
+    priorityField.className = "field";
+    priorityField.innerHTML = "<label>Priority</label>";
+    var prioritySelect = document.createElement("select");
+    ["low", "medium", "high"].forEach(function (p) {
+      var opt = document.createElement("option");
+      opt.value = p;
+      opt.textContent = PRIORITY_LABELS[p];
+      prioritySelect.appendChild(opt);
+    });
+    prioritySelect.value = uiState.pendingPriority;
+    prioritySelect.onchange = function () {
+      uiState.pendingPriority = prioritySelect.value;
+    };
+    priorityField.appendChild(prioritySelect);
+    classGrid.appendChild(priorityField);
+
+    var criticalityField = document.createElement("div");
+    criticalityField.className = "field";
+    criticalityField.innerHTML = "<label>Criticality</label>";
+    var criticalitySelect = document.createElement("select");
+    var noCritOpt = document.createElement("option");
+    noCritOpt.value = "";
+    noCritOpt.textContent = "(not set)";
+    criticalitySelect.appendChild(noCritOpt);
+    window.PCC.store.DOCUMENT_TYPE_CRITICALITY_LEVELS.forEach(function (c) {
+      var opt = document.createElement("option");
+      opt.value = c;
+      opt.textContent = CRITICALITY_LABELS[c] || c;
+      criticalitySelect.appendChild(opt);
+    });
+    criticalitySelect.value = uiState.pendingCriticality;
+    criticalitySelect.onchange = function () {
+      uiState.pendingCriticality = criticalitySelect.value;
+    };
+    criticalityField.appendChild(criticalitySelect);
+    classGrid.appendChild(criticalityField);
+
+    panel.appendChild(classGrid);
+
+    var remarksField = document.createElement("div");
+    remarksField.className = "field";
+    remarksField.style.marginTop = "8px";
+    remarksField.innerHTML = "<label>Remarks</label>";
+    var remarksArea = document.createElement("textarea");
+    remarksArea.rows = 2;
+    remarksArea.value = uiState.pendingRemarks;
+    remarksArea.oninput = function () {
+      uiState.pendingRemarks = remarksArea.value;
+    };
+    remarksField.appendChild(remarksArea);
+    panel.appendChild(remarksField);
+
     // File input
     var fileField = document.createElement("div");
     fileField.className = "field";
@@ -12705,6 +13115,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       if (uiState.duplicateMatches.length > 0 && !uiState.duplicateAcknowledged) {
         panel.appendChild(renderDuplicateWarning(uiState.duplicateMatches, data, rerender));
       }
+
+      var nomenclatureNotice = renderNomenclatureNotice(data, uiState);
+      if (nomenclatureNotice) panel.appendChild(nomenclatureNotice);
 
       if (uiState.pendingFile.extraction && uiState.pendingFile.extraction.type === "excel") {
         panel.appendChild(renderExcelPreview(uiState.pendingFile.extraction));
@@ -12764,6 +13177,16 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         duplicate_group_id: strongestMatch
           ? strongestMatch.record.duplicate_group_id || window.PCC.duplicateService.newGroupId()
           : null,
+        document_type_id: uiState.pendingDocumentTypeId || "",
+        discipline: uiState.pendingDiscipline || "",
+        document_number: uiState.pendingDocumentNumber || "",
+        revision: uiState.pendingRevision || "00",
+        package: uiState.pendingPackage || "",
+        contract_or_po: uiState.pendingContractOrPo || "",
+        vendor_id: uiState.pendingVendorId || "",
+        priority: uiState.pendingPriority || "medium",
+        criticality: uiState.pendingCriticality || "",
+        remarks: uiState.pendingRemarks || "",
       });
 
       saveBtn.disabled = true;
@@ -12804,6 +13227,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           uiState.pendingMeetingId = "";
           uiState.duplicateMatches = [];
           uiState.duplicateAcknowledged = false;
+          resetPendingClassification();
           rerender();
         })
         .catch(function (e) {
@@ -12823,6 +13247,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       uiState.readError = null;
       uiState.duplicateMatches = [];
       uiState.duplicateAcknowledged = false;
+      resetPendingClassification();
       rerender();
     };
 
@@ -12889,6 +13314,17 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           return a.id === doc.activity_id;
         })
       : null;
+    // Gate 16 (Document Control 3): classification metadata, all optional.
+    var linkedDocType = doc.document_type_id
+      ? data.document_types.find(function (t) {
+          return t.id === doc.document_type_id;
+        })
+      : null;
+    var linkedVendor = doc.vendor_id
+      ? data.vendors.find(function (v) {
+          return v.id === doc.vendor_id;
+        })
+      : null;
 
     var main = document.createElement("div");
     main.className = "project-card__main";
@@ -12903,6 +13339,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       new Date(doc.uploaded_at).toLocaleDateString() +
       (linkedMeeting ? " \u00b7 From meeting: " + linkedMeeting.title : "") +
       (linkedActivity ? " \u00b7 Linked to activity: " + linkedActivity.name : "") +
+      (linkedDocType ? " \u00b7 Type: " + linkedDocType.name : "") +
+      (doc.discipline ? " \u00b7 " + doc.discipline : "") +
+      (doc.document_number ? " \u00b7 " + doc.document_number + (doc.revision ? " Rev " + doc.revision : "") : "") +
+      (linkedVendor ? " \u00b7 Vendor: " + (linkedVendor.vendor_name || "(unnamed vendor)") : "") +
       "</div>";
 
     var badge = document.createElement("span");
@@ -12954,6 +13394,16 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         window.PCC.router.go("meetings");
       };
       actions.appendChild(viewMeetingBtn);
+    }
+    if (linkedVendor) {
+      var viewVendorBtn = document.createElement("button");
+      viewVendorBtn.className = "btn btn--ghost";
+      viewVendorBtn.textContent = "View Vendor";
+      viewVendorBtn.onclick = function () {
+        if (window.PCC.vendors) window.PCC.vendors.openProfile(linkedVendor.id);
+        window.PCC.router.go("vendors");
+      };
+      actions.appendChild(viewVendorBtn);
     }
     if (linkedActivity) {
       var viewActivityBtn = document.createElement("button");
@@ -24094,6 +24544,54 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     companyField.appendChild(companyInput);
     generalPanel.appendChild(companyField);
     wrap.appendChild(generalPanel);
+
+    // --- Document Nomenclature (Gate 16) ---
+    var nomenPanel = document.createElement("div");
+    nomenPanel.className = "panel";
+    nomenPanel.style.maxWidth = "480px";
+    nomenPanel.innerHTML =
+      "<h3 style='margin-bottom:6px;'>Document Nomenclature</h3>" +
+      "<p class='text-secondary' style='margin-top:0; font-size:13px;'>When uploading a document, its filename " +
+      "is checked against this pattern and a non-blocking warning is shown on a mismatch — uploads are never " +
+      "rejected. Use the literal tokens PROJECT, DISCIPLINE, DOCUMENTTYPE, NUMBER, and REV; any other characters " +
+      "(like “-”) pass through as your own separators. Example: " +
+      "<span class='mono'>ABC-ELE-RFI-001-REV02</span>.</p>";
+
+    var nomenEnabledLabel = document.createElement("label");
+    nomenEnabledLabel.style.display = "flex";
+    nomenEnabledLabel.style.alignItems = "center";
+    nomenEnabledLabel.style.gap = "8px";
+    nomenEnabledLabel.style.fontSize = "13px";
+    nomenEnabledLabel.style.marginTop = "8px";
+    var nomenEnabledCheckbox = document.createElement("input");
+    nomenEnabledCheckbox.type = "checkbox";
+    nomenEnabledCheckbox.checked = data.settings.document_nomenclature_enabled !== false;
+    nomenEnabledCheckbox.onchange = function () {
+      store.update(function (d) {
+        d.settings.document_nomenclature_enabled = nomenEnabledCheckbox.checked;
+      });
+    };
+    nomenEnabledLabel.appendChild(nomenEnabledCheckbox);
+    nomenEnabledLabel.appendChild(document.createTextNode("Check filenames against the pattern on upload"));
+    nomenPanel.appendChild(nomenEnabledLabel);
+
+    var patternField = document.createElement("div");
+    patternField.className = "field";
+    patternField.style.marginTop = "10px";
+    patternField.innerHTML = "<label>Pattern</label>";
+    var patternInput = document.createElement("input");
+    patternInput.type = "text";
+    patternInput.className = "mono";
+    patternInput.value = data.settings.document_nomenclature_pattern || "";
+    patternInput.placeholder = "PROJECT-DISCIPLINE-DOCUMENTTYPE-NUMBER-REV";
+    patternInput.onchange = function () {
+      store.update(function (d) {
+        d.settings.document_nomenclature_pattern = patternInput.value.trim() || "PROJECT-DISCIPLINE-DOCUMENTTYPE-NUMBER-REV";
+      });
+    };
+    patternField.appendChild(patternInput);
+    nomenPanel.appendChild(patternField);
+    wrap.appendChild(nomenPanel);
 
     // --- Data management ---
     var dataPanel = document.createElement("div");

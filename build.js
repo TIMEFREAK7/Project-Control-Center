@@ -23,6 +23,7 @@ const JS_ORDER = [
   "js/costEvmEngine.js",
   "js/projectHealthEngine.js",
   "js/resourceLevelingEngine.js",
+  "js/documentNomenclatureEngine.js",
   "js/store.js",
   "js/notifications.js",
   "js/router.js",
