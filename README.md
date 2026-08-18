@@ -1876,6 +1876,128 @@ re-run clean, 482 checks total):**
 was a UX fix to already-shipped Gate 14/15 work, not new scope — Document Control gates 5-14
 remain exactly where Gate 17 left them.
 
+## Gate 19 — Document Control 5: Schedule Due Dates (2026-08-18)
+
+Fifth gate of the 14-gate Document Control spec. Scoped in a short paragraph and confirmed via
+`AskUserQuestion` before building, per this project's standing "propose, wait for yes, build
+exactly that" discipline for this sub-spec. Kept deliberately small: the spec's own gate list
+splits "schedule due dates," "schedule↔document linking," and "lead time" into three separate
+gates (5, 7, 8) — this one is due dates only. Schedule *linking* (attaching a requirement to an
+actual Schedule activity/milestone) is Gate 7's job; lead-time calculation off that link is
+Gate 8's. Neither is touched here.
+
+**What changed:**
+
+- `store.js` (schema v29→v30): `project_document_requirements` rows gain an optional
+  `planned_submission_date` (manual date string, `null` by default) — `newProjectDocumentRequirement()`
+  defaults it to `null`; the migration backfills `null` onto every existing row that predates this
+  gate, leaving any row (there are none pre-Gate-5, but the migration is defensive) that somehow
+  already had a value untouched.
+- `pages/portfolio.js`:
+  - New `computeRequirementStatus(data, projectId, documentTypeId, plannedDate)` returns
+    `"available" | "overdue" | "required"` — `available` wins if a matching document exists
+    (unchanged from Gate 18's `computeRequirementAvailability`); otherwise `overdue` if
+    `plannedDate` has passed, else `required`. Computed at render time, never stored, same as
+    every "status" this app has added since Gate 13.
+  - `renderDocumentRequirementsField()` (the Add/Edit Project form's checklist) grows a `<input
+    type="date">` next to each checked type, mirrored in a new uncommitted
+    `uiState.formDueDates` map (`document_type_id` → date string), seeded at the same three
+    button-click moments `formSelectedDocTypeIds` already was ("+ Add Project", "Edit", "Edit
+    Requirements") — never inside `render()` itself, so a date edit's own subtree-only re-render
+    doesn't wipe out an in-progress edit elsewhere in the form. Unchecking a type also clears its
+    entry in `formDueDates`, so a later re-check starts blank rather than resurrecting a stale
+    date from earlier in the same form session.
+  - `renderForm()`'s submit handler reconciles `planned_submission_date` onto each selected type's
+    row in the same `store.update()` call that reconciles selection itself — updates the date on
+    an already-existing row, sets it on a newly-created one, atomically with the project record.
+  - `renderDocumentRequirementsSection()` (Portfolio Details' read-only summary) shows each
+    requirement's due date inline (`"<name> — due <date>"`) when set, an Overdue badge via the
+    same `computeRequirementStatus()`, and an overdue count appended to the section header
+    (`"(N of M available, X overdue)"`) once at least one requirement is overdue — omitted
+    entirely when the count is zero, so the header reads exactly as it did pre-Gate-5 for any
+    project with nothing overdue.
+
+**Tested before delivery (1 migration + 6 new e2e checks added to the existing Document Control
+files, full suite re-run clean, 488 checks total):**
+
+- **Schema migration** (`test_store_schema_v30_migration.js`, renamed from the v29 file): the full
+  chain and a legacy/brand-new install land on schema_version 30; `newProjectDocumentRequirement()`
+  defaults `planned_submission_date` to `null`; a dedicated check migrates a v29 dataset with one
+  requirement row missing the field (backfilled to `null`) and one that already has a date
+  (survives untouched).
+- **End-to-end against the actual bundled `index.html`** (`test_project_document_requirements_e2e.js`,
+  extended in place rather than a new file, matching how Gate 18 folded into this same file):
+  checking a type reveals its date input, unchecking hides it; a past date on a not-yet-available
+  requirement shows Overdue, clearing the date reverts to Required; Save persists the date onto
+  the store row atomically with the rest of the requirement; re-opening Edit pre-fills the stored
+  date; the read-only Details summary shows the due date text and the header's overdue count once
+  a date has passed; full 16-route smoke test.
+- **Real-browser verification** (Chromium via Playwright): opened Add Project, checked BOQ, set a
+  past due date, confirmed the OVERDUE badge rendered inline, saved, and confirmed the date
+  round-tripped into the store exactly as entered (`2020-01-01`) — zero console/page errors
+  through the whole flow.
+
+**What I have not tested:** this on your actual device. Same standard as every prior gate. Not
+done, deliberately: Document Control gates 6-14 (vendor register, schedule↔document linking and
+lead time, vendor lookahead, readiness/constraints, reminders, dashboards, executive/portfolio
+compliance) — this gate only adds a manual due date, nothing schedule-derived yet.
+
+## Gate 20 — Document Control 6: Vendor Register (2026-08-18)
+
+Sixth gate of the 14-gate Document Control spec. Scoped and confirmed via `AskUserQuestion` before
+building, same discipline as every gate in this sub-spec. Flagged one wrinkle up front: this app
+already has a full Vendor Management module (Gate 13 — `vendors`, `vendor_documents`,
+`vendor_project_links`, ...), which isn't part of this 14-gate sub-spec, so "Vendor Register" here
+could have meant a second, competing vendor list. Confirmed instead as: an optional assignment of
+*which existing vendor* is expected to submit each document requirement — reusing Vendor
+Management's `vendors` verbatim, not inventing a second register.
+
+**What changed:**
+
+- `store.js` (schema v30→v31): `project_document_requirements` rows gain an optional `vendor_id`
+  (`""` default, same "existence-or-empty, never null-vs-undefined ambiguity" convention as every
+  other optional foreign key in this app) pointing at an existing `vendors` record. The migration
+  backfills `""` onto every existing row that predates this gate.
+- `pages/portfolio.js`:
+  - `renderDocumentRequirementsField()` (the Add/Edit Project form's checklist) grows a `<select>`
+    of `data.vendors` next to each checked type's due-date input, mirrored in a new uncommitted
+    `uiState.formVendorIds` map — same seeded-at-button-click, uncommitted-until-Save treatment as
+    `formDueDates`. Unchecking a type clears its vendor assignment too.
+  - `renderForm()`'s submit handler reconciles `vendor_id` onto each selected type's row in the
+    same `store.update()` call that already reconciles selection and due date.
+  - `renderDocumentRequirementsSection()` (Portfolio Details' read-only summary) appends the
+    assigned vendor's name to each requirement's line when set; looked up defensively (falls back
+    to not showing a vendor rather than throwing) so a later-deleted vendor record doesn't break
+    the summary.
+
+**Tested before delivery (2 migration + 7 new e2e checks added to the existing Document Control
+files, full suite re-run clean, 494 checks total):**
+
+- **Schema migration** (`test_store_schema_v31_migration.js`, renamed from the v30 file): the full
+  chain and a legacy/brand-new install land on schema_version 31; `newProjectDocumentRequirement()`
+  defaults `vendor_id` to `""`; a dedicated check migrates a v30 dataset with one requirement row
+  missing `vendor_id` (backfilled to `""`) and one that already has one assigned (survives
+  untouched).
+- **End-to-end against the actual bundled `index.html`** (`test_project_document_requirements_e2e.js`,
+  extended in place again): a checked requirement shows a vendor select defaulting to unassigned,
+  listing the seeded vendor; Save persists the assignment atomically with the rest of the
+  requirement; re-opening Edit pre-fills the stored vendor; the read-only Details summary shows
+  the vendor's name inline; the master `vendors` list stays untouched (Vendor Register creates
+  nothing of its own); full 16-route smoke test. Picked up one incidental test-scoping issue along
+  the way — with three project cards on screen, an unscoped "find the 'Details' button" helper can
+  click the wrong card (only the currently-expanded card reads "Hide Details"; every other
+  collapsed card still matches plain "Details"), fixed with a card-scoped lookup rather than
+  relying on click order.
+- **Real-browser verification** (Chromium via Playwright): seeded a vendor directly via the store,
+  opened Add Project, checked BOQ, selected the vendor from its new dropdown, saved, and confirmed
+  the assignment round-tripped into the store exactly as selected — zero console/page errors.
+
+**What I have not tested:** this on your actual device. Same standard as every prior gate. Not
+done, deliberately: Document Control gates 7-14 (schedule↔document linking and lead time, vendor
+lookahead, readiness/constraints, reminders, dashboards, executive/portfolio compliance) — this
+gate only adds "who's expected to submit it," nothing that reads or acts on the assignment yet
+(that's gate 9, Vendor Lookahead).
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
@@ -1903,7 +2025,7 @@ line items on the original locked Tier 2/3 list. Built in a separate parallel se
 Gates 8-11 and reconciled into `main` together with them (see each gate's own write-up above for
 the schema-numbering note on how the reconciliation renumbered them).
 
-**Document Control** (Gates 14-17 = Document Control gates 1-4 of a separate 14-gate sub-spec,
+**Document Control** (Gates 14-20 = Document Control gates 1-6 of a separate 14-gate sub-spec,
 done) — same footing as Executive Center/Activity Linking/Vendor Management above: a directly
 requested, explicitly incremental upgrade to Documents, not a Tier 1/2/3 line item. The Master
 Document Repository (the type taxonomy, Gate 14), Project-Specific Document Requirements (which
@@ -1912,9 +2034,12 @@ a non-blocking naming-convention check, Gate 16), and Status + Version Control (
 plus real revision history, Gate 17) are built; **Gate 18** then reworked Gate 14/15's UX per
 direct user feedback — requirement selection moved into the Add/Edit Project form itself,
 availability became a computed status instead of anything stored, and ten project-setup-flavored
-document types were added to the master repository. Document Control gates 5-14 (schedule↔document
+document types were added to the master repository. **Gate 19** added a manual, optional planned
+submission date per requirement, with a computed Overdue status alongside Available/Required.
+**Gate 20** added an optional assigned vendor per requirement, reusing the existing Vendor
+Management module rather than a second register. Document Control gates 7-14 (schedule↔document
 linking and lead time, vendor lookahead, readiness/constraints, reminders, dashboards,
-executive/portfolio compliance) are intentionally not started — see Gates 14-18's own write-ups
+executive/portfolio compliance) are intentionally not started — see Gates 14-20's own write-ups
 above.
 
 **Tier 3 (deferred until Tier 1 is in daily use):** AI Document Processing, Knowledge Base, AI Project
@@ -1924,18 +2049,18 @@ Assistant, Lessons Learned, final polish
 
 **Tier 2 is complete**, and Vendor Management / the in-app Excel editor / the Document Control
 foundation (repository + per-project requirements + classification/nomenclature + status/version
-control) are all done alongside it. The most likely next piece of work is **Document Control gate
-5 (document schedule + due dates, then gate 7's schedule↔document linking)** — connecting a
-document requirement to a Schedule activity with a lead time before it, per the sub-spec's own
-locked gate order, but confirm scope before starting it rather than assuming, same discipline as
-every gate before this one. Other open items, none blocking daily use: rate × usage from Resource
-Management feeding Cost Tracking/EVM (explicitly deferred, Gate 11); a persisted/logo-customizable
-report-template system; portfolio-level executive dashboard filtering; 10,000+ activity Gantt
-virtualization; per-activity linking extended to Resource Assignments' own sub-fields if that
-turns out to matter in practice; Vendor↔Cost/Schedule integration beyond the current Vendor↔
-Project/Meeting/RFI/Risk links, if that turns out to matter in practice; reconciling Documents'
-`category` / Vendor Management's document categories / the Gate 14 master repository into one
-classification scheme, explicitly deferred twice now (Gates 14 and 16) — worth revisiting once
-real usage shows whether it's actually needed. Tier 3 (AI Document
+control + manual due dates + vendor assignment) are all done alongside it. The most likely next
+piece of work is **Document Control gate 7 (schedule↔document linking)** — connecting a
+requirement to an actual Schedule activity, which gate 8's lead-time calculation then builds on —
+per the sub-spec's own locked gate order, but confirm scope before starting it rather than
+assuming, same discipline as every gate before this one. Other open items, none blocking daily
+use: rate × usage from Resource Management feeding Cost Tracking/EVM (explicitly deferred, Gate
+11); a persisted/logo-customizable report-template system; portfolio-level executive dashboard
+filtering; 10,000+ activity Gantt virtualization; per-activity linking extended to Resource
+Assignments' own sub-fields if that turns out to matter in practice; Vendor↔Cost/Schedule
+integration beyond the current Vendor↔Project/Meeting/RFI/Risk links, if that turns out to matter
+in practice; reconciling Documents' `category` / Vendor Management's document categories / the
+Gate 14 master repository into one classification scheme, explicitly deferred twice now (Gates 14
+and 16) — worth revisiting once real usage shows whether it's actually needed. Tier 3 (AI Document
 Processing, Knowledge Base, AI Project Assistant, Lessons Learned, final polish) remains deferred
 until Tier 1/2 are in daily use.

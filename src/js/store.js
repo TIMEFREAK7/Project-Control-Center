@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 29;
+  var SCHEMA_VERSION = 31;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -1271,16 +1271,24 @@
   /** One row per (project, document_type) the user has marked applicable to that
    * project — same "existence of a row = selected" join convention as
    * vendor_project_links, not a boolean flag that could exist in a false/undecided
-   * state. Deliberately has no fields beyond the pairing itself in this gate (no due
-   * date, status, criticality, submission tracking) — those are later Document Control
-   * gates' job (classification, status/revision workflow, schedule linking); this gate
-   * only answers "does this type apply to this project," nothing more. */
+   * state. `planned_submission_date` (Gate 5: Document Control 5, Schedule Due Dates)
+   * is a manual, optional due date — deliberately NOT derived from a linked schedule
+   * activity/milestone (that's Document Control gate 7) and no lead-time calculation is
+   * applied to it (gate 8). `vendor_id` (Gate 6: Document Control 6, Vendor Register) is
+   * an optional link to an existing Vendor Management vendor (`vendors`) — which vendor
+   * is expected to submit this document. Deliberately reuses the existing vendor
+   * register rather than introducing a second one; this app already has exactly one
+   * list of vendors. Beyond that, still no status or criticality on the row itself —
+   * those stay later gates' job; this gate only adds "who's submitting it," on top of
+   * "when is this due" and "does this type apply to this project." */
   function newProjectDocumentRequirement(overrides) {
     var now = new Date().toISOString();
     var base = {
       id: newProjectDocumentRequirementId(),
       project_id: "",
       document_type_id: "",
+      planned_submission_date: null,
+      vendor_id: "",
       created_at: now,
     };
     return Object.assign(base, overrides || {});
@@ -1695,6 +1703,27 @@
         }
       });
       loaded.schema_version = 29;
+    }
+
+    if (loaded.schema_version < 30) {
+      // Gate 5 (Document Control 5: Schedule Due Dates). Adds an optional, manual
+      // planned_submission_date to every existing requirement row — null (not a guessed
+      // date) since there's nothing to infer it from; the user sets it going forward.
+      (loaded.project_document_requirements || []).forEach(function (r) {
+        if (r.planned_submission_date === undefined) r.planned_submission_date = null;
+      });
+      loaded.schema_version = 30;
+    }
+
+    if (loaded.schema_version < 31) {
+      // Gate 6 (Document Control 6: Vendor Register). Adds an optional vendor_id to
+      // every existing requirement row — "" (unassigned), same treatment activity_id
+      // got on every linkable register back at Gate 10, since there's no way to infer
+      // who's expected to submit a pre-Gate-6 requirement.
+      (loaded.project_document_requirements || []).forEach(function (r) {
+        if (r.vendor_id === undefined) r.vendor_id = "";
+      });
+      loaded.schema_version = 31;
     }
 
     return loaded;

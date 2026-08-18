@@ -54,6 +54,15 @@
     // toggle's rerender doesn't wipe out what's already been checked.
     formSelectedDocTypeIds: [],
     formDocTemplateKey: "",
+    // Gate 5 (Document Control 5: Schedule Due Dates): uncommitted per-type planned
+    // submission dates, keyed by document_type_id, mirroring formSelectedDocTypeIds'
+    // "seeded at the button-click moment, never inside render()" treatment.
+    formDueDates: {},
+    // Gate 6 (Document Control 6: Vendor Register): uncommitted per-type assigned
+    // vendor, keyed by document_type_id — which vendor (from the existing Vendor
+    // Management module) is expected to submit this document. Same uncommitted-until-
+    // Save, seeded-at-button-click treatment as formDueDates.
+    formVendorIds: {},
   };
 
   function formatMoney(value, currency) {
@@ -123,6 +132,26 @@
       return d.project_id === projectId && d.document_type_id === documentTypeId;
     });
   }
+
+  // Gate 5 (Document Control 5: Schedule Due Dates). "Overdue" is computed the same
+  // way "Available" is — never stored — by comparing a requirement's manual
+  // planned_submission_date against today, and only applies when the requirement isn't
+  // already available. Returns "available" | "overdue" | "required".
+  function todayIsoDate() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  function computeRequirementStatus(data, projectId, documentTypeId, plannedDate) {
+    if (computeRequirementAvailability(data, projectId, documentTypeId)) return "available";
+    if (plannedDate && plannedDate < todayIsoDate()) return "overdue";
+    return "required";
+  }
+
+  var REQUIREMENT_STATUS_BADGE = {
+    available: { className: "complete", label: "Available" },
+    overdue: { className: "critical", label: "Overdue" },
+    required: { className: "at_risk", label: "Required" },
+  };
 
   function renderForm(container, project, onSaved) {
     var isNew = uiState.editingId === "new";
@@ -203,26 +232,40 @@
         }
 
         // Gate 18: reconcile project_document_requirements against the form's
-        // uncommitted selection, atomically with the project record itself.
+        // uncommitted selection, atomically with the project record itself. Gate 5
+        // (Document Control 5) additionally reconciles each selected type's planned
+        // submission date from uiState.formDueDates; Gate 6 does the same for the
+        // assigned vendor from uiState.formVendorIds.
         var selected = {};
         uiState.formSelectedDocTypeIds.forEach(function (typeId) {
           selected[typeId] = true;
         });
-        var existingTypeIds = {};
+        var existingByTypeId = {};
         data.project_document_requirements
           .filter(function (r) {
             return r.project_id === projectId;
           })
           .forEach(function (r) {
-            existingTypeIds[r.document_type_id] = true;
+            existingByTypeId[r.document_type_id] = r;
           });
         data.project_document_requirements = data.project_document_requirements.filter(function (r) {
           return r.project_id !== projectId || selected[r.document_type_id];
         });
         Object.keys(selected).forEach(function (typeId) {
-          if (!existingTypeIds[typeId]) {
+          var plannedDate = uiState.formDueDates[typeId] || null;
+          var vendorId = uiState.formVendorIds[typeId] || "";
+          var existingRow = existingByTypeId[typeId];
+          if (existingRow) {
+            existingRow.planned_submission_date = plannedDate;
+            existingRow.vendor_id = vendorId;
+          } else {
             data.project_document_requirements.push(
-              window.PCC.store.newProjectDocumentRequirement({ project_id: projectId, document_type_id: typeId })
+              window.PCC.store.newProjectDocumentRequirement({
+                project_id: projectId,
+                document_type_id: typeId,
+                planned_submission_date: plannedDate,
+                vendor_id: vendorId,
+              })
             );
           }
         });
@@ -302,13 +345,18 @@
     editBtn.textContent = "Edit";
     editBtn.onclick = function () {
       var data = window.PCC.store.get();
-      uiState.formSelectedDocTypeIds = data.project_document_requirements
-        .filter(function (r) {
-          return r.project_id === p.id;
-        })
-        .map(function (r) {
-          return r.document_type_id;
-        });
+      var projectRequirements = data.project_document_requirements.filter(function (r) {
+        return r.project_id === p.id;
+      });
+      uiState.formSelectedDocTypeIds = projectRequirements.map(function (r) {
+        return r.document_type_id;
+      });
+      uiState.formDueDates = {};
+      uiState.formVendorIds = {};
+      projectRequirements.forEach(function (r) {
+        if (r.planned_submission_date) uiState.formDueDates[r.document_type_id] = r.planned_submission_date;
+        if (r.vendor_id) uiState.formVendorIds[r.document_type_id] = r.vendor_id;
+      });
       uiState.formDocTemplateKey = "";
       uiState.editingId = p.id;
       onChanged();
@@ -372,7 +420,13 @@
    * ADDS ids for types whose name matches one of the template's suggested names among
    * this install's ACTIVE types — it never removes an existing selection. Rebuilds its
    * own subtree on every change (rather than triggering a full form rerender) so
-   * in-progress edits to the other fields above aren't disturbed. */
+   * in-progress edits to the other fields above aren't disturbed. Gate 5 (Document
+   * Control 5: Schedule Due Dates) adds an optional manual due date per selected type,
+   * mirrored in uiState.formDueDates the same way selection itself is mirrored in
+   * formSelectedDocTypeIds; Gate 6 (Document Control 6: Vendor Register) adds an
+   * optional assigned vendor per selected type the same way, in uiState.formVendorIds,
+   * reusing the existing Vendor Management vendor list rather than a new register — all
+   * three are uncommitted until Save. */
   function renderDocumentRequirementsField(project) {
     var fieldWrap = document.createElement("div");
     fieldWrap.style.marginTop = "18px";
@@ -519,6 +573,8 @@
               if (idx === -1) uiState.formSelectedDocTypeIds.push(t.id);
             } else if (idx !== -1) {
               uiState.formSelectedDocTypeIds.splice(idx, 1);
+              delete uiState.formDueDates[t.id];
+              delete uiState.formVendorIds[t.id];
             }
             refresh();
           };
@@ -529,11 +585,56 @@
           row.appendChild(textSpan);
 
           if (checked) {
-            var available = computeRequirementAvailability(data, project.id, t.id);
+            // Gate 5 (Document Control 5): manual due date, uncommitted until Save.
+            var dueInput = document.createElement("input");
+            dueInput.type = "date";
+            dueInput.value = uiState.formDueDates[t.id] || "";
+            dueInput.style.fontSize = "12px";
+            dueInput.style.padding = "2px 4px";
+            dueInput.title = "Planned submission date (optional)";
+            dueInput.onchange = function () {
+              if (dueInput.value) {
+                uiState.formDueDates[t.id] = dueInput.value;
+              } else {
+                delete uiState.formDueDates[t.id];
+              }
+              refresh();
+            };
+            row.appendChild(dueInput);
+
+            // Gate 6 (Document Control 6: Vendor Register): optional assigned vendor,
+            // uncommitted until Save, reusing the existing Vendor Management vendor
+            // list — no new register of its own.
+            var vendorSelect = document.createElement("select");
+            vendorSelect.style.fontSize = "12px";
+            vendorSelect.style.padding = "2px 4px";
+            vendorSelect.title = "Vendor expected to submit this document (optional)";
+            var noVendorOpt = document.createElement("option");
+            noVendorOpt.value = "";
+            noVendorOpt.textContent = "(no vendor)";
+            vendorSelect.appendChild(noVendorOpt);
+            data.vendors.forEach(function (v) {
+              var opt = document.createElement("option");
+              opt.value = v.id;
+              opt.textContent = v.vendor_name || "(unnamed vendor)";
+              vendorSelect.appendChild(opt);
+            });
+            vendorSelect.value = uiState.formVendorIds[t.id] || "";
+            vendorSelect.onchange = function () {
+              if (vendorSelect.value) {
+                uiState.formVendorIds[t.id] = vendorSelect.value;
+              } else {
+                delete uiState.formVendorIds[t.id];
+              }
+            };
+            row.appendChild(vendorSelect);
+
+            var status = computeRequirementStatus(data, project.id, t.id, uiState.formDueDates[t.id] || null);
+            var badgeInfo = REQUIREMENT_STATUS_BADGE[status];
             var statusBadge = document.createElement("span");
-            statusBadge.className = "status-badge status-badge--" + (available ? "complete" : "at_risk");
+            statusBadge.className = "status-badge status-badge--" + badgeInfo.className;
             statusBadge.style.fontSize = "11px";
-            statusBadge.textContent = available ? "Available" : "Required";
+            statusBadge.textContent = badgeInfo.label;
             row.appendChild(statusBadge);
           }
 
@@ -552,10 +653,11 @@
 
   /** Gate 18 (Document Control UX refinement): read-only summary of this project's
    * document requirements for the Details panel — selection itself now happens in the
-   * Add/Edit Project form (see renderDocumentRequirementsField() above). "Available" vs
-   * "Required" is never stored; it's computed by checking whether a document already
-   * exists for this project with a matching document_type_id — same "computed at
-   * render time, never denormalized" pattern Gate 13/17 used for "latest revision". */
+   * Add/Edit Project form (see renderDocumentRequirementsField() above). "Available" /
+   * "Overdue" (Gate 5: Document Control 5) / "Required" is never stored; it's computed
+   * from whether a matching document exists and, if not, whether the manual
+   * planned_submission_date has passed — same "computed at render time, never
+   * denormalized" pattern Gate 13/17 used for "latest revision". */
   function renderDocumentRequirementsSection(p, onChanged) {
     var data = window.PCC.store.get();
     // Deliberately keyed off ALL document_types, not just active ones: a requirement
@@ -568,11 +670,23 @@
     data.document_types.forEach(function (t) {
       typesById[t.id] = t;
     });
+    // Gate 6 (Document Control 6: Vendor Register): looked up the same way — a
+    // requirement's assigned vendor keeps showing by name even if that vendor record
+    // is later deleted from Vendor Management (falls back to not showing a vendor at
+    // all, rather than throwing on a missing lookup).
+    var vendorsById = {};
+    data.vendors.forEach(function (v) {
+      vendorsById[v.id] = v;
+    });
     var projectRequirements = data.project_document_requirements.filter(function (r) {
       return r.project_id === p.id && typesById[r.document_type_id];
     });
     var availableCount = projectRequirements.filter(function (r) {
       return computeRequirementAvailability(data, p.id, r.document_type_id);
+    }).length;
+    // Gate 5 (Document Control 5: Schedule Due Dates).
+    var overdueCount = projectRequirements.filter(function (r) {
+      return computeRequirementStatus(data, p.id, r.document_type_id, r.planned_submission_date) === "overdue";
     }).length;
 
     var section = document.createElement("div");
@@ -590,7 +704,13 @@
     var label = document.createElement("span");
     label.className = "detail-item__label";
     label.textContent =
-      "DOCUMENT REQUIREMENTS (" + availableCount + " of " + projectRequirements.length + " available)";
+      "DOCUMENT REQUIREMENTS (" +
+      availableCount +
+      " of " +
+      projectRequirements.length +
+      " available" +
+      (overdueCount > 0 ? ", " + overdueCount + " overdue" : "") +
+      ")";
     header.appendChild(label);
 
     var editBtn = document.createElement("button");
@@ -599,6 +719,12 @@
     editBtn.onclick = function () {
       uiState.formSelectedDocTypeIds = projectRequirements.map(function (r) {
         return r.document_type_id;
+      });
+      uiState.formDueDates = {};
+      uiState.formVendorIds = {};
+      projectRequirements.forEach(function (r) {
+        if (r.planned_submission_date) uiState.formDueDates[r.document_type_id] = r.planned_submission_date;
+        if (r.vendor_id) uiState.formVendorIds[r.document_type_id] = r.vendor_id;
       });
       uiState.formDocTemplateKey = "";
       uiState.editingId = p.id;
@@ -639,15 +765,21 @@
         row.style.alignItems = "center";
         row.style.fontSize = "13px";
 
+        var vendor = r.vendor_id ? vendorsById[r.vendor_id] : null;
         var nameSpan = document.createElement("span");
-        nameSpan.textContent = t.name + (t.code ? " (" + t.code + ")" : "");
+        nameSpan.textContent =
+          t.name +
+          (t.code ? " (" + t.code + ")" : "") +
+          (r.planned_submission_date ? " — due " + r.planned_submission_date : "") +
+          (vendor ? " — " + (vendor.vendor_name || "(unnamed vendor)") : "");
         row.appendChild(nameSpan);
 
-        var available = computeRequirementAvailability(data, p.id, r.document_type_id);
+        var status = computeRequirementStatus(data, p.id, r.document_type_id, r.planned_submission_date);
+        var badgeInfo = REQUIREMENT_STATUS_BADGE[status];
         var statusBadge = document.createElement("span");
-        statusBadge.className = "status-badge status-badge--" + (available ? "complete" : "at_risk");
+        statusBadge.className = "status-badge status-badge--" + badgeInfo.className;
         statusBadge.style.fontSize = "11px";
-        statusBadge.textContent = available ? "Available" : "Required";
+        statusBadge.textContent = badgeInfo.label;
         row.appendChild(statusBadge);
 
         list.appendChild(row);
@@ -1592,6 +1724,8 @@
     addBtn.onclick = function () {
       uiState.formSelectedDocTypeIds = [];
       uiState.formDocTemplateKey = "";
+      uiState.formDueDates = {};
+      uiState.formVendorIds = {};
       uiState.editingId = "new";
       rerender();
     };
