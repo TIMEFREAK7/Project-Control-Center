@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 26;
+  var SCHEMA_VERSION = 27;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -40,6 +40,15 @@
           rfi: 15,
           change: 10,
         },
+        // Gate 16 (Document Control 3: Nomenclature): a single portfolio-wide naming
+        // pattern (not per-project) checked against an uploaded document's filename —
+        // matches how health_score_weights above is one shared config, not per-project
+        // tuning. Tokens (PROJECT/DISCIPLINE/DOCUMENTTYPE/NUMBER/REV) are substituted by
+        // documentNomenclatureEngine.js; any other characters in the pattern (separators
+        // like "-") pass through unchanged, so a user can adopt any separator/order they
+        // want without a schema change. Warn-only, never enforced — see documents.js.
+        document_nomenclature_pattern: "PROJECT-DISCIPLINE-DOCUMENTTYPE-NUMBER-REV",
+        document_nomenclature_enabled: true,
       },
       projects: [],
       documents: [],
@@ -131,6 +140,11 @@
     var base = {
       id: newProjectId(),
       name: "",
+      // Gate 16 (Document Control 3: Nomenclature): a short code (e.g. "ABC") used as
+      // the PROJECT token in the document naming pattern — optional; nomenclature
+      // checking simply can't validate the PROJECT segment for a project that hasn't
+      // set one (see documents.js), rather than fabricating one from `name`.
+      project_code: "",
       client: "",
       company: "",
       country: "",
@@ -205,6 +219,27 @@
       duplicate_reason: null,
       // Gate 10: optional link to one Schedule activity — see newRisk()'s comment.
       activity_id: "",
+      // Gate 16 (Document Control 3: Classification). All optional, additive on top of
+      // the existing `category` field above (untouched, still what upload-form/list
+      // filtering use) — reconciling the two into one classification scheme is a later
+      // gate's job, not this one. `document_type_id` links to Gate 14's master
+      // repository; `criticality` defaults from that type's own default_criticality at
+      // upload time (documents.js) but stays independently editable per document, same
+      // "suggested, not enforced" relationship Gate 15's templates have with the master
+      // repository. `package`/`contract_or_po` are free text — no Package/Contract/PO
+      // entity exists anywhere in this app yet, and inventing one is out of scope for a
+      // classification gate; free text is the honest choice until/unless a real Package
+      // or Commercial module makes it worth modeling properly.
+      document_type_id: "",
+      discipline: "",
+      document_number: "",
+      revision: "00",
+      package: "",
+      contract_or_po: "",
+      vendor_id: "",
+      priority: "medium",
+      criticality: "",
+      remarks: "",
     };
     return Object.assign(base, overrides || {});
   }
@@ -1552,6 +1587,36 @@
       // gate guessing which of its documents "count" as requirements.
       if (!loaded.project_document_requirements) loaded.project_document_requirements = [];
       loaded.schema_version = 26;
+    }
+
+    if (loaded.schema_version < 27) {
+      // Gate 16 (Document Control 3): Classification + Nomenclature. Backfills the new
+      // optional classification fields onto every existing document (empty/default —
+      // nothing to infer from an old record), project_code onto every existing project,
+      // and the nomenclature settings — same "" / default treatment as every prior gate
+      // that added optional fields to an existing register.
+      (loaded.projects || []).forEach(function (p) {
+        if (p.project_code === undefined) p.project_code = "";
+      });
+      (loaded.documents || []).forEach(function (d) {
+        if (d.document_type_id === undefined) d.document_type_id = "";
+        if (d.discipline === undefined) d.discipline = "";
+        if (d.document_number === undefined) d.document_number = "";
+        if (d.revision === undefined) d.revision = "00";
+        if (d.package === undefined) d.package = "";
+        if (d.contract_or_po === undefined) d.contract_or_po = "";
+        if (d.vendor_id === undefined) d.vendor_id = "";
+        if (d.priority === undefined) d.priority = "medium";
+        if (d.criticality === undefined) d.criticality = "";
+        if (d.remarks === undefined) d.remarks = "";
+      });
+      if (loaded.settings && loaded.settings.document_nomenclature_pattern === undefined) {
+        loaded.settings.document_nomenclature_pattern = "PROJECT-DISCIPLINE-DOCUMENTTYPE-NUMBER-REV";
+      }
+      if (loaded.settings && loaded.settings.document_nomenclature_enabled === undefined) {
+        loaded.settings.document_nomenclature_enabled = true;
+      }
+      loaded.schema_version = 27;
     }
 
     return loaded;

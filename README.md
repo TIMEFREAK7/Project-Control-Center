@@ -1635,6 +1635,88 @@ done, deliberately: Document Control gates 3-14 (nomenclature, status/revision w
 linking, vendor lookahead, dashboards, executive/portfolio compliance) — still just the next
 incremental piece of the foundation, not the whole system.
 
+## Gate 16 — Document Control 3: Classification + Nomenclature (2026-08-18)
+
+Third gate of the 14-gate Document Control spec, and the spec's own gate list bundles these two
+together (Gate 3 — Classification + Nomenclature) rather than as separate items, so this delivery
+does too. Documents move from "just a category + optional links" to carrying real classification
+metadata, and uploads get a non-blocking naming-convention check.
+
+**Scope decided before building:**
+
+- **Classification fields are additive on top of the existing `category` field, not a
+  replacement.** `documents.js`'s existing 5-value category and everything that reads it (upload
+  form, filtering) is completely untouched — reconciling `category`/`VENDOR_DOCUMENT_CATEGORIES`/
+  the Gate 14 master repository into one scheme was explicitly deferred when Gate 14 shipped, and
+  stays deferred here; this gate adds new, independent fields alongside it.
+- **`document_type_id` links to Gate 14's master repository**; `criticality` is suggested from
+  that type's own `default_criticality` when picked, but stays independently editable — the same
+  "suggested, not enforced" relationship Gate 15's templates have with the master repository, not
+  a new pattern invented for this gate.
+- **`package` and `contract_or_po` are free text, not real entities.** No Package/Contract/PO
+  model exists anywhere in this app (confirmed during Gate 14's own inspection), and building one
+  now would be commercial-module scope, not classification scope. Free text captures the
+  reference without pretending it's a modeled relationship it isn't.
+- **`vendor_id` reuses the existing Vendor Master** (Gate 13) — no new vendor data, just a link,
+  with a "View Vendor" quick-nav button matching the existing "View Meeting"/"View in Gantt"
+  pattern on the same row.
+- **Nomenclature is warn-only, exactly per the spec's explicit "do not silently reject the
+  document."** A configurable pattern (default `PROJECT-DISCIPLINE-DOCUMENTTYPE-NUMBER-REV`,
+  editable in Settings, with an on/off toggle) is checked against the filename at upload time;
+  a mismatch shows the expected name and never blocks or gates the Save button. Requires a new
+  `project_code` field on Project (didn't exist before — added minimally, optional, for the
+  PROJECT token specifically) since the spec's own example (`ABC-ELE-RFI-001-REV02`) needs a
+  short project identifier that nothing in this app previously modeled.
+- **The nomenclature check is a pure, standalone engine** (`documentNomenclatureEngine.js`, zero
+  DOM/store access, same separation as every other engine in this app) — token substitution and
+  case-insensitive, extension-agnostic comparison only; `documents.js` is the only place that
+  gathers real values and renders the result.
+
+**What changed:** `store.js` (schema v26→v27: `project_code` on `newProject()`; `document_type_id`
+/`discipline`/`document_number`/`revision`/`package`/`contract_or_po`/`vendor_id`/`priority`/
+`criticality`/`remarks` on `newDocument()`; `settings.document_nomenclature_pattern`/
+`document_nomenclature_enabled`). **New file:** `documentNomenclatureEngine.js` (pure). **Changed:**
+`pages/documents.js` (a new "Classification (optional)" field group in the upload form, a
+non-blocking nomenclature notice, "View Vendor" quick-nav, classification metadata shown on each
+document row), `pages/portfolio.js` (Project Code field in the Add/Edit form and details grid),
+`pages/settings.js` (a new "Document Nomenclature" panel: enable toggle + pattern input),
+`build.js` (bundle order).
+
+**Tested before delivery (35 pure-logic + 26 e2e checks + updated migration tests, full suite
+re-run clean):**
+
+- **Schema migration** (`test_store_schema_v27_migration.js`, renamed from the v26 file): the
+  full v20→v27 chain and a legacy/brand-new install both land correctly with every new field
+  backfilled/defaulted (`project_code: ""`, `revision: "00"`, `priority: "medium"`, nomenclature
+  settings defaulted), and the pre-existing `category` field confirmed completely untouched.
+- **Pure engine logic** (`test_document_nomenclature_engine.js`, 8 checks): token substitution
+  with all tokens present, with blanks (including the literal token `REV` itself resolving
+  correctly), a custom pattern with a different separator/order, extension-stripping, and
+  case-insensitive match/mismatch comparison, including the all-blank-tokens edge case.
+- **End-to-end against the actual bundled `index.html`** (`test_document_classification_e2e.js`,
+  26 checks): Portfolio's Project Code field persists; the Documents upload form's Document
+  Type/Vendor selects are populated from the real store; picking a Document Type auto-suggests
+  (and lets you override) Criticality; the existing Category field's 5-value list is unchanged;
+  a document's classification metadata (type name, discipline, number+revision, vendor) displays
+  correctly on its row; "View Vendor" navigates to and opens that vendor's real profile; the
+  Settings nomenclature pattern and enable-toggle persist; the master `document_types`/`vendors`
+  lists are confirmed unchanged throughout; full 16-route smoke test. The real file-driven
+  upload+extraction pipeline itself isn't jsdom-testable in this codebase (documented precedent
+  from Gate 10's own e2e test), so this file covers everything reachable without picking a file.
+- **Real-browser verification** (Chromium via Playwright, a hand-built minimal valid PDF used to
+  actually exercise the file-driven upload path jsdom can't): uploading `wrong-name.pdf` showed
+  "Filename doesn't match the configured naming convention. Expected: “ABC-ELE--001-REV02”"
+  (DOCUMENTTYPE blank since no type was picked in that pass); uploading
+  `ABC-ELE-RFI-001-REV02.pdf` with Document Type = RFIs and matching classification fields showed
+  "Filename matches the configured naming convention." — confirming the full pattern
+  substitution, PDF extraction, and non-blocking warning/confirmation UI all work together
+  end to end, not just in isolation.
+
+**What I have not tested:** this on your actual device. Same standard as every prior gate. Not
+done, deliberately: Document Control gates 4-14 (status/revision workflow, schedule↔document
+linking, vendor lookahead, readiness/constraints, reminders, dashboards, executive/portfolio
+compliance) — this is still the classification foundation, not the workflow on top of it.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
@@ -1662,14 +1744,15 @@ line items on the original locked Tier 2/3 list. Built in a separate parallel se
 Gates 8-11 and reconciled into `main` together with them (see each gate's own write-up above for
 the schema-numbering note on how the reconciliation renumbered them).
 
-**Document Control** (Gates 14-15 = Document Control gates 1-2 of a separate 14-gate sub-spec,
+**Document Control** (Gates 14-16 = Document Control gates 1-3 of a separate 14-gate sub-spec,
 done) — same footing as Executive Center/Activity Linking/Vendor Management above: a directly
 requested, explicitly incremental upgrade to Documents, not a Tier 1/2/3 line item. The Master
-Document Repository (the type taxonomy, Gate 14) and Project-Specific Document Requirements
-(which types apply to which project, Gate 15) are built; Document Control gates 3-14
-(nomenclature, status/revision workflow, schedule↔document linking, vendor lookahead,
+Document Repository (the type taxonomy, Gate 14), Project-Specific Document Requirements (which
+types apply to which project, Gate 15), and Classification + Nomenclature (document-level
+metadata + a non-blocking naming-convention check, Gate 16) are built; Document Control gates
+4-14 (status/revision workflow, schedule↔document linking, vendor lookahead,
 readiness/constraints, reminders, dashboards, executive/portfolio compliance) are intentionally
-not started — see Gates 14 and 15's own write-ups above.
+not started — see Gates 14-16's own write-ups above.
 
 **Tier 3 (deferred until Tier 1 is in daily use):** AI Document Processing, Knowledge Base, AI Project
 Assistant, Lessons Learned, final polish
@@ -1677,16 +1760,19 @@ Assistant, Lessons Learned, final polish
 ## Next phase
 
 **Tier 2 is complete**, and Vendor Management / the in-app Excel editor / the Document Control
-foundation (repository + per-project requirements) are all done alongside it. The most likely
-next piece of work is **Document Control gate 3 (classification + nomenclature)** — reconciling
-Documents' existing 5-category field and Vendor Management's own document categories with the
-Gate 14 master repository, plus filename-pattern validation on upload — per the sub-spec's own
-locked gate order, but confirm scope before starting it rather than assuming, same discipline as
-every gate before this one. Other open items, none blocking daily use: rate × usage from Resource
-Management feeding Cost Tracking/EVM (explicitly deferred, Gate 11); a persisted/logo-customizable
-report-template system; portfolio-level executive dashboard filtering; 10,000+ activity Gantt
-virtualization; per-activity linking extended to Resource Assignments' own sub-fields if that
-turns out to matter in practice; Vendor↔Cost/Schedule integration beyond the current Vendor↔
-Project/Meeting/RFI/Risk links, if that turns out to matter in practice. Tier 3 (AI Document
+foundation (repository + per-project requirements + classification/nomenclature) are all done
+alongside it. The most likely next piece of work is **Document Control gate 4 (status + version
+control)** — a real submission/review/approval lifecycle and revision history for documents,
+following Vendor Management's own `document_group_id`/`revision_number` pattern as the natural
+template — per the sub-spec's own locked gate order, but confirm scope before starting it rather
+than assuming, same discipline as every gate before this one. Other open items, none blocking
+daily use: rate × usage from Resource Management feeding Cost Tracking/EVM (explicitly deferred,
+Gate 11); a persisted/logo-customizable report-template system; portfolio-level executive
+dashboard filtering; 10,000+ activity Gantt virtualization; per-activity linking extended to
+Resource Assignments' own sub-fields if that turns out to matter in practice; Vendor↔Cost/Schedule
+integration beyond the current Vendor↔Project/Meeting/RFI/Risk links, if that turns out to matter
+in practice; reconciling Documents' `category` / Vendor Management's document categories / the
+Gate 14 master repository into one classification scheme, explicitly deferred twice now (Gates 14
+and 16) — worth revisiting once real usage shows whether it's actually needed. Tier 3 (AI Document
 Processing, Knowledge Base, AI Project Assistant, Lessons Learned, final polish) remains deferred
 until Tier 1/2 are in daily use.
