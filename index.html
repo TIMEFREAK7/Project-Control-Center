@@ -3567,7 +3567,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 30;
+  var SCHEMA_VERSION = 31;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -4832,9 +4832,13 @@ https://github.com/nodeca/pako/blob/main/LICENSE
    * state. `planned_submission_date` (Gate 5: Document Control 5, Schedule Due Dates)
    * is a manual, optional due date — deliberately NOT derived from a linked schedule
    * activity/milestone (that's Document Control gate 7) and no lead-time calculation is
-   * applied to it (gate 8). Beyond that, still no status or criticality on the row
-   * itself — those stay later gates' job; this gate only adds "when is this due," on
-   * top of "does this type apply to this project." */
+   * applied to it (gate 8). `vendor_id` (Gate 6: Document Control 6, Vendor Register) is
+   * an optional link to an existing Vendor Management vendor (`vendors`) — which vendor
+   * is expected to submit this document. Deliberately reuses the existing vendor
+   * register rather than introducing a second one; this app already has exactly one
+   * list of vendors. Beyond that, still no status or criticality on the row itself —
+   * those stay later gates' job; this gate only adds "who's submitting it," on top of
+   * "when is this due" and "does this type apply to this project." */
   function newProjectDocumentRequirement(overrides) {
     var now = new Date().toISOString();
     var base = {
@@ -4842,6 +4846,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       project_id: "",
       document_type_id: "",
       planned_submission_date: null,
+      vendor_id: "",
       created_at: now,
     };
     return Object.assign(base, overrides || {});
@@ -5266,6 +5271,17 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         if (r.planned_submission_date === undefined) r.planned_submission_date = null;
       });
       loaded.schema_version = 30;
+    }
+
+    if (loaded.schema_version < 31) {
+      // Gate 6 (Document Control 6: Vendor Register). Adds an optional vendor_id to
+      // every existing requirement row — "" (unassigned), same treatment activity_id
+      // got on every linkable register back at Gate 10, since there's no way to infer
+      // who's expected to submit a pre-Gate-6 requirement.
+      (loaded.project_document_requirements || []).forEach(function (r) {
+        if (r.vendor_id === undefined) r.vendor_id = "";
+      });
+      loaded.schema_version = 31;
     }
 
     return loaded;
@@ -6507,6 +6523,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     // submission dates, keyed by document_type_id, mirroring formSelectedDocTypeIds'
     // "seeded at the button-click moment, never inside render()" treatment.
     formDueDates: {},
+    // Gate 6 (Document Control 6: Vendor Register): uncommitted per-type assigned
+    // vendor, keyed by document_type_id — which vendor (from the existing Vendor
+    // Management module) is expected to submit this document. Same uncommitted-until-
+    // Save, seeded-at-button-click treatment as formDueDates.
+    formVendorIds: {},
   };
 
   function formatMoney(value, currency) {
@@ -6678,7 +6699,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         // Gate 18: reconcile project_document_requirements against the form's
         // uncommitted selection, atomically with the project record itself. Gate 5
         // (Document Control 5) additionally reconciles each selected type's planned
-        // submission date from uiState.formDueDates.
+        // submission date from uiState.formDueDates; Gate 6 does the same for the
+        // assigned vendor from uiState.formVendorIds.
         var selected = {};
         uiState.formSelectedDocTypeIds.forEach(function (typeId) {
           selected[typeId] = true;
@@ -6696,15 +6718,18 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         });
         Object.keys(selected).forEach(function (typeId) {
           var plannedDate = uiState.formDueDates[typeId] || null;
+          var vendorId = uiState.formVendorIds[typeId] || "";
           var existingRow = existingByTypeId[typeId];
           if (existingRow) {
             existingRow.planned_submission_date = plannedDate;
+            existingRow.vendor_id = vendorId;
           } else {
             data.project_document_requirements.push(
               window.PCC.store.newProjectDocumentRequirement({
                 project_id: projectId,
                 document_type_id: typeId,
                 planned_submission_date: plannedDate,
+                vendor_id: vendorId,
               })
             );
           }
@@ -6792,8 +6817,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         return r.document_type_id;
       });
       uiState.formDueDates = {};
+      uiState.formVendorIds = {};
       projectRequirements.forEach(function (r) {
         if (r.planned_submission_date) uiState.formDueDates[r.document_type_id] = r.planned_submission_date;
+        if (r.vendor_id) uiState.formVendorIds[r.document_type_id] = r.vendor_id;
       });
       uiState.formDocTemplateKey = "";
       uiState.editingId = p.id;
@@ -6861,7 +6888,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
    * in-progress edits to the other fields above aren't disturbed. Gate 5 (Document
    * Control 5: Schedule Due Dates) adds an optional manual due date per selected type,
    * mirrored in uiState.formDueDates the same way selection itself is mirrored in
-   * formSelectedDocTypeIds — both are uncommitted until Save. */
+   * formSelectedDocTypeIds; Gate 6 (Document Control 6: Vendor Register) adds an
+   * optional assigned vendor per selected type the same way, in uiState.formVendorIds,
+   * reusing the existing Vendor Management vendor list rather than a new register — all
+   * three are uncommitted until Save. */
   function renderDocumentRequirementsField(project) {
     var fieldWrap = document.createElement("div");
     fieldWrap.style.marginTop = "18px";
@@ -7009,6 +7039,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
             } else if (idx !== -1) {
               uiState.formSelectedDocTypeIds.splice(idx, 1);
               delete uiState.formDueDates[t.id];
+              delete uiState.formVendorIds[t.id];
             }
             refresh();
           };
@@ -7035,6 +7066,33 @@ https://github.com/nodeca/pako/blob/main/LICENSE
               refresh();
             };
             row.appendChild(dueInput);
+
+            // Gate 6 (Document Control 6: Vendor Register): optional assigned vendor,
+            // uncommitted until Save, reusing the existing Vendor Management vendor
+            // list — no new register of its own.
+            var vendorSelect = document.createElement("select");
+            vendorSelect.style.fontSize = "12px";
+            vendorSelect.style.padding = "2px 4px";
+            vendorSelect.title = "Vendor expected to submit this document (optional)";
+            var noVendorOpt = document.createElement("option");
+            noVendorOpt.value = "";
+            noVendorOpt.textContent = "(no vendor)";
+            vendorSelect.appendChild(noVendorOpt);
+            data.vendors.forEach(function (v) {
+              var opt = document.createElement("option");
+              opt.value = v.id;
+              opt.textContent = v.vendor_name || "(unnamed vendor)";
+              vendorSelect.appendChild(opt);
+            });
+            vendorSelect.value = uiState.formVendorIds[t.id] || "";
+            vendorSelect.onchange = function () {
+              if (vendorSelect.value) {
+                uiState.formVendorIds[t.id] = vendorSelect.value;
+              } else {
+                delete uiState.formVendorIds[t.id];
+              }
+            };
+            row.appendChild(vendorSelect);
 
             var status = computeRequirementStatus(data, project.id, t.id, uiState.formDueDates[t.id] || null);
             var badgeInfo = REQUIREMENT_STATUS_BADGE[status];
@@ -7076,6 +7134,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var typesById = {};
     data.document_types.forEach(function (t) {
       typesById[t.id] = t;
+    });
+    // Gate 6 (Document Control 6: Vendor Register): looked up the same way — a
+    // requirement's assigned vendor keeps showing by name even if that vendor record
+    // is later deleted from Vendor Management (falls back to not showing a vendor at
+    // all, rather than throwing on a missing lookup).
+    var vendorsById = {};
+    data.vendors.forEach(function (v) {
+      vendorsById[v.id] = v;
     });
     var projectRequirements = data.project_document_requirements.filter(function (r) {
       return r.project_id === p.id && typesById[r.document_type_id];
@@ -7120,8 +7186,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         return r.document_type_id;
       });
       uiState.formDueDates = {};
+      uiState.formVendorIds = {};
       projectRequirements.forEach(function (r) {
         if (r.planned_submission_date) uiState.formDueDates[r.document_type_id] = r.planned_submission_date;
+        if (r.vendor_id) uiState.formVendorIds[r.document_type_id] = r.vendor_id;
       });
       uiState.formDocTemplateKey = "";
       uiState.editingId = p.id;
@@ -7162,11 +7230,13 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         row.style.alignItems = "center";
         row.style.fontSize = "13px";
 
+        var vendor = r.vendor_id ? vendorsById[r.vendor_id] : null;
         var nameSpan = document.createElement("span");
         nameSpan.textContent =
           t.name +
           (t.code ? " (" + t.code + ")" : "") +
-          (r.planned_submission_date ? " — due " + r.planned_submission_date : "");
+          (r.planned_submission_date ? " — due " + r.planned_submission_date : "") +
+          (vendor ? " — " + (vendor.vendor_name || "(unnamed vendor)") : "");
         row.appendChild(nameSpan);
 
         var status = computeRequirementStatus(data, p.id, r.document_type_id, r.planned_submission_date);
@@ -8120,6 +8190,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       uiState.formSelectedDocTypeIds = [];
       uiState.formDocTemplateKey = "";
       uiState.formDueDates = {};
+      uiState.formVendorIds = {};
       uiState.editingId = "new";
       rerender();
     };

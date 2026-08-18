@@ -58,6 +58,11 @@
     // submission dates, keyed by document_type_id, mirroring formSelectedDocTypeIds'
     // "seeded at the button-click moment, never inside render()" treatment.
     formDueDates: {},
+    // Gate 6 (Document Control 6: Vendor Register): uncommitted per-type assigned
+    // vendor, keyed by document_type_id — which vendor (from the existing Vendor
+    // Management module) is expected to submit this document. Same uncommitted-until-
+    // Save, seeded-at-button-click treatment as formDueDates.
+    formVendorIds: {},
   };
 
   function formatMoney(value, currency) {
@@ -229,7 +234,8 @@
         // Gate 18: reconcile project_document_requirements against the form's
         // uncommitted selection, atomically with the project record itself. Gate 5
         // (Document Control 5) additionally reconciles each selected type's planned
-        // submission date from uiState.formDueDates.
+        // submission date from uiState.formDueDates; Gate 6 does the same for the
+        // assigned vendor from uiState.formVendorIds.
         var selected = {};
         uiState.formSelectedDocTypeIds.forEach(function (typeId) {
           selected[typeId] = true;
@@ -247,15 +253,18 @@
         });
         Object.keys(selected).forEach(function (typeId) {
           var plannedDate = uiState.formDueDates[typeId] || null;
+          var vendorId = uiState.formVendorIds[typeId] || "";
           var existingRow = existingByTypeId[typeId];
           if (existingRow) {
             existingRow.planned_submission_date = plannedDate;
+            existingRow.vendor_id = vendorId;
           } else {
             data.project_document_requirements.push(
               window.PCC.store.newProjectDocumentRequirement({
                 project_id: projectId,
                 document_type_id: typeId,
                 planned_submission_date: plannedDate,
+                vendor_id: vendorId,
               })
             );
           }
@@ -343,8 +352,10 @@
         return r.document_type_id;
       });
       uiState.formDueDates = {};
+      uiState.formVendorIds = {};
       projectRequirements.forEach(function (r) {
         if (r.planned_submission_date) uiState.formDueDates[r.document_type_id] = r.planned_submission_date;
+        if (r.vendor_id) uiState.formVendorIds[r.document_type_id] = r.vendor_id;
       });
       uiState.formDocTemplateKey = "";
       uiState.editingId = p.id;
@@ -412,7 +423,10 @@
    * in-progress edits to the other fields above aren't disturbed. Gate 5 (Document
    * Control 5: Schedule Due Dates) adds an optional manual due date per selected type,
    * mirrored in uiState.formDueDates the same way selection itself is mirrored in
-   * formSelectedDocTypeIds — both are uncommitted until Save. */
+   * formSelectedDocTypeIds; Gate 6 (Document Control 6: Vendor Register) adds an
+   * optional assigned vendor per selected type the same way, in uiState.formVendorIds,
+   * reusing the existing Vendor Management vendor list rather than a new register — all
+   * three are uncommitted until Save. */
   function renderDocumentRequirementsField(project) {
     var fieldWrap = document.createElement("div");
     fieldWrap.style.marginTop = "18px";
@@ -560,6 +574,7 @@
             } else if (idx !== -1) {
               uiState.formSelectedDocTypeIds.splice(idx, 1);
               delete uiState.formDueDates[t.id];
+              delete uiState.formVendorIds[t.id];
             }
             refresh();
           };
@@ -586,6 +601,33 @@
               refresh();
             };
             row.appendChild(dueInput);
+
+            // Gate 6 (Document Control 6: Vendor Register): optional assigned vendor,
+            // uncommitted until Save, reusing the existing Vendor Management vendor
+            // list — no new register of its own.
+            var vendorSelect = document.createElement("select");
+            vendorSelect.style.fontSize = "12px";
+            vendorSelect.style.padding = "2px 4px";
+            vendorSelect.title = "Vendor expected to submit this document (optional)";
+            var noVendorOpt = document.createElement("option");
+            noVendorOpt.value = "";
+            noVendorOpt.textContent = "(no vendor)";
+            vendorSelect.appendChild(noVendorOpt);
+            data.vendors.forEach(function (v) {
+              var opt = document.createElement("option");
+              opt.value = v.id;
+              opt.textContent = v.vendor_name || "(unnamed vendor)";
+              vendorSelect.appendChild(opt);
+            });
+            vendorSelect.value = uiState.formVendorIds[t.id] || "";
+            vendorSelect.onchange = function () {
+              if (vendorSelect.value) {
+                uiState.formVendorIds[t.id] = vendorSelect.value;
+              } else {
+                delete uiState.formVendorIds[t.id];
+              }
+            };
+            row.appendChild(vendorSelect);
 
             var status = computeRequirementStatus(data, project.id, t.id, uiState.formDueDates[t.id] || null);
             var badgeInfo = REQUIREMENT_STATUS_BADGE[status];
@@ -627,6 +669,14 @@
     var typesById = {};
     data.document_types.forEach(function (t) {
       typesById[t.id] = t;
+    });
+    // Gate 6 (Document Control 6: Vendor Register): looked up the same way — a
+    // requirement's assigned vendor keeps showing by name even if that vendor record
+    // is later deleted from Vendor Management (falls back to not showing a vendor at
+    // all, rather than throwing on a missing lookup).
+    var vendorsById = {};
+    data.vendors.forEach(function (v) {
+      vendorsById[v.id] = v;
     });
     var projectRequirements = data.project_document_requirements.filter(function (r) {
       return r.project_id === p.id && typesById[r.document_type_id];
@@ -671,8 +721,10 @@
         return r.document_type_id;
       });
       uiState.formDueDates = {};
+      uiState.formVendorIds = {};
       projectRequirements.forEach(function (r) {
         if (r.planned_submission_date) uiState.formDueDates[r.document_type_id] = r.planned_submission_date;
+        if (r.vendor_id) uiState.formVendorIds[r.document_type_id] = r.vendor_id;
       });
       uiState.formDocTemplateKey = "";
       uiState.editingId = p.id;
@@ -713,11 +765,13 @@
         row.style.alignItems = "center";
         row.style.fontSize = "13px";
 
+        var vendor = r.vendor_id ? vendorsById[r.vendor_id] : null;
         var nameSpan = document.createElement("span");
         nameSpan.textContent =
           t.name +
           (t.code ? " (" + t.code + ")" : "") +
-          (r.planned_submission_date ? " — due " + r.planned_submission_date : "");
+          (r.planned_submission_date ? " — due " + r.planned_submission_date : "") +
+          (vendor ? " — " + (vendor.vendor_name || "(unnamed vendor)") : "");
         row.appendChild(nameSpan);
 
         var status = computeRequirementStatus(data, p.id, r.document_type_id, r.planned_submission_date);
@@ -1671,6 +1725,7 @@
       uiState.formSelectedDocTypeIds = [];
       uiState.formDocTemplateKey = "";
       uiState.formDueDates = {};
+      uiState.formVendorIds = {};
       uiState.editingId = "new";
       rerender();
     };

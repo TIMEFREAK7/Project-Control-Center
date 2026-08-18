@@ -43,6 +43,17 @@ function findButtonByText(dom, text) {
   const buttons = Array.from(dom.window.document.querySelectorAll("button"));
   return buttons.find((b) => b.textContent.trim() === text);
 }
+// Once more than one project card is on screen, plain findButtonByText can hit the
+// wrong card's "Details" button (only the expanded card's own button reads "Hide
+// Details", so any other still-collapsed card also matches "Details" exactly). Scope to
+// the specific card by its project name instead.
+function findButtonInCardByText(dom, projectName, buttonText) {
+  const cards = Array.from(dom.window.document.querySelectorAll(".project-card"));
+  const card = cards.find((c) => c.textContent.indexOf(projectName) !== -1);
+  if (!card) return undefined;
+  const buttons = Array.from(card.querySelectorAll("button"));
+  return buttons.find((b) => b.textContent.trim() === buttonText);
+}
 function findLabelContaining(dom, text) {
   const labels = Array.from(dom.window.document.querySelectorAll("label"));
   return labels.find((l) => l.textContent.indexOf(text) !== -1);
@@ -316,6 +327,81 @@ function findFieldByLabel(dom, labelText) {
     assert.ok(bodyText.indexOf("due 2020-01-01") !== -1, "the read-only summary must show the requirement's due date");
     assert.ok(/DOCUMENT REQUIREMENTS \(\d+ of \d+ available, 1 overdue\)/.test(bodyText), "the header must call out the overdue count once a date has passed");
     assert.ok(bodyText.indexOf("Overdue") !== -1);
+  });
+
+  // ---- Gate 6 (Document Control 6: Vendor Register) ----
+  var testVendorId;
+  await check("seed a vendor via the store (reusing the existing Vendor Management module, not a new register)", () => {
+    win.PCC.store.update(function (d) {
+      var v = win.PCC.store.newVendor({ vendor_name: "Gate 6 Test Vendor" });
+      d.vendors.push(v);
+      testVendorId = v.id;
+    });
+    assert.ok(testVendorId);
+  });
+
+  await check("a checked requirement in the Add form shows a vendor select defaulting to '(no vendor)'", () => {
+    findButtonByText(dom, "+ Add Project").click();
+    win.PCC.router.render();
+
+    var kickoffLabel = findLabelContaining(dom, "Kickoff Checklist");
+    kickoffLabel.querySelector('input[type="checkbox"]').click();
+    kickoffLabel = findLabelContaining(dom, "Kickoff Checklist");
+
+    var vendorSelect = kickoffLabel.querySelector("select");
+    assert.ok(vendorSelect, "a checked requirement must show a vendor select");
+    assert.strictEqual(vendorSelect.value, "", "must default to unassigned, not the store's first vendor");
+    var optionLabels = Array.from(vendorSelect.options).map((o) => o.textContent);
+    assert.ok(optionLabels.indexOf("Gate 6 Test Vendor") !== -1, "the seeded vendor must appear as an option");
+  });
+
+  var vendorProjectId;
+  await check("selecting a vendor and saving persists vendor_id onto the store row, atomically with the rest of the requirement", () => {
+    var kickoffLabel = findLabelContaining(dom, "Kickoff Checklist");
+    var vendorSelect = kickoffLabel.querySelector("select");
+    vendorSelect.value = testVendorId;
+    vendorSelect.dispatchEvent(new win.Event("change"));
+
+    findFieldByLabel(dom, "Project Name").value = "Vendor Register Test Project";
+    findButtonByText(dom, "Add Project").click();
+
+    var data = win.PCC.store.get();
+    var newProject = data.projects.find((p) => p.name === "Vendor Register Test Project");
+    assert.ok(newProject, "the new project must be created");
+    vendorProjectId = newProject.id;
+    var kickoffType = data.document_types.find((t) => t.name === "Kickoff Checklist");
+    var row = data.project_document_requirements.find(
+      (r) => r.project_id === vendorProjectId && r.document_type_id === kickoffType.id
+    );
+    assert.ok(row, "the requirement row must be committed on Save");
+    assert.strictEqual(row.vendor_id, testVendorId, "the assigned vendor must be persisted");
+  });
+
+  await check("Edit Requirements pre-fills the stored vendor back into the form's select", () => {
+    // Scoped to this specific card: by now three project cards are on screen and more
+    // than one reads plain "Details" (only the currently-expanded one reads "Hide
+    // Details"), so an unscoped findButtonByText could click the wrong project's.
+    findButtonInCardByText(dom, "Vendor Register Test Project", "Details").click();
+    win.PCC.router.render();
+    findButtonByText(dom, "Edit Requirements").click();
+    win.PCC.router.render();
+
+    var kickoffLabel = findLabelContaining(dom, "Kickoff Checklist");
+    var vendorSelect = kickoffLabel.querySelector("select");
+    assert.strictEqual(vendorSelect.value, testVendorId, "re-opening Edit must show the previously-assigned vendor, not blank");
+    findButtonByText(dom, "Cancel").click();
+    win.PCC.router.render();
+  });
+
+  await check("the Details summary shows the assigned vendor's name inline", () => {
+    var bodyText = win.document.getElementById("page-outlet").textContent;
+    assert.ok(bodyText.indexOf("Gate 6 Test Vendor") !== -1, "the read-only summary must show the assigned vendor's name");
+  });
+
+  await check("the master vendors list is unchanged by any requirement-vendor assignment above (no vendor created/removed by this feature)", () => {
+    var data = win.PCC.store.get();
+    assert.strictEqual(data.vendors.length, 1, "Vendor Register must reuse the existing vendor, never create one of its own");
+    assert.strictEqual(data.vendors[0].id, testVendorId);
   });
 
   await check("deactivating a document type hides it from the Edit form's checklist but the Details summary still shows its existing requirement", () => {

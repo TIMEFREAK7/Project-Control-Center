@@ -34,18 +34,24 @@ that override default behavior).
 - **Document Control is a separate 14-gate sub-spec being built incrementally, one confirmed
   gate at a time.** Aditya provided the full spec up front but is explicit that it must NOT be
   built all at once — inspect current state, propose the next gate's scope in a short paragraph,
-  wait for "yes, build it," then build exactly that and stop. Five gates in as of this handoff
+  wait for "yes, build it," then build exactly that and stop. Six gates in as of this handoff
   (see below); do not jump ahead to a later gate's fields "while you're in there."
 
-## Where things stand — Document Control Gate 5 (Schedule Due Dates) just built on branch `claude/gate-5-startup-1ubxfh`, not yet merged
+## Where things stand — Document Control Gates 5 AND 6 built on branch `claude/gate-5-startup-1ubxfh`, not yet merged
 
 As of this handoff, `main` has everything through Gate 18 (schema_version 29). **This session
-added Gate 19** (Document Control gate 5 of 14: Schedule Due Dates) on top of that, on branch
-`claude/gate-5-startup-1ubxfh`, bumping `schema_version` to **30**. The full test suite
-(**23 files, 488 checks**) passes clean, and a real-Chromium pass confirmed the Overdue badge and
-due-date persistence work. **This branch has not yet been pushed/PR'd as of this note being
-written** — check `git log origin/main..HEAD` and `git status` before assuming it's still local
-only, since PR/merge may have happened after this file was last updated.
+added Gate 19** (Document Control gate 5 of 14: Schedule Due Dates) and, in a follow-up round on
+the same branch, **Gate 20** (Document Control gate 6 of 14: Vendor Register) on top of that —
+both on branch `claude/gate-5-startup-1ubxfh` as two separate commits, bumping `schema_version`
+to **31**. The full test suite (**23 files, 494 checks**) passes clean, and a real-Chromium pass
+confirmed both gates' UI (Overdue badge + due-date persistence for Gate 19, the vendor select +
+assignment persistence for Gate 20). **This branch has not yet been pushed/PR'd for the Gate 20
+commit as of this note being written** — check `git log origin/main..HEAD` and `git status`
+before assuming it's still local only, since PR/merge may have happened after this file was last
+updated. Note Gate 20 flagged (and got explicit confirmation on) a naming collision worth knowing
+about: the sub-spec's own gate list calls gate 6 "Vendor Register," but this app already has a
+full Vendor Management module (Gate 13) unrelated to this sub-spec — Gate 20 does NOT add a
+second vendor list, it just lets a requirement reference an existing Vendor Management vendor.
 
 **Feature summary, in build order (Gates 1-13 summarized; Gates 14-17 — Document Control — in
 full detail since they're what's newest and least likely to be in a future session's training/
@@ -143,15 +149,25 @@ Gate 5 onward, not be skipped.
   `uiState.formDueDates` map, seeded at the same three button-click moments
   `formSelectedDocTypeIds` already was); the read-only Details summary shows the due date inline
   and an overdue count in the section header, only when nonzero.
+- **Gate 20 — Document Control 6: Vendor Register (this session, follow-up round on the same
+  branch).** Scoped and confirmed via `AskUserQuestion`, flagging up front that this app already
+  has a full Vendor Management module (Gate 13) unrelated to this sub-spec, so "Vendor Register"
+  could have meant a competing vendor list. Confirmed as: reuse the existing `vendors`, don't
+  invent a second one. `project_document_requirements` gained `vendor_id` (optional, `""`
+  default) — which existing Vendor Management vendor is expected to submit this document. The
+  form's checklist grows a `<select>` of `data.vendors` next to Gate 19's date input, mirrored in
+  a new `uiState.formVendorIds` map with the same seeded-at-button-click/uncommitted-until-Save
+  treatment; the read-only Details summary appends the assigned vendor's name inline. Nothing
+  reads or acts on the assignment yet — that's gate 9 (Vendor Lookahead), not this gate.
 
 **Deliberately still open / explicitly deferred, don't assume these got done:**
 - Reconciling Documents' `category` / Vendor's `VENDOR_DOCUMENT_CATEGORIES` / the Gate 14 master
   repository into one classification scheme (deferred at both Gate 14 and Gate 16).
-- Document Control gates 6-14: Vendor Register (gate 6), schedule↔document linking (gate 7),
-  schedule-derived lead time (gate 8), vendor lookahead (gate 9), readiness/constraint flagging on
-  activities (gate 10), reminders/notifications (gate 11), dashboards (gate 12), executive summary
-  (gate 13), portfolio compliance rollups (gate 14). Gate 5 (manual due dates) is now done — see
-  Gate 19 above; everything from gate 6 on is still unstarted.
+- Document Control gates 7-14: schedule↔document linking (gate 7), schedule-derived lead time
+  (gate 8), vendor lookahead (gate 9), readiness/constraint flagging on activities (gate 10),
+  reminders/notifications (gate 11), dashboards (gate 12), executive summary (gate 13), portfolio
+  compliance rollups (gate 14). Gates 5 (manual due dates) and 6 (vendor assignment) are now done
+  — see Gates 19/20 above; everything from gate 7 on is still unstarted.
 - Rate × usage from Resource Management feeding Cost Tracking/EVM (deferred at Gate 11).
 - Portfolio-level executive dashboard filtering by client/country/sector/PM/date range.
 
@@ -218,14 +234,14 @@ Gate 5 onward, not be skipped.
 - Reports are printable HTML (`window.print()`), not generated PDFs.
 - No File System Access API; export/import-as-JSON is the deliberate cross-platform answer.
 - **Schema migration test convention:** one canonical file targeting the latest version
-  (`tests/test_store_schema_v30_migration.js` as of this handoff) — when you bump
+  (`tests/test_store_schema_v31_migration.js` as of this handoff) — when you bump
   `SCHEMA_VERSION`, `git mv` it to the new version number and fold in new assertions, rather than
   keeping old version-specific files around. Also remember to update the filename inside
   `tests/package.json`'s `test` script — it's not derived automatically and a stale reference
   there fails `npm test` with a bare `MODULE_NOT_FOUND` even though every individual test file is
   fine (hit this exact thing shipping Gate 19; fixed by editing `tests/package.json` alongside the
   `git mv`).
-- Testing: `cd tests && npm test` must pass before anything ships (23 files, 488 checks as of
+- Testing: `cd tests && npm test` must pass before anything ships (23 files, 494 checks as of
   this handoff). Pure-logic tests eval the real source file directly. E2E tests load the actual
   bundled `index.html` via jsdom (+ `fake-indexeddb` for IndexedDB-touching code). Also do one
   real-Chromium pass per gate (`/opt/pw-browsers/chromium-1194/chrome-linux/chrome --no-sandbox`,
@@ -281,14 +297,15 @@ Gate 5 onward, not be skipped.
 ## Repo/branch state
 
 `main` is fully up to date through Gate 18 (`8f62f7b`, merge of PR #14). This session's designated
-branch, `claude/gate-5-startup-1ubxfh`, started from `main` at that same commit and carries **one
-new commit on top**: Gate 19 (Document Control gate 5, Schedule Due Dates). No PR has been opened
-for it as of this handoff being written — per this session's operating rules, a PR is not created
-unless explicitly requested; the branch has been pushed to `origin` and is ready for one. Check
-`git log origin/main..claude/gate-5-startup-1ubxfh` and whether a PR exists before assuming this
-is still the state by the time you read this, since that may have moved on. No other branch
-carries unmerged app features beyond this one — everything else listed in the previous version of
-this file is still fully merged into `main`.
+branch, `claude/gate-5-startup-1ubxfh`, started from `main` at that same commit and carries **two
+new commits on top**: Gate 19 (Document Control gate 5, Schedule Due Dates) and Gate 20 (Document
+Control gate 6, Vendor Register). No PR has been opened for either as of this handoff being
+written — per this session's operating rules, a PR is not created unless explicitly requested. The
+Gate 19 commit was pushed to `origin` earlier this session; whether the Gate 20 commit has been
+pushed yet depends on exactly when this file was generated relative to that push — check
+`git log origin/main..claude/gate-5-startup-1ubxfh` and `git status` rather than assuming. No
+other branch carries unmerged app features beyond this one — everything else listed in the
+previous version of this file is still fully merged into `main`.
 
 **Zip delivered this round:** `Project-Control-Center.zip` — `index.html` + `README.md` +
 `data/`/`files/` (existing `README.txt` placeholders), verified via a fresh extraction opened in
@@ -297,10 +314,12 @@ real Chromium (title and `#page-outlet` render, zero console errors).
 **Next steps, in likely priority order:**
 1. Get `claude/gate-5-startup-1ubxfh` merged into `main` (open a PR if Aditya wants one, or ask
    whether to merge directly per the "solo repo, no CI, no reviewers" convention) before starting
-   further work, so the next session isn't building on top of an unmerged branch.
-2. Ask Aditya whether Document Control Gate 6 (Vendor Register) is next, or gate 7 (schedule↔
-   document linking) — do not assume and start building without the explicit "yes, build Gate N
-   as scoped" confirmation this project has consistently required so far.
+   further work, so the next session isn't building on top of an unmerged branch carrying two
+   gates' worth of unreviewed changes.
+2. Ask Aditya whether Document Control Gate 7 (schedule↔document linking) is next — connecting a
+   requirement to an actual Schedule activity, which gate 8's lead-time calculation then builds on
+   — do not assume and start building without the explicit "yes, build Gate N as scoped"
+   confirmation this project has consistently required so far.
 3. Optional cleanup: these branches on `origin` are all fully merged into `main` and safe to
    delete (not urgent) — `integration/gates-8-13`, `claude/phase-11c-planning-executive-frty7j`,
    `claude/excel-schedule-pcc-editing-dgyy9m`, `claude/doc-control-gate14-master-repo`,
