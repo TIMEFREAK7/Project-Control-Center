@@ -1794,6 +1794,88 @@ lookahead, readiness/constraints, reminders, dashboards, executive/portfolio com
 and version control are the foundation this gate adds; the workflow that reads and acts on them
 comes later.
 
+## Gate 18 — Document Control UX Refinement (2026-08-18)
+
+Not a new numbered spec gate — direct user feedback on Gate 14/15's already-shipped UX, fixed
+before moving on to Document Control gate 5. The feedback, verbatim: *"There is a issue the
+document types sits separately I wanted it to be part of project creation. Where I will select
+which documents are currently available and which I will required later on. Also there are only
+vendor related documents. There is no project creation related documents."* Three separate
+complaints, each confirmed by name (not guessed at) via `AskUserQuestion` before touching code:
+
+- **Placement:** move document-requirement selection out of Portfolio Details' separately-toggled
+  "Manage" section and into the Add/Edit Project form itself, so it's chosen at project-creation
+  time rather than as an afterthought on an already-created project.
+- **Availability semantics:** "Available" vs "Required" must be **computed**, not a manually-set
+  label — available means a document with a matching `document_type_id` actually exists for this
+  project; nothing new is stored for it.
+- **Missing document types:** the Gate 14 seed list read as execution/vendor-submittal-heavy (ITP,
+  Method Statement, Material Submittal, ...) with nothing representing what a project itself
+  generates at setup/kickoff, independent of any vendor.
+
+**What changed:**
+
+- `store.js` (schema v28→v29): a new `PROJECT_SETUP_TYPE_SEED` constant — ten types (Project
+  Charter, Kickoff Checklist, Statutory/Regulatory Approvals, Land/Site Handover, Insurance
+  Documents, Permits & Licenses, Project Organization Chart, Communication Plan, Project
+  Execution Plan, Project Quality Plan) — appended to a fresh install's seed list and backfilled
+  onto an upgrading install's `document_types`, skipping any name the user already has (either
+  hand-added or from a prior run of the same migration step) rather than creating a duplicate.
+- `pages/portfolio.js`:
+  - New `computeRequirementAvailability(data, projectId, documentTypeId)` — checks whether a
+    `documents` record exists with a matching `project_id`/`document_type_id`. Never stored; same
+    "computed at render time, never denormalized" pattern Gate 13/17 used for "latest revision."
+  - New `renderDocumentRequirementsField()` — the requirement checklist (grouped by category,
+    Apply Template) now renders **inside** `renderForm()`, both Add and Edit. It operates on a new
+    uncommitted `uiState.formSelectedDocTypeIds` array, initialized once when the form opens (the
+    "+ Add Project" / "Edit" / "Edit Requirements" entry points), not by `render()` — a checkbox
+    toggle's own internal re-render only rebuilds this field's subtree, so it never disturbs
+    whatever's mid-typing in the Project Name/dates/etc. fields above it. Nothing is written to
+    the store until Save; a checked-but-unsaved item shows a live Available/Required badge too, so
+    even during creation you can see how the requirement would read (a new project always shows
+    Required — there are no documents yet to match against).
+  - `renderForm()`'s submit handler now reconciles `project_document_requirements` **atomically**
+    with the project record in one `store.update()` call: removes rows for anything unchecked,
+    adds rows for anything newly checked, leaves everything else untouched. Works identically for
+    a new project (created and given requirements in the same save) and an edit (diffed against
+    whatever was already selected).
+  - `renderDocumentRequirementsSection()` (Portfolio Details) is now a **read-only** summary —
+    "DOCUMENT REQUIREMENTS (available of total)" plus a per-type Available/Required badge, no
+    checkboxes, no Apply Template — with an "Edit Requirements" button that jumps straight into
+    the Edit Project form, pre-selecting the project's current requirements. Deliberately keyed
+    off *all* `document_types`, not just active ones, so an existing requirement keeps showing
+    (with its name) even after its type is later deactivated elsewhere — only a fully-deleted type
+    drops off, which the lookup guards against.
+
+**Tested before delivery (2 pure-logic-adjacent + 29 e2e + updated migration checks, full suite
+re-run clean, 482 checks total):**
+
+- **Schema migration** (`test_store_schema_v29_migration.js`, renamed from the v28 file): the full
+  chain and a legacy/brand-new install both land on schema_version 29 with all ten Gate 18 types
+  present; a dedicated check migrates a v28 dataset that already has a hand-added "Project
+  Charter" type and confirms no duplicate is created — the user's own record survives untouched,
+  and the other nine names with no collision are still added.
+- **End-to-end against the actual bundled `index.html`** (`test_project_document_requirements_e2e.js`,
+  rewritten, 29 checks): the Add form's requirement field starts at 0 selected with no separate
+  "Manage" toggle; checking a box and applying a template updates the field live while the store
+  stays untouched; Save commits the project and its requirements in one step; Cancel discards an
+  uncommitted selection; Portfolio Details shows the read-only summary with an "Edit Requirements"
+  entry point and no checkboxes; attaching a document with a matching `document_type_id` flips
+  that requirement's badge from Required to Available, live; editing reconciles both an unchecked
+  removal and a newly-checked addition correctly; the master `document_types` repository stays
+  byte-for-byte unchanged throughout; deactivating a type hides it from the Edit form's checklist
+  while its existing requirement keeps showing in the Details summary; full 16-route smoke test.
+- **Real-browser verification** (Chromium via Playwright): opened Add Project, confirmed the
+  requirement field renders inline (no separate section), checked BOQ, applied the EPC template
+  (24 of 38 selected, matching the seeded total of 28 original + 10 new Gate 18 types), saved,
+  confirmed the project and a read-only "0 of 24 available" summary appeared in Details, and that
+  "Edit Requirements" reopens the form with BOQ still checked — zero console/page errors through
+  the whole flow.
+
+**What I have not tested:** this on your actual device. Same standard as every prior gate. This
+was a UX fix to already-shipped Gate 14/15 work, not new scope — Document Control gates 5-14
+remain exactly where Gate 17 left them.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
@@ -1827,9 +1909,12 @@ requested, explicitly incremental upgrade to Documents, not a Tier 1/2/3 line it
 Document Repository (the type taxonomy, Gate 14), Project-Specific Document Requirements (which
 types apply to which project, Gate 15), Classification + Nomenclature (document-level metadata +
 a non-blocking naming-convention check, Gate 16), and Status + Version Control (a lifecycle status
-plus real revision history, Gate 17) are built; Document Control gates 5-14 (schedule↔document
+plus real revision history, Gate 17) are built; **Gate 18** then reworked Gate 14/15's UX per
+direct user feedback — requirement selection moved into the Add/Edit Project form itself,
+availability became a computed status instead of anything stored, and ten project-setup-flavored
+document types were added to the master repository. Document Control gates 5-14 (schedule↔document
 linking and lead time, vendor lookahead, readiness/constraints, reminders, dashboards,
-executive/portfolio compliance) are intentionally not started — see Gates 14-17's own write-ups
+executive/portfolio compliance) are intentionally not started — see Gates 14-18's own write-ups
 above.
 
 **Tier 3 (deferred until Tier 1 is in daily use):** AI Document Processing, Knowledge Base, AI Project

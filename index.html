@@ -3567,7 +3567,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 28;
+  var SCHEMA_VERSION = 29;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -4763,6 +4763,25 @@ https://github.com/nodeca/pako/blob/main/LICENSE
    * behalf just because it seeded the type. Fully editable/deactivatable/deletable
    * afterward — this is a starting point, not a locked list. Used by both emptyData()
    * (brand-new install) and the v24->v25 migration (existing install upgrading). */
+  /** Gate 18 (Document Control UX refinement): the original Gate 14 seed list read as
+   * execution/vendor-submittal-heavy (ITP, Method Statement, Material Submittal, ...)
+   * with nothing representing the documents a project itself generates at setup/kickoff
+   * before any vendor is even engaged. A separate constant (not folded into the main
+   * seed array) so both a fresh install's seedDocumentTypes() and an upgrading
+   * install's migration step can reference the exact same list without duplicating it. */
+  var PROJECT_SETUP_TYPE_SEED = [
+    ["Project Charter", "PC", "Setup"],
+    ["Kickoff Checklist", "KOC", "Setup"],
+    ["Statutory / Regulatory Approvals", "REG", "Commercial"],
+    ["Land / Site Handover", "LSH", "Setup"],
+    ["Insurance Documents", "INS", "Commercial"],
+    ["Permits & Licenses", "PL", "Commercial"],
+    ["Project Organization Chart", "ORG", "Setup"],
+    ["Communication Plan", "COMMPLAN", "Setup"],
+    ["Project Execution Plan", "PEP", "Planning"],
+    ["Project Quality Plan", "PQP", "Quality"],
+  ];
+
   function seedDocumentTypes() {
     var seed = [
       ["Contract", "CTR", "Commercial"],
@@ -4793,7 +4812,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       ["O&M Manuals", "OM", "Closeout"],
       ["As-Built Drawings", "ASB", "Closeout"],
       ["Closeout Documents", "CLO", "Closeout"],
-    ];
+    ].concat(PROJECT_SETUP_TYPE_SEED);
     return seed.map(function (row) {
       return newDocumentType({ name: row[0], code: row[1], category: row[2] });
     });
@@ -5215,6 +5234,25 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         if (d.revision_number === undefined) d.revision_number = 1;
       });
       loaded.schema_version = 28;
+    }
+
+    if (loaded.schema_version < 29) {
+      // Gate 18 (Document Control UX refinement): add the project-setup-flavored
+      // document types (see PROJECT_SETUP_TYPE_SEED's own comment) to an existing
+      // install's master repository, same as a fresh install gets from
+      // seedDocumentTypes(). Skips any name the user already has (either because they
+      // added it by hand, or a future re-run of this exact migration step) rather than
+      // creating a duplicate.
+      var existingTypeNames = {};
+      (loaded.document_types || []).forEach(function (t) {
+        existingTypeNames[(t.name || "").toLowerCase()] = true;
+      });
+      PROJECT_SETUP_TYPE_SEED.forEach(function (row) {
+        if (!existingTypeNames[row[0].toLowerCase()]) {
+          loaded.document_types.push(newDocumentType({ name: row[0], code: row[1], category: row[2] }));
+        }
+      });
+      loaded.schema_version = 29;
     }
 
     return loaded;
@@ -6443,8 +6481,15 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     editingId: null, // null = form closed, "new" = creating, otherwise an existing project id
     expandedId: null, // project id whose details panel is open, or null
     vendorLinkPickerOpen: false, // Gate 9: "+ Link Vendor" inline picker in the Vendors section below
-    docRequirementsOpen: false, // Gate 15: expand/collapse the Document Requirements checklist below
-    docRequirementsTemplate: "", // Gate 15: currently-selected "Apply Template" option
+    // Gate 18 (Document Control UX refinement): document-requirement selection lives in
+    // the Add/Edit Project form itself now (not a separately-toggled section on an
+    // already-created project) — see renderDocumentRequirementsField(). These hold the
+    // form's *uncommitted* selection while it's open; nothing is written to the store
+    // until Save. Initialized when the form is opened (by the "+ Add Project"/"Edit"/
+    // "Edit Requirements" entry points below), not by render() itself, so a checkbox
+    // toggle's rerender doesn't wipe out what's already been checked.
+    formSelectedDocTypeIds: [],
+    formDocTemplateKey: "",
   };
 
   function formatMoney(value, currency) {
@@ -6504,6 +6549,17 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     return values;
   }
 
+  // Gate 18 (Document Control UX refinement): "Available" vs "Required" is never
+  // stored on the requirement row itself — it's computed by checking whether a
+  // document already exists for this project with a matching document_type_id. Same
+  // "computed at render time, never denormalized" pattern Gate 13/17 used for "latest
+  // revision" per document group.
+  function computeRequirementAvailability(data, projectId, documentTypeId) {
+    return data.documents.some(function (d) {
+      return d.project_id === projectId && d.document_type_id === documentTypeId;
+    });
+  }
+
   function renderForm(container, project, onSaved) {
     var isNew = uiState.editingId === "new";
     var panel = document.createElement("div");
@@ -6523,6 +6579,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       grid.appendChild(buildField(cfg, project));
     });
     form.appendChild(grid);
+
+    form.appendChild(renderDocumentRequirementsField(project));
 
     var errorMsg = document.createElement("p");
     errorMsg.style.color = "var(--status-critical)";
@@ -6564,8 +6622,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       errorMsg.style.display = "none";
 
       window.PCC.store.update(function (data) {
+        var projectId;
         if (isNew) {
-          data.projects.push(window.PCC.store.newProject(values));
+          var created = window.PCC.store.newProject(values);
+          data.projects.push(created);
+          projectId = created.id;
         } else {
           var existing = data.projects.find(function (p) {
             return p.id === project.id;
@@ -6574,7 +6635,33 @@ https://github.com/nodeca/pako/blob/main/LICENSE
             Object.assign(existing, values);
             existing.updated_at = new Date().toISOString();
           }
+          projectId = project.id;
         }
+
+        // Gate 18: reconcile project_document_requirements against the form's
+        // uncommitted selection, atomically with the project record itself.
+        var selected = {};
+        uiState.formSelectedDocTypeIds.forEach(function (typeId) {
+          selected[typeId] = true;
+        });
+        var existingTypeIds = {};
+        data.project_document_requirements
+          .filter(function (r) {
+            return r.project_id === projectId;
+          })
+          .forEach(function (r) {
+            existingTypeIds[r.document_type_id] = true;
+          });
+        data.project_document_requirements = data.project_document_requirements.filter(function (r) {
+          return r.project_id !== projectId || selected[r.document_type_id];
+        });
+        Object.keys(selected).forEach(function (typeId) {
+          if (!existingTypeIds[typeId]) {
+            data.project_document_requirements.push(
+              window.PCC.store.newProjectDocumentRequirement({ project_id: projectId, document_type_id: typeId })
+            );
+          }
+        });
       });
 
       window.PCC.notify(isNew ? "Project added." : "Project updated.", "success");
@@ -6650,6 +6737,15 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     editBtn.className = "btn btn--ghost";
     editBtn.textContent = "Edit";
     editBtn.onclick = function () {
+      var data = window.PCC.store.get();
+      uiState.formSelectedDocTypeIds = data.project_document_requirements
+        .filter(function (r) {
+          return r.project_id === p.id;
+        })
+        .map(function (r) {
+          return r.document_type_id;
+        });
+      uiState.formDocTemplateKey = "";
       uiState.editingId = p.id;
       onChanged();
     };
@@ -6700,25 +6796,220 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     { key: "owner", label: "Owner" },
   ];
 
-  /** Gate 15 (Document Control 2): which of the master repository's ACTIVE document
-   * types apply to this specific project. A project_document_requirements row's mere
-   * existence for (p.id, typeId) means "applicable" — same join convention as
-   * vendor_project_links — so toggling a checkbox here only ever adds/removes a join
-   * row and never touches document_types itself, keeping the master repository
-   * untouched no matter what a project selects. "Apply Template" (PROJECT_TEMPLATES,
-   * store.js) only ADDS requirements for types whose name matches one of the template's
-   * suggested names among this install's ACTIVE types — it never removes an existing
-   * selection and never fabricates a document_types record for an unmatched name. */
+  /** Gate 18 (Document Control UX refinement): which of the master repository's ACTIVE
+   * document types apply to this project, selected inline as part of the Add/Edit
+   * Project form itself — previously this lived in a separately-toggled section that
+   * only appeared after the project already existed, which was the exact behavior the
+   * user flagged as wrong. Operates on uiState.formSelectedDocTypeIds, an uncommitted
+   * array of document_type ids initialized once when the form opens (see the "+ Add
+   * Project"/"Edit"/"Edit Requirements" entry points) and reconciled into
+   * project_document_requirements rows atomically with the project record on Save — see
+   * renderForm()'s submit handler. "Apply Template" (PROJECT_TEMPLATES, store.js) only
+   * ADDS ids for types whose name matches one of the template's suggested names among
+   * this install's ACTIVE types — it never removes an existing selection. Rebuilds its
+   * own subtree on every change (rather than triggering a full form rerender) so
+   * in-progress edits to the other fields above aren't disturbed. */
+  function renderDocumentRequirementsField(project) {
+    var fieldWrap = document.createElement("div");
+    fieldWrap.style.marginTop = "18px";
+    fieldWrap.style.paddingTop = "14px";
+    fieldWrap.style.borderTop = "1px solid var(--divider)";
+
+    function refresh() {
+      fieldWrap.innerHTML = "";
+      var data = window.PCC.store.get();
+      var activeTypes = window.PCC.documentTypes ? window.PCC.documentTypes.activeTypes() : [];
+
+      var label = document.createElement("div");
+      label.className = "detail-item__label";
+      label.textContent =
+        "DOCUMENT REQUIREMENTS (" + uiState.formSelectedDocTypeIds.length + " of " + activeTypes.length + ")";
+      fieldWrap.appendChild(label);
+
+      var hint = document.createElement("p");
+      hint.className = "text-secondary";
+      hint.style.fontSize = "12px";
+      hint.style.margin = "4px 0 0";
+      hint.textContent =
+        "Select which document types this project needs. Status updates automatically once a matching document is attached.";
+      fieldWrap.appendChild(hint);
+
+      if (activeTypes.length === 0) {
+        var noneNote = document.createElement("p");
+        noneNote.className = "text-secondary";
+        noneNote.style.fontSize = "13px";
+        noneNote.style.margin = "8px 0 0";
+        noneNote.textContent = "No active document types in the master repository yet — add some in Document Types first.";
+        fieldWrap.appendChild(noneNote);
+        return;
+      }
+
+      var toolbar = document.createElement("div");
+      toolbar.style.display = "flex";
+      toolbar.style.gap = "8px";
+      toolbar.style.alignItems = "center";
+      toolbar.style.flexWrap = "wrap";
+      toolbar.style.marginTop = "8px";
+
+      var templateSelect = document.createElement("select");
+      var pickOpt = document.createElement("option");
+      pickOpt.value = "";
+      pickOpt.textContent = "Apply a template…";
+      templateSelect.appendChild(pickOpt);
+      window.PCC.store.PROJECT_TEMPLATES.forEach(function (t) {
+        var opt = document.createElement("option");
+        opt.value = t.key;
+        opt.textContent = t.label;
+        templateSelect.appendChild(opt);
+      });
+      templateSelect.value = uiState.formDocTemplateKey;
+      templateSelect.onchange = function () {
+        uiState.formDocTemplateKey = templateSelect.value;
+      };
+      toolbar.appendChild(templateSelect);
+
+      var applyTemplateBtn = document.createElement("button");
+      applyTemplateBtn.type = "button";
+      applyTemplateBtn.className = "btn btn--ghost";
+      applyTemplateBtn.textContent = "Apply";
+      applyTemplateBtn.onclick = function () {
+        var template = window.PCC.store.PROJECT_TEMPLATES.find(function (t) {
+          return t.key === templateSelect.value;
+        });
+        if (!template) return;
+        var matchedNames = {};
+        template.suggested_type_names.forEach(function (n) {
+          matchedNames[n.toLowerCase()] = true;
+        });
+        var selectedSet = {};
+        uiState.formSelectedDocTypeIds.forEach(function (id) {
+          selectedSet[id] = true;
+        });
+        var added = 0;
+        activeTypes.forEach(function (t) {
+          if (matchedNames[(t.name || "").toLowerCase()] && !selectedSet[t.id]) {
+            uiState.formSelectedDocTypeIds.push(t.id);
+            added++;
+          }
+        });
+        if (added === 0) {
+          window.PCC.notify("Nothing new to add — every matching type from “" + template.label + "” is already selected.", "info");
+          return;
+        }
+        window.PCC.notify("Added " + added + " requirement(s) from “" + template.label + "”.", "success");
+        refresh();
+      };
+      toolbar.appendChild(applyTemplateBtn);
+      fieldWrap.appendChild(toolbar);
+
+      var byCategory = {};
+      var categoryOrder = [];
+      activeTypes
+        .slice()
+        .sort(function (a, b) {
+          return (a.name || "").localeCompare(b.name || "");
+        })
+        .forEach(function (t) {
+          var cat = t.category || "(uncategorized)";
+          if (!byCategory[cat]) {
+            byCategory[cat] = [];
+            categoryOrder.push(cat);
+          }
+          byCategory[cat].push(t);
+        });
+      categoryOrder.sort();
+
+      var checklist = document.createElement("div");
+      checklist.style.marginTop = "10px";
+      checklist.style.display = "flex";
+      checklist.style.flexDirection = "column";
+      checklist.style.gap = "10px";
+
+      categoryOrder.forEach(function (cat) {
+        var group = document.createElement("div");
+
+        var groupLabel = document.createElement("div");
+        groupLabel.className = "text-secondary";
+        groupLabel.style.fontSize = "11px";
+        groupLabel.style.fontWeight = "600";
+        groupLabel.style.marginBottom = "4px";
+        groupLabel.textContent = cat.toUpperCase();
+        group.appendChild(groupLabel);
+
+        byCategory[cat].forEach(function (t) {
+          var row = document.createElement("label");
+          row.style.display = "flex";
+          row.style.alignItems = "center";
+          row.style.gap = "8px";
+          row.style.fontSize = "13px";
+          row.style.padding = "2px 0";
+
+          var checked = uiState.formSelectedDocTypeIds.indexOf(t.id) !== -1;
+
+          var checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.checked = checked;
+          checkbox.onchange = function () {
+            var idx = uiState.formSelectedDocTypeIds.indexOf(t.id);
+            if (checkbox.checked) {
+              if (idx === -1) uiState.formSelectedDocTypeIds.push(t.id);
+            } else if (idx !== -1) {
+              uiState.formSelectedDocTypeIds.splice(idx, 1);
+            }
+            refresh();
+          };
+          row.appendChild(checkbox);
+
+          var textSpan = document.createElement("span");
+          textSpan.textContent = t.name + (t.code ? " (" + t.code + ")" : "");
+          row.appendChild(textSpan);
+
+          if (checked) {
+            var available = computeRequirementAvailability(data, project.id, t.id);
+            var statusBadge = document.createElement("span");
+            statusBadge.className = "status-badge status-badge--" + (available ? "complete" : "at_risk");
+            statusBadge.style.fontSize = "11px";
+            statusBadge.textContent = available ? "Available" : "Required";
+            row.appendChild(statusBadge);
+          }
+
+          group.appendChild(row);
+        });
+
+        checklist.appendChild(group);
+      });
+
+      fieldWrap.appendChild(checklist);
+    }
+
+    refresh();
+    return fieldWrap;
+  }
+
+  /** Gate 18 (Document Control UX refinement): read-only summary of this project's
+   * document requirements for the Details panel — selection itself now happens in the
+   * Add/Edit Project form (see renderDocumentRequirementsField() above). "Available" vs
+   * "Required" is never stored; it's computed by checking whether a document already
+   * exists for this project with a matching document_type_id — same "computed at
+   * render time, never denormalized" pattern Gate 13/17 used for "latest revision". */
   function renderDocumentRequirementsSection(p, onChanged) {
     var data = window.PCC.store.get();
-    var activeTypes = window.PCC.documentTypes ? window.PCC.documentTypes.activeTypes() : [];
+    // Deliberately keyed off ALL document_types, not just active ones: a requirement
+    // selected while its type was active must keep showing here (with its name) even
+    // if that type is later deactivated — deactivating only hides a type from the
+    // *selectable* checklist in the form, it never retroactively drops an existing
+    // project's requirement. Only a fully-deleted type (documentTypes.js supports
+    // delete, not just deactivate) leaves no entry here, which the filter below guards.
+    var typesById = {};
+    data.document_types.forEach(function (t) {
+      typesById[t.id] = t;
+    });
     var projectRequirements = data.project_document_requirements.filter(function (r) {
-      return r.project_id === p.id;
+      return r.project_id === p.id && typesById[r.document_type_id];
     });
-    var requiredTypeIds = {};
-    projectRequirements.forEach(function (r) {
-      requiredTypeIds[r.document_type_id] = r.id;
-    });
+    var availableCount = projectRequirements.filter(function (r) {
+      return computeRequirementAvailability(data, p.id, r.document_type_id);
+    }).length;
 
     var section = document.createElement("div");
     section.style.marginTop = "16px";
@@ -6734,162 +7025,71 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     var label = document.createElement("span");
     label.className = "detail-item__label";
-    label.textContent = "DOCUMENT REQUIREMENTS (" + projectRequirements.length + " of " + activeTypes.length + ")";
+    label.textContent =
+      "DOCUMENT REQUIREMENTS (" + availableCount + " of " + projectRequirements.length + " available)";
     header.appendChild(label);
 
-    var toggleBtn = document.createElement("button");
-    toggleBtn.className = "btn btn--ghost";
-    toggleBtn.textContent = uiState.docRequirementsOpen ? "Hide" : "Manage";
-    toggleBtn.onclick = function () {
-      uiState.docRequirementsOpen = !uiState.docRequirementsOpen;
+    var editBtn = document.createElement("button");
+    editBtn.className = "btn btn--ghost";
+    editBtn.textContent = "Edit Requirements";
+    editBtn.onclick = function () {
+      uiState.formSelectedDocTypeIds = projectRequirements.map(function (r) {
+        return r.document_type_id;
+      });
+      uiState.formDocTemplateKey = "";
+      uiState.editingId = p.id;
       onChanged();
     };
-    header.appendChild(toggleBtn);
+    header.appendChild(editBtn);
 
     section.appendChild(header);
 
-    if (!uiState.docRequirementsOpen) return section;
-
-    if (activeTypes.length === 0) {
+    if (projectRequirements.length === 0) {
       var noneNote = document.createElement("p");
       noneNote.className = "text-secondary";
       noneNote.style.fontSize = "13px";
       noneNote.style.margin = "8px 0 0";
-      noneNote.textContent = "No active document types in the master repository yet — add some in Document Types first.";
+      noneNote.textContent = "No document requirements selected yet. Click “Edit Requirements” to choose which document types this project needs.";
       section.appendChild(noneNote);
       return section;
     }
 
-    var toolbar = document.createElement("div");
-    toolbar.style.display = "flex";
-    toolbar.style.gap = "8px";
-    toolbar.style.alignItems = "center";
-    toolbar.style.flexWrap = "wrap";
-    toolbar.style.marginTop = "8px";
+    var list = document.createElement("div");
+    list.style.display = "flex";
+    list.style.flexDirection = "column";
+    list.style.gap = "6px";
+    list.style.marginTop = "8px";
 
-    var templateSelect = document.createElement("select");
-    var pickOpt = document.createElement("option");
-    pickOpt.value = "";
-    pickOpt.textContent = "Apply a template…";
-    templateSelect.appendChild(pickOpt);
-    window.PCC.store.PROJECT_TEMPLATES.forEach(function (t) {
-      var opt = document.createElement("option");
-      opt.value = t.key;
-      opt.textContent = t.label;
-      templateSelect.appendChild(opt);
-    });
-    templateSelect.value = uiState.docRequirementsTemplate;
-    templateSelect.onchange = function () {
-      uiState.docRequirementsTemplate = templateSelect.value;
-    };
-    toolbar.appendChild(templateSelect);
-
-    var applyTemplateBtn = document.createElement("button");
-    applyTemplateBtn.className = "btn btn--ghost";
-    applyTemplateBtn.textContent = "Apply";
-    applyTemplateBtn.onclick = function () {
-      var template = window.PCC.store.PROJECT_TEMPLATES.find(function (t) {
-        return t.key === templateSelect.value;
-      });
-      if (!template) return;
-      var matchedNames = {};
-      template.suggested_type_names.forEach(function (n) {
-        matchedNames[n.toLowerCase()] = true;
-      });
-      var toAdd = activeTypes.filter(function (t) {
-        return matchedNames[(t.name || "").toLowerCase()] && !requiredTypeIds[t.id];
-      });
-      if (toAdd.length === 0) {
-        window.PCC.notify("Nothing new to add — every matching type from “" + template.label + "” is already selected.", "info");
-        return;
-      }
-      window.PCC.store.update(function (d) {
-        toAdd.forEach(function (t) {
-          d.project_document_requirements.push(
-            window.PCC.store.newProjectDocumentRequirement({ project_id: p.id, document_type_id: t.id })
-          );
-        });
-      });
-      window.PCC.notify("Added " + toAdd.length + " requirement(s) from “" + template.label + "”.", "success");
-      onChanged();
-    };
-    toolbar.appendChild(applyTemplateBtn);
-    section.appendChild(toolbar);
-
-    var byCategory = {};
-    var categoryOrder = [];
-    activeTypes
+    projectRequirements
       .slice()
       .sort(function (a, b) {
-        return (a.name || "").localeCompare(b.name || "");
+        var ta = typesById[a.document_type_id];
+        var tb = typesById[b.document_type_id];
+        return (ta.name || "").localeCompare(tb.name || "");
       })
-      .forEach(function (t) {
-        var cat = t.category || "(uncategorized)";
-        if (!byCategory[cat]) {
-          byCategory[cat] = [];
-          categoryOrder.push(cat);
-        }
-        byCategory[cat].push(t);
-      });
-    categoryOrder.sort();
-
-    var checklist = document.createElement("div");
-    checklist.style.marginTop = "10px";
-    checklist.style.display = "flex";
-    checklist.style.flexDirection = "column";
-    checklist.style.gap = "10px";
-
-    categoryOrder.forEach(function (cat) {
-      var group = document.createElement("div");
-
-      var groupLabel = document.createElement("div");
-      groupLabel.className = "text-secondary";
-      groupLabel.style.fontSize = "11px";
-      groupLabel.style.fontWeight = "600";
-      groupLabel.style.marginBottom = "4px";
-      groupLabel.textContent = cat.toUpperCase();
-      group.appendChild(groupLabel);
-
-      byCategory[cat].forEach(function (t) {
-        var row = document.createElement("label");
+      .forEach(function (r) {
+        var t = typesById[r.document_type_id];
+        var row = document.createElement("div");
         row.style.display = "flex";
+        row.style.justifyContent = "space-between";
         row.style.alignItems = "center";
-        row.style.gap = "8px";
         row.style.fontSize = "13px";
-        row.style.padding = "2px 0";
 
-        var checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.checked = !!requiredTypeIds[t.id];
-        checkbox.onchange = function () {
-          window.PCC.store.update(function (d) {
-            if (checkbox.checked) {
-              if (!d.project_document_requirements.some(function (r) { return r.project_id === p.id && r.document_type_id === t.id; })) {
-                d.project_document_requirements.push(
-                  window.PCC.store.newProjectDocumentRequirement({ project_id: p.id, document_type_id: t.id })
-                );
-              }
-            } else {
-              d.project_document_requirements = d.project_document_requirements.filter(function (r) {
-                return !(r.project_id === p.id && r.document_type_id === t.id);
-              });
-            }
-          });
-          onChanged();
-        };
-        row.appendChild(checkbox);
+        var nameSpan = document.createElement("span");
+        nameSpan.textContent = t.name + (t.code ? " (" + t.code + ")" : "");
+        row.appendChild(nameSpan);
 
-        var textSpan = document.createElement("span");
-        textSpan.textContent = t.name + (t.code ? " (" + t.code + ")" : "");
-        row.appendChild(textSpan);
+        var available = computeRequirementAvailability(data, p.id, r.document_type_id);
+        var statusBadge = document.createElement("span");
+        statusBadge.className = "status-badge status-badge--" + (available ? "complete" : "at_risk");
+        statusBadge.style.fontSize = "11px";
+        statusBadge.textContent = available ? "Available" : "Required";
+        row.appendChild(statusBadge);
 
-        group.appendChild(row);
+        list.appendChild(row);
       });
 
-      checklist.appendChild(group);
-    });
-
-    section.appendChild(checklist);
+    section.appendChild(list);
     return section;
   }
 
@@ -7826,6 +8026,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     addBtn.className = "btn btn--primary";
     addBtn.textContent = "+ Add Project";
     addBtn.onclick = function () {
+      uiState.formSelectedDocTypeIds = [];
+      uiState.formDocTemplateKey = "";
       uiState.editingId = "new";
       rerender();
     };
