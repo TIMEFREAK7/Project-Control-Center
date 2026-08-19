@@ -61,12 +61,93 @@ that override default behavior).
   populated state, and again on the zip-verification pass) and send the PNGs via `SendUserFile`
   before or alongside the written report. Applies to every gate from here on, not just this one.
 
-## Where things stand — Tiers A-D are COMPLETE; Tier E (Portfolio) is COMPLETE (both gates)
+## Where things stand — Tiers A-E are COMPLETE; Tier F (Advanced Planning/Controls) is underway
 
-`main` is fully up to date through **Gate 17, Personal Workbench** (PCC Evolution Roadmap, Tier
-E's second and final named gate), merge commit `332b505`, `schema_version` **40**. See the "PCC
-Evolution Roadmap" section below for the complete gate-by-gate history — this section covers only
-the current tier's state.
+`main` is fully up to date through **Gate 18, Resource Management** (PCC Evolution Roadmap, Tier
+F's first gate — a 9-gate tier: 18 Resource Management, 19 Commitment Management, 20 Status-Date
+Control, 21 Status-Date Reforecasting, 22 Baseline & Schedule Revision Control, 23 Advanced Delay
+Analysis, 24 Recovery & Mitigation Planning, 25 Advanced Schedule Performance, 26 Integrated
+Project Controls), merge commit `ec8c638`, `schema_version` **41**. See the "PCC Evolution
+Roadmap" section below for the complete gate-by-gate history — this section covers only the
+current tier's state.
+
+**Tier F is Aditya's own framing, verbatim: "These are NOT optional miscellaneous future
+features. They are core Project Planning / Project Controls capabilities... Build them as
+separate, independently testable gates."** Full spec text (all 9 gates) was handed over
+conversationally, same as every other tier — not saved to a file in this repo; get it re-confirmed
+from Aditya if a future session doesn't have it in context. **Only Gate 18 is done — Gates 19-26
+remain, none started, and each needs its own inspection + scoping round before building, same
+discipline as every gate so far.**
+
+**Gate 18 — Resource Management** (merge `ec8c638`): extends Gate 11's existing Resource
+Management module (register, cross-project assignments, resource loading/histogram, over-
+allocation detection — all already built) rather than rebuilding it. A fresh inspection found the
+spec's asks for planned-vs-actual allocation, working hours/overtime, leave/unavailable periods
+(and their effect on computed availability), real utilisation %, a demand-vs-shortage rollup,
+granular resource type categories, and Resource↔Vendor linkage did not exist at all. Three design
+points were confirmed via `AskUserQuestion` (Aditya picked the more thorough/accurate option over
+a lighter heuristic every time):
+- **Working hours/overtime** → simple aggregate fields on the assignment (`planned_hours_per_day`,
+  `overtime_hours`), not a daily time-entry log — "this is project resource control, not a
+  timesheet system."
+- **Leave/unavailable periods** → a new `resource_unavailability` record (date-ranged, INCLUSIVE
+  start/end — deliberately different from Schedule activities' exclusive-end convention, since
+  this is filled in by a human picking calendar days, not computed from a duration) that actually
+  **reduces computed availability** in `resourceLevelingEngine.js`, not just a notes field.
+  `quantity` on the record is how much of the resource is unavailable (e.g. "2 of 5 electricians on
+  leave"), not an all-or-nothing flag.
+- **Resource↔Vendor linkage** → lives on the Assignment (`vendor_id`), not the Resource itself —
+  the same shared resource (e.g. "Skilled Labor") can be sourced from a different vendor on each
+  activity it's assigned to.
+
+Also expanded `RESOURCE_TYPES` additively to the spec's full category list (Employee/Engineer/
+Supervisor/Skilled Labor/Unskilled Labor/Contractor/Subcontractor/Equipment/Machinery) while
+keeping the original "labor"/"material" values valid, so existing Gate 11 resources keep whatever
+type they already have — no silent reclassification.
+
+**`resourceLevelingEngine.js` changes (the real engine work of this gate):** every availability
+computation — `detectOverAllocations()`, the histogram, and two brand-new functions,
+`computeUtilisation()` (allocated ÷ leave-adjusted-available as a %, plus a
+demand/available/shortfall rollup in "unit-days" across a resource's active date range) and
+`bucketUtilisation()` (a trend chart, averaging per bucket — deliberately distinct from
+`bucketTimeline()`'s max-per-bucket, which is tuned for spotting over-allocation spikes rather than
+showing typical load) — now read a resource's EFFECTIVE daily availability (`max_availability`
+minus any overlapping unavailability quantity for that specific day) instead of the flat number
+applying unconditionally on every day.
+
+**UI changes:** `resources.js` gained a 4th tab, **"Unavailability"** (CRUD for leave periods,
+same list/form pattern every other tab already uses), and the Leveling tab gained **Avg.
+Utilisation** / **Demand vs Available** KPI cards plus a **Utilisation Trend** chart panel.
+Schedule's Activity Detail Panel now shows an **Available / Over-Allocated / Availability
+Unknown** badge next to each linked resource assignment — satisfies the spec's explicit "the
+schedule should show which resources are required for an activity and whether those resources are
+available," which Gate 11 only half-covered (listed resources, gave no availability signal). The
+badge checks whether any of the SPECIFIC ACTIVITY's own dates land on one of that resource's
+portfolio-wide over-allocated days — a resource over-allocated elsewhere in the portfolio on
+unrelated dates correctly does NOT flag this particular assignment.
+
+**Gotcha hit while building this:** changing the Linked Records row's DOM structure (wrapping the
+badge+View-button pair in a new `<div>`) broke a pre-existing test in
+`test_activity_linking_e2e.js` that asserted `viewButton.parentElement.textContent` contained the
+record's own label text — the wrapper div changed the button's parent from the row itself to the
+new inner wrapper. Fixed by keeping text/badge/button as flat siblings of the row (`text.style.flex
+= "1"` to push badge+button right, no wrapper div) rather than introducing one. Worth remembering:
+**any row-shape change in a list this app already has an e2e test against should be checked for
+exactly this kind of `parentElement`/DOM-structure assumption**, not just content assertions.
+
+Schema v41: `resource_assignments` gains `actual_quantity`/`planned_hours_per_day`/
+`overtime_hours`/`vendor_id` (all backfill to `null`/`""` — nothing to invent from data that was
+never tracked); new `resource_unavailability` array (brand new register, nothing to backfill).
+
+Tests: new `tests/test_resource_control_e2e.js` (33 checks, including a 23-route smoke test)
+proving a real leave-adjusted over-allocation scenario end to end (5/day capacity, 5 demand — NOT
+over-allocated on its own — then a 2-person, 2-day leave period drops capacity to 3 on exactly
+those 2 days, correctly triggering over-allocation only there, with exact demand/available/
+shortfall unit-day arithmetic verified). Schema migration test renamed
+`test_store_schema_v40_migration.js` → `test_store_schema_v41_migration.js` with a new v40→v41
+migration check. Full suite: **44 files, 1079 checks**, clean, zero regressions. Real-Chromium
+pass (both the dev build and the verified zip extraction) confirmed the leave-adjusted Leveling
+tab, the Unavailability tab, and the Schedule badge all render correctly — zero console errors.
 
 **Tier E (Portfolio) is now COMPLETE — Aditya provided the full spec verbatim (Gate 16 Portfolio
 Performance, Gate 17 Personal Workbench, plus supporting sections 25-32 on portfolio/workbench
@@ -923,47 +1004,50 @@ breakdown from Aditya directly, the same way Tier D's came, rather than guessing
 
 ## Repo/branch state
 
-`main` is fully up to date through **Gate 17, Personal Workbench** (`332b505`, a direct merge — no
-PR, per Aditya's now-standing "always merge after completing a gate/phase" instruction, see above)
-— **Tiers A, B, C, D, and now E are all fully complete.** Eight rounds have landed on `main` this
+`main` is fully up to date through **Gate 18, Resource Management** (`ec8c638`, a direct merge —
+no PR, per Aditya's now-standing "always merge after completing a gate/phase" instruction, see
+above) — **Tiers A-E are all fully complete; Tier F (Advanced Project Planning & Project Controls)
+is now underway, one of its nine named gates done.** Nine rounds have landed on `main` this
 session, all via the same designated remote-session branch, `claude/tier-c-code-inspection-jysweb`
-(name is stale now — it's carried Tier C, D, and E gates alike), restarted from the new `main`
+(name is stale now — it's carried Tier C, D, E, and F gates alike), restarted from the new `main`
 between each per the standing "restart before the next gate" instruction: the Tier C inspection +
 `physical_progress` fix first (merge `fba3d42`), then Vendor Performance Centre (merge `0801b10`),
 then Delay & Recovery Management (merge `4882f79`), then Decision Register (merge `d57a056`), then
 Weekly Project Review (merge `c3af1d9`), then the Recovery Actions/Decisions reporting-wiring
 follow-on (merge `fef89f6`), then Gate 16 Portfolio Performance (merge `c4959e2`), then Gate 17
-Personal Workbench (merge `332b505`). Aditya confirmed via `AskUserQuestion` to proceed with each
-merge given the branch's own "never push elsewhere without permission" constraint; see the git log
-for the exact sequence if that matters later. This builds on top of **Tier B (Control
-Integration)**, complete as of Gate 33, and the already-complete 14-gate Document Control sub-spec.
-`schema_version` on `main` is now **40** — Gate 17 added `waiting_on_party`/`next_follow_up_date`/
-`review_cadence_days` (see the "Where things stand" section above for full detail).
-`claude/tier-c-code-inspection-jysweb` carries the same history as `main` as of this merge (nothing
-unmerged on it) and HAS been reset/restarted from the new `main` already this round — verify with
-`git log origin/main..HEAD` and `git status` before assuming this is still true by the time you
-read this.
+Personal Workbench (merge `332b505`), then Gate 18 Resource Management (merge `ec8c638`). Aditya
+confirmed via `AskUserQuestion` to proceed with each merge given the branch's own "never push
+elsewhere without permission" constraint; see the git log for the exact sequence if that matters
+later. This builds on top of **Tier B (Control Integration)**, complete as of Gate 33, and the
+already-complete 14-gate Document Control sub-spec. `schema_version` on `main` is now **41** —
+Gate 18 added `actual_quantity`/`planned_hours_per_day`/`overtime_hours`/`vendor_id` to
+`resource_assignments` plus a new `resource_unavailability` array (see the "Where things stand"
+section above for full detail). `claude/tier-c-code-inspection-jysweb` carries the same history as
+`main` as of this merge (nothing unmerged on it) and HAS been reset/restarted from the new `main`
+already this round — verify with `git log origin/main..HEAD` and `git status` before assuming this
+is still true by the time you read this.
 
 **Zip delivered this round:** `Project-Control-Center.zip` — `index.html` + `README.md` +
 `data/`/`files/` (existing `README.txt` placeholders), verified via a fresh extraction
-(`/tmp/pcc_zip_verify2/`, not the dev working copy) opened in real Chromium — My Work's four
-sections all render correctly with a seeded project, including the Reviews-due fallback to
-`created_at` when a project has no `start_date`; zero console errors; screenshot taken and sent per
-the standing instruction.
+(`/tmp/pcc_zip_verify3/`, not the dev working copy) opened in real Chromium — Resource
+Management's new "Subcontractor" type and "Unavailability" tab both render correctly with a
+seeded resource; zero console errors; screenshot taken and sent per the standing instruction.
 
 **Next steps, in likely priority order:**
-1. **Both Tier E gates are done — Tier F is next, and it is fully unscoped.** Get its named gate
-   breakdown directly from Aditya the same way every other tier's came (the original roadmap
-   document was never saved as a file in this repo, only ever handed over conversationally — the
-   one-line tier summary in "What this project is" above is not enough to build from). Then inspect
-   Tier F against the real code before proposing anything, same discipline as every tier so far —
-   some of its likely gates (per the one-line summary: Commitment Management, Status-Date Control,
-   Reforecasting, Baseline/Revision Control, Advanced Delay Analysis, Recovery Planning, Schedule
-   Performance) may already be partially covered by what's been built across this session.
+1. **Tier F has 8 more named gates, none started — get scope confirmation from Aditya before
+   building the next one.** Gate 19 Commitment Management is next in the spec's own order, but
+   nothing says gates must be built strictly in order — ask before assuming. Full spec text for
+   all 9 Tier F gates was handed over conversationally this session and is preserved in this
+   conversation's history but was never saved as a file in this repo — don't assume a future
+   session can find it; get it re-confirmed from Aditya if it's not still in context. Inspect each
+   gate against the real code before proposing anything, same discipline as every gate so far —
+   Gate 18 itself turned out to be a partial-rebuild case (Gate 11 already existed), so don't
+   assume any of Gates 19-26 are starting from zero either.
 2. Older still-open items, none blocking daily use: category-scheme reconciliation
    (Documents/Vendor/Document-Types), the Gantt-bar readiness flag, the two hardcoded reminder/
    lookahead windows (14-day Document Reminders, 30-day Action Centre Upcoming), Resource
-   Management rate × usage into Cost/EVM, portfolio dashboard filtering.
+   Management rate × usage into Cost/EVM (still explicitly deferred — Gate 18 didn't touch cost
+   either), portfolio dashboard filtering.
 3. Optional cleanup: these branches on `origin` are all fully merged into `main` and safe to
    delete (not urgent) — `integration/gates-8-13`, `claude/phase-11c-planning-executive-frty7j`,
    `claude/excel-schedule-pcc-editing-dgyy9m`, `claude/doc-control-gate14-master-repo`,
