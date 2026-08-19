@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 35;
+  var SCHEMA_VERSION = 36;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -375,6 +375,15 @@
       owner: "",
       due_date: "",
       status: "open",
+      // Gate 33 (PCC Evolution Roadmap, Tier B: Meeting Action → Control Linking).
+      // Four optional links, same "" (unlinked) default treatment every other optional
+      // link field in this app has gotten since Gate 10 — an individual action item can
+      // relate to a vendor, a Schedule activity, an RFI/TQ, and/or a Risk/Issue/
+      // Opportunity, independently of the parent meeting's own single activity_id.
+      vendor_id: "",
+      activity_id: "",
+      rfi_id: "",
+      risk_id: "",
     };
     return Object.assign(base, overrides || {});
   }
@@ -1795,6 +1804,21 @@
         if (a.vendor_id === undefined) a.vendor_id = "";
       });
       loaded.schema_version = 35;
+    }
+
+    if (loaded.schema_version < 36) {
+      // Gate 33 (PCC Evolution Roadmap, Tier B: Meeting Action → Control Linking). Adds
+      // four optional links — vendor_id, activity_id, rfi_id, risk_id — to every existing
+      // meeting's action items, "" (unlinked) same as every other optional link field.
+      (loaded.meetings || []).forEach(function (m) {
+        (m.actions || []).forEach(function (a) {
+          if (a.vendor_id === undefined) a.vendor_id = "";
+          if (a.activity_id === undefined) a.activity_id = "";
+          if (a.rfi_id === undefined) a.rfi_id = "";
+          if (a.risk_id === undefined) a.risk_id = "";
+        });
+      });
+      loaded.schema_version = 36;
     }
 
     return loaded;

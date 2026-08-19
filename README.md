@@ -2691,6 +2691,60 @@ roadmap's own gate discipline, this gate is reported and closed here — the nex
 8, Meeting Action→Control linking, the other Tier B gap identified at inspection) needs its own
 scoping and confirmation before it starts.
 
+## Gate 33 — Meeting Action → Control Linking (PCC Evolution Roadmap, Tier B) (2026-08-19)
+
+**The fifth gate of the PCC Evolution Roadmap — closes out Tier B (Control Integration).**
+Individual meeting action items gain optional links to a Vendor, a Schedule Activity, an RFI/TQ,
+and a Risk/Issue/Opportunity — independent of the parent meeting's own single `activity_id`
+(Gate 10). Confirmed via `AskUserQuestion`: build all four link types in this gate, rather than
+starting with just Vendor+Activity (the roadmap's own concrete example) and leaving RFI/Risk for
+later.
+
+**What changed:**
+
+- `store.js`: `meeting.actions[]` entries gain `vendor_id`, `activity_id`, `rfi_id`, `risk_id`
+  (all optional, `""` default — `schema_version` 35→36).
+- `pages/meetings.js`: each action row in the meeting's Add/Edit form gains four pickers —
+  Vendor (portfolio-wide), Activity/RFI/Risk (scoped to the meeting's currently-selected
+  project, reusing the existing `activityOptionsFor()` helper plus two new siblings,
+  `rfiOptionsFor()`/`riskOptionsFor()`). Switching the meeting's Project select **live-rescopes**
+  every action row's Activity/RFI/Risk options to the newly-selected project (Vendor stays
+  unaffected, since vendors aren't project-scoped) — same pattern the meeting-level Activity
+  select already used, extended to the per-action rows. The read-only Meeting Details view
+  appends whichever links are actually set to each action's line (e.g. "Vendor: ABC Electrical ·
+  Activity: Transformer Installation"), same "only show what's there" convention every other
+  reciprocal display in this app follows.
+- `pages/actionCentre.js`: the Planner Action Centre's (Gate 29) meeting-action rows now annotate
+  their title with Vendor/Activity when set, e.g. "Submit revised drawing (Vendor: ABC Electrical,
+  Activity: Transformer Installation)" — a near-zero-cost payoff once the underlying data exists.
+- No new pages, no new public APIs — everything reuses existing pickers, existing rescoping
+  patterns, and existing reciprocal-display conventions.
+
+**Tested before delivery (new file, 27 e2e checks, plus a new schema migration check — full suite
+re-run clean, 33 files, 811 checks total):**
+
+- **Schema migration** (`test_store_schema_v36_migration.js`, renamed from v35 per the established
+  canonical-file convention): a v35 dataset backfills all four link fields `""` onto an existing
+  action item with none, and leaves an already-linked action's four fields untouched; every older
+  intermediate-version check re-verified landing on the new latest version (36).
+- **End-to-end against the actual bundled `index.html`** (new file,
+  `test_meeting_action_links_e2e.js`): the Action row's four pickers are present and correctly
+  project-scoped (Project One's activity/RFI/risk offered, Project Two's withheld, and vice
+  versa); switching the meeting's Project select live-rescopes the Activity/RFI/Risk options
+  while leaving the portfolio-wide Vendor list untouched; saving persists all four links; the
+  read-only Meeting Details view shows them inline; the Planner Action Centre surfaces Vendor and
+  Activity on the same action row; confirmed nothing else was written back; a full 19-route smoke
+  test.
+- **Real-browser verification** (Chromium via Playwright, screenshots captured and sent): filled
+  all four pickers on a real action row, saved, confirmed the Meeting Details view and the Planner
+  Action Centre both show the links correctly — zero console/page errors.
+
+**What I have not tested:** this on your actual device. Same standard as every prior gate. **With
+this gate, Tier B (Control Integration) of the PCC Evolution Roadmap is complete** — all four of
+its gates are now satisfied (two were already built pre-roadmap, two — Activity→Vendor and this
+gate — were built this session). The next gate needs its own scoping and confirmation from Tier C
+(Project Performance) before it starts.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
@@ -2760,16 +2814,16 @@ Assistant, Lessons Learned, final polish
 **Tier 2 is complete, and the entire 14-gate Document Control sub-spec Aditya handed over is now
 built** (Gates 14-28) — no gates from that spec remain. A new, separate roadmap started with Gate
 29 (Planner Action Centre), continued with Gate 30 (Project Lookahead), Gate 31 (Management
-Attention), and Gate 32 (Activity → Vendor), all 2026-08-19 — see each gate's own write-up above
-for the inspection findings and detail behind them. **Tier A (Daily Planner Value) is effectively
-done**, and **Tier B (Control Integration) is half done** — a fresh inspection at Gate 32 found
-two of Tier B's four gates already satisfied before this roadmap even started (Schedule→Activity
-is inherent in the base schema; Activity→Risk/Issue/RFI was Gate 10), leaving Activity→Vendor
-(now built, Gate 32) and Meeting Action→Control linking (the remaining gap — individual meeting
-action items currently have zero linking fields, only the parent meeting does) as Tier B's real
-work. That roadmap's own next gate is **not yet started or scoped** — per its explicit gate
-discipline, each gate gets proposed in a short paragraph and confirmed before building, one at a
-time. Meeting Action→Control linking is the natural next candidate to close out Tier B.
+Attention), Gate 32 (Activity → Vendor), and Gate 33 (Meeting Action → Control Linking), all
+2026-08-19 — see each gate's own write-up above for the inspection findings and detail behind
+them. **Tier A (Daily Planner Value) and Tier B (Control Integration) are both now complete** —
+Tier B turned out to be half pre-existing (Schedule→Activity, Activity→Risk/Issue/RFI) and half
+built this session (Activity→Vendor, Meeting Action→Control Linking). The roadmap's own next gate
+is **not yet started or scoped** — per its explicit gate discipline, each gate gets proposed in a
+short paragraph and confirmed before building, one at a time. Tier C (Project Performance) is the
+likely next area — Progress Management, Vendor Performance Centre, Delay & Recovery Management,
+Decision Register — but a fresh inspection is needed first, the same way Tier B's inspection found
+half its gates already done; Tier C hasn't been checked against the real code yet.
 
 Other open items, none blocking daily use: rate × usage from
 Resource Management feeding Cost Tracking/EVM (explicitly deferred, Gate 11); a

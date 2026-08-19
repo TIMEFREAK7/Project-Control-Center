@@ -55,9 +55,11 @@ function loadStoreWith(rawJsonString) {
 // rows (v33, Gate 8: Document Control 8, Schedule-Driven Dates/Lead Time);
 // document_control_override backfilled onto existing executive_summaries rows (v34,
 // Gate 27 / Document Control 13, Executive Summary); vendor_id backfilled onto existing
-// activities (v35, Gate 32, PCC Evolution Roadmap Tier B: Activity → Vendor).
+// activities (v35, Gate 32, PCC Evolution Roadmap Tier B: Activity → Vendor);
+// vendor_id/activity_id/rfi_id/risk_id backfilled onto existing meeting action items
+// (v36, Gate 33, PCC Evolution Roadmap Tier B: Meeting Action → Control Linking).
 // ---------------------------------------------------------------------------
-check("a v20 dataset gets Gate 9 + Gate 10 + Gate 11 + Gate 13 + Gate 14 + Gate 15 + Gate 16 + Gate 17 + Gate 18 + Gate 5 + Gate 6 + Gate 7 + Gate 8 + Gate 13(DC) fields backfilled (Gate 32 adds nothing to backfill here — no activities in this v20 fixture) and lands on schema_version 35", () => {
+check("a v20 dataset gets Gate 9 + Gate 10 + Gate 11 + Gate 13 + Gate 14 + Gate 15 + Gate 16 + Gate 17 + Gate 18 + Gate 5 + Gate 6 + Gate 7 + Gate 8 + Gate 13(DC) fields backfilled (Gates 32-33 add nothing to backfill here — no activities or meeting actions in this v20 fixture) and lands on schema_version 36", () => {
   const v20 = {
     schema_version: 20,
     meta: { app_name: "x", created_at: "2026-01-01T00:00:00.000Z", last_saved_at: null, last_exported_at: null },
@@ -75,7 +77,7 @@ check("a v20 dataset gets Gate 9 + Gate 10 + Gate 11 + Gate 13 + Gate 14 + Gate 
   const store = loadStoreWith(JSON.stringify(v20));
   const data = store.get();
 
-  assert.strictEqual(data.schema_version, 35);
+  assert.strictEqual(data.schema_version, 36);
   assert.strictEqual(data.projects[0].name, "Existing Project", "existing project fields must survive untouched");
   assert.strictEqual(data.projects[0].project_type, "");
   assert.ok(data.settings.health_score_weights, "health_score_weights must be defaulted");
@@ -159,7 +161,7 @@ check("a v20 dataset gets Gate 9 + Gate 10 + Gate 11 + Gate 13 + Gate 14 + Gate 
 // activity_id backfilled onto existing budget items, nothing else touched, then the
 // rest of the chain (through Gate 13) carries the dataset on to the current version.
 // ---------------------------------------------------------------------------
-check("a v19 dataset gets activity_id backfilled onto existing budget items and lands on schema_version 35", () => {
+check("a v19 dataset gets activity_id backfilled onto existing budget items and lands on schema_version 36", () => {
   const v19 = {
     schema_version: 19,
     meta: { app_name: "x", created_at: "2026-01-01T00:00:00.000Z", last_saved_at: null, last_exported_at: null },
@@ -173,7 +175,7 @@ check("a v19 dataset gets activity_id backfilled onto existing budget items and 
   const store = loadStoreWith(JSON.stringify(v19));
   const data = store.get();
 
-  assert.strictEqual(data.schema_version, 35);
+  assert.strictEqual(data.schema_version, 36);
   assert.strictEqual(data.cost_budget_items.length, 1, "no budget items should be fabricated or dropped");
   assert.strictEqual(data.cost_budget_items[0].activity_id, "", "pre-Gate-7 budget items get an empty (unlinked) activity_id, not undefined");
   assert.strictEqual(data.cost_budget_items[0].name, "Rebar", "existing fields must survive untouched");
@@ -191,7 +193,7 @@ check("a minimal legacy dataset (no schema_version at all) migrates all the way 
   };
   const store = loadStoreWith(JSON.stringify(legacy));
   const data = store.get();
-  assert.strictEqual(data.schema_version, 35);
+  assert.strictEqual(data.schema_version, 36);
   assert.ok(Array.isArray(data.schedule_baselines));
   assert.ok(Array.isArray(data.cost_budget_items));
   assert.ok(Array.isArray(data.cost_actuals));
@@ -217,7 +219,7 @@ check("a minimal legacy dataset (no schema_version at all) migrates all the way 
 check("a brand-new install with no stored data starts with executive_summaries: [] and default health weights", () => {
   const store = loadStoreWith(null);
   const data = store.get();
-  assert.strictEqual(data.schema_version, 35);
+  assert.strictEqual(data.schema_version, 36);
   assert.deepStrictEqual(data.executive_summaries, []);
   assert.deepStrictEqual(data.settings.health_score_weights, {
     schedule: 25, cost: 20, risk: 20, issue: 10, rfi: 15, change: 10,
@@ -548,7 +550,7 @@ check("migrating a v28 dataset that already has a manually-added 'Project Charte
   };
   const store = loadStoreWith(JSON.stringify(v28));
   const data = store.get();
-  assert.strictEqual(data.schema_version, 35);
+  assert.strictEqual(data.schema_version, 36);
   const charters = data.document_types.filter((t) => t.name === "Project Charter");
   assert.strictEqual(charters.length, 1, "an existing hand-added type with a matching name must not be duplicated by the migration");
   assert.strictEqual(charters[0].id, "dtp_custom_1", "the user's own record must survive untouched, not be replaced by the seeded one");
@@ -577,7 +579,7 @@ check("migrating a v29 dataset backfills planned_submission_date: null onto exis
   };
   const store = loadStoreWith(JSON.stringify(v29));
   const data = store.get();
-  assert.strictEqual(data.schema_version, 35);
+  assert.strictEqual(data.schema_version, 36);
   assert.strictEqual(data.project_document_requirements.length, 2, "no requirement should be fabricated or dropped");
   const r1 = data.project_document_requirements.find((r) => r.id === "pdr_1");
   const r2 = data.project_document_requirements.find((r) => r.id === "pdr_2");
@@ -608,7 +610,7 @@ check("migrating a v30 dataset backfills vendor_id: '' onto existing requirement
   };
   const store = loadStoreWith(JSON.stringify(v30));
   const data = store.get();
-  assert.strictEqual(data.schema_version, 35);
+  assert.strictEqual(data.schema_version, 36);
   assert.strictEqual(data.project_document_requirements.length, 2, "no requirement should be fabricated or dropped");
   const r1 = data.project_document_requirements.find((r) => r.id === "pdr_1");
   const r2 = data.project_document_requirements.find((r) => r.id === "pdr_2");
@@ -641,7 +643,7 @@ check("migrating a v31 dataset backfills activity_id: '' onto existing requireme
   };
   const store = loadStoreWith(JSON.stringify(v31));
   const data = store.get();
-  assert.strictEqual(data.schema_version, 35);
+  assert.strictEqual(data.schema_version, 36);
   assert.strictEqual(data.project_document_requirements.length, 2, "no requirement should be fabricated or dropped");
   const r1 = data.project_document_requirements.find((r) => r.id === "pdr_1");
   const r2 = data.project_document_requirements.find((r) => r.id === "pdr_2");
@@ -674,7 +676,7 @@ check("migrating a v32 dataset backfills lead_time_days: null onto existing requ
   };
   const store = loadStoreWith(JSON.stringify(v32));
   const data = store.get();
-  assert.strictEqual(data.schema_version, 35);
+  assert.strictEqual(data.schema_version, 36);
   assert.strictEqual(data.project_document_requirements.length, 2, "no requirement should be fabricated or dropped");
   const r1 = data.project_document_requirements.find((r) => r.id === "pdr_1");
   const r2 = data.project_document_requirements.find((r) => r.id === "pdr_2");
@@ -704,7 +706,7 @@ check("migrating a v33 dataset backfills document_control_override: '' onto exis
   };
   const store = loadStoreWith(JSON.stringify(v33));
   const data = store.get();
-  assert.strictEqual(data.schema_version, 35);
+  assert.strictEqual(data.schema_version, 36);
   assert.strictEqual(data.executive_summaries.length, 2, "no summary row should be fabricated or dropped");
   const s1 = data.executive_summaries.find((s) => s.id === "es_1");
   const s2 = data.executive_summaries.find((s) => s.id === "es_2");
@@ -737,12 +739,58 @@ check("migrating a v34 dataset backfills vendor_id: '' onto existing activities 
   };
   const store = loadStoreWith(JSON.stringify(v34));
   const data = store.get();
-  assert.strictEqual(data.schema_version, 35);
+  assert.strictEqual(data.schema_version, 36);
   assert.strictEqual(data.activities.length, 2, "no activity should be fabricated or dropped");
   const a1 = data.activities.find((a) => a.id === "act_1");
   const a2 = data.activities.find((a) => a.id === "act_2");
   assert.strictEqual(a1.vendor_id, "", "a pre-Gate-32 activity with no vendor gets '', not undefined");
   assert.strictEqual(a2.vendor_id, "vnd_1", "an already-set vendor_id must survive the migration untouched");
+});
+
+// ---------------------------------------------------------------------------
+// Gate 33 (PCC Evolution Roadmap, Tier B: Meeting Action → Control Linking)
+// ---------------------------------------------------------------------------
+check("migrating a v35 dataset backfills vendor_id/activity_id/rfi_id/risk_id: '' onto existing meeting action items without them, and leaves already-set links untouched", () => {
+  const v35 = {
+    schema_version: 35,
+    meta: { app_name: "x", created_at: "2026-01-01T00:00:00.000Z", last_saved_at: null, last_exported_at: null },
+    settings: { theme: "dark", company_name: "", backup_reminder_days: 7, backup_nudge_dismissed_at: null },
+    projects: [{ id: "proj_1", name: "Existing Project", archived: false, status: "on_track", progress: 0, attachments: [] }],
+    documents: [], risks: [], daily_logs: [],
+    meetings: [
+      {
+        id: "m_1",
+        project_id: "proj_1",
+        title: "Existing Meeting",
+        actions: [
+          { id: "a_1", description: "Unlinked action", owner: "", due_date: "", status: "open" },
+          { id: "a_2", description: "Already-linked action", owner: "", due_date: "", status: "open", vendor_id: "vnd_1", activity_id: "act_1", rfi_id: "rf_1", risk_id: "r_1" },
+        ],
+      },
+    ],
+    rfis: [], change_orders: [],
+    schedules: [], wbs_items: [], activities: [], relationships: [], schedule_baselines: [],
+    cost_budget_items: [], cost_actuals: [], resources: [], resource_assignments: [],
+    vendors: [], vendor_contacts: [], vendor_project_links: [], vendor_documents: [],
+    vendor_meeting_links: [], vendor_rfi_links: [], vendor_risk_links: [], vendor_performance: [], vendor_notes: [],
+    document_types: [], project_document_requirements: [],
+    executive_summaries: [],
+  };
+  const store = loadStoreWith(JSON.stringify(v35));
+  const data = store.get();
+  assert.strictEqual(data.schema_version, 36);
+  const actions = data.meetings[0].actions;
+  assert.strictEqual(actions.length, 2, "no action should be fabricated or dropped");
+  const a1 = actions.find((a) => a.id === "a_1");
+  const a2 = actions.find((a) => a.id === "a_2");
+  assert.strictEqual(a1.vendor_id, "", "a pre-Gate-33 action with no links gets '' for each, not undefined");
+  assert.strictEqual(a1.activity_id, "");
+  assert.strictEqual(a1.rfi_id, "");
+  assert.strictEqual(a1.risk_id, "");
+  assert.strictEqual(a2.vendor_id, "vnd_1", "already-set links must survive the migration untouched");
+  assert.strictEqual(a2.activity_id, "act_1");
+  assert.strictEqual(a2.rfi_id, "rf_1");
+  assert.strictEqual(a2.risk_id, "r_1");
 });
 
 console.log("\n" + passed + " passed, " + failed + " failed");
