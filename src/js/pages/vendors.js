@@ -2681,10 +2681,15 @@
 
   window.PCC.pages.vendors = render;
   window.PCC.vendors = {
-    openProfile: function (vendorId) {
+    // Gate (PCC Evolution Roadmap, Tier C: Vendor Performance Centre) — optional second
+    // argument lands directly on a specific profile tab, same "land exactly on the linked
+    // record" convention as every other reverse-navigation API in this app (e.g. Gate 10's
+    // viewActivity landing on the Gantt detail panel). Defaults to "overview" so every
+    // existing caller is unaffected.
+    openProfile: function (vendorId, tab) {
       uiState.view = "profile";
       uiState.profileVendorId = vendorId;
-      uiState.profileTab = "overview";
+      uiState.profileTab = tab || "overview";
     },
     // Same "View All" convention every other register exposes (risks.js, meetings.js,
     // etc.) — Portfolio's project details panel calls this before navigating here.

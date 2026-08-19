@@ -16,6 +16,7 @@
         { key: "portfolio", label: "Portfolio", code: "PF" },
         { key: "executiveCenter", label: "Executive Center", code: "EC" },
         { key: "vendors", label: "Vendors", code: "VN" },
+        { key: "vendorPerformanceCentre", label: "Vendor Performance Centre", code: "VP" },
       ],
     },
     {
@@ -55,6 +56,7 @@
     portfolio: "Portfolio",
     executiveCenter: "Executive Center",
     vendors: "Vendor Management",
+    vendorPerformanceCentre: "Vendor Performance Centre",
     documents: "Documents",
     documentTypes: "Document Types",
     documentControlDashboard: "Document Control Dashboard",
