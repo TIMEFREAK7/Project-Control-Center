@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 39;
+  var SCHEMA_VERSION = 40;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -202,6 +202,13 @@
       owner: "",
       archived: false,
       attachments: [],
+      // PCC Evolution Roadmap, Tier E: Personal Workbench ("Reviews" section). How often
+      // this project's Weekly Project Review (see newWeeklyReview) is expected — in days,
+      // so "biweekly"/"monthly" are just different numbers, not new enum states. Defaults
+      // to 7 (weekly), matching the review feature's own name; null means "no cadence
+      // configured," which excludes the project from the Reviews list entirely rather
+      // than guessing one.
+      review_cadence_days: 7,
       created_at: now,
       updated_at: now,
     };
@@ -483,6 +490,15 @@
     return Object.assign(base, overrides || {});
   }
 
+  // PCC Evolution Roadmap, Tier E: Personal Workbench ("Waiting For" section). Shared by
+  // RFI/TQ, Change Orders, and Decisions — the three registers with a real pending/open
+  // approval-like status. Free-text `raised_by`/`assigned_to`/`decision_by` etc. already
+  // capture WHO by name; this is a separate, coarser categorization of WHAT KIND of party
+  // the item is stalled on, since nothing in the app could answer that before. Optional —
+  // "" means not categorized, and stays out of the Waiting For section rather than
+  // guessing (this app never fabricates a classification it doesn't have real data for).
+  var WAITING_ON_PARTIES = ["vendor", "client", "consultant", "management"];
+
   /** RFI / Technical Query register entry — one shape, distinguished by `type`, matching
    * the Risk Register pattern rather than building two near-identical modules. Workflow
    * is open (awaiting response) -> answered (response given) -> closed (accepted/closed
@@ -511,6 +527,8 @@
       source_meeting_id: "",
       // Gate 10: optional link to one Schedule activity — see newRisk()'s comment.
       activity_id: "",
+      // Tier E: Personal Workbench — see WAITING_ON_PARTIES above.
+      waiting_on_party: "",
       created_at: now,
       updated_at: now,
     };
@@ -581,6 +599,8 @@
       source_meeting_id: "",
       // Gate 10: optional link to one Schedule activity — see newRisk()'s comment.
       activity_id: "",
+      // Tier E: Personal Workbench — see WAITING_ON_PARTIES above (defined near newRfi).
+      waiting_on_party: "",
       revisions: [],
       created_at: now,
       updated_at: now,
@@ -613,6 +633,8 @@
       status: "pending",
       source_meeting_id: "",
       activity_id: "",
+      // Tier E: Personal Workbench — see WAITING_ON_PARTIES above (defined near newRfi).
+      waiting_on_party: "",
       created_at: now,
       updated_at: now,
     };
@@ -1133,6 +1155,12 @@
       postal_code: "",
       status: "active",
       notes: "",
+      // PCC Evolution Roadmap, Tier E: Personal Workbench ("Vendor Follow-ups" section).
+      // A manually-set reminder date — deliberately separate from any document due-date
+      // computation (project_document_requirements already has its own, unrelated
+      // Available/Overdue logic), since a follow-up is a general "check in with this
+      // vendor" reminder, not tied to one specific document.
+      next_follow_up_date: "",
       created_at: now,
       updated_at: now,
     };
@@ -1972,6 +2000,31 @@
       loaded.schema_version = 39;
     }
 
+    if (loaded.schema_version < 40) {
+      // PCC Evolution Roadmap, Tier E: Personal Workbench. Adds waiting_on_party ("", not
+      // categorized) to every existing RFI/TQ, Change Order, and Decision; next_follow_up_date
+      // ("", none set) to every existing Vendor; and review_cadence_days to every existing
+      // Project. Cadence defaults to 7 (weekly) for existing projects too — same default a
+      // brand-new project gets via newProject() — rather than leaving old projects silently
+      // exempt from the new Reviews-due computation newer ones get.
+      (loaded.rfis || []).forEach(function (r) {
+        if (r.waiting_on_party === undefined) r.waiting_on_party = "";
+      });
+      (loaded.change_orders || []).forEach(function (co) {
+        if (co.waiting_on_party === undefined) co.waiting_on_party = "";
+      });
+      (loaded.decisions || []).forEach(function (d) {
+        if (d.waiting_on_party === undefined) d.waiting_on_party = "";
+      });
+      (loaded.vendors || []).forEach(function (v) {
+        if (v.next_follow_up_date === undefined) v.next_follow_up_date = "";
+      });
+      (loaded.projects || []).forEach(function (p) {
+        if (p.review_cadence_days === undefined) p.review_cadence_days = 7;
+      });
+      loaded.schema_version = 40;
+    }
+
     return loaded;
   }
 
@@ -2302,6 +2355,7 @@
     CHANGE_ORDER_STATUSES: CHANGE_ORDER_STATUSES,
     newDecision: newDecision,
     DECISION_STATUSES: DECISION_STATUSES,
+    WAITING_ON_PARTIES: WAITING_ON_PARTIES,
     newSchedule: newSchedule,
     newWbsItem: newWbsItem,
     newActivity: newActivity,

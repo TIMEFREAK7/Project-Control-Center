@@ -3623,7 +3623,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 39;
+  var SCHEMA_VERSION = 40;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -3816,6 +3816,13 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       owner: "",
       archived: false,
       attachments: [],
+      // PCC Evolution Roadmap, Tier E: Personal Workbench ("Reviews" section). How often
+      // this project's Weekly Project Review (see newWeeklyReview) is expected — in days,
+      // so "biweekly"/"monthly" are just different numbers, not new enum states. Defaults
+      // to 7 (weekly), matching the review feature's own name; null means "no cadence
+      // configured," which excludes the project from the Reviews list entirely rather
+      // than guessing one.
+      review_cadence_days: 7,
       created_at: now,
       updated_at: now,
     };
@@ -4097,6 +4104,15 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     return Object.assign(base, overrides || {});
   }
 
+  // PCC Evolution Roadmap, Tier E: Personal Workbench ("Waiting For" section). Shared by
+  // RFI/TQ, Change Orders, and Decisions — the three registers with a real pending/open
+  // approval-like status. Free-text `raised_by`/`assigned_to`/`decision_by` etc. already
+  // capture WHO by name; this is a separate, coarser categorization of WHAT KIND of party
+  // the item is stalled on, since nothing in the app could answer that before. Optional —
+  // "" means not categorized, and stays out of the Waiting For section rather than
+  // guessing (this app never fabricates a classification it doesn't have real data for).
+  var WAITING_ON_PARTIES = ["vendor", "client", "consultant", "management"];
+
   /** RFI / Technical Query register entry — one shape, distinguished by `type`, matching
    * the Risk Register pattern rather than building two near-identical modules. Workflow
    * is open (awaiting response) -> answered (response given) -> closed (accepted/closed
@@ -4125,6 +4141,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       source_meeting_id: "",
       // Gate 10: optional link to one Schedule activity — see newRisk()'s comment.
       activity_id: "",
+      // Tier E: Personal Workbench — see WAITING_ON_PARTIES above.
+      waiting_on_party: "",
       created_at: now,
       updated_at: now,
     };
@@ -4195,6 +4213,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       source_meeting_id: "",
       // Gate 10: optional link to one Schedule activity — see newRisk()'s comment.
       activity_id: "",
+      // Tier E: Personal Workbench — see WAITING_ON_PARTIES above (defined near newRfi).
+      waiting_on_party: "",
       revisions: [],
       created_at: now,
       updated_at: now,
@@ -4227,6 +4247,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       status: "pending",
       source_meeting_id: "",
       activity_id: "",
+      // Tier E: Personal Workbench — see WAITING_ON_PARTIES above (defined near newRfi).
+      waiting_on_party: "",
       created_at: now,
       updated_at: now,
     };
@@ -4747,6 +4769,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       postal_code: "",
       status: "active",
       notes: "",
+      // PCC Evolution Roadmap, Tier E: Personal Workbench ("Vendor Follow-ups" section).
+      // A manually-set reminder date — deliberately separate from any document due-date
+      // computation (project_document_requirements already has its own, unrelated
+      // Available/Overdue logic), since a follow-up is a general "check in with this
+      // vendor" reminder, not tied to one specific document.
+      next_follow_up_date: "",
       created_at: now,
       updated_at: now,
     };
@@ -5586,6 +5614,31 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       loaded.schema_version = 39;
     }
 
+    if (loaded.schema_version < 40) {
+      // PCC Evolution Roadmap, Tier E: Personal Workbench. Adds waiting_on_party ("", not
+      // categorized) to every existing RFI/TQ, Change Order, and Decision; next_follow_up_date
+      // ("", none set) to every existing Vendor; and review_cadence_days to every existing
+      // Project. Cadence defaults to 7 (weekly) for existing projects too — same default a
+      // brand-new project gets via newProject() — rather than leaving old projects silently
+      // exempt from the new Reviews-due computation newer ones get.
+      (loaded.rfis || []).forEach(function (r) {
+        if (r.waiting_on_party === undefined) r.waiting_on_party = "";
+      });
+      (loaded.change_orders || []).forEach(function (co) {
+        if (co.waiting_on_party === undefined) co.waiting_on_party = "";
+      });
+      (loaded.decisions || []).forEach(function (d) {
+        if (d.waiting_on_party === undefined) d.waiting_on_party = "";
+      });
+      (loaded.vendors || []).forEach(function (v) {
+        if (v.next_follow_up_date === undefined) v.next_follow_up_date = "";
+      });
+      (loaded.projects || []).forEach(function (p) {
+        if (p.review_cadence_days === undefined) p.review_cadence_days = 7;
+      });
+      loaded.schema_version = 40;
+    }
+
     return loaded;
   }
 
@@ -5916,6 +5969,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     CHANGE_ORDER_STATUSES: CHANGE_ORDER_STATUSES,
     newDecision: newDecision,
     DECISION_STATUSES: DECISION_STATUSES,
+    WAITING_ON_PARTIES: WAITING_ON_PARTIES,
     newSchedule: newSchedule,
     newWbsItem: newWbsItem,
     newActivity: newActivity,
@@ -6056,6 +6110,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       label: "OVERVIEW",
       items: [
         { key: "dashboard", label: "Dashboard", code: "DB" },
+        { key: "myWork", label: "My Work", code: "MW" },
         { key: "actionCentre", label: "Action Centre", code: "AC" },
         { key: "projectLookahead", label: "Project Lookahead", code: "LA" },
         { key: "portfolio", label: "Portfolio", code: "PF" },
@@ -6098,6 +6153,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
   var PAGE_TITLES = {
     dashboard: "Dashboard",
+    myWork: "My Work",
     actionCentre: "Planner Action Centre",
     projectLookahead: "Project Lookahead",
     portfolio: "Portfolio",
@@ -7407,6 +7463,623 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 })();
 
 
+/* ---- js/pages/myWork.js ---- */
+/* My Work — Gate 17 (PCC Evolution Roadmap, Tier E: Personal Workbench). The personal
+ * project-management cockpit the spec asks for: "what do I need to do, this week, and
+ * who am I waiting on?" — distinct from Dashboard (portfolio-wide status board) and
+ * Action Centre (date-bucketed due items only). This page organizes by the spec's own
+ * four sections instead:
+ *
+ * TODAY — Overdue Actions (Meeting Actions + RFI/TQ past due, same definition Action
+ *   Centre's own OVERDUE bucket uses), Today's Meetings, Approvals (Change Orders +
+ *   Decisions pending), Activities to Update (a genuinely new rule — not_started
+ *   activities whose planned_start has passed, or in_progress activities whose
+ *   planned_finish has passed: behind their own plan, likely needs a status/actuals
+ *   update. No such concept existed anywhere before this gate).
+ * THIS WEEK — Meetings and Milestones in the next 7 days (reusing Project Lookahead's
+ *   own date-window/early_start-precedence conventions), Vendor Follow-ups and Reviews
+ *   due (both needed a real schema addition — see below), Reports deliberately excluded
+ *   (no scheduled/recurring-report concept exists anywhere in PCC, and the spec's own
+ *   Reporting section says not to build reporting out in one gate).
+ * WAITING FOR — Vendor/Client/Consultant/Management, from RFI/TQ + Change Orders +
+ *   Decisions carrying the new optional waiting_on_party field. Unset ("") items don't
+ *   appear here — never guessed, per this app's "transparent, never fabricate" rule.
+ * RECENTLY UPDATED — Projects/Activities/RFIs/Risks/Meetings, top 5 each by updated_at,
+ *   same pattern Dashboard's own "Recent projects" already established.
+ *
+ * Schema v40 additions this gate needed (confirmed with Aditya, all three the "add a
+ * real field" option rather than a heuristic or an exclusion): waiting_on_party on RFI/
+ * TQ, Change Orders, and Decisions; next_follow_up_date on Vendor; review_cadence_days
+ * on Project (defaults to 7 = weekly, matching Weekly Project Review's own name).
+ *
+ * Purely computed at render time, same "never denormalized" convention as every other
+ * dashboard in this app — writes nothing back.
+ */
+(function () {
+  "use strict";
+  window.PCC = window.PCC || {};
+  window.PCC.pages = window.PCC.pages || {};
+
+  var WEEK_WINDOW_DAYS = 7;
+  var RECENT_LIMIT = 5;
+
+  var WAITING_ON_LABELS = { vendor: "Vendor", client: "Client", consultant: "Consultant", management: "Management" };
+
+  function todayIso() {
+    return new Date().toISOString().slice(0, 10);
+  }
+  function addDaysIso(isoDateStr, days) {
+    var d = new Date(isoDateStr + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0, 10);
+  }
+  function fmtDate(d) {
+    return d ? new Date(d).toLocaleDateString() : "";
+  }
+
+  // ---- TODAY ----------------------------------------------------------------------
+
+  /** Same definition Action Centre's own OVERDUE bucket uses (Meeting Actions + RFI/TQ
+   * past due) — duplicated here per this app's per-module-helpers convention rather than
+   * importing actionCentre.js's private bucketing logic. */
+  function collectOverdueActions(data, activeProjectIds) {
+    var today = todayIso();
+    var items = [];
+    data.meetings.forEach(function (m) {
+      if (!activeProjectIds[m.project_id]) return;
+      (m.actions || []).forEach(function (a) {
+        if (a.status !== "open" || !a.due_date || a.due_date >= today) return;
+        items.push({
+          kind: "Meeting Action",
+          title: a.description || "(no description)",
+          projectId: m.project_id,
+          extra: "due " + a.due_date,
+          view: function () {
+            window.PCC.meetings.expandMeeting(m.id);
+            window.PCC.router.go("meetings");
+            window.PCC.router.render();
+          },
+        });
+      });
+    });
+    data.rfis.forEach(function (r) {
+      if (!activeProjectIds[r.project_id]) return;
+      if (r.status !== "open" || !r.date_required || r.date_required >= today) return;
+      items.push({
+        kind: r.type === "technical_query" ? "TQ" : "RFI",
+        title: (r.number || "") + (r.subject ? " — " + r.subject : ""),
+        projectId: r.project_id,
+        extra: "due " + r.date_required,
+        view: function () {
+          window.PCC.rfis.expandRfi(r.id);
+          window.PCC.router.go("rfis");
+          window.PCC.router.render();
+        },
+      });
+    });
+    items.sort(function (a, b) {
+      return a.extra.localeCompare(b.extra);
+    });
+    return items;
+  }
+
+  function collectTodaysMeetings(data, activeProjectIds) {
+    var today = todayIso();
+    return data.meetings
+      .filter(function (m) {
+        return activeProjectIds[m.project_id] && m.meeting_date === today;
+      })
+      .map(function (m) {
+        return {
+          kind: "Meeting",
+          title: m.title || "(untitled meeting)",
+          projectId: m.project_id,
+          extra: "",
+          view: function () {
+            window.PCC.meetings.expandMeeting(m.id);
+            window.PCC.router.go("meetings");
+            window.PCC.router.render();
+          },
+        };
+      });
+  }
+
+  function collectApprovals(data, activeProjectIds) {
+    var items = [];
+    data.change_orders.forEach(function (co) {
+      if (!activeProjectIds[co.project_id]) return;
+      if (co.status !== "pending") return;
+      items.push({
+        kind: "Change Order",
+        title: (co.number || "") + (co.title ? " — " + co.title : ""),
+        projectId: co.project_id,
+        extra: co.requested_by ? "requested by " + co.requested_by : "",
+        view: function () {
+          window.PCC.changeOrders.expandChangeOrder(co.id);
+          window.PCC.router.go("changeOrders");
+          window.PCC.router.render();
+        },
+      });
+    });
+    data.decisions.forEach(function (d) {
+      if (!activeProjectIds[d.project_id]) return;
+      if (d.status !== "pending") return;
+      items.push({
+        kind: "Decision",
+        title: d.title || "(untitled decision)",
+        projectId: d.project_id,
+        extra: "",
+        view: function () {
+          window.PCC.decisionRegister.expandDecision(d.id);
+          window.PCC.router.go("decisionRegister");
+          window.PCC.router.render();
+        },
+      });
+    });
+    return items;
+  }
+
+  /** Genuinely new rule (nothing like this existed before this gate) — an activity is
+   * "behind its own plan and likely needs a status/actuals update" when it's still
+   * not_started after its planned_start has passed, or still in_progress after its
+   * planned_finish has passed. Uses raw planned dates directly, not the CPM engine's
+   * computed dates — this is about data hygiene ("does this record still reflect
+   * reality?"), not schedule health, which Executive Center/Portfolio already cover. */
+  function collectActivitiesToUpdate(data, activeProjectIds) {
+    var today = todayIso();
+    var items = [];
+    data.activities.forEach(function (a) {
+      if (!activeProjectIds[a.project_id]) return;
+      if (a.activity_type !== "task" && a.activity_type !== "milestone") return;
+      var stale =
+        (a.status === "not_started" && a.planned_start && a.planned_start < today) ||
+        (a.status === "in_progress" && a.planned_finish && a.planned_finish < today);
+      if (!stale) return;
+      items.push({
+        kind: a.activity_type === "milestone" ? "Milestone" : "Activity",
+        title: a.name || "(unnamed activity)",
+        projectId: a.project_id,
+        extra: a.status === "not_started" ? "should have started " + a.planned_start : "should have finished " + a.planned_finish,
+        view: function () {
+          window.PCC.schedule.viewActivity(a.project_id, a.schedule_id, a.id);
+          window.PCC.router.go("schedule");
+          window.PCC.router.render();
+        },
+      });
+    });
+    return items;
+  }
+
+  // ---- THIS WEEK --------------------------------------------------------------------
+
+  /** Deliberately excludes today (Today's Meetings above already covers it) — the window
+   * is tomorrow through +7 days. */
+  function collectWeekMeetings(data, activeProjectIds) {
+    var today = todayIso();
+    var end = addDaysIso(today, WEEK_WINDOW_DAYS);
+    var items = data.meetings
+      .filter(function (m) {
+        return activeProjectIds[m.project_id] && m.meeting_date > today && m.meeting_date <= end;
+      })
+      .map(function (m) {
+        return {
+          kind: "Meeting",
+          title: m.title || "(untitled meeting)",
+          projectId: m.project_id,
+          extra: m.meeting_date,
+          view: function () {
+            window.PCC.meetings.expandMeeting(m.id);
+            window.PCC.router.go("meetings");
+            window.PCC.router.render();
+          },
+        };
+      });
+    items.sort(function (a, b) {
+      return a.extra.localeCompare(b.extra);
+    });
+    return items;
+  }
+
+  /** Same activity_type==="milestone"/early_start-precedence/exclude-complete convention
+   * Project Lookahead's own milestone rows already use. Window is today through +7 days
+   * (inclusive of today) since there's no separate "milestones today" section to avoid
+   * double-showing against, unlike Meetings above. */
+  function collectWeekMilestones(data, activeProjectIds) {
+    var today = todayIso();
+    var end = addDaysIso(today, WEEK_WINDOW_DAYS);
+    var items = [];
+    data.activities.forEach(function (a) {
+      if (!activeProjectIds[a.project_id]) return;
+      if (a.activity_type !== "milestone") return;
+      if (a.status === "complete") return;
+      var date = a.early_start || a.planned_start;
+      if (!date || date < today || date > end) return;
+      items.push({
+        kind: "Milestone",
+        title: a.name || "(unnamed milestone)",
+        projectId: a.project_id,
+        extra: date,
+        view: function () {
+          window.PCC.schedule.viewActivity(a.project_id, a.schedule_id, a.id);
+          window.PCC.router.go("schedule");
+          window.PCC.router.render();
+        },
+      });
+    });
+    items.sort(function (a, b) {
+      return a.extra.localeCompare(b.extra);
+    });
+    return items;
+  }
+
+  /** A single soonest-first list, overdue and due-this-week together (both flow from the
+   * same manually-set next_follow_up_date — there's no separate "today" bucket for
+   * vendor follow-ups the way meetings/actions have). */
+  function collectVendorFollowups(data) {
+    var today = todayIso();
+    var end = addDaysIso(today, WEEK_WINDOW_DAYS);
+    var items = [];
+    data.vendors.forEach(function (v) {
+      if (!v.next_follow_up_date || v.next_follow_up_date > end) return;
+      items.push({
+        kind: v.next_follow_up_date < today ? "Overdue" : "Vendor",
+        title: v.vendor_name || "(unnamed vendor)",
+        projectId: null,
+        extra: "follow up by " + v.next_follow_up_date,
+        view: function () {
+          window.PCC.vendors.openProfile(v.id);
+          window.PCC.router.go("vendors");
+          window.PCC.router.render();
+        },
+      });
+    });
+    items.sort(function (a, b) {
+      return a.extra.localeCompare(b.extra);
+    });
+    return items;
+  }
+
+  /** Cadence-based, per project.review_cadence_days (null = not configured, excluded
+   * entirely rather than guessed). Next due = last review's review_date + cadence, or
+   * the project's own start_date/created_at if it's never been reviewed yet. Includes
+   * both already-overdue and due-within-the-window projects in one list, same reasoning
+   * as Vendor Follow-ups above — the spec doesn't split Reviews into overdue/this-week. */
+  function computeNextReviewDue(project, weeklyReviews) {
+    if (project.review_cadence_days == null) return null;
+    var lastDate = null;
+    weeklyReviews.forEach(function (r) {
+      if (r.project_id !== project.id) return;
+      if (!lastDate || r.review_date > lastDate) lastDate = r.review_date;
+    });
+    var base = lastDate || (project.start_date || (project.created_at || "").slice(0, 10));
+    if (!base) return null;
+    return addDaysIso(base, project.review_cadence_days);
+  }
+
+  function collectReviewsDue(data, activeProjects) {
+    var today = todayIso();
+    var end = addDaysIso(today, WEEK_WINDOW_DAYS);
+    var items = [];
+    activeProjects.forEach(function (p) {
+      var due = computeNextReviewDue(p, data.weekly_reviews);
+      if (!due || due > end) return;
+      items.push({
+        kind: due < today ? "Overdue" : "Review",
+        title: p.name || "(unnamed project)",
+        projectId: p.id,
+        extra: "due " + due,
+        view: function () {
+          window.PCC.executiveCenter.viewProject(p.id, "weeklyReviews");
+          window.PCC.router.go("executiveCenter");
+          window.PCC.router.render();
+        },
+      });
+    });
+    items.sort(function (a, b) {
+      return a.extra.localeCompare(b.extra);
+    });
+    return items;
+  }
+
+  // ---- WAITING FOR --------------------------------------------------------------------
+
+  function collectWaitingFor(data, activeProjectIds) {
+    var byParty = { vendor: [], client: [], consultant: [], management: [] };
+    function push(party, item) {
+      if (byParty[party]) byParty[party].push(item);
+    }
+
+    data.rfis.forEach(function (r) {
+      if (!activeProjectIds[r.project_id] || r.status !== "open" || !r.waiting_on_party) return;
+      push(r.waiting_on_party, {
+        kind: r.type === "technical_query" ? "TQ" : "RFI",
+        title: (r.number || "") + (r.subject ? " — " + r.subject : ""),
+        projectId: r.project_id,
+        extra: "",
+        view: function () {
+          window.PCC.rfis.expandRfi(r.id);
+          window.PCC.router.go("rfis");
+          window.PCC.router.render();
+        },
+      });
+    });
+    data.change_orders.forEach(function (co) {
+      if (!activeProjectIds[co.project_id] || co.status !== "pending" || !co.waiting_on_party) return;
+      push(co.waiting_on_party, {
+        kind: "Change Order",
+        title: (co.number || "") + (co.title ? " — " + co.title : ""),
+        projectId: co.project_id,
+        extra: "",
+        view: function () {
+          window.PCC.changeOrders.expandChangeOrder(co.id);
+          window.PCC.router.go("changeOrders");
+          window.PCC.router.render();
+        },
+      });
+    });
+    data.decisions.forEach(function (d) {
+      if (!activeProjectIds[d.project_id] || d.status !== "pending" || !d.waiting_on_party) return;
+      push(d.waiting_on_party, {
+        kind: "Decision",
+        title: d.title || "(untitled decision)",
+        projectId: d.project_id,
+        extra: "",
+        view: function () {
+          window.PCC.decisionRegister.expandDecision(d.id);
+          window.PCC.router.go("decisionRegister");
+          window.PCC.router.render();
+        },
+      });
+    });
+    return byParty;
+  }
+
+  // ---- RECENTLY UPDATED ---------------------------------------------------------------
+
+  function topRecentlyUpdated(records) {
+    return records
+      .slice()
+      .sort(function (a, b) {
+        return new Date(b.updated_at) - new Date(a.updated_at);
+      })
+      .slice(0, RECENT_LIMIT);
+  }
+
+  function collectRecentlyUpdated(data, activeProjectIds, activeProjects) {
+    return {
+      projects: topRecentlyUpdated(activeProjects).map(function (p) {
+        return {
+          kind: "Project",
+          title: p.name || "(unnamed project)",
+          projectId: p.id,
+          extra: "updated " + fmtDate(p.updated_at),
+          view: function () {
+            window.PCC.executiveCenter.viewProject(p.id);
+            window.PCC.router.go("executiveCenter");
+            window.PCC.router.render();
+          },
+        };
+      }),
+      activities: topRecentlyUpdated(data.activities.filter(function (a) { return activeProjectIds[a.project_id]; })).map(function (a) {
+        return {
+          kind: "Activity",
+          title: a.name || "(unnamed activity)",
+          projectId: a.project_id,
+          extra: "updated " + fmtDate(a.updated_at),
+          view: function () {
+            window.PCC.schedule.viewActivity(a.project_id, a.schedule_id, a.id);
+            window.PCC.router.go("schedule");
+            window.PCC.router.render();
+          },
+        };
+      }),
+      rfis: topRecentlyUpdated(data.rfis.filter(function (r) { return activeProjectIds[r.project_id]; })).map(function (r) {
+        return {
+          kind: r.type === "technical_query" ? "TQ" : "RFI",
+          title: (r.number || "") + (r.subject ? " — " + r.subject : ""),
+          projectId: r.project_id,
+          extra: "updated " + fmtDate(r.updated_at),
+          view: function () {
+            window.PCC.rfis.expandRfi(r.id);
+            window.PCC.router.go("rfis");
+            window.PCC.router.render();
+          },
+        };
+      }),
+      risks: topRecentlyUpdated(data.risks.filter(function (r) { return activeProjectIds[r.project_id]; })).map(function (r) {
+        return {
+          kind: r.type === "issue" ? "Issue" : r.type === "opportunity" ? "Opportunity" : "Risk",
+          title: r.title || "(untitled)",
+          projectId: r.project_id,
+          extra: "updated " + fmtDate(r.updated_at),
+          view: function () {
+            window.PCC.risks.expandRisk(r.id);
+            window.PCC.router.go("risks");
+            window.PCC.router.render();
+          },
+        };
+      }),
+      meetings: topRecentlyUpdated(data.meetings.filter(function (m) { return activeProjectIds[m.project_id]; })).map(function (m) {
+        return {
+          kind: "Meeting",
+          title: m.title || "(untitled meeting)",
+          projectId: m.project_id,
+          extra: "updated " + fmtDate(m.updated_at),
+          view: function () {
+            window.PCC.meetings.expandMeeting(m.id);
+            window.PCC.router.go("meetings");
+            window.PCC.router.render();
+          },
+        };
+      }),
+    };
+  }
+
+  // ---- Rendering --------------------------------------------------------------------
+
+  function itemRow(item, badgeClass, projectsById) {
+    var project = item.projectId ? projectsById[item.projectId] : null;
+
+    var row = document.createElement("div");
+    row.style.display = "flex";
+    row.style.justifyContent = "space-between";
+    row.style.alignItems = "center";
+    row.style.fontSize = "13px";
+    row.style.gap = "8px";
+    row.style.padding = "6px 0";
+    row.style.borderBottom = "1px solid var(--divider)";
+
+    var text = document.createElement("span");
+    text.textContent =
+      item.title +
+      (project ? " — " + (project.name || "(unnamed project)") : "") +
+      (item.extra ? " — " + item.extra : "");
+    row.appendChild(text);
+
+    var right = document.createElement("div");
+    right.style.display = "flex";
+    right.style.alignItems = "center";
+    right.style.gap = "8px";
+    right.style.flexShrink = "0";
+
+    var badge = document.createElement("span");
+    badge.className = "status-badge status-badge--" + badgeClass;
+    badge.style.fontSize = "11px";
+    badge.textContent = item.kind;
+    right.appendChild(badge);
+
+    var viewBtn = document.createElement("button");
+    viewBtn.className = "btn btn--ghost";
+    viewBtn.textContent = "View";
+    viewBtn.onclick = item.view;
+    right.appendChild(viewBtn);
+
+    row.appendChild(right);
+    return row;
+  }
+
+  function listPanel(heading, items, emptyText, projectsById, badgeClass) {
+    var panel = document.createElement("div");
+    panel.className = "panel";
+
+    var h = document.createElement("h3");
+    h.style.marginBottom = "8px";
+    h.textContent = heading + " (" + items.length + ")";
+    panel.appendChild(h);
+
+    if (items.length === 0) {
+      var empty = document.createElement("p");
+      empty.className = "text-secondary";
+      empty.style.margin = "0";
+      empty.textContent = emptyText;
+      panel.appendChild(empty);
+      return panel;
+    }
+
+    items.forEach(function (item) {
+      panel.appendChild(itemRow(item, badgeClass, projectsById));
+    });
+    return panel;
+  }
+
+  function sectionHeading(text) {
+    var h = document.createElement("p");
+    h.className = "text-secondary";
+    h.style.fontSize = "12px";
+    h.style.fontWeight = "600";
+    h.style.letterSpacing = "0.04em";
+    h.style.margin = "24px 0 10px";
+    h.textContent = text;
+    return h;
+  }
+
+  function grid(children) {
+    var g = document.createElement("div");
+    g.style.display = "grid";
+    g.style.gridTemplateColumns = "repeat(auto-fit, minmax(280px, 1fr))";
+    g.style.gap = "16px";
+    children.forEach(function (c) { g.appendChild(c); });
+    return g;
+  }
+
+  function render(outlet) {
+    var data = window.PCC.store.get();
+    var activeProjects = data.projects.filter(function (p) { return !p.archived; });
+    var activeProjectIds = {};
+    var projectsById = {};
+    activeProjects.forEach(function (p) {
+      activeProjectIds[p.id] = true;
+      projectsById[p.id] = p;
+    });
+
+    var wrap = document.createElement("div");
+
+    var h1 = document.createElement("h2");
+    h1.textContent = "My Work";
+    h1.style.marginBottom = "4px";
+    wrap.appendChild(h1);
+
+    var sub = document.createElement("p");
+    sub.className = "text-secondary";
+    sub.style.marginTop = "0";
+    sub.style.marginBottom = "8px";
+    sub.textContent = "Your personal cockpit across " + activeProjects.length + " active project" + (activeProjects.length === 1 ? "" : "s") + ".";
+    wrap.appendChild(sub);
+
+    // ---- TODAY ----
+    wrap.appendChild(sectionHeading("TODAY"));
+    wrap.appendChild(
+      grid([
+        listPanel("Overdue Actions", collectOverdueActions(data, activeProjectIds), "Nothing overdue.", projectsById, "critical"),
+        listPanel("Today's Meetings", collectTodaysMeetings(data, activeProjectIds), "No meetings today.", projectsById, "info"),
+        listPanel("Approvals", collectApprovals(data, activeProjectIds), "Nothing pending approval.", projectsById, "at_risk"),
+        listPanel("Activities to Update", collectActivitiesToUpdate(data, activeProjectIds), "Nothing behind its own plan dates.", projectsById, "at_risk"),
+      ])
+    );
+
+    // ---- THIS WEEK ----
+    wrap.appendChild(sectionHeading("THIS WEEK"));
+    wrap.appendChild(
+      grid([
+        listPanel("Meetings", collectWeekMeetings(data, activeProjectIds), "No meetings in the next " + WEEK_WINDOW_DAYS + " days.", projectsById, "info"),
+        listPanel("Milestones", collectWeekMilestones(data, activeProjectIds), "No milestones in the next " + WEEK_WINDOW_DAYS + " days.", projectsById, "info"),
+        listPanel("Vendor Follow-ups", collectVendorFollowups(data), "Nothing due.", projectsById, "info"),
+        listPanel("Reviews", collectReviewsDue(data, activeProjects), "No reviews due.", projectsById, "info"),
+      ])
+    );
+
+    // ---- WAITING FOR ----
+    wrap.appendChild(sectionHeading("WAITING FOR"));
+    var waitingFor = collectWaitingFor(data, activeProjectIds);
+    wrap.appendChild(
+      grid([
+        listPanel("Vendor", waitingFor.vendor, "Nothing waiting on a vendor.", projectsById, "info"),
+        listPanel("Client", waitingFor.client, "Nothing waiting on the client.", projectsById, "info"),
+        listPanel("Consultant", waitingFor.consultant, "Nothing waiting on a consultant.", projectsById, "info"),
+        listPanel("Management", waitingFor.management, "Nothing waiting on management.", projectsById, "info"),
+      ])
+    );
+
+    // ---- RECENTLY UPDATED ----
+    wrap.appendChild(sectionHeading("RECENTLY UPDATED"));
+    var recent = collectRecentlyUpdated(data, activeProjectIds, activeProjects);
+    wrap.appendChild(
+      grid([
+        listPanel("Projects", recent.projects, "No recent activity.", projectsById, "info"),
+        listPanel("Activities", recent.activities, "No recent activity.", projectsById, "info"),
+        listPanel("RFIs", recent.rfis, "No recent activity.", projectsById, "info"),
+        listPanel("Risks", recent.risks, "No recent activity.", projectsById, "info"),
+        listPanel("Meetings", recent.meetings, "No recent activity.", projectsById, "info"),
+      ])
+    );
+
+    outlet.appendChild(wrap);
+  }
+
+  window.PCC.pages.myWork = render;
+})();
+
+
 /* ---- js/pages/projectLookahead.js ---- */
 /* Project Lookahead — Gate 30 (PCC Evolution Roadmap, Gate 2 of ~27). A consolidated,
  * forward-only, chronological view answering "what's coming next?" across a 7/14/30/60-day
@@ -7777,6 +8450,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     complete: "Complete",
   };
 
+  // PCC Evolution Roadmap, Tier E: Personal Workbench ("Reviews" section). Cadence is
+  // stored as a day count (review_cadence_days) so "biweekly"/"monthly" are just
+  // different numbers rather than new enum states — see newProject() in store.js.
+  var REVIEW_CADENCE_OPTIONS = [7, 14, 30];
+  var REVIEW_CADENCE_LABELS = { 7: "Weekly", 14: "Biweekly", 30: "Monthly" };
+
   var FIELD_CONFIG = [
     { key: "name", label: "Project Name", type: "text", required: true },
     // Gate 16 (Document Control 3: Nomenclature): short code used as the PROJECT token
@@ -7808,6 +8487,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     { key: "contractor", label: "Contractor", type: "text" },
     { key: "consultant", label: "Consultant", type: "text" },
     { key: "owner", label: "Owner", type: "text" },
+    { key: "review_cadence_days", label: "Review Cadence", type: "cadence_select" },
   ];
 
   // View-local UI state (not persisted — resets each time you navigate away and back).
@@ -7885,6 +8565,19 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         input.appendChild(opt);
       });
       input.value = project[cfg.key] || "on_track";
+    } else if (cfg.type === "cadence_select") {
+      input = document.createElement("select");
+      var noneOpt = document.createElement("option");
+      noneOpt.value = "";
+      noneOpt.textContent = "None";
+      input.appendChild(noneOpt);
+      REVIEW_CADENCE_OPTIONS.forEach(function (days) {
+        var opt = document.createElement("option");
+        opt.value = String(days);
+        opt.textContent = REVIEW_CADENCE_LABELS[days];
+        input.appendChild(opt);
+      });
+      input.value = project[cfg.key] != null ? String(project[cfg.key]) : "";
     } else {
       input = document.createElement("input");
       input.type = cfg.type;
@@ -7907,7 +8600,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     FIELD_CONFIG.forEach(function (cfg) {
       var el = formEl.querySelector("#field-" + cfg.key);
       if (!el) return;
-      if (cfg.type === "number") {
+      if (cfg.type === "number" || cfg.type === "cadence_select") {
         values[cfg.key] = el.value === "" ? null : Number(el.value);
       } else {
         values[cfg.key] = el.value;
@@ -10662,9 +11355,13 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
   window.PCC.pages.executiveCenter = renderPage;
   window.PCC.executiveCenter = {
-    viewProject: function (projectId) {
+    // PCC Evolution Roadmap, Tier E: Personal Workbench — optional second argument lands
+    // directly on a specific tab (e.g. "weeklyReviews" for a Review due), same "land
+    // exactly on the linked record" convention vendors.js's openProfile(vendorId, tab)
+    // already established. Defaults to "overview" so every existing caller is unaffected.
+    viewProject: function (projectId, tab) {
       uiState.projectId = projectId;
-      uiState.tab = "overview";
+      uiState.tab = tab || "overview";
     },
     /** Gate 31 (PCC Evolution Roadmap Gate 3: Management Attention) — the Dashboard's
      * portfolio-wide attention panel needs the same rule-based diagnostics this page's own
@@ -12644,6 +13341,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     statusGrid.appendChild(
       buildField({ key: "status", label: "Status", type: "select", options: window.PCC.store.VENDOR_STATUSES, labels: VENDOR_STATUS_LABELS }, vendor, "vendorfield-")
     );
+    // PCC Evolution Roadmap, Tier E: Personal Workbench ("Vendor Follow-ups" section) —
+    // a manual reminder date, independent of any document due-date computation.
+    statusGrid.appendChild(buildField({ key: "next_follow_up_date", label: "Next Follow-up Date", type: "date" }, vendor, "vendorfield-"));
     form.appendChild(statusGrid);
 
     var notesField = document.createElement("div");
@@ -12693,6 +13393,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       var values = readFieldValues(form, VENDOR_FIELD_CONFIG, "vendorfield-");
       Object.assign(values, readFieldValues(form, VENDOR_ADDRESS_FIELD_CONFIG, "vendorfield-"));
       values.status = form.querySelector("#vendorfield-status").value;
+      values.next_follow_up_date = form.querySelector("#vendorfield-next_follow_up_date").value;
       values.notes = notesArea.value;
 
       if (!values.vendor_name || !values.vendor_name.trim()) {
@@ -13310,6 +14011,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     grid.appendChild(
       row("Address", [vendor.office_address, vendor.city, vendor.state, vendor.country, vendor.postal_code].filter(Boolean).join(", "))
     );
+    grid.appendChild(row("Next Follow-up Date", vendor.next_follow_up_date));
     panel.appendChild(grid);
 
     if (vendor.notes) {
@@ -24442,6 +25144,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   var TYPE_LABELS = { rfi: "RFI", technical_query: "Technical Query" };
   var STATUS_LABELS = { open: "Open", answered: "Answered", closed: "Closed" };
   var PRIORITY_LABELS = { low: "Low", medium: "Medium", high: "High" };
+  // PCC Evolution Roadmap, Tier E: Personal Workbench ("Waiting For" section).
+  var WAITING_ON_LABELS = { vendor: "Vendor", client: "Client", consultant: "Consultant", management: "Management" };
 
   var FIELD_CONFIG = [
     { key: "subject", label: "Subject", type: "text", required: true },
@@ -24451,6 +25155,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     { key: "assigned_to", label: "Assigned To", type: "text" },
     { key: "date_raised", label: "Date Raised", type: "date" },
     { key: "date_required", label: "Response Required By", type: "date" },
+    { key: "waiting_on_party", label: "Waiting On", type: "select", options: "WAITING_ON_PARTIES", labels: WAITING_ON_LABELS, optional: true },
     { key: "question", label: "Question / Query", type: "textarea", required: true },
   ];
 
@@ -24494,13 +25199,19 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var input;
     if (cfg.type === "select") {
       input = document.createElement("select");
+      if (cfg.optional) {
+        var noneOpt = document.createElement("option");
+        noneOpt.value = "";
+        noneOpt.textContent = "Not set";
+        input.appendChild(noneOpt);
+      }
       window.PCC.store[cfg.options].forEach(function (val) {
         var opt = document.createElement("option");
         opt.value = val;
         opt.textContent = cfg.labels[val] || val;
         input.appendChild(opt);
       });
-      input.value = rfi[cfg.key];
+      input.value = rfi[cfg.key] || "";
     } else if (cfg.type === "textarea") {
       input = document.createElement("textarea");
       input.rows = 3;
@@ -25294,6 +26005,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   window.PCC.pages = window.PCC.pages || {};
 
   var STATUS_LABELS = { pending: "Pending", approved: "Approved", rejected: "Rejected", closed: "Closed" };
+  // PCC Evolution Roadmap, Tier E: Personal Workbench ("Waiting For" section).
+  var WAITING_ON_LABELS = { vendor: "Vendor", client: "Client", consultant: "Consultant", management: "Management" };
 
   var uiState = {
     search: "",
@@ -25336,6 +26049,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       justification: formEl.querySelector("#cofield-justification").value,
       requested_by: formEl.querySelector("#cofield-requested_by").value,
       date_requested: formEl.querySelector("#cofield-date_requested").value,
+      waiting_on_party: formEl.querySelector("#cofield-waiting_on_party").value,
       cost_impact_amount: formEl.querySelector("#cofield-cost_impact_amount").value,
       schedule_impact_days: formEl.querySelector("#cofield-schedule_impact_days").value,
     };
@@ -25496,9 +26210,45 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       return f;
     }
 
+    function selectField(id, label, options, labels, value, includeNone) {
+      var f = document.createElement("div");
+      f.className = "field";
+      var l = document.createElement("label");
+      l.textContent = label;
+      l.setAttribute("for", id);
+      var s = document.createElement("select");
+      s.id = id;
+      if (includeNone) {
+        var noneOpt = document.createElement("option");
+        noneOpt.value = "";
+        noneOpt.textContent = "Not set";
+        s.appendChild(noneOpt);
+      }
+      options.forEach(function (val) {
+        var opt = document.createElement("option");
+        opt.value = val;
+        opt.textContent = labels[val] || val;
+        s.appendChild(opt);
+      });
+      s.value = value || "";
+      f.appendChild(l);
+      f.appendChild(s);
+      return f;
+    }
+
     grid.appendChild(textField("cofield-title", "Title", co.title, true));
     grid.appendChild(textField("cofield-requested_by", "Requested By", co.requested_by));
     grid.appendChild(dateField("cofield-date_requested", "Date Requested", co.date_requested));
+    grid.appendChild(
+      selectField(
+        "cofield-waiting_on_party",
+        "Waiting On",
+        window.PCC.store.WAITING_ON_PARTIES,
+        WAITING_ON_LABELS,
+        co.waiting_on_party,
+        true
+      )
+    );
     grid.appendChild(
       numberField(
         "cofield-cost_impact_amount",
@@ -26124,12 +26874,15 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   window.PCC.pages = window.PCC.pages || {};
 
   var STATUS_LABELS = { pending: "Pending", decided: "Decided", deferred: "Deferred", superseded: "Superseded" };
+  // PCC Evolution Roadmap, Tier E: Personal Workbench ("Waiting For" section).
+  var WAITING_ON_LABELS = { vendor: "Vendor", client: "Client", consultant: "Consultant", management: "Management" };
 
   var FIELD_CONFIG = [
     { key: "title", label: "Title", type: "text", required: true },
     { key: "status", label: "Status", type: "select", options: "DECISION_STATUSES", labels: STATUS_LABELS },
     { key: "decision_date", label: "Decision Date", type: "date" },
     { key: "decided_by", label: "Decided By", type: "text" },
+    { key: "waiting_on_party", label: "Waiting On", type: "select", options: "WAITING_ON_PARTIES", labels: WAITING_ON_LABELS, optional: true },
     { key: "description", label: "Context / Background", type: "textarea" },
     { key: "decision", label: "Decision", type: "textarea" },
   ];
@@ -26164,13 +26917,19 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var input;
     if (cfg.type === "select") {
       input = document.createElement("select");
+      if (cfg.optional) {
+        var noneOpt = document.createElement("option");
+        noneOpt.value = "";
+        noneOpt.textContent = "Not set";
+        input.appendChild(noneOpt);
+      }
       window.PCC.store[cfg.options].forEach(function (val) {
         var opt = document.createElement("option");
         opt.value = val;
         opt.textContent = cfg.labels[val] || val;
         input.appendChild(opt);
       });
-      input.value = decision[cfg.key];
+      input.value = decision[cfg.key] || "";
     } else if (cfg.type === "textarea") {
       input = document.createElement("textarea");
       input.rows = 3;
@@ -29716,6 +30475,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     router.register("dashboard", window.PCC.pages.dashboard);
     router.register("actionCentre", window.PCC.pages.actionCentre);
+    router.register("myWork", window.PCC.pages.myWork);
     router.register("projectLookahead", window.PCC.pages.projectLookahead);
     router.register("portfolio", window.PCC.pages.portfolio);
     router.register("executiveCenter", window.PCC.pages.executiveCenter);

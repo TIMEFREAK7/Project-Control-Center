@@ -342,6 +342,9 @@
     statusGrid.appendChild(
       buildField({ key: "status", label: "Status", type: "select", options: window.PCC.store.VENDOR_STATUSES, labels: VENDOR_STATUS_LABELS }, vendor, "vendorfield-")
     );
+    // PCC Evolution Roadmap, Tier E: Personal Workbench ("Vendor Follow-ups" section) —
+    // a manual reminder date, independent of any document due-date computation.
+    statusGrid.appendChild(buildField({ key: "next_follow_up_date", label: "Next Follow-up Date", type: "date" }, vendor, "vendorfield-"));
     form.appendChild(statusGrid);
 
     var notesField = document.createElement("div");
@@ -391,6 +394,7 @@
       var values = readFieldValues(form, VENDOR_FIELD_CONFIG, "vendorfield-");
       Object.assign(values, readFieldValues(form, VENDOR_ADDRESS_FIELD_CONFIG, "vendorfield-"));
       values.status = form.querySelector("#vendorfield-status").value;
+      values.next_follow_up_date = form.querySelector("#vendorfield-next_follow_up_date").value;
       values.notes = notesArea.value;
 
       if (!values.vendor_name || !values.vendor_name.trim()) {
@@ -1008,6 +1012,7 @@
     grid.appendChild(
       row("Address", [vendor.office_address, vendor.city, vendor.state, vendor.country, vendor.postal_code].filter(Boolean).join(", "))
     );
+    grid.appendChild(row("Next Follow-up Date", vendor.next_follow_up_date));
     panel.appendChild(grid);
 
     if (vendor.notes) {

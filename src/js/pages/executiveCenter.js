@@ -677,9 +677,13 @@
 
   window.PCC.pages.executiveCenter = renderPage;
   window.PCC.executiveCenter = {
-    viewProject: function (projectId) {
+    // PCC Evolution Roadmap, Tier E: Personal Workbench — optional second argument lands
+    // directly on a specific tab (e.g. "weeklyReviews" for a Review due), same "land
+    // exactly on the linked record" convention vendors.js's openProfile(vendorId, tab)
+    // already established. Defaults to "overview" so every existing caller is unaffected.
+    viewProject: function (projectId, tab) {
       uiState.projectId = projectId;
-      uiState.tab = "overview";
+      uiState.tab = tab || "overview";
     },
     /** Gate 31 (PCC Evolution Roadmap Gate 3: Management Attention) — the Dashboard's
      * portfolio-wide attention panel needs the same rule-based diagnostics this page's own

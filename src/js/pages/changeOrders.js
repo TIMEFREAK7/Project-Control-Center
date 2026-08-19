@@ -4,6 +4,8 @@
   window.PCC.pages = window.PCC.pages || {};
 
   var STATUS_LABELS = { pending: "Pending", approved: "Approved", rejected: "Rejected", closed: "Closed" };
+  // PCC Evolution Roadmap, Tier E: Personal Workbench ("Waiting For" section).
+  var WAITING_ON_LABELS = { vendor: "Vendor", client: "Client", consultant: "Consultant", management: "Management" };
 
   var uiState = {
     search: "",
@@ -46,6 +48,7 @@
       justification: formEl.querySelector("#cofield-justification").value,
       requested_by: formEl.querySelector("#cofield-requested_by").value,
       date_requested: formEl.querySelector("#cofield-date_requested").value,
+      waiting_on_party: formEl.querySelector("#cofield-waiting_on_party").value,
       cost_impact_amount: formEl.querySelector("#cofield-cost_impact_amount").value,
       schedule_impact_days: formEl.querySelector("#cofield-schedule_impact_days").value,
     };
@@ -206,9 +209,45 @@
       return f;
     }
 
+    function selectField(id, label, options, labels, value, includeNone) {
+      var f = document.createElement("div");
+      f.className = "field";
+      var l = document.createElement("label");
+      l.textContent = label;
+      l.setAttribute("for", id);
+      var s = document.createElement("select");
+      s.id = id;
+      if (includeNone) {
+        var noneOpt = document.createElement("option");
+        noneOpt.value = "";
+        noneOpt.textContent = "Not set";
+        s.appendChild(noneOpt);
+      }
+      options.forEach(function (val) {
+        var opt = document.createElement("option");
+        opt.value = val;
+        opt.textContent = labels[val] || val;
+        s.appendChild(opt);
+      });
+      s.value = value || "";
+      f.appendChild(l);
+      f.appendChild(s);
+      return f;
+    }
+
     grid.appendChild(textField("cofield-title", "Title", co.title, true));
     grid.appendChild(textField("cofield-requested_by", "Requested By", co.requested_by));
     grid.appendChild(dateField("cofield-date_requested", "Date Requested", co.date_requested));
+    grid.appendChild(
+      selectField(
+        "cofield-waiting_on_party",
+        "Waiting On",
+        window.PCC.store.WAITING_ON_PARTIES,
+        WAITING_ON_LABELS,
+        co.waiting_on_party,
+        true
+      )
+    );
     grid.appendChild(
       numberField(
         "cofield-cost_impact_amount",
