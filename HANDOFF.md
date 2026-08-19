@@ -61,105 +61,60 @@ that override default behavior).
   populated state, and again on the zip-verification pass) and send the PNGs via `SendUserFile`
   before or alongside the written report. Applies to every gate from here on, not just this one.
 
-## Where things stand — Tier C (Project Performance) is now COMPLETE, all four areas merged into `main`
+## Where things stand — Tiers A, B, and C are COMPLETE; Tier D (Management) is underway
 
-`main` is fully up to date through the **Decision Register** gate (PCC Evolution Roadmap, Tier C:
-Project Performance's fourth and final built gate), merge commit `d57a056`, `schema_version` **38**
-(new `decisions` array). This session started with a **Tier C inspection** (not a numbered roadmap
-gate on its own) — Aditya asked for the same "inspect before proposing" pass Tier B got, this time
-against **Tier C**: Progress Management, Vendor Performance Centre, Delay & Recovery Management,
-Decision Register. Findings (see the "PCC Evolution Roadmap" section below for full detail):
+`main` is fully up to date through the **Weekly Project Review** gate (PCC Evolution Roadmap,
+Tier D: Management's first built gate), merge commit `c3af1d9`, `schema_version` **39** (new
+`weekly_reviews` array). See the "PCC Evolution Roadmap" section below for the complete gate-by-
+gate history — this section covers only the current tier's state.
 
-- **Progress Management** — mostly built, but `physical_progress` (a schema field since Gate 1,
-  distinct from `percent_complete`) was never wired to any data-entry UI, while Executive Center
-  had already been silently averaging it into a "Physical Progress" KPI/report line that therefore
-  always read 0.0% on every project. Confirmed via `AskUserQuestion` (fix now vs. later; if fixing,
-  collapse to one metric vs. build the real second metric) — Aditya chose **fix now, build it as a
-  real second metric**. Now wired: an editable `Physical Progress (%)` field on the Activity form
-  (`ACTIVITY_FIELD_CONFIG`), a read-only row in the Activity Detail Panel, and it shows in the
-  Activities-tab list row alongside `% Complete`. Deliberately kept OUT of the Gate 2 import
-  mapping and the Gate 12 in-app Excel editor grid — `percent_complete` is schedule-file-derived,
-  `physical_progress` is meant to be a manual, site-assessed figure, so mirroring it into the
-  bulk/import paths would blur that distinction. `costEvmEngine.js`'s EV calculation was
-  deliberately left alone (still uses `percent_complete` only) — changing what drives Earned Value
-  is a bigger, separate decision nobody asked for here. **Fixed this round** — see below.
-- **Vendor Performance Centre** — the per-vendor data model and entry flow were already fully
-  built (Gate 13's `vendor_performance` records: quality/delivery/communication/safety ratings
-  0-5, a running average, inside each Vendor Profile's "Performance" tab). What was missing: any
-  portfolio-wide view — the vendor list page showed no rating at all, no ranking/worst-first
-  dashboard, no other page referenced `vendor_performance`. **Built this round** — see below.
-- **Delay & Recovery Management** — Delay analysis already exists and is shipped:
-  `scheduleBaselineEngine.compareBaselineToCurrent()` computes finish variance, delayed/ahead/
-  on-time counts, and max delay days, wired into the Schedule module's baseline-compare UI (Gate
-  4/5). **Recovery did not exist at all** — grepped the whole `src/` tree; every "recovery" hit was
-  the unrelated corrupted-data-backup feature. No recovery plan, corrective-action tracking, or
-  recovery schedule concept anywhere. **Built this round** — see below.
-- **Decision Register** — did not exist at all. No `decisions` array in `store.js`'s data object;
-  every "decision" hit in the codebase was just the English word inside Change Order/RFI approval
-  flows (`decision_by`, "pending decision" copy), not a register. Same shape as Risk Register or
-  RFI/TQ. **Built this round** — see below.
+**Tier C (Project Performance) — complete, four gates, all built and merged in an earlier round
+this session** (physical_progress fix, Vendor Performance Centre, Delay & Recovery Management,
+Decision Register — merge commits `fba3d42` → `0801b10` → `4882f79` → `d57a056`). Full detail on
+each is preserved in the roadmap section below; nothing more to add here.
 
-Four gates were built and merged this session, each following the same rebuild → full suite →
-merge (no PR, standing instruction, see above) → push `main` sequence used for every prior gate:
+**Tier D (Management) — inspected this session against its three named gates** (Aditya provided
+these directly, since the original roadmap doc was never saved as a file in this repo): Gate 13
+Weekly Project Review, Gate 14 Executive Centre, Gate 15 Executive Summary/Reporting. Findings:
 
-1. **physical_progress fix** (merge `fba3d42`) — confirmed via `AskUserQuestion`. New test file
-   `test_activity_physical_progress_e2e.js` (29 checks). Real-Chromium pass confirmed the new
-   field persists independently of `percent_complete`, displays correctly in both the Activity
-   Detail Panel and the activities list, and Executive Center's Schedule Progress / Physical
-   Progress KPIs show two distinct, correct values — zero console/page errors.
-2. **Vendor Performance Centre** (merge `0801b10`) — confirmed via `AskUserQuestion` to build a
-   new dedicated page (`pages/vendorPerformanceCentre.js`, sidebar entry right after Vendors)
-   rather than extend the existing Vendor Dashboard, matching the roadmap's literal naming and the
-   Document Control Dashboard's own precedent (Gate 26). KPI cards (Total/Reviewed/Not Yet
-   Reviewed/Portfolio Avg Rating), a worst-first ranked panel, and a separate "Not Yet Reviewed"
-   list so unrated vendors are never conflated with a 0/5 score. `vendors.js`'s `openProfile()`
-   gained an optional `tab` argument (defaults to `"overview"`, every existing caller unaffected)
-   so "View Profile" lands directly on the Performance tab. Read-only — writes nothing back to
-   `vendor_performance`. New test file `test_vendor_performance_centre_e2e.js` (31 checks).
-3. **Delay & Recovery Management** (merge `4882f79`) — confirmed via `AskUserQuestion` on two
-   decisions: recovery actions attach to Schedule Activities (not whole Projects), and this gate
-   includes both the entry point and a portfolio-wide dashboard together (same combined scope as
-   Vendor Performance Centre). New `recovery_actions` array (`schema_version` 36→37): activity
-   link, description, responsible person, target recovery date, status
-   (open/in_progress/completed/cancelled) — deliberately decoupled from any one baseline
-   comparison, since Gate 4's baseline compare is on-demand/ephemeral, not stored. The Schedule
-   module's Activity Detail Panel gains a **"Recovery Actions"** section (full add/edit/remove,
-   same inline-CRUD pattern as vendors.js's Performance tab) right after Document Readiness;
-   deleting an activity now cascades its recovery actions (unlike risks/rfis/meetings, whose
-   `activity_id` link is allowed to go stale — a recovery action has no existence apart from the
-   activity it recovers). New page `pages/delayRecoveryDashboard.js`, sidebar entry in PLANNING
-   right after Schedule: KPI cards (Total/Open/Overdue/Completed), an overdue-first list of open
-   recovery actions across the portfolio with "View in Schedule" navigation, and a separate
-   Completed/Cancelled section. Deliberately does NOT try to re-derive delay/baseline stats
-   portfolio-wide — which baseline to compare per schedule is a real ambiguity this gate doesn't
-   resolve; delay analysis itself stays exactly where it already lived, in each schedule's own
-   Baselines tab. Schema migration test renamed `test_store_schema_v36_migration.js` →
-   `test_store_schema_v37_migration.js` per the established canonical-file convention. Two new
-   test files: `test_recovery_actions_e2e.js` (32 checks), `test_delay_recovery_dashboard_e2e.js`
-   (30 checks).
-4. **Decision Register** (merge `d57a056`) — confirmed via `AskUserQuestion` to include the meeting
-   integration (raise a Decision directly from a Meeting) in this same gate, rather than deferring
-   it. New `decisions` array (`schema_version` 37→38): same project-scoped register shape as
-   Risk/Issue/Opportunity and RFI/TQ — `title`, `description` (context/background), `decision` (the
-   actual decision text, left empty until status moves to "decided"), `decided_by`,
-   `decision_date`, `status` (pending/decided/deferred/superseded), plus the same optional
-   `activity_id` (Gate 10 pattern) and `source_meeting_id` (the Risk/RFI/Change Order pattern)
-   every comparable register already has. New page `pages/decisionRegister.js`, sidebar entry in
-   REGISTERS right after Change Mgmt — full add/edit/delete, search/status/project filters, a
-   Details view with "View in Gantt" (linked activity) and "View Meeting" (source meeting) buttons.
-   No heatmap (that's risk-specific) and no cross-register raise button (not asked). `pages/
-   meetings.js` gains a "+ Add Decision" quick action (reusing the exact
-   `createFromMeeting()`/`pendingPrefill` pattern Risk/RFI/Change Orders already use) and a reverse
-   "DECISIONS RAISED" list in the meeting's own Details, matching the existing RISKS/RFI/CHANGE
-   ORDERS RAISED sections verbatim. **This closes out all four Tier C areas.** Schema migration
-   test renamed `test_store_schema_v37_migration.js` → `test_store_schema_v38_migration.js`. New
-   test file `test_decision_register_e2e.js` (35 checks, including the full meeting round-trip).
+- **Executive Centre** — already fully built as Gate 9's Project Executive Center. Nothing to do.
+- **Executive Summary/Reporting** — mostly already built (Gate 9's six-section summary + the
+  Reports module's Project Status/Portfolio Summary reports), BUT a real gap found: none of the
+  three Tier C registers (Vendor Performance, Recovery Actions, Decisions) are represented in
+  Executive Summary's auto-text, Reports' sections, or Dashboard's Management Attention panel —
+  every comparable register (Risk, RFI, Change Orders, etc.) has one, these don't. **Not fixed
+  this round** — flagged as a separate, smaller follow-on, distinct from the Weekly Review gate.
+- **Weekly Project Review** — did not exist at all. No persisted review record anywhere; the
+  closest artifact (Executive Center's Project Snapshot print view) is explicitly commented as fit
+  for "weekly/client/steering-committee use" but is a live, ephemeral render with no saved
+  history. **Built this round** — confirmed via `AskUserQuestion` to capture a frozen KPI snapshot
+  per review (not a notes-only log) for trend tracking.
 
-All four real-Chromium passes (screenshots taken and sent, per the standing instruction below)
-showed zero console errors. The full test suite (**38 files, 913 checks**) passes clean as of this
-handoff. **No branch currently carries unmerged app features** — `claude/tier-c-code-inspection-
-jysweb` was merged into `main` in full (four direct merges, `fba3d42` → `0801b10` → `4882f79` →
-`d57a056`) and should be restarted from the new `main` before the next gate. Verify with
+**Weekly Project Review** (merge `c3af1d9`): new `weekly_reviews` array — `review_date`,
+`attendees`, `reviewed_by`, three notes fields (Progress This Week/Issues & Blockers/Actions for
+Next Week), and a `snapshot` object frozen at creation from `executiveCenter.js`'s own
+`buildProjectContext()`/`computeHealthScore()` and never recalculated afterward, same "frozen
+record, not a live view" precedent Gate 4's Schedule Baselines established. `buildProjectContext()`
+gained Recovery Actions/Decisions sections it didn't have before (needed for the snapshot — a
+first, partial step toward the Executive Summary/Reports gap above, though that gap is not fully
+closed). New third tab **"Weekly Reviews"** in Executive Center, alongside Overview and Snapshot &
+Management Pack — had to live here rather than as a standalone page, since a separate page would
+need either a new exported API or to duplicate ~220 lines of context-building logic (the exact
+case this file already flags as too large to duplicate, per Gate 31's own precedent). Full
+add/edit(notes-only)/delete, a chronological list, and a simple delta marker (▲/▼) against the
+previous review's health score and progress once two reviews exist. Schema migration test renamed
+`test_store_schema_v38_migration.js` → `test_store_schema_v39_migration.js`. New test file
+`test_weekly_reviews_e2e.js` (33 checks, including confirming the snapshot stays frozen after live
+data changes underneath it — closing an already-reviewed risk afterward must not retroactively
+change what an earlier review showed).
+
+Real-Chromium pass (screenshot taken and sent, per the standing instruction below) confirmed
+capturing a review, its frozen snapshot and RAG badge, and the notes-only edit path — zero console
+errors. The full test suite (**39 files, 947 checks**) passes clean as of this handoff. **No
+branch currently carries unmerged app features** — `claude/tier-c-code-inspection-jysweb` (name is
+now stale relative to its content — it's carried every gate this session, Tier C and D alike; a
+future session may want to start a fresh branch with a name matching current work) was merged into
+`main` in full and should be restarted from the new `main` before the next gate. Verify with
 `git log origin/main..HEAD` before assuming this is still true by the time you read this.
 
 **The entire 14-gate Document Control sub-spec Aditya originally handed over is complete (Gates
@@ -395,7 +350,7 @@ that back-and-forth pattern held for all 14 gates through to the last one.
   "Document Control Compliance" `<h3>`, returns its `parentElement`) instead of searching the
   whole page.
 
-### PCC Evolution Roadmap (Gates 29-33 = roadmap's own Gates 1-5) — 5 of ~27 gates done, Tiers A + B + C all complete
+### PCC Evolution Roadmap (Gates 29-33 = roadmap's own Gates 1-5) — 5 of ~27 gates done, Tiers A + B + C complete, Tier D underway
 
 Aditya handed over a large roadmap (Tiers A-F: Daily Planner Value, Control Integration, Project
 Performance, Management, Portfolio, then Tier F's advanced planning/controls gates — Resource
@@ -611,13 +566,63 @@ view — that became the Planner Action Centre.
 **PCC Evolution Roadmap: Tiers A, B, and C are all now complete.** Tier C (Project Performance) was
 inspected against the real code this session and all four of its areas are done: Progress
 Management (the `physical_progress` bug fixed), Vendor Performance Centre, Delay & Recovery
-Management, and Decision Register. ~22 more gates remain across Tiers D-F (Management, Portfolio,
-then Tier F's advanced planning/controls gates — Commitment Management, Status-Date Control,
-Reforecasting, Baseline/Revision Control, Advanced Delay Analysis, Recovery Planning, Schedule
-Performance — note some of these names may already be partially covered by gates built this
-session; the next session should inspect before assuming, same as every tier so far). Next roadmap
-gate: not yet scoped — per the roadmap's own gate discipline, inspect Tier D against the real code
-first, then propose one gate, get "yes, build it," then build only that.
+Management, and Decision Register.
+
+### Tier D (Management) — in progress
+
+Unlike Tiers B and C, **the original roadmap document was never saved as a file anywhere in this
+repo** — Tier D's three named gates came directly from Aditya, mid-session, when asked: **Gate
+13 Weekly Project Review, Gate 14 Executive Centre, Gate 15 Executive Summary/Reporting.** If a
+future session needs Tier E (Portfolio) or Tier F's gate names in this same level of detail, ask
+Aditya the same way rather than guessing from the one-line tier summary in the "What this project
+is" section below.
+
+- **Executive Centre** — inspected, already fully built as Gate 9's Project Executive Center
+  (per-project KPI rollups, health score, diagnostics, editable Executive Summary, SVG charts,
+  print views). Nothing to build.
+- **Executive Summary/Reporting** — inspected, mostly already built (Gate 9's summary + the
+  Reports module), but a real gap found: checked `autoChallengesText()`/`autoAttentionText()` in
+  `executiveCenter.js` and `buildProjectReport()`/`buildPortfolioReport()` in `reports.js` line by
+  line — none of the three Tier C registers (Vendor Performance, Recovery Actions, Decisions) are
+  referenced anywhere in them, even though every comparable register (Risk, RFI, Change Orders,
+  Documents, Meetings, Daily Log) has its own section/mention. Dashboard's Management Attention
+  panel (Gate 31) inherits the same blind spot since it reuses the same diagnostics engine. **Not
+  fixed this round** — this is a distinct, smaller follow-on gate from Weekly Project Review, still
+  unscoped.
+- **Weekly Project Review (built this session).** Confirmed via `AskUserQuestion`: capture a
+  frozen KPI snapshot per review (health score, RAG, schedule/physical progress %, cost
+  budget/actual/variance, open risks incl. high-severity, open/overdue RFIs, pending change
+  orders, open/overdue recovery actions, pending decisions) rather than a simpler notes-only log —
+  Aditya chose the snapshot approach for trend tracking. New `weekly_reviews` array
+  (`schema_version` 38→39): `review_date`/`attendees`/`reviewed_by`, three notes fields (Progress
+  This Week/Issues & Blockers/Actions for Next Week), and a `snapshot` object frozen once at
+  creation and never recalculated — same "frozen record, not a live view" precedent Gate 4's
+  Schedule Baselines established (a review from a month ago shows what was true then, confirmed by
+  a test that closes a risk after saving a review and checks the saved review's snapshot doesn't
+  change). `buildProjectContext()` in `executiveCenter.js` gained Recovery Actions/Decisions
+  sections it didn't have before, needed to compute the snapshot — a first, partial step toward
+  the Executive Summary/Reports gap above, though that gap isn't fully closed (Executive Summary's
+  own auto-text and Reports' sections still don't mention them; only the new Weekly Review
+  snapshot does). New third tab **"Weekly Reviews"** in Executive Center (alongside Overview and
+  Snapshot & Management Pack) — had to live inside `executiveCenter.js` rather than as a standalone
+  page, since a separate page would need either a new exported API or to duplicate
+  `buildProjectContext()`'s ~220 lines (the exact case Gate 31's own precedent already flagged as
+  too large to duplicate). Full add/edit(notes-only, snapshot stays frozen)/delete, a chronological
+  list (newest first), and a simple ▲/▼ delta marker against the previous review's health score and
+  progress once two reviews exist for a project. Schema migration test renamed
+  `test_store_schema_v38_migration.js` → `test_store_schema_v39_migration.js`. New test file
+  `test_weekly_reviews_e2e.js` (33 checks) plus a 22-route smoke test. Merge commit `c3af1d9`.
+
+**Next roadmap gate: not yet scoped.** Tiers A, B, and C are complete; Tier D has Executive Centre
+done, Weekly Project Review built, and one gap identified but not yet built: wiring the three
+Tier C registers into Executive Summary's auto-text, Reports' sections, and Dashboard's
+Management Attention panel. Propose that (or ask Aditya if Tier D should be considered done enough
+to move to Tier E/F instead — the three named Tier D gates are all now either built or explicitly
+assessed as already-satisfied). ~21 more gates remain across Tiers E-F (Portfolio, then Tier F's
+advanced planning/controls gates — Commitment Management, Status-Date Control, Reforecasting,
+Baseline/Revision Control, Advanced Delay Analysis, Recovery Planning, Schedule Performance — note
+some of these names may already be partially covered by gates built this session; get the named
+breakdown from Aditya directly, the same way Tier D's came, rather than guessing).
 
 **Deliberately still open / explicitly deferred, don't assume these got done:**
 - Reconciling Documents' `category` / Vendor's `VENDOR_DOCUMENT_CATEGORIES` / the Gate 14 master
@@ -704,7 +709,7 @@ first, then propose one gate, get "yes, build it," then build only that.
   there fails `npm test` with a bare `MODULE_NOT_FOUND` even though every individual test file is
   fine (hit this exact thing shipping Gate 19; fixed by editing `tests/package.json` alongside the
   `git mv`).
-- Testing: `cd tests && npm test` must pass before anything ships (38 files, 913 checks as of
+- Testing: `cd tests && npm test` must pass before anything ships (39 files, 947 checks as of
   this handoff). Pure-logic tests eval the real source file directly. E2E tests load the actual
   bundled `index.html` via jsdom (+ `fake-indexeddb` for IndexedDB-touching code). Also do one
   real-Chromium pass per gate (`/opt/pw-browsers/chromium-1194/chrome-linux/chrome --no-sandbox`,
@@ -759,39 +764,44 @@ first, then propose one gate, get "yes, build it," then build only that.
 
 ## Repo/branch state
 
-`main` is fully up to date through the **Decision Register** gate (`d57a056`, a direct merge — no
-PR, per Aditya's now-standing "always merge after completing a gate/phase" instruction, see
-above) — **Tier C (Project Performance) is now fully complete.** Four rounds landed on `main` this
-session, all via the same designated remote-session branch, `claude/tier-c-code-inspection-jysweb`,
-restarted from the new `main` between each per the standing "restart before the next gate"
-instruction: the Tier C inspection + `physical_progress` fix first (merge `fba3d42`), then Vendor
-Performance Centre (merge `0801b10`), then Delay & Recovery Management (merge `4882f79`), then
-Decision Register (merge `d57a056`). Aditya confirmed via `AskUserQuestion` to proceed with each
-merge given the branch's own "never push elsewhere without permission" constraint; see the git log
-for the exact sequence if that matters later. This builds on top of **Tier B (Control
-Integration)**, complete as of Gate 33, and the already-complete 14-gate Document Control sub-spec.
-`schema_version` on `main` is **38** (`decisions` — new every round except Vendor Performance
-Centre, which was read-only). `claude/tier-c-code-inspection-jysweb` carries the same history as
-`main` as of this merge (nothing unmerged on it) but was NOT reset/deleted after this *fourth*
-merge — do that (or just start a fresh branch) before the next gate, per the standing "restart the
-working branch from the new main" instruction. No branch carries unmerged app features as of this
-handoff. Verify with `git log origin/main..HEAD` and `git status` before assuming this is still
-true by the time you read this.
+`main` is fully up to date through the **Weekly Project Review** gate (`c3af1d9`, a direct merge —
+no PR, per Aditya's now-standing "always merge after completing a gate/phase" instruction, see
+above) — **Tiers A, B, and C are fully complete; Tier D (Management) is underway** (Executive
+Centre already satisfied, Weekly Project Review built, Executive Summary/Reporting's Tier-C-blind-
+spot gap still open). Five rounds landed on `main` this session, all via the same designated
+remote-session branch, `claude/tier-c-code-inspection-jysweb` (name is stale now — it's carried
+Tier C and D gates alike), restarted from the new `main` between each per the standing "restart
+before the next gate" instruction: the Tier C inspection + `physical_progress` fix first (merge
+`fba3d42`), then Vendor Performance Centre (merge `0801b10`), then Delay & Recovery Management
+(merge `4882f79`), then Decision Register (merge `d57a056`), then Weekly Project Review (merge
+`c3af1d9`). Aditya confirmed via `AskUserQuestion` to proceed with each merge given the branch's
+own "never push elsewhere without permission" constraint; see the git log for the exact sequence
+if that matters later. This builds on top of **Tier B (Control Integration)**, complete as of
+Gate 33, and the already-complete 14-gate Document Control sub-spec. `schema_version` on `main` is
+**39** (`weekly_reviews` — new every round except Vendor Performance Centre, which was read-only).
+`claude/tier-c-code-inspection-jysweb` carries the same history as `main` as of this merge (nothing
+unmerged on it) but was NOT reset/deleted after this *fifth* merge — do that (or start a fresh
+branch, maybe with a name matching current work this time) before the next gate, per the standing
+"restart the working branch from the new main" instruction. No branch carries unmerged app features
+as of this handoff. Verify with `git log origin/main..HEAD` and `git status` before assuming this
+is still true by the time you read this.
 
 **Zip delivered this round:** `Project-Control-Center.zip` — `index.html` + `README.md` +
 `data/`/`files/` (existing `README.txt` placeholders), verified via a fresh extraction
-(`/tmp/pcc_zip_verify4/`, not the dev working copy) opened in real Chromium — title and
-`#page-outlet` render, a seeded decision shows correctly on the new Decision Register page, zero
+(`/tmp/pcc_zip_verify5/`, not the dev working copy) opened in real Chromium — title and
+`#page-outlet` render, the new Weekly Reviews tab renders correctly with a seeded project, zero
 console errors; screenshot taken and sent per the standing instruction.
 
 **Next steps, in likely priority order:**
 1. **PCC Evolution Roadmap's next gate is not yet scoped — ask Aditya before building anything.**
-   Tiers A, B, and C are ALL now complete. ~22 more gates remain across Tiers D-F (Management,
-   Portfolio, then Tier F's advanced planning/controls gates — some of Tier F's names, e.g.
-   "Advanced Delay Analysis" / "Recovery Planning," may already be partially covered by what this
-   session built; inspect against the real code before assuming, same discipline as every tier so
-   far). Propose the next tier's inspection findings, then one gate, get "yes, build it," then
-   build only that.
+   Tiers A, B, and C are all complete. Tier D (Management) has Executive Centre already satisfied
+   and Weekly Project Review built; one identified gap remains: wiring Vendor Performance/Recovery
+   Actions/Decisions into Executive Summary's auto-text, Reports' sections, and Dashboard's
+   Management Attention panel (found during this session's Tier D inspection, not yet built).
+   Propose that, or ask whether Tier D counts as done enough to move to Tier E (Portfolio) — get
+   Tier E/F's named gate breakdown directly from Aditya first, the same way Tier D's three names
+   came this session (the original roadmap document was never saved as a file in this repo, only
+   ever handed over conversationally — don't assume a future session can find it).
 2. Older still-open items, none blocking daily use: category-scheme reconciliation
    (Documents/Vendor/Document-Types), the Gantt-bar readiness flag, the two hardcoded reminder/
    lookahead windows (14-day Document Reminders, 30-day Action Centre Upcoming), Resource
