@@ -363,6 +363,34 @@ footer.app-footer {
   font-weight: 600;
 }
 
+/* PCC Evolution Roadmap, Tier E: Portfolio Performance. A generic interactive data
+   table — distinct from .report-doc table (print-report-specific, forced black text
+   under @media print). Used first by Portfolio's Cards/Compare view toggle. */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.data-table th {
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-secondary);
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.data-table td {
+  padding: 8px 10px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.data-table tbody tr:hover {
+  background-color: var(--bg-paper);
+}
+
 .btn {
   font-family: var(--font-body);
   font-weight: 600;
@@ -3306,6 +3334,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     computeHealthScore: computeHealthScore,
     computeDiagnostics: computeDiagnostics,
     DEFAULT_WEIGHTS: DEFAULT_WEIGHTS,
+    // PCC Evolution Roadmap, Tier E: Portfolio Performance. Exported so
+    // executiveCenter.js's getHealthSummary() can band a single factor's score
+    // (e.g. just "schedule" or "risk") the same way the overall score already is,
+    // without duplicating the 80/60 thresholds a second time.
+    ragFromScore: ragFromScore,
   };
 })();
 
@@ -7756,6 +7789,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     { key: "location", label: "Location", type: "text" },
     { key: "sector", label: "Sector", type: "text" },
     { key: "contract_type", label: "Contract Type", type: "text" },
+    // PCC Evolution Roadmap, Tier E: Portfolio Performance. This field already existed
+    // in store.js (Gate 9, shown read-only in Executive Center's Overview subtitle) but
+    // had no data-entry path anywhere — same "schema field with no way to ever be set"
+    // gap the physical_progress bug turned out to be. Added here so the new Project
+    // Type filter below isn't permanently empty.
+    { key: "project_type", label: "Project Type", type: "text" },
     { key: "budget", label: "Budget", type: "number" },
     { key: "contract_value", label: "Contract Value", type: "number" },
     { key: "currency", label: "Currency", type: "text" },
@@ -7776,6 +7815,17 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     search: "",
     statusFilter: "",
     showArchived: false,
+    // PCC Evolution Roadmap, Tier E: Portfolio Performance. Every field below already
+    // existed on the project schema, just never wired as a filter — see the compare-
+    // table gate's own scope note.
+    clientFilter: "",
+    countryFilter: "",
+    sectorFilter: "",
+    pmFilter: "",
+    plannerFilter: "",
+    typeFilter: "",
+    yearFilter: "", // filters by start_date's year
+    view: "cards", // 'cards' | 'compare'
     editingId: null, // null = form closed, "new" = creating, otherwise an existing project id
     expandedId: null, // project id whose details panel is open, or null
     vendorLinkPickerOpen: false, // Gate 9: "+ Link Vendor" inline picker in the Vendors section below
@@ -8101,11 +8151,169 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   function projectMatchesFilters(p) {
     if (!uiState.showArchived && p.archived) return false;
     if (uiState.statusFilter && p.status !== uiState.statusFilter) return false;
+    if (uiState.clientFilter && p.client !== uiState.clientFilter) return false;
+    if (uiState.countryFilter && p.country !== uiState.countryFilter) return false;
+    if (uiState.sectorFilter && p.sector !== uiState.sectorFilter) return false;
+    if (uiState.pmFilter && p.project_manager !== uiState.pmFilter) return false;
+    if (uiState.plannerFilter && p.planner !== uiState.plannerFilter) return false;
+    if (uiState.typeFilter && p.project_type !== uiState.typeFilter) return false;
+    if (uiState.yearFilter && (p.start_date || "").slice(0, 4) !== uiState.yearFilter) return false;
     if (uiState.search) {
       var haystack = (p.name + " " + p.client + " " + p.company).toLowerCase();
       if (haystack.indexOf(uiState.search.toLowerCase()) === -1) return false;
     }
     return true;
+  }
+
+  // ---------------------------------------------------------------------------------
+  // Portfolio Performance (PCC Evolution Roadmap, Tier E) — KPI strip, filters, and the
+  // Cards/Compare view toggle. Nothing here is stored; every number is computed at
+  // render time from data.projects/activities plus executiveCenter.js's exported
+  // getHealthSummary(), same "computed, never denormalized" convention this app has
+  // used since Document Control's Available/Overdue/Required status.
+  // ---------------------------------------------------------------------------------
+
+  function distinctValues(projects, key) {
+    var seen = {};
+    var out = [];
+    projects.forEach(function (p) {
+      var v = p[key];
+      if (v && !seen[v]) {
+        seen[v] = true;
+        out.push(v);
+      }
+    });
+    out.sort();
+    return out;
+  }
+
+  function projectIsUpcoming(p, data) {
+    var todayIso = new Date().toISOString().slice(0, 10);
+    if (p.start_date) return p.start_date > todayIso;
+    return !data.activities.some(function (a) { return a.project_id === p.id; });
+  }
+
+  function computePortfolioKpis(data) {
+    var nonArchived = data.projects.filter(function (p) { return !p.archived; });
+    var delayedCount = 0;
+    var upcomingCount = 0;
+    nonArchived.forEach(function (p) {
+      var summary = window.PCC.executiveCenter.getHealthSummary(p.id);
+      if (summary.delayedActivityCount > 0) delayedCount++;
+      if (projectIsUpcoming(p, data)) upcomingCount++;
+    });
+    return {
+      total: data.projects.length,
+      active: nonArchived.length,
+      completed: data.projects.filter(function (p) { return p.status === "complete"; }).length,
+      atRisk: nonArchived.filter(function (p) { return p.status === "at_risk"; }).length,
+      delayed: delayedCount,
+      upcoming: upcomingCount,
+    };
+  }
+
+  function renderKpiStrip(kpis) {
+    var grid = document.createElement("div");
+    grid.className = "kpi-grid";
+    grid.style.marginBottom = "16px";
+    [
+      { label: "TOTAL PROJECTS", value: kpis.total, colorVar: null },
+      { label: "ACTIVE", value: kpis.active, colorVar: null },
+      { label: "COMPLETED", value: kpis.completed, colorVar: null },
+      { label: "AT RISK", value: kpis.atRisk, colorVar: kpis.atRisk > 0 ? "--status-at-risk" : null },
+      { label: "DELAYED", value: kpis.delayed, colorVar: kpis.delayed > 0 ? "--status-critical" : null },
+      { label: "UPCOMING", value: kpis.upcoming, colorVar: null },
+    ].forEach(function (kpi) {
+      var card = document.createElement("div");
+      card.className = "kpi-card";
+      var valueStyle = kpi.colorVar ? ' style="color:var(' + kpi.colorVar + ')"' : "";
+      card.innerHTML =
+        '<span class="kpi-card__label">' + kpi.label + '</span><span class="kpi-card__value mono"' + valueStyle + ">" + kpi.value + "</span>";
+      grid.appendChild(card);
+    });
+    return grid;
+  }
+
+  var RAG_BADGE_CLASS = { on_track: "on_track", at_risk: "at_risk", critical: "critical", unknown: "info" };
+  var RAG_LABEL = { on_track: "On Track", at_risk: "At Risk", critical: "Critical", unknown: "—" };
+
+  function ragCell(rag) {
+    var span = document.createElement("span");
+    span.className = "status-badge status-badge--" + (RAG_BADGE_CLASS[rag] || "info");
+    span.textContent = RAG_LABEL[rag] || rag;
+    return span;
+  }
+
+  /** The comparison table view — Project / Progress / Schedule / Risk / Health, per the
+   * roadmap's own example. Schedule/Risk/Health are the *computed* RAG bands from
+   * executiveCenter.js's health-score engine, deliberately distinct from the project's
+   * own manually-set `status` field the Cards view shows — they can disagree, and
+   * that's the point (a transparent, rule-based second opinion, not just an echo of the
+   * manual field). Progress is the project's own manually-tracked % (same field Cards
+   * already shows), not the schedule-derived percent — Executive Center's own Overview
+   * already draws that distinction between "Overall Progress" and "Schedule Progress". */
+  function renderCompareTable(projects, onChanged) {
+    var wrap = document.createElement("div");
+    wrap.className = "panel";
+
+    if (projects.length === 0) {
+      wrap.className = "panel empty-state";
+      wrap.textContent = "No projects match this search/filter.";
+      return wrap;
+    }
+
+    var table = document.createElement("table");
+    table.className = "data-table";
+    var thead = document.createElement("thead");
+    thead.innerHTML = "<tr><th>Project</th><th>Progress</th><th>Schedule</th><th>Risk</th><th>Health</th></tr>";
+    table.appendChild(thead);
+
+    var tbody = document.createElement("tbody");
+    projects.forEach(function (p) {
+      var summary = window.PCC.executiveCenter.getHealthSummary(p.id);
+      var row = document.createElement("tr");
+
+      var nameCell = document.createElement("td");
+      var nameBtn = document.createElement("button");
+      nameBtn.className = "btn btn--ghost";
+      nameBtn.textContent = p.name || "(unnamed project)";
+      nameBtn.onclick = function () {
+        uiState.expandedId = p.id;
+        uiState.view = "cards";
+        onChanged();
+      };
+      nameCell.appendChild(nameBtn);
+      row.appendChild(nameCell);
+
+      var progressCell = document.createElement("td");
+      progressCell.textContent = (p.progress || 0) + "%";
+      row.appendChild(progressCell);
+
+      var scheduleCell = document.createElement("td");
+      scheduleCell.appendChild(ragCell(summary.scheduleRag));
+      row.appendChild(scheduleCell);
+
+      var riskCell = document.createElement("td");
+      riskCell.appendChild(ragCell(summary.riskRag));
+      row.appendChild(riskCell);
+
+      var healthCell = document.createElement("td");
+      healthCell.appendChild(ragCell(summary.rag));
+      if (summary.score != null) {
+        var scoreSpan = document.createElement("span");
+        scoreSpan.className = "text-secondary";
+        scoreSpan.style.fontSize = "11px";
+        scoreSpan.style.marginLeft = "6px";
+        scoreSpan.textContent = summary.score;
+        healthCell.appendChild(scoreSpan);
+      }
+      row.appendChild(healthCell);
+
+      tbody.appendChild(row);
+    });
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+    return wrap;
   }
 
   function renderProjectCard(p, onChanged) {
@@ -9573,6 +9781,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     h1.style.marginBottom = "16px";
     outlet.appendChild(h1);
 
+    outlet.appendChild(renderKpiStrip(computePortfolioKpis(data)));
+
     if (uiState.editingId) {
       var projectBeingEdited =
         uiState.editingId === "new"
@@ -9629,8 +9839,72 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     archivedLabel.appendChild(archivedCheckbox);
     archivedLabel.appendChild(document.createTextNode("Show archived"));
 
+    // PCC Evolution Roadmap, Tier E: Portfolio Performance. Every option list below is
+    // built from the *full* project set (data.projects), not the currently-filtered
+    // one, so narrowing one filter never removes another filter's own options.
+    function filterSelect(label, uiKey, projectField) {
+      var select = document.createElement("select");
+      var allOpt = document.createElement("option");
+      allOpt.value = "";
+      allOpt.textContent = "All " + label;
+      select.appendChild(allOpt);
+      distinctValues(data.projects, projectField).forEach(function (v) {
+        var opt = document.createElement("option");
+        opt.value = v;
+        opt.textContent = v;
+        select.appendChild(opt);
+      });
+      select.value = uiState[uiKey];
+      select.onchange = function () {
+        uiState[uiKey] = select.value;
+        renderList();
+      };
+      return select;
+    }
+    var clientSelect = filterSelect("clients", "clientFilter", "client");
+    var countrySelect = filterSelect("countries", "countryFilter", "country");
+    var sectorSelect = filterSelect("sectors", "sectorFilter", "sector");
+    var pmSelect = filterSelect("PMs", "pmFilter", "project_manager");
+    var plannerSelect = filterSelect("planners", "plannerFilter", "planner");
+    var typeSelect = filterSelect("types", "typeFilter", "project_type");
+
+    var yearSelect = document.createElement("select");
+    var allYearsOpt = document.createElement("option");
+    allYearsOpt.value = "";
+    allYearsOpt.textContent = "All years";
+    yearSelect.appendChild(allYearsOpt);
+    var years = {};
+    data.projects.forEach(function (p) {
+      if (p.start_date) years[p.start_date.slice(0, 4)] = true;
+    });
+    Object.keys(years).sort().forEach(function (y) {
+      var opt = document.createElement("option");
+      opt.value = y;
+      opt.textContent = y;
+      yearSelect.appendChild(opt);
+    });
+    yearSelect.value = uiState.yearFilter;
+    yearSelect.onchange = function () {
+      uiState.yearFilter = yearSelect.value;
+      renderList();
+    };
+
     var spacer = document.createElement("div");
     spacer.className = "toolbar__spacer";
+
+    [
+      { key: "cards", label: "Cards" },
+      { key: "compare", label: "Compare" },
+    ].forEach(function (v) {
+      var btn = document.createElement("button");
+      btn.className = "btn " + (uiState.view === v.key ? "btn--primary" : "btn--ghost");
+      btn.textContent = v.label;
+      btn.onclick = function () {
+        uiState.view = v.key;
+        rerender();
+      };
+      toolbar.appendChild(btn);
+    });
 
     var addBtn = document.createElement("button");
     addBtn.className = "btn btn--primary";
@@ -9648,18 +9922,30 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     toolbar.appendChild(searchInput);
     toolbar.appendChild(statusSelect);
+    toolbar.appendChild(clientSelect);
+    toolbar.appendChild(countrySelect);
+    toolbar.appendChild(sectorSelect);
+    toolbar.appendChild(pmSelect);
+    toolbar.appendChild(plannerSelect);
+    toolbar.appendChild(typeSelect);
+    toolbar.appendChild(yearSelect);
     toolbar.appendChild(archivedLabel);
     toolbar.appendChild(spacer);
     toolbar.appendChild(addBtn);
     outlet.appendChild(toolbar);
 
-    // --- List ---
+    // --- List / Compare ---
     var listWrap = document.createElement("div");
     outlet.appendChild(listWrap);
 
     function renderList() {
       listWrap.innerHTML = "";
       var filtered = data.projects.filter(projectMatchesFilters);
+
+      if (uiState.view === "compare") {
+        listWrap.appendChild(renderCompareTable(filtered, rerender));
+        return;
+      }
 
       if (filtered.length === 0) {
         var empty = document.createElement("div");
@@ -10392,6 +10678,26 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       var data = window.PCC.store.get();
       var ctx = buildProjectContext(data, projectId);
       return window.PCC.projectHealthEngine.computeDiagnostics(diagnosticsContextFrom(ctx));
+    },
+    /** PCC Evolution Roadmap, Tier E: Portfolio Performance. Same "export one composed
+     * function rather than duplicate buildProjectContext()" reasoning as getDiagnostics()
+     * above — Portfolio's comparison table needs a per-project Schedule/Risk RAG band
+     * (not just the overall health RAG getDiagnostics() already implies), pulled from
+     * computeHealthScore()'s own per-factor breakdown so it can never disagree with what
+     * this page's own Health Score panel shows for the same project. */
+    getHealthSummary: function (projectId) {
+      var data = window.PCC.store.get();
+      var ctx = buildProjectContext(data, projectId);
+      var health = window.PCC.projectHealthEngine.computeHealthScore(healthContextFrom(ctx), data.settings.health_score_weights);
+      var scheduleFactor = health.breakdown.find(function (f) { return f.key === "schedule"; });
+      var riskFactor = health.breakdown.find(function (f) { return f.key === "risk"; });
+      return {
+        score: health.score,
+        rag: health.rag,
+        scheduleRag: scheduleFactor && scheduleFactor.available ? window.PCC.projectHealthEngine.ragFromScore(scheduleFactor.score) : "unknown",
+        riskRag: riskFactor && riskFactor.available ? window.PCC.projectHealthEngine.ragFromScore(riskFactor.score) : "unknown",
+        delayedActivityCount: ctx.delayedActivities.length,
+      };
     },
   };
 

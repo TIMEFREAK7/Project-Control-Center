@@ -346,5 +346,10 @@
     computeHealthScore: computeHealthScore,
     computeDiagnostics: computeDiagnostics,
     DEFAULT_WEIGHTS: DEFAULT_WEIGHTS,
+    // PCC Evolution Roadmap, Tier E: Portfolio Performance. Exported so
+    // executiveCenter.js's getHealthSummary() can band a single factor's score
+    // (e.g. just "schedule" or "risk") the same way the overall score already is,
+    // without duplicating the 80/60 thresholds a second time.
+    ragFromScore: ragFromScore,
   };
 })();
