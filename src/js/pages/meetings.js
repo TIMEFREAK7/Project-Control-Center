@@ -860,6 +860,27 @@
       });
     }
 
+    var linkedDecisions = window.PCC.store.get().decisions.filter(function (d) {
+      return d.source_meeting_id === m.id;
+    });
+
+    if (linkedDecisions.length > 0) {
+      var decisionsHeading = document.createElement("p");
+      decisionsHeading.className = "detail-item__label";
+      decisionsHeading.style.marginTop = "14px";
+      decisionsHeading.style.marginBottom = "6px";
+      decisionsHeading.textContent = "DECISIONS RAISED (" + linkedDecisions.length + ")";
+      wrap.appendChild(decisionsHeading);
+
+      linkedDecisions.forEach(function (d) {
+        var row = document.createElement("p");
+        row.style.fontSize = "13px";
+        row.style.margin = "0 0 2px";
+        row.textContent = d.title || "(untitled)";
+        wrap.appendChild(row);
+      });
+    }
+
     if (linkedDocs.length > 0) {
       var docsHeading = document.createElement("p");
       docsHeading.className = "detail-item__label";
@@ -935,9 +956,18 @@
     };
 
     quickActions.appendChild(addRiskBtn);
+    var addDecisionBtn = document.createElement("button");
+    addDecisionBtn.className = "btn btn--ghost";
+    addDecisionBtn.textContent = "+ Add Decision";
+    addDecisionBtn.onclick = function () {
+      if (window.PCC.decisionRegister) window.PCC.decisionRegister.createFromMeeting(m.project_id, m.id);
+      window.PCC.router.go("decisionRegister");
+    };
+
     quickActions.appendChild(attachDocBtn);
     quickActions.appendChild(addRfiBtn);
     quickActions.appendChild(addChangeOrderBtn);
+    quickActions.appendChild(addDecisionBtn);
     wrap.appendChild(quickActions);
 
     return wrap;

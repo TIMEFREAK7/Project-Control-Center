@@ -46,6 +46,7 @@ const JS_ORDER = [
   "js/pages/meetings.js",
   "js/pages/rfis.js",
   "js/pages/changeOrders.js",
+  "js/pages/decisionRegister.js",
   "js/pages/cost.js",
   "js/pages/resources.js",
   "js/pages/reports.js",

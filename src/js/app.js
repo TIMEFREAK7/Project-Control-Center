@@ -21,6 +21,7 @@
     router.register("meetings", window.PCC.pages.meetings);
     router.register("rfis", window.PCC.pages.rfis);
     router.register("changeOrders", window.PCC.pages.changeOrders);
+    router.register("decisionRegister", window.PCC.pages.decisionRegister);
     router.register("cost", window.PCC.pages.cost);
     router.register("resources", window.PCC.pages.resources);
     router.register("reports", window.PCC.pages.reports);
