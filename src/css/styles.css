@@ -356,6 +356,34 @@ footer.app-footer {
   font-weight: 600;
 }
 
+/* PCC Evolution Roadmap, Tier E: Portfolio Performance. A generic interactive data
+   table — distinct from .report-doc table (print-report-specific, forced black text
+   under @media print). Used first by Portfolio's Cards/Compare view toggle. */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.data-table th {
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-secondary);
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.data-table td {
+  padding: 8px 10px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.data-table tbody tr:hover {
+  background-color: var(--bg-paper);
+}
+
 .btn {
   font-family: var(--font-body);
   font-weight: 600;

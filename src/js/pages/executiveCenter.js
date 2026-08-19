@@ -694,6 +694,26 @@
       var ctx = buildProjectContext(data, projectId);
       return window.PCC.projectHealthEngine.computeDiagnostics(diagnosticsContextFrom(ctx));
     },
+    /** PCC Evolution Roadmap, Tier E: Portfolio Performance. Same "export one composed
+     * function rather than duplicate buildProjectContext()" reasoning as getDiagnostics()
+     * above — Portfolio's comparison table needs a per-project Schedule/Risk RAG band
+     * (not just the overall health RAG getDiagnostics() already implies), pulled from
+     * computeHealthScore()'s own per-factor breakdown so it can never disagree with what
+     * this page's own Health Score panel shows for the same project. */
+    getHealthSummary: function (projectId) {
+      var data = window.PCC.store.get();
+      var ctx = buildProjectContext(data, projectId);
+      var health = window.PCC.projectHealthEngine.computeHealthScore(healthContextFrom(ctx), data.settings.health_score_weights);
+      var scheduleFactor = health.breakdown.find(function (f) { return f.key === "schedule"; });
+      var riskFactor = health.breakdown.find(function (f) { return f.key === "risk"; });
+      return {
+        score: health.score,
+        rag: health.rag,
+        scheduleRag: scheduleFactor && scheduleFactor.available ? window.PCC.projectHealthEngine.ragFromScore(scheduleFactor.score) : "unknown",
+        riskRag: riskFactor && riskFactor.available ? window.PCC.projectHealthEngine.ragFromScore(riskFactor.score) : "unknown",
+        delayedActivityCount: ctx.delayedActivities.length,
+      };
+    },
   };
 
   function renderPage(outlet) {
