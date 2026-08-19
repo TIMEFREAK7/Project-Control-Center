@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 40;
+  var SCHEMA_VERSION = 41;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -96,6 +96,7 @@
       // (not project-scoped) — see the header comment above newResource() for why.
       resources: [],
       resource_assignments: [],
+      resource_unavailability: [],
       // Gate 13 (Vendor Management): Vendor Master is portfolio-wide, not scoped to a
       // single project the way Documents/Risk/RFI are — vendor_project_links is the
       // many-to-many join, same shape convention as every other join in this store
@@ -732,7 +733,14 @@
   //   Change Orders and Cost Tracking's Portfolio-budget fallback already established.
   // ============================================================
 
-  var RESOURCE_TYPES = ["labor", "equipment", "material"];
+  // PCC Evolution Roadmap, Tier F: Resource Management (Gate 18). Expanded additively —
+  // "labor"/"material" stay valid so resources created under Gate 11 keep whatever type
+  // they already have (no silent reclassification of existing data); the new, more
+  // granular categories from the spec are added alongside rather than replacing them.
+  var RESOURCE_TYPES = [
+    "employee", "engineer", "supervisor", "skilled_labor", "unskilled_labor",
+    "contractor", "subcontractor", "equipment", "machinery", "material", "labor",
+  ];
 
   function newResourceId() {
     return "res_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
@@ -764,7 +772,16 @@
    * electricians on Rough-In Wiring"). Always tied to exactly one activity — a
    * resource needed across several activities gets several assignment records, same
    * "one link per record" shape every other link in this app uses (cost_budget_items,
-   * Gate 10's activity_id fields). */
+   * Gate 10's activity_id fields).
+   *
+   * PCC Evolution Roadmap, Tier F (Gate 18): `quantity` now specifically means PLANNED
+   * quantity — `actual_quantity` is the new, separately-tracked actual (null = not yet
+   * recorded, never assumed equal to planned). `planned_hours_per_day`/`overtime_hours`
+   * are simple aggregate totals, not a daily time-entry log (Aditya, explicit choice —
+   * "this is project resource control, not a timesheet system"). `vendor_id` is
+   * per-assignment rather than on the Resource itself (Aditya, explicit choice) — the
+   * same shared resource (e.g. "Skilled Labor") can be sourced from a different vendor
+   * on each activity it's assigned to. */
   function newResourceAssignment(overrides) {
     var now = new Date().toISOString();
     var base = {
@@ -772,7 +789,41 @@
       resource_id: "",
       activity_id: "",
       quantity: null,
+      actual_quantity: null,
+      planned_hours_per_day: null,
+      overtime_hours: null,
+      vendor_id: "",
       notes: "",
+      created_at: now,
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  function newResourceUnavailabilityId() {
+    return "runv_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  /** PCC Evolution Roadmap, Tier F (Gate 18): a date range where some quantity of a
+   * Resource is NOT available (leave, a public holiday for a labor pool, equipment
+   * down for maintenance) — reduces that resource's effective daily availability in
+   * resourceLevelingEngine.js rather than the flat `max_availability` number applying
+   * unconditionally on every day. `quantity` is how much of the resource is
+   * unavailable (e.g. "2 of 5 electricians on leave"), not an all-or-nothing flag —
+   * partial reductions are the common case, not the exception. `start_date`/`end_date`
+   * are both INCLUSIVE (Aditya's own leave dates "Aug 20 to Aug 25" means both days
+   * off) — deliberately different from Schedule activities' exclusive-end [start,
+   * finish) convention, because this field is filled in by a human picking calendar
+   * days, not computed from a duration. */
+  function newResourceUnavailability(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newResourceUnavailabilityId(),
+      resource_id: "",
+      start_date: "",
+      end_date: "",
+      quantity: null,
+      reason: "",
       created_at: now,
       updated_at: now,
     };
@@ -2025,6 +2076,23 @@
       loaded.schema_version = 40;
     }
 
+    if (loaded.schema_version < 41) {
+      // PCC Evolution Roadmap, Tier F: Resource Management (Gate 18). Adds
+      // actual_quantity/planned_hours_per_day/overtime_hours (all null, not recorded)
+      // and vendor_id ("", unlinked) to every existing resource_assignments row — none
+      // of this was tracked before, so there's nothing real to backfill. Brand new
+      // resource_unavailability array, same "nothing to backfill on existing records"
+      // treatment every other new register in this app has gotten.
+      (loaded.resource_assignments || []).forEach(function (a) {
+        if (a.actual_quantity === undefined) a.actual_quantity = null;
+        if (a.planned_hours_per_day === undefined) a.planned_hours_per_day = null;
+        if (a.overtime_hours === undefined) a.overtime_hours = null;
+        if (a.vendor_id === undefined) a.vendor_id = "";
+      });
+      if (!loaded.resource_unavailability) loaded.resource_unavailability = [];
+      loaded.schema_version = 41;
+    }
+
     return loaded;
   }
 
@@ -2374,6 +2442,7 @@
     newWeeklyReview: newWeeklyReview,
     newResource: newResource,
     newResourceAssignment: newResourceAssignment,
+    newResourceUnavailability: newResourceUnavailability,
     RESOURCE_TYPES: RESOURCE_TYPES,
     newVendor: newVendor,
     nextVendorCode: nextVendorCode,

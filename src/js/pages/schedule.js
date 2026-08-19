@@ -2842,8 +2842,39 @@
         if (window.PCC.resources && window.PCC.resources.expandAssignment) window.PCC.resources.expandAssignment(a.id);
         window.PCC.router.go("resources");
       },
+      // PCC Evolution Roadmap, Tier F (Gate 18): "the schedule should show which
+      // resources are required for an activity AND WHETHER THOSE RESOURCES ARE
+      // AVAILABLE" — this is the one LINKED_RECORD_SOURCES entry that needs a live
+      // availability read, not just a label. Runs the full cross-project over-
+      // allocation scan (same engine the Leveling tab uses) and checks whether any of
+      // THIS activity's own days land on one of that resource's over-allocated days —
+      // a resource can be over-allocated portfolio-wide on dates outside this
+      // activity's own window, which shouldn't flag this particular assignment.
+      badge: function (a, data, activity) {
+        var resource = data.resources.find(function (r) { return r.id === a.resource_id; });
+        if (!resource) return null;
+        if (resource.max_availability == null) return { label: "Availability Unknown", className: "info" };
+        var timeline = window.PCC.resourceLevelingEngine.computeResourceUsageTimeline(resource, data.resource_assignments, data.activities);
+        var overAlloc = window.PCC.resourceLevelingEngine.detectOverAllocations(resource, timeline, data.resource_unavailability);
+        if (overAlloc.count === 0) return { label: "Available", className: "on_track" };
+        var dates = resourceActivityEffectiveDates(activity);
+        if (!dates.start) return { label: "Over-Allocated (Elsewhere)", className: "at_risk" };
+        var conflictInWindow = overAlloc.overAllocatedDays.some(function (d) { return d.date >= dates.start && d.date < dates.finish; });
+        return conflictInWindow ? { label: "Over-Allocated", className: "critical" } : { label: "Available", className: "on_track" };
+      },
     },
   ];
+
+  /** Same calculated-wins/planned-falls-back precedence as resourceLevelingEngine.js's
+   * own effectiveDates() — duplicated here per this app's per-module-helpers
+   * convention (that engine has no DOM/store dependency and shouldn't gain one just to
+   * be called from here). */
+  function resourceActivityEffectiveDates(activity) {
+    if (activity.activity_type === "milestone") return { start: null, finish: null };
+    if (activity.early_start && activity.early_finish) return { start: activity.early_start, finish: activity.early_finish };
+    if (activity.planned_start && activity.planned_finish) return { start: activity.planned_start, finish: activity.planned_finish };
+    return { start: null, finish: null };
+  }
 
   // Gate 10 (Document Control 10: Readiness/Constraints). Same "Available"/"Overdue"/
   // "Required" status computation as pages/portfolio.js's computeRequirementStatus() and
@@ -2951,7 +2982,11 @@
     var rows = [];
     LINKED_RECORD_SOURCES.forEach(function (source) {
       source.list(data, activity.id).forEach(function (record) {
-        rows.push({ text: source.label(record), view: function () { source.view(record); } });
+        rows.push({
+          text: source.label(record),
+          view: function () { source.view(record); },
+          badge: source.badge ? source.badge(record, data, activity) : null,
+        });
       });
     });
 
@@ -2978,7 +3013,17 @@
 
         var text = document.createElement("span");
         text.textContent = row.text;
+        text.style.flex = "1";
         rowEl.appendChild(text);
+
+        if (row.badge) {
+          var badge = document.createElement("span");
+          badge.className = "status-badge status-badge--" + row.badge.className;
+          badge.style.fontSize = "11px";
+          badge.style.marginRight = "8px";
+          badge.textContent = row.badge.label;
+          rowEl.appendChild(badge);
+        }
 
         var viewBtn = document.createElement("button");
         viewBtn.className = "btn btn--ghost";

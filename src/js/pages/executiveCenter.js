@@ -287,7 +287,7 @@
     var assignedResourceIds = {};
     projectAssignments.forEach(function (a) { assignedResourceIds[a.resource_id] = true; });
     var portfolioOverAlloc = window.PCC.resourceLevelingEngine
-      ? window.PCC.resourceLevelingEngine.portfolioOverAllocationSummary(data.resources, data.resource_assignments, data.activities)
+      ? window.PCC.resourceLevelingEngine.portfolioOverAllocationSummary(data.resources, data.resource_assignments, data.activities, data.resource_unavailability)
       : [];
     var overAllocById = {};
     portfolioOverAlloc.forEach(function (s) { overAllocById[s.resourceId] = s; });
