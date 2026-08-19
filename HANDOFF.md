@@ -61,15 +61,14 @@ that override default behavior).
   populated state, and again on the zip-verification pass) and send the PNGs via `SendUserFile`
   before or alongside the written report. Applies to every gate from here on, not just this one.
 
-## Where things stand — Tier C inspection, physical_progress fix, Vendor Performance Centre, and Delay & Recovery Management are all merged into `main`
+## Where things stand — Tier C (Project Performance) is now COMPLETE, all four areas merged into `main`
 
-`main` is fully up to date through the **Delay & Recovery Management** gate (PCC Evolution
-Roadmap, Tier C: Project Performance's second built gate), merge commit `4882f79`,
-`schema_version` **37** (new `recovery_actions` array). This session started with a **Tier C
-inspection** (not a numbered roadmap gate on its own) — Aditya asked for the same "inspect before
-proposing" pass Tier B got, this time against **Tier C**: Progress Management, Vendor Performance
-Centre, Delay & Recovery Management, Decision Register. Findings (see the "PCC Evolution Roadmap"
-section below for full detail):
+`main` is fully up to date through the **Decision Register** gate (PCC Evolution Roadmap, Tier C:
+Project Performance's fourth and final built gate), merge commit `d57a056`, `schema_version` **38**
+(new `decisions` array). This session started with a **Tier C inspection** (not a numbered roadmap
+gate on its own) — Aditya asked for the same "inspect before proposing" pass Tier B got, this time
+against **Tier C**: Progress Management, Vendor Performance Centre, Delay & Recovery Management,
+Decision Register. Findings (see the "PCC Evolution Roadmap" section below for full detail):
 
 - **Progress Management** — mostly built, but `physical_progress` (a schema field since Gate 1,
   distinct from `percent_complete`) was never wired to any data-entry UI, while Executive Center
@@ -95,12 +94,12 @@ section below for full detail):
   4/5). **Recovery did not exist at all** — grepped the whole `src/` tree; every "recovery" hit was
   the unrelated corrupted-data-backup feature. No recovery plan, corrective-action tracking, or
   recovery schedule concept anywhere. **Built this round** — see below.
-- **Decision Register** — does not exist at all. No `decisions` array in `store.js`'s data object;
-  every "decision" hit in the codebase is just the English word inside Change Order/RFI approval
+- **Decision Register** — did not exist at all. No `decisions` array in `store.js`'s data object;
+  every "decision" hit in the codebase was just the English word inside Change Order/RFI approval
   flows (`decision_by`, "pending decision" copy), not a register. Same shape as Risk Register or
-  RFI/TQ would be. Not built yet.
+  RFI/TQ. **Built this round** — see below.
 
-Three gates were built and merged this session, each following the same rebuild → full suite →
+Four gates were built and merged this session, each following the same rebuild → full suite →
 merge (no PR, standing instruction, see above) → push `main` sequence used for every prior gate:
 
 1. **physical_progress fix** (merge `fba3d42`) — confirmed via `AskUserQuestion`. New test file
@@ -138,12 +137,29 @@ merge (no PR, standing instruction, see above) → push `main` sequence used for
    `test_store_schema_v37_migration.js` per the established canonical-file convention. Two new
    test files: `test_recovery_actions_e2e.js` (32 checks), `test_delay_recovery_dashboard_e2e.js`
    (30 checks).
+4. **Decision Register** (merge `d57a056`) — confirmed via `AskUserQuestion` to include the meeting
+   integration (raise a Decision directly from a Meeting) in this same gate, rather than deferring
+   it. New `decisions` array (`schema_version` 37→38): same project-scoped register shape as
+   Risk/Issue/Opportunity and RFI/TQ — `title`, `description` (context/background), `decision` (the
+   actual decision text, left empty until status moves to "decided"), `decided_by`,
+   `decision_date`, `status` (pending/decided/deferred/superseded), plus the same optional
+   `activity_id` (Gate 10 pattern) and `source_meeting_id` (the Risk/RFI/Change Order pattern)
+   every comparable register already has. New page `pages/decisionRegister.js`, sidebar entry in
+   REGISTERS right after Change Mgmt — full add/edit/delete, search/status/project filters, a
+   Details view with "View in Gantt" (linked activity) and "View Meeting" (source meeting) buttons.
+   No heatmap (that's risk-specific) and no cross-register raise button (not asked). `pages/
+   meetings.js` gains a "+ Add Decision" quick action (reusing the exact
+   `createFromMeeting()`/`pendingPrefill` pattern Risk/RFI/Change Orders already use) and a reverse
+   "DECISIONS RAISED" list in the meeting's own Details, matching the existing RISKS/RFI/CHANGE
+   ORDERS RAISED sections verbatim. **This closes out all four Tier C areas.** Schema migration
+   test renamed `test_store_schema_v37_migration.js` → `test_store_schema_v38_migration.js`. New
+   test file `test_decision_register_e2e.js` (35 checks, including the full meeting round-trip).
 
-All three real-Chromium passes (screenshots taken and sent, per the standing instruction below)
-showed zero console errors. The full test suite (**37 files, 877 checks**) passes clean as of this
+All four real-Chromium passes (screenshots taken and sent, per the standing instruction below)
+showed zero console errors. The full test suite (**38 files, 913 checks**) passes clean as of this
 handoff. **No branch currently carries unmerged app features** — `claude/tier-c-code-inspection-
-jysweb` was merged into `main` in full (three direct merges, `fba3d42` → `0801b10` → `4882f79`)
-and should be restarted from the new `main` before the next gate. Verify with
+jysweb` was merged into `main` in full (four direct merges, `fba3d42` → `0801b10` → `4882f79` →
+`d57a056`) and should be restarted from the new `main` before the next gate. Verify with
 `git log origin/main..HEAD` before assuming this is still true by the time you read this.
 
 **The entire 14-gate Document Control sub-spec Aditya originally handed over is complete (Gates
@@ -379,7 +395,7 @@ that back-and-forth pattern held for all 14 gates through to the last one.
   "Document Control Compliance" `<h3>`, returns its `parentElement`) instead of searching the
   whole page.
 
-### PCC Evolution Roadmap (Gates 29-33 = roadmap's own Gates 1-5) — 5 of ~27 gates done, Tiers A + B complete; Tier C inspected, one bug fixed, two gates built
+### PCC Evolution Roadmap (Gates 29-33 = roadmap's own Gates 1-5) — 5 of ~27 gates done, Tiers A + B + C all complete
 
 Aditya handed over a large roadmap (Tiers A-F: Daily Planner Value, Control Integration, Project
 Performance, Management, Portfolio, then Tier F's advanced planning/controls gates — Resource
@@ -560,11 +576,48 @@ view — that became the Planner Action Centre.
   checks, including archived-project exclusion and overdue-first sorting) plus a 21-route smoke
   test each. Merge commit `4882f79`.
 
-**Next roadmap gate: not yet scoped.** Tiers A and B are complete; Tier C has its inspection done,
-one live bug fixed, and two of its four gates built (Vendor Performance Centre, Delay & Recovery
-Management). One gap remains unscoped: Decision Register (doesn't exist at all — same shape as
-Risk Register or RFI/TQ would be). Per the roadmap's own gate discipline, propose it, get "yes,
-build it," then build only that.
+- **Decision Register (this session, Tier C's fourth and final built gate — Tier C now
+  COMPLETE).** Aditya confirmed this as the last Tier C gate after Delay & Recovery Management.
+  Scoped in a short paragraph — no `decisions` register existed at all, closest structural
+  templates were `risks.js`/`rfis.js` — then one decision confirmed via `AskUserQuestion`: include
+  "raise a Decision from a Meeting" (`source_meeting_id` + a reverse "DECISIONS RAISED" list on the
+  meeting, matching how Risk/RFI/Change Orders already work) in this same gate rather than
+  deferring it. Aditya chose **include it now**. New `decisions` array (`schema_version` 37→38):
+  `title`, `description` (context/background), `decision` (the actual decision text, left empty
+  until status moves to "decided"), `decided_by`, `decision_date`, `status`
+  (pending/decided/deferred/superseded), plus the same optional `activity_id` (Gate 10 pattern) and
+  `source_meeting_id` every comparable register already has. New page
+  `pages/decisionRegister.js`, sidebar entry in REGISTERS right after Change Mgmt — full
+  add/edit/delete, search/status/project filters, a Details view with "View in Gantt" (linked
+  activity) and "View Meeting" (source meeting) buttons, same structure as risks.js/rfis.js. No
+  heatmap (that's risk-specific, doesn't apply to a decision) and no cross-register "raise X from
+  this decision" button (not asked, would be scope creep beyond the confirmed gate).
+  `pages/meetings.js` gains a **"+ Add Decision"** quick action (reusing the exact
+  `createFromMeeting()`/`pendingPrefill` pattern Risk/RFI/Change Orders already use — `uiState.
+  pendingPrefill = { project_id, source_meeting_id }`, `uiState.editingId = "new"`, consumed and
+  cleared on the next render) and a reverse **"DECISIONS RAISED"** list in the meeting's own
+  Details, matching the existing RISKS/RFI/CHANGE ORDERS RAISED sections verbatim (same `filter by
+  source_meeting_id === m.id` pattern). Schema migration test renamed
+  `test_store_schema_v37_migration.js` → `test_store_schema_v38_migration.js`. New test file
+  `test_decision_register_e2e.js` (35 checks, including the full "+ Add Decision" from a meeting →
+  prefilled form → save → DECISIONS RAISED round-trip) plus a 22-route smoke test. One jsdom gotcha
+  hit while writing this test and worth remembering for the next one: `router.go()` only sets
+  `window.location.hash` — `currentRouteName()` reflects it immediately (it just reads the hash),
+  but the actual rendered DOM does NOT update until `router.render()` is called explicitly; a test
+  that clicks a `router.go()`-triggering button and immediately asserts on `outlet()`'s content
+  without an intervening `render()` call will see stale content even though the route "changed."
+  Merge commit `d57a056`.
+
+**PCC Evolution Roadmap: Tiers A, B, and C are all now complete.** Tier C (Project Performance) was
+inspected against the real code this session and all four of its areas are done: Progress
+Management (the `physical_progress` bug fixed), Vendor Performance Centre, Delay & Recovery
+Management, and Decision Register. ~22 more gates remain across Tiers D-F (Management, Portfolio,
+then Tier F's advanced planning/controls gates — Commitment Management, Status-Date Control,
+Reforecasting, Baseline/Revision Control, Advanced Delay Analysis, Recovery Planning, Schedule
+Performance — note some of these names may already be partially covered by gates built this
+session; the next session should inspect before assuming, same as every tier so far). Next roadmap
+gate: not yet scoped — per the roadmap's own gate discipline, inspect Tier D against the real code
+first, then propose one gate, get "yes, build it," then build only that.
 
 **Deliberately still open / explicitly deferred, don't assume these got done:**
 - Reconciling Documents' `category` / Vendor's `VENDOR_DOCUMENT_CATEGORIES` / the Gate 14 master
@@ -651,7 +704,7 @@ build it," then build only that.
   there fails `npm test` with a bare `MODULE_NOT_FOUND` even though every individual test file is
   fine (hit this exact thing shipping Gate 19; fixed by editing `tests/package.json` alongside the
   `git mv`).
-- Testing: `cd tests && npm test` must pass before anything ships (37 files, 877 checks as of
+- Testing: `cd tests && npm test` must pass before anything ships (38 files, 913 checks as of
   this handoff). Pure-logic tests eval the real source file directly. E2E tests load the actual
   bundled `index.html` via jsdom (+ `fake-indexeddb` for IndexedDB-touching code). Also do one
   real-Chromium pass per gate (`/opt/pw-browsers/chromium-1194/chrome-linux/chrome --no-sandbox`,
@@ -706,38 +759,39 @@ build it," then build only that.
 
 ## Repo/branch state
 
-`main` is fully up to date through the **Delay & Recovery Management** gate (`4882f79`, a direct
-merge — no PR, per Aditya's now-standing "always merge after completing a gate/phase" instruction,
-see above). Three rounds landed on `main` this session, all via the same designated remote-session
-branch, `claude/tier-c-code-inspection-jysweb`, restarted from the new `main` between each per the
-standing "restart before the next gate" instruction: the Tier C inspection + `physical_progress`
-fix first (merge `fba3d42`), then Vendor Performance Centre (merge `0801b10`), then Delay &
-Recovery Management (merge `4882f79`). Aditya confirmed via `AskUserQuestion` to proceed with each
+`main` is fully up to date through the **Decision Register** gate (`d57a056`, a direct merge — no
+PR, per Aditya's now-standing "always merge after completing a gate/phase" instruction, see
+above) — **Tier C (Project Performance) is now fully complete.** Four rounds landed on `main` this
+session, all via the same designated remote-session branch, `claude/tier-c-code-inspection-jysweb`,
+restarted from the new `main` between each per the standing "restart before the next gate"
+instruction: the Tier C inspection + `physical_progress` fix first (merge `fba3d42`), then Vendor
+Performance Centre (merge `0801b10`), then Delay & Recovery Management (merge `4882f79`), then
+Decision Register (merge `d57a056`). Aditya confirmed via `AskUserQuestion` to proceed with each
 merge given the branch's own "never push elsewhere without permission" constraint; see the git log
 for the exact sequence if that matters later. This builds on top of **Tier B (Control
 Integration)**, complete as of Gate 33, and the already-complete 14-gate Document Control sub-spec.
-`schema_version` on `main` is **37** (`recovery_actions` — the only one of the three rounds that
-needed a migration; the other two either wired up an existing field or were read-only).
-`claude/tier-c-code-inspection-jysweb` carries the same history as `main` as of this merge (nothing
-unmerged on it) but was NOT reset/deleted after this *third* merge — do that (or just start a fresh
-branch) before the next gate, per the standing "restart the working branch from the new main"
-instruction. No branch carries unmerged app features as of this handoff. Verify with
-`git log origin/main..HEAD` and `git status` before assuming this is still true by the time you
-read this.
+`schema_version` on `main` is **38** (`decisions` — new every round except Vendor Performance
+Centre, which was read-only). `claude/tier-c-code-inspection-jysweb` carries the same history as
+`main` as of this merge (nothing unmerged on it) but was NOT reset/deleted after this *fourth*
+merge — do that (or just start a fresh branch) before the next gate, per the standing "restart the
+working branch from the new main" instruction. No branch carries unmerged app features as of this
+handoff. Verify with `git log origin/main..HEAD` and `git status` before assuming this is still
+true by the time you read this.
 
 **Zip delivered this round:** `Project-Control-Center.zip` — `index.html` + `README.md` +
 `data/`/`files/` (existing `README.txt` placeholders), verified via a fresh extraction
-(`/tmp/pcc_zip_verify3/`, not the dev working copy) opened in real Chromium — title and
-`#page-outlet` render, a seeded recovery action shows correctly on the new Delay & Recovery
-Dashboard, zero console errors; screenshot taken and sent per the standing instruction.
+(`/tmp/pcc_zip_verify4/`, not the dev working copy) opened in real Chromium — title and
+`#page-outlet` render, a seeded decision shows correctly on the new Decision Register page, zero
+console errors; screenshot taken and sent per the standing instruction.
 
 **Next steps, in likely priority order:**
 1. **PCC Evolution Roadmap's next gate is not yet scoped — ask Aditya before building anything.**
-   Tiers A and B are both complete. Tier C (Project Performance) has been inspected against the
-   real code, its `physical_progress` bug is fixed, and two of its four gates are built (Vendor
-   Performance Centre, Delay & Recovery Management). One gap remains unscoped: Decision Register
-   (doesn't exist at all — same shape as Risk Register or RFI/TQ would be). Propose it in a short
-   paragraph, wait for "yes, build it," then build only that.
+   Tiers A, B, and C are ALL now complete. ~22 more gates remain across Tiers D-F (Management,
+   Portfolio, then Tier F's advanced planning/controls gates — some of Tier F's names, e.g.
+   "Advanced Delay Analysis" / "Recovery Planning," may already be partially covered by what this
+   session built; inspect against the real code before assuming, same discipline as every tier so
+   far). Propose the next tier's inspection findings, then one gate, get "yes, build it," then
+   build only that.
 2. Older still-open items, none blocking daily use: category-scheme reconciliation
    (Documents/Vendor/Document-Types), the Gantt-bar readiness flag, the two hardcoded reminder/
    lookahead windows (14-day Document Reminders, 30-day Action Centre Upcoming), Resource
