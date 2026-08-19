@@ -31,26 +31,35 @@ that override default behavior).
 - **If you're picking up a branch for the *next* piece of work, restart it from the latest
   `main` first** (`git fetch origin main && git reset --hard origin/main`, or rebase if there's
   unmerged work sitting on it) rather than stacking new commits on stale history.
+- **Always merge the working branch into `main` immediately after completing a gate/phase —
+  don't ask first, don't wait to be told each time.** Rebuild, run the full suite, merge (direct
+  merge is fine, same "solo repo, no CI, no reviewers" reasoning as the PR bullet above — a PR
+  isn't required), push `main`, then restart the working branch from the new `main` before
+  starting the next gate. Standing instruction as of this session (Aditya, verbatim: *"Always
+  merge the branches to main after completing the gate/phase"*) — apply it to every gate/phase
+  from here on without being asked again. Also written into `CLAUDE.md` itself now, not just
+  here.
 - **Document Control is a separate 14-gate sub-spec being built incrementally, one confirmed
   gate at a time.** Aditya provided the full spec up front but is explicit that it must NOT be
   built all at once — inspect current state, propose the next gate's scope in a short paragraph,
-  wait for "yes, build it," then build exactly that and stop. Seven gates in as of this handoff
+  wait for "yes, build it," then build exactly that and stop. Eight gates in as of this handoff
   (see below); do not jump ahead to a later gate's fields "while you're in there."
 
-## Where things stand — Gates 19-20 merged into `main`; Gate 21 built on a freshly-restarted branch, not yet pushed
+## Where things stand — everything through Gate 22 is merged into `main`
 
-`main` now has everything through **Gate 20** (Document Control gates 5-6: Schedule Due Dates,
-Vendor Register), merged directly (not via PR — Aditya asked for a direct merge, and this is a
-solo repo with no CI/reviewers) as commit `3295092`, `schema_version` **31**. **This session then
-added Gate 21** (Document Control gate 7 of 14: Schedule↔Document Linking) on top of that, bumping
-`schema_version` to **32**, on a version of `claude/gate-5-startup-1ubxfh` that was first reset to
-match the new `main` (`git checkout -B claude/gate-5-startup-1ubxfh origin/main` + force-push) —
-per this project's own convention, a branch whose PR/merge already landed gets restarted from the
-new `main` rather than stacking follow-up work on the old, now-stale history. The full test suite
-(**23 files, 502 checks**) passes clean, and a real-Chromium pass confirmed the new Linked
-Activity select and persistence. **Check `git log origin/main..HEAD` and `git status` before
-assuming Gate 21 is still local-only** — it may have been committed/pushed/merged after this file
-was last updated.
+`main` is fully up to date through **Gate 22** (Document Control gate 8 of 14: Schedule-Driven
+Dates/Lead Time), merge commit `260de5f`, `schema_version` **33**. This session built and merged
+three gates in sequence — Gate 21 (Schedule↔Document Linking, merged as part of `480ca18` earlier
+this session), then Gate 22 — each time rebuilding, running the full suite, merging directly (no
+PR — solo repo, no CI/reviewers, and Aditya has now made this a standing instruction, see above),
+pushing `main`, and restarting `claude/gate-5-startup-1ubxfh` from the new `main` before starting
+the next gate. The full test suite (**23 files, 514 checks**) passes clean, and a real-Chromium
+pass confirmed Gate 22's suggested-date computation end to end (a seeded activity with
+`planned_start: 2026-12-01` and a 7-day lead time produced `Suggested: 2026-11-24`, applied via
+"Use," and round-tripped into the store exactly as computed). **No branch currently carries
+unmerged app features** — `claude/gate-5-startup-1ubxfh` was reset to match `main` after the Gate
+22 merge and has no commits of its own on top. Verify with `git log origin/main..HEAD` before
+assuming this is still true by the time you read this.
 
 **Feature summary, in build order (Gates 1-13 summarized; Gates 14-17 — Document Control — in
 full detail since they're what's newest and least likely to be in a future session's training/
@@ -81,15 +90,15 @@ memory of this project):**
   8/9," that's why — see README.md's own Gate 12/13 sections for the full story, not repeated
   here since it's settled history now.)*
 
-### Document Control (Gates 14-21 = sub-spec gates 1-7) — the current frontier, one gate at a time
+### Document Control (Gates 14-22 = sub-spec gates 1-8) — the current frontier, one gate at a time
 
 Aditya's Document Control spec has 14 gates total (Master Repository → Project Requirements →
 Classification/Nomenclature → Status/Version Control → Schedule Due Dates → Vendor Register →
 Schedule↔Document Linking → Schedule-Driven Dates/Lead Time → Vendor Lookahead → Readiness/
 Constraints → Reminders/Notifications → Dashboards → Executive Summary → Portfolio Compliance).
-**The first seven are built** (plus Gate 18, an unnumbered UX fix between sub-spec gates 4 and 5).
+**The first eight are built** (plus Gate 18, an unnumbered UX fix between sub-spec gates 4 and 5).
 Each was scoped in a short paragraph, confirmed by Aditya ("yes, build Gate N as scoped"), then
-built — that back-and-forth pattern should continue for gate 8 onward, not be skipped.
+built — that back-and-forth pattern should continue for gate 9 onward, not be skipped.
 
 - **Gate 14 — Master Document Repository.** The first user-configurable taxonomy in this app:
   `document_types` (name/code/category/default_criticality/active), seeded with ~28 starting
@@ -173,15 +182,29 @@ built — that back-and-forth pattern should continue for gate 8 onward, not be 
   card reads "Hide Details," so a stale assumption about which state a card is in clicks nothing,
   or worse, clicks the wrong card) — fixed with an `ensureCardExpanded()` helper that checks
   state first rather than assuming it.
+- **Gate 22 — Document Control 8: Schedule-Driven Dates/Lead Time (this session, on a branch
+  freshly restarted from `main` after Gate 21 merged).** Scoped and confirmed. Builds on Gate 21's
+  `activity_id`: `project_document_requirements` gained `lead_time_days` (optional, `null`
+  default) — combined with the linked activity's start date (new `activityStartDate()` helper,
+  applying this app's standing calculated-wins-over-planned date precedence), it produces a
+  *suggested* due date via new `computeSuggestedDueDate()`. The suggestion is purely advisory —
+  never auto-applied. The form's checklist grows a lead-time number input next to Gate 21's
+  activity select, mirrored in `uiState.formLeadTimes`; when a suggestion is computable and
+  differs from the current due date, a `"Suggested: <date>"` note with a **"Use"** button appears
+  — one explicit click copies it into the due-date field, and the note disappears once applied.
+  New day-math helpers (`toDayNumber`/`toIsoDate`/`addDays`) duplicate `scheduleGanttLayout.js`'s
+  own versions, per this app's per-module-helpers convention. Read-only Details summary appends
+  `"(Nd lead time)"` after the linked activity's name.
 
 **Deliberately still open / explicitly deferred, don't assume these got done:**
 - Reconciling Documents' `category` / Vendor's `VENDOR_DOCUMENT_CATEGORIES` / the Gate 14 master
   repository into one classification scheme (deferred at both Gate 14 and Gate 16).
-- Document Control gates 8-14: schedule-derived lead time off Gate 21's activity link (gate 8),
-  vendor lookahead (gate 9), readiness/constraint flagging on activities (gate 10),
-  reminders/notifications (gate 11), dashboards (gate 12), executive summary (gate 13), portfolio
-  compliance rollups (gate 14). Gates 5 (manual due dates), 6 (vendor assignment), and 7 (schedule
-  link) are now done — see Gates 19/20/21 above; everything from gate 8 on is still unstarted.
+- Document Control gates 9-14: vendor lookahead (gate 9), readiness/constraint flagging on
+  activities (gate 10), reminders/notifications (gate 11), dashboards (gate 12), executive summary
+  (gate 13), portfolio compliance rollups (gate 14). Gates 5 (manual due dates), 6 (vendor
+  assignment), 7 (schedule
+  link), and 8 (lead time) are now done — see Gates 19/20/21/22 above; everything from gate 9 on
+  is still unstarted.
 - Rate × usage from Resource Management feeding Cost Tracking/EVM (deferred at Gate 11).
 - Portfolio-level executive dashboard filtering by client/country/sector/PM/date range.
 
@@ -248,14 +271,14 @@ built — that back-and-forth pattern should continue for gate 8 onward, not be 
 - Reports are printable HTML (`window.print()`), not generated PDFs.
 - No File System Access API; export/import-as-JSON is the deliberate cross-platform answer.
 - **Schema migration test convention:** one canonical file targeting the latest version
-  (`tests/test_store_schema_v32_migration.js` as of this handoff) — when you bump
+  (`tests/test_store_schema_v33_migration.js` as of this handoff) — when you bump
   `SCHEMA_VERSION`, `git mv` it to the new version number and fold in new assertions, rather than
   keeping old version-specific files around. Also remember to update the filename inside
   `tests/package.json`'s `test` script — it's not derived automatically and a stale reference
   there fails `npm test` with a bare `MODULE_NOT_FOUND` even though every individual test file is
   fine (hit this exact thing shipping Gate 19; fixed by editing `tests/package.json` alongside the
   `git mv`).
-- Testing: `cd tests && npm test` must pass before anything ships (23 files, 502 checks as of
+- Testing: `cd tests && npm test` must pass before anything ships (23 files, 514 checks as of
   this handoff). Pure-logic tests eval the real source file directly. E2E tests load the actual
   bundled `index.html` via jsdom (+ `fake-indexeddb` for IndexedDB-touching code). Also do one
   real-Chromium pass per gate (`/opt/pw-browsers/chromium-1194/chrome-linux/chrome --no-sandbox`,
@@ -310,33 +333,24 @@ built — that back-and-forth pattern should continue for gate 8 onward, not be 
 
 ## Repo/branch state
 
-`main` is fully up to date through **Gate 20** (`3295092`, a direct merge of Gates 19-20 — Aditya
-asked for a direct merge rather than a PR, consistent with "solo repo, no CI, no reviewers").
-`schema_version` on `main` is **31**. This session's designated branch,
-`claude/gate-5-startup-1ubxfh`, was reset to the new `main` (`git checkout -B ... origin/main` +
-force-push) before starting Gate 21, per this project's "restart a landed branch from the latest
-main rather than stacking on stale history" convention — it currently carries **one new commit**:
-Gate 21 (Document Control gate 7, Schedule↔Document Linking), bumping `schema_version` to **32**.
-No PR has been opened as of this handoff being written — per this session's operating rules, a PR
-is not created unless explicitly requested. Check `git log origin/main..claude/gate-5-startup-1ubxfh`
-and `git status` before assuming this is still the exact state — it may have moved on (committed,
-pushed, merged, or the next gate started) after this file was last updated. No other branch
-carries unmerged app features beyond this one — everything else listed in the previous version of
-this file is still fully merged into `main`.
+`main` is fully up to date through **Gate 22** (`260de5f`, a direct merge — no PR, per Aditya's
+now-standing "always merge after completing a gate/phase" instruction, see above).
+`schema_version` on `main` is **33**. `claude/gate-5-startup-1ubxfh` was reset to match this `main`
+immediately after the merge and carries no commits of its own on top — it's the correct starting
+point for the next gate, no restart needed before you begin. No branch carries unmerged app
+features. Verify with `git log origin/main..claude/gate-5-startup-1ubxfh` and `git status` before
+assuming this is still true by the time you read this.
 
 **Zip delivered this round:** `Project-Control-Center.zip` — `index.html` + `README.md` +
 `data/`/`files/` (existing `README.txt` placeholders), verified via a fresh extraction opened in
 real Chromium (title and `#page-outlet` render, zero console errors).
 
 **Next steps, in likely priority order:**
-1. Get `claude/gate-5-startup-1ubxfh` (carrying Gate 21) merged into `main` before starting further
-   work, same as Gates 19-20 were — ask Aditya whether they want a direct merge again or a PR this
-   time.
-2. Ask Aditya whether Document Control Gate 8 (Schedule-Driven Dates/Lead Time) is next — using
-   Gate 21's new `activity_id` link plus a configurable lead time to derive/suggest a planned
-   submission date — do not assume and start building without the explicit "yes, build Gate N as
-   scoped" confirmation this project has consistently required so far.
-3. Optional cleanup: these branches on `origin` are all fully merged into `main` and safe to
+1. Ask Aditya whether Document Control Gate 9 (Vendor Lookahead) is next — a vendor-facing view of
+   what's expected from them, using Gate 20's `vendor_id` assignment — do not assume and start
+   building without the explicit "yes, build Gate N as scoped" confirmation this project has
+   consistently required so far.
+2. Optional cleanup: these branches on `origin` are all fully merged into `main` and safe to
    delete (not urgent) — `integration/gates-8-13`, `claude/phase-11c-planning-executive-frty7j`,
    `claude/excel-schedule-pcc-editing-dgyy9m`, `claude/doc-control-gate14-master-repo`,
    `claude/doc-control-gate15-project-requirements`,
@@ -344,5 +358,5 @@ real Chromium (title and `#page-outlet` render, zero console errors).
    `claude/doc-control-gate17-status-version-control`. `claude/project-setup-tooling-gcwsu3`
    also still exists on origin — verify it's merged before deleting it, since this handoff round
    didn't touch it.
-4. Tier 3 (AI Document Processing, Knowledge Base, AI Project Assistant, Lessons Learned, final
+3. Tier 3 (AI Document Processing, Knowledge Base, AI Project Assistant, Lessons Learned, final
    polish) remains deferred until Tier 1/2 are in daily use.
