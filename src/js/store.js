@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 37;
+  var SCHEMA_VERSION = 38;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -57,6 +57,9 @@
       meetings: [],
       rfis: [],
       change_orders: [],
+      // PCC Evolution Roadmap, Tier C: Decision Register. Same project-scoped register
+      // shape as risks/rfis/change_orders above — see newDecision() below.
+      decisions: [],
       // Gate 1 (Schedule/WBS/Activity data model): storage only — no import parser and
       // no CPM calculation engine yet (those are Gates 2 and 3). Every activity/relationship
       // field this app will ever need for CPM already exists on the shape below so later
@@ -576,6 +579,37 @@
       // Gate 10: optional link to one Schedule activity — see newRisk()'s comment.
       activity_id: "",
       revisions: [],
+      created_at: now,
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  function newDecisionId() {
+    return "dec_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  var DECISION_STATUSES = ["pending", "decided", "deferred", "superseded"];
+
+  /** PCC Evolution Roadmap, Tier C: Decision Register. Same project-scoped register
+   * shape as Risk/Issue/Opportunity and RFI/TQ above — `description` is the context/
+   * background a decision is needed for, `decision` is the actual decision text (left
+   * empty until status moves to "decided"). Same optional Schedule activity link (Gate
+   * 10 pattern, see newRisk()'s comment) and optional `source_meeting_id` (a decision
+   * can be raised directly from a Meeting's minutes, same as Risk/RFI/Change Orders). */
+  function newDecision(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newDecisionId(),
+      project_id: "",
+      title: "",
+      description: "",
+      decision: "",
+      decided_by: "",
+      decision_date: "",
+      status: "pending",
+      source_meeting_id: "",
+      activity_id: "",
       created_at: now,
       updated_at: now,
     };
@@ -1875,6 +1909,14 @@
       loaded.schema_version = 37;
     }
 
+    if (loaded.schema_version < 38) {
+      // PCC Evolution Roadmap, Tier C: Decision Register. Brand new array, nothing to
+      // backfill on existing records — same as every prior gate that introduced a new
+      // register.
+      if (!loaded.decisions) loaded.decisions = [];
+      loaded.schema_version = 38;
+    }
+
     return loaded;
   }
 
@@ -2203,6 +2245,8 @@
     newChangeOrderRevision: newChangeOrderRevision,
     nextChangeOrderNumber: nextChangeOrderNumber,
     CHANGE_ORDER_STATUSES: CHANGE_ORDER_STATUSES,
+    newDecision: newDecision,
+    DECISION_STATUSES: DECISION_STATUSES,
     newSchedule: newSchedule,
     newWbsItem: newWbsItem,
     newActivity: newActivity,

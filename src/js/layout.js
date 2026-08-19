@@ -30,6 +30,7 @@
         { key: "meetings", label: "Meetings", code: "MT" },
         { key: "rfis", label: "RFI / TQ", code: "RQ" },
         { key: "changeOrders", label: "Change Mgmt", code: "CM" },
+        { key: "decisionRegister", label: "Decision Register", code: "DE" },
       ],
     },
     {
@@ -66,6 +67,7 @@
     meetings: "Meetings",
     rfis: "RFI / Technical Query",
     changeOrders: "Change Management",
+    decisionRegister: "Decision Register",
     cost: "Cost Tracking",
     resources: "Resource Management",
     reports: "Reports",
