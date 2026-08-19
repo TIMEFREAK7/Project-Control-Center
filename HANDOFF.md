@@ -61,20 +61,70 @@ that override default behavior).
   populated state, and again on the zip-verification pass) and send the PNGs via `SendUserFile`
   before or alongside the written report. Applies to every gate from here on, not just this one.
 
-## Where things stand — Tiers A-D are COMPLETE; Tier E (Portfolio) is underway
+## Where things stand — Tiers A-D are COMPLETE; Tier E (Portfolio) is COMPLETE (both gates)
 
-`main` is fully up to date through **Gate 16, Portfolio Performance** (PCC Evolution Roadmap,
-Tier E's first gate), merge commit `c4959e2`, `schema_version` still **39** (no schema change —
-`project_type` already existed on the project shape, just had no data-entry path). See the "PCC
+`main` is fully up to date through **Gate 17, Personal Workbench** (PCC Evolution Roadmap, Tier
+E's second and final named gate), merge commit `332b505`, `schema_version` **40**. See the "PCC
 Evolution Roadmap" section below for the complete gate-by-gate history — this section covers only
 the current tier's state.
 
-**Tier E (Portfolio) — Aditya provided the full spec verbatim (Gate 16 Portfolio Performance,
-Gate 17 Personal Workbench, plus supporting sections 25-32 on portfolio/workbench philosophy,
-health-score/reporting philosophy, and desktop/mobile UX). Chose to start with Portfolio
-Performance** (Aditya's exact answer: "Portfolio Performance") when asked which of the two
-substantial gates to build first. **Gate 17 Personal Workbench has NOT been started or re-asked
-about — do not assume it's next without confirming with Aditya first.**
+**Tier E (Portfolio) is now COMPLETE — Aditya provided the full spec verbatim (Gate 16 Portfolio
+Performance, Gate 17 Personal Workbench, plus supporting sections 25-32 on portfolio/workbench
+philosophy, health-score/reporting philosophy, and desktop/mobile UX).** Built Portfolio
+Performance first (Aditya's exact answer when asked which to start with: "Portfolio Performance"),
+then Personal Workbench (Aditya's exact instruction: "Start the next gate" — no re-scoping
+question needed since only one gate remained in the tier and the spec had already been re-read).
+
+**Gate 17 — Personal Workbench** (merge `332b505`): new page (`src/js/pages/myWork.js`), added to
+the sidebar nav as **"My Work"** (code `MW`, right after Dashboard), organized into the spec's own
+four sections — read the full inspection findings and Aditya's three schema decisions in this
+gate's own commit message (`git show 332b505^2` on the `claude/tier-c-code-inspection-jysweb`
+history) if more detail than below is needed:
+
+- **TODAY**: Overdue Actions (same definition Action Centre's own OVERDUE bucket already uses —
+  Meeting Actions + RFI/TQ past due), Today's Meetings, Approvals (Change Orders + Decisions with
+  `status: "pending"`), Activities to Update (**a genuinely new rule** — `not_started` activities
+  whose `planned_start` has passed, or `in_progress` activities whose `planned_finish` has passed;
+  nothing like this existed anywhere before this gate — it's about data hygiene, not schedule
+  health, which Executive Center/Portfolio already cover).
+- **THIS WEEK**: Meetings and Milestones in the next 7 days (reusing Project Lookahead's own
+  date-window/`early_start`-precedence conventions), Vendor Follow-ups, Reviews due. **"Reports"
+  was deliberately excluded** — no scheduled/recurring-report concept exists anywhere in PCC, and
+  the spec's own Reporting section (28) explicitly says not to build reporting out in one gate.
+- **WAITING FOR**: Vendor/Client/Consultant/Management, from RFI/TQ + Change Orders + Decisions
+  carrying the new `waiting_on_party` field. Unset (`""`) items never appear here — never guessed,
+  same "transparent, never fabricate" rule the health-score engine already follows.
+- **RECENTLY UPDATED**: Projects/Activities/RFIs/Risks/Meetings, top 5 each by `updated_at`, same
+  pattern Dashboard's own "Recent projects" panel already established.
+
+**Schema v40 — three fields, all three the "add a real field" choice** (Aditya confirmed each via
+`AskUserQuestion`; the alternatives offered were a no-schema-change heuristic or excluding the
+section entirely — Aditya picked the accurate-but-schema-touching option every time):
+- `waiting_on_party` (`""`/`"vendor"`/`"client"`/`"consultant"`/`"management"`) added to RFI/TQ,
+  Change Orders, and Decisions — editable via a new "Waiting On" select on each of their forms
+  (`rfis.js`/`changeOrders.js`/`decisionRegister.js`).
+- `next_follow_up_date` added to Vendor — editable via a new "Next Follow-up Date" field on the
+  vendor form (`vendors.js`).
+- `review_cadence_days` added to Project, **defaults to 7 (weekly)** for both new and migrated
+  projects — editable via a new "Review Cadence" select (Weekly/Biweekly/Monthly/None) on
+  Portfolio's edit form (`portfolio.js`). Drives Reviews-due: `next_due = (last WeeklyReview's
+  review_date, or the project's own start_date/created_at if never reviewed) + cadence_days`;
+  `review_cadence_days: null` means "not configured," excluding the project from Reviews entirely
+  rather than guessing a date.
+
+`executiveCenter.js`'s `viewProject()` gained an optional second `tab` argument (defaults to
+`"overview"`, every existing caller unaffected) so a Review-due item can land directly on the
+Weekly Reviews tab, same "land exactly on the linked record" convention `vendors.js`'s
+`openProfile(vendorId, tab)` already established.
+
+Tests: new `tests/test_my_work_e2e.js` (33 checks, including a 23-route smoke test). Schema
+migration test renamed `test_store_schema_v39_migration.js` →
+`test_store_schema_v40_migration.js` with a new v39→v40 migration check (unset fields backfill to
+`""`/`null`, already-set fields/`review_cadence_days` are left untouched, new projects still
+default to 7). Full suite: **42 files, 1043 checks**, clean, zero regressions. Real-Chromium pass
+(both the dev build and the verified zip extraction) confirmed all four sections render correctly
+with live data and zero console errors — including confirming the Reviews-due fallback to
+`created_at` works when a project has no `start_date` set.
 
 **Gate 16 — Portfolio Performance** (merge `c4959e2`): extends the existing Portfolio page in
 place rather than adding a new page, per the spec's own framing. Adds:
@@ -863,44 +913,53 @@ breakdown from Aditya directly, the same way Tier D's came, rather than guessing
   a dependent UI element needs to reflect a text field's latest value (e.g. Gate 16's nomenclature
   notice reacting to the Discipline/Document Number/Revision fields), wire `onblur = rerender` in
   addition to `oninput`, rather than rerendering on every keystroke.
+- `changeOrders.js` builds its form manually (no `FIELD_CONFIG` array, unlike `rfis.js`/
+  `decisionRegister.js`/`risks.js`) — adding a field there means writing a `textField`/`dateField`/
+  `selectField`-style local builder call directly, not adding one array entry.
+- A `FIELD_CONFIG` select entry with `optional: true` (Gate 17's `waiting_on_party` fields) needs
+  `buildField()` itself updated to prepend a blank "Not set" option — the pre-Gate-17 `buildField()`
+  implementations in `rfis.js`/`decisionRegister.js` had no such option since every prior select
+  field was required-with-a-sensible-default (e.g. `status`).
 
 ## Repo/branch state
 
-`main` is fully up to date through **Gate 16, Portfolio Performance** (`c4959e2`, a direct merge —
-no PR, per Aditya's now-standing "always merge after completing a gate/phase" instruction, see
-above) — **Tiers A, B, C, and D are fully complete; Tier E (Portfolio) is now underway, one of its
-two named gates done.** Seven rounds have landed on `main` this session, all via the same
-designated remote-session branch, `claude/tier-c-code-inspection-jysweb` (name is stale now — it's
-carried Tier C, D, and E gates alike), restarted from the new `main` between each per the standing
-"restart before the next gate" instruction: the Tier C inspection + `physical_progress` fix first
-(merge `fba3d42`), then Vendor Performance Centre (merge `0801b10`), then Delay & Recovery
-Management (merge `4882f79`), then Decision Register (merge `d57a056`), then Weekly Project Review
-(merge `c3af1d9`), then the Recovery Actions/Decisions reporting-wiring follow-on (merge `fef89f6`),
-then Gate 16 Portfolio Performance (merge `c4959e2`). Aditya confirmed via `AskUserQuestion` to
-proceed with each merge given the branch's own "never push elsewhere without permission"
-constraint; see the git log for the exact sequence if that matters later. This builds on top of
-**Tier B (Control Integration)**, complete as of Gate 33, and the already-complete 14-gate Document
-Control sub-spec. `schema_version` on `main` is still **39** — Gate 16 needed no schema change
-(`project_type` already existed on the project shape). `claude/tier-c-code-inspection-jysweb`
-carries the same history as `main` as of this merge (nothing unmerged on it) and HAS been
-reset/restarted from the new `main` already this round — verify with `git log origin/main..HEAD`
-and `git status` before assuming this is still true by the time you read this.
+`main` is fully up to date through **Gate 17, Personal Workbench** (`332b505`, a direct merge — no
+PR, per Aditya's now-standing "always merge after completing a gate/phase" instruction, see above)
+— **Tiers A, B, C, D, and now E are all fully complete.** Eight rounds have landed on `main` this
+session, all via the same designated remote-session branch, `claude/tier-c-code-inspection-jysweb`
+(name is stale now — it's carried Tier C, D, and E gates alike), restarted from the new `main`
+between each per the standing "restart before the next gate" instruction: the Tier C inspection +
+`physical_progress` fix first (merge `fba3d42`), then Vendor Performance Centre (merge `0801b10`),
+then Delay & Recovery Management (merge `4882f79`), then Decision Register (merge `d57a056`), then
+Weekly Project Review (merge `c3af1d9`), then the Recovery Actions/Decisions reporting-wiring
+follow-on (merge `fef89f6`), then Gate 16 Portfolio Performance (merge `c4959e2`), then Gate 17
+Personal Workbench (merge `332b505`). Aditya confirmed via `AskUserQuestion` to proceed with each
+merge given the branch's own "never push elsewhere without permission" constraint; see the git log
+for the exact sequence if that matters later. This builds on top of **Tier B (Control
+Integration)**, complete as of Gate 33, and the already-complete 14-gate Document Control sub-spec.
+`schema_version` on `main` is now **40** — Gate 17 added `waiting_on_party`/`next_follow_up_date`/
+`review_cadence_days` (see the "Where things stand" section above for full detail).
+`claude/tier-c-code-inspection-jysweb` carries the same history as `main` as of this merge (nothing
+unmerged on it) and HAS been reset/restarted from the new `main` already this round — verify with
+`git log origin/main..HEAD` and `git status` before assuming this is still true by the time you
+read this.
 
 **Zip delivered this round:** `Project-Control-Center.zip` — `index.html` + `README.md` +
 `data/`/`files/` (existing `README.txt` placeholders), verified via a fresh extraction
-(`/tmp/pcc_zip_verify1/`, not the dev working copy) opened in real Chromium — Portfolio's new KPI
-strip and filters render correctly with a seeded project, zero console errors; screenshot taken and
-sent per the standing instruction.
+(`/tmp/pcc_zip_verify2/`, not the dev working copy) opened in real Chromium — My Work's four
+sections all render correctly with a seeded project, including the Reviews-due fallback to
+`created_at` when a project has no `start_date`; zero console errors; screenshot taken and sent per
+the standing instruction.
 
 **Next steps, in likely priority order:**
-1. **Gate 17, Personal Workbench, is the other named Tier E gate — NOT yet started, and Aditya has
-   not been re-asked about it since choosing Portfolio Performance first.** Ask before building
-   anything else in Tier E. The full Tier E spec text (Gates 16-17 plus supporting sections 25-32
-   on portfolio/workbench philosophy and desktop/mobile UX) was handed over verbatim this session
-   and is preserved in this conversation's history but was never saved as a file in this repo —
-   don't assume a future session can find it; get it re-confirmed from Aditya if it's not still in
-   context. After Tier E, Tier F remains fully unscoped — get its named gate breakdown from Aditya
-   the same way every other tier's came, then inspect against real code before proposing anything.
+1. **Both Tier E gates are done — Tier F is next, and it is fully unscoped.** Get its named gate
+   breakdown directly from Aditya the same way every other tier's came (the original roadmap
+   document was never saved as a file in this repo, only ever handed over conversationally — the
+   one-line tier summary in "What this project is" above is not enough to build from). Then inspect
+   Tier F against the real code before proposing anything, same discipline as every tier so far —
+   some of its likely gates (per the one-line summary: Commitment Management, Status-Date Control,
+   Reforecasting, Baseline/Revision Control, Advanced Delay Analysis, Recovery Planning, Schedule
+   Performance) may already be partially covered by what's been built across this session.
 2. Older still-open items, none blocking daily use: category-scheme reconciliation
    (Documents/Vendor/Document-Types), the Gantt-bar readiness flag, the two hardcoded reminder/
    lookahead windows (14-day Document Reminders, 30-day Action Centre Upcoming), Resource
