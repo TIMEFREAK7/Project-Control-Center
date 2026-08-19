@@ -10,6 +10,7 @@
     router.register("portfolio", window.PCC.pages.portfolio);
     router.register("executiveCenter", window.PCC.pages.executiveCenter);
     router.register("vendors", window.PCC.pages.vendors);
+    router.register("vendorPerformanceCentre", window.PCC.pages.vendorPerformanceCentre);
     router.register("documents", window.PCC.pages.documents);
     router.register("documentTypes", window.PCC.pages.documentTypes);
     router.register("documentControlDashboard", window.PCC.pages.documentControlDashboard);
