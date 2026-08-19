@@ -79,6 +79,117 @@
     return reminders;
   }
 
+  // Gate 31 (PCC Evolution Roadmap Gate 3: Management Attention). Reuses Executive
+  // Center's existing rule-based diagnostics (via its exported getDiagnostics(projectId)
+  // — see that file's own comment for why this is a composed export rather than a
+  // duplicated context builder), run for every active project instead of just one.
+  // Scoped to Critical + Warning severities only — Info-level detail (near-critical
+  // activities, pending Change Orders) stays visible in Executive Center's own
+  // per-project Diagnostics panel, not duplicated here, so this stays high-signal rather
+  // than becoming a portfolio-wide firehose of every low-urgency note.
+  function computeManagementAttention(data, activeProjects) {
+    var groups = [];
+    activeProjects.forEach(function (p) {
+      if (!window.PCC.executiveCenter || !window.PCC.executiveCenter.getDiagnostics) return;
+      var alerts = window.PCC.executiveCenter.getDiagnostics(p.id).filter(function (a) {
+        return a.severity === "critical" || a.severity === "warning";
+      });
+      if (alerts.length === 0) return;
+      var criticalCount = alerts.filter(function (a) {
+        return a.severity === "critical";
+      }).length;
+      groups.push({ project: p, alerts: alerts, criticalCount: criticalCount, warningCount: alerts.length - criticalCount });
+    });
+    groups.sort(function (a, b) {
+      if (a.criticalCount !== b.criticalCount) return b.criticalCount - a.criticalCount;
+      if (a.warningCount !== b.warningCount) return b.warningCount - a.warningCount;
+      return (a.project.name || "").localeCompare(b.project.name || "");
+    });
+    return groups;
+  }
+
+  function renderManagementAttentionPanel(groups) {
+    var panel = document.createElement("div");
+    panel.className = "panel";
+    panel.style.marginBottom = "16px";
+
+    var totalAlerts = groups.reduce(function (sum, g) {
+      return sum + g.alerts.length;
+    }, 0);
+    if (totalAlerts > 0) panel.style.borderColor = "var(--status-critical)";
+
+    var heading = document.createElement("h3");
+    heading.style.marginBottom = "10px";
+    heading.textContent = "Management Attention (" + totalAlerts + ")";
+    panel.appendChild(heading);
+
+    if (groups.length === 0) {
+      var empty = document.createElement("p");
+      empty.className = "text-secondary";
+      empty.style.margin = "0";
+      empty.textContent = "No critical or warning conditions across the active portfolio right now.";
+      panel.appendChild(empty);
+      return panel;
+    }
+
+    groups.forEach(function (g) {
+      var group = document.createElement("div");
+      group.style.marginBottom = "12px";
+
+      var groupHeader = document.createElement("div");
+      groupHeader.style.display = "flex";
+      groupHeader.style.justifyContent = "space-between";
+      groupHeader.style.alignItems = "center";
+      groupHeader.style.marginBottom = "4px";
+
+      var projectName = document.createElement("span");
+      projectName.style.fontWeight = "600";
+      projectName.style.fontSize = "13px";
+      projectName.textContent = g.project.name || "(unnamed project)";
+      groupHeader.appendChild(projectName);
+
+      var viewBtn = document.createElement("button");
+      viewBtn.className = "btn btn--ghost";
+      viewBtn.textContent = "View Project";
+      viewBtn.onclick = (function (projectId) {
+        return function () {
+          window.PCC.executiveCenter.viewProject(projectId);
+          window.PCC.router.go("executiveCenter");
+          window.PCC.router.render();
+        };
+      })(g.project.id);
+      groupHeader.appendChild(viewBtn);
+
+      group.appendChild(groupHeader);
+
+      g.alerts.forEach(function (a) {
+        var row = document.createElement("div");
+        row.style.display = "flex";
+        row.style.alignItems = "center";
+        row.style.gap = "8px";
+        row.style.fontSize = "13px";
+        row.style.padding = "4px 0";
+
+        var badge = document.createElement("span");
+        badge.className = "status-badge status-badge--" + (a.severity === "critical" ? "critical" : "at_risk");
+        badge.style.fontSize = "11px";
+        badge.style.flexShrink = "0";
+        badge.textContent = a.severity === "critical" ? "Critical" : "Warning";
+        row.appendChild(badge);
+
+        var text = document.createElement("span");
+        text.textContent = a.description;
+        row.appendChild(text);
+
+        group.appendChild(row);
+      });
+
+      panel.appendChild(group);
+    });
+
+    return panel;
+  }
+
   function renderRemindersPanel(reminders, data) {
     var typesById = {};
     data.document_types.forEach(function (t) {
@@ -238,6 +349,8 @@
     wrap.appendChild(kpiGrid);
 
     if (active.length > 0) {
+      var attentionGroups = computeManagementAttention(data, active);
+      wrap.appendChild(renderManagementAttentionPanel(attentionGroups));
       wrap.appendChild(renderRemindersPanel(reminders, data));
     }
 

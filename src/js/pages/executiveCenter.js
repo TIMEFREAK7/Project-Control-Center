@@ -656,6 +656,19 @@
       uiState.projectId = projectId;
       uiState.tab = "overview";
     },
+    /** Gate 31 (PCC Evolution Roadmap Gate 3: Management Attention) — the Dashboard's
+     * portfolio-wide attention panel needs the same rule-based diagnostics this page's own
+     * Diagnostics panel already computes, for every active project, not just whichever one
+     * is currently open here. Exposing this one composed function — rather than exporting
+     * buildProjectContext() itself, or duplicating its ~220 lines of Schedule/Cost/EVM/
+     * Risk/RFI/Meetings/Change gathering into dashboard.js — keeps Dashboard and this page
+     * permanently in agreement on what a project's diagnostics are; there's exactly one
+     * place this logic lives. */
+    getDiagnostics: function (projectId) {
+      var data = window.PCC.store.get();
+      var ctx = buildProjectContext(data, projectId);
+      return window.PCC.projectHealthEngine.computeDiagnostics(diagnosticsContextFrom(ctx));
+    },
   };
 
   function renderPage(outlet) {
