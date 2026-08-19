@@ -1950,4 +1950,13 @@
   }
 
   window.PCC.pages.portfolio = render;
+  // Gate 11 (Document Control 11: Reminders/Notifications) — the Dashboard's "Document
+  // Reminders" panel needs a way to jump straight to a project's expanded Details, same
+  // "expose one small view hook" pattern executiveCenter.js already uses for its own
+  // viewProject().
+  window.PCC.portfolio = {
+    viewProject: function (projectId) {
+      uiState.expandedId = projectId;
+    },
+  };
 })();
