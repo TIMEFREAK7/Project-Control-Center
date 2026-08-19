@@ -1980,7 +1980,7 @@
         noRes.textContent = "No resources assigned to this project's activities yet.";
         resSection.appendChild(noRes);
       } else {
-        var portfolioOverAlloc = window.PCC.resourceLevelingEngine.portfolioOverAllocationSummary(data.resources, data.resource_assignments, data.activities);
+        var portfolioOverAlloc = window.PCC.resourceLevelingEngine.portfolioOverAllocationSummary(data.resources, data.resource_assignments, data.activities, data.resource_unavailability);
         var overAllocById = {};
         portfolioOverAlloc.forEach(function (s) { overAllocById[s.resourceId] = s; });
 

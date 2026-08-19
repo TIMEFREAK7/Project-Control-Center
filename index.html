@@ -3369,6 +3369,15 @@ https://github.com/nodeca/pako/blob/main/LICENSE
  *   already established for a factor with no underlying data.
  * - Date precedence matches every other engine in this app: calculated (early_start/
  *   early_finish) wins when present, falling back to planned dates.
+ *
+ * PCC Evolution Roadmap, Tier F (Gate 18): resource_unavailability rows (leave, a
+ * public holiday for a labor pool, equipment down for maintenance) now reduce a
+ * resource's EFFECTIVE daily availability — `max_availability` minus whatever
+ * unavailability quantity overlaps that specific day — rather than the flat
+ * `max_availability` number applying unconditionally on every day. Unavailability
+ * date ranges are INCLUSIVE of both start_date and end_date (see store.js's
+ * newResourceUnavailability comment for why that's a deliberate departure from the
+ * exclusive-end [start, finish) convention Schedule activities use).
  */
 (function () {
   "use strict";
@@ -3474,20 +3483,52 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     };
   }
 
-  /** @returns { available: boolean (false when max_availability isn't set — "not
+  /** Sum of every unavailability record's `quantity` for one resource that overlaps
+   * dayNumber — inclusive on both ends (see file header). Several overlapping records
+   * for the same resource stack (e.g. 2 on leave + 1 separately on a training course =
+   * 3 unavailable that day), same "several records can independently affect the same
+   * day" treatment resourceLevelingEngine.js already gives overlapping assignments. */
+  function unavailableQtyOnDay(unavailabilities, resourceId, dayNumber) {
+    var total = 0;
+    unavailabilities.forEach(function (u) {
+      if (u.resource_id !== resourceId || !u.start_date || !u.end_date) return;
+      var s = toDayNumber(u.start_date);
+      var e = toDayNumber(u.end_date);
+      if (dayNumber >= s && dayNumber <= e) total += Number(u.quantity) || 0;
+    });
+    return total;
+  }
+
+  /** Effective availability for one resource on one day: max_availability minus
+   * whatever unavailability overlaps that day, floored at 0 (can't go negative — an
+   * over-recorded leave quantity just means "fully unavailable," not "negative
+   * capacity"). Returns null when max_availability itself isn't set — "not
+   * computable," never "zero capacity," same discipline as every caller already
+   * expects from a null max_availability. */
+  function availabilityOnDay(resource, unavailabilities, dayNumber) {
+    if (resource.max_availability === null || resource.max_availability === undefined) return null;
+    var reducedBy = unavailableQtyOnDay(unavailabilities, resource.id, dayNumber);
+    return Math.max(0, Number(resource.max_availability) - reducedBy);
+  }
+
+  /** @param unavailabilities  full resource_unavailability array (filtered internally
+   *   to this resource, same convention computeResourceUsageTimeline uses for
+   *   assignments) — omit/pass [] for the pre-Gate-18 flat-availability behavior.
+   * @returns { available: boolean (false when max_availability isn't set — "not
    *             computable," never "zero capacity"), overAllocatedDays: [{date,
    *             allocated, available, overBy, contributors}], count, maxOverBy,
    *             firstDate, lastDate } */
-  function detectOverAllocations(resource, timeline) {
+  function detectOverAllocations(resource, timeline, unavailabilities) {
+    unavailabilities = unavailabilities || [];
     if (resource.max_availability === null || resource.max_availability === undefined) {
       return { available: false, overAllocatedDays: [], count: 0, maxOverBy: null, firstDate: null, lastDate: null };
     }
-    var maxAvail = Number(resource.max_availability);
     var overAllocatedDays = timeline.days
-      .filter(function (d) { return d.allocated > maxAvail; })
       .map(function (d) {
-        return { date: d.date, allocated: d.allocated, available: maxAvail, overBy: d.allocated - maxAvail, contributors: d.contributors };
-      });
+        var avail = availabilityOnDay(resource, unavailabilities, toDayNumber(d.date));
+        return { date: d.date, allocated: d.allocated, available: avail, overBy: d.allocated - avail, contributors: d.contributors };
+      })
+      .filter(function (d) { return d.overBy > 0; });
     var maxOverBy = overAllocatedDays.reduce(function (m, d) { return Math.max(m, d.overBy); }, 0);
     return {
       available: true,
@@ -3504,15 +3545,78 @@ https://github.com/nodeca/pako/blob/main/LICENSE
    * Portfolio's Details panel for a quick "N resources over-allocated" signal without
    * each caller re-running the day-by-day scan itself. Resources with
    * max_availability unset are excluded (not computable), not counted as 0. */
-  function portfolioOverAllocationSummary(resources, assignments, activities) {
+  function portfolioOverAllocationSummary(resources, assignments, activities, unavailabilities) {
+    unavailabilities = unavailabilities || [];
     return resources
       .map(function (r) {
         var timeline = computeResourceUsageTimeline(r, assignments, activities);
-        var result = detectOverAllocations(r, timeline);
+        var result = detectOverAllocations(r, timeline, unavailabilities);
         return { resourceId: r.id, resourceName: r.name || "(unnamed resource)", available: result.available, overAllocatedDayCount: result.count, maxOverBy: result.maxOverBy };
       })
       .filter(function (r) { return r.available && r.overAllocatedDayCount > 0; })
       .sort(function (a, b) { return b.overAllocatedDayCount - a.overAllocatedDayCount; });
+  }
+
+  /** Utilisation (allocated ÷ effective-available, as a %) per day, plus a
+   * demand/available/shortfall rollup across the resource's whole active date range
+   * (in "unit-days" — e.g. 3 electricians for 4 days = 12 unit-days of demand). A day
+   * where available is 0 but something is still allocated has no finite utilisation %
+   * to plot (utilisationPct: null for that day) — it's already captured by
+   * totalShortfallUnitDays and by detectOverAllocations' own per-day list, so nothing
+   * is silently lost, just not forced into a misleading percentage. */
+  function computeUtilisation(resource, timeline, unavailabilities) {
+    unavailabilities = unavailabilities || [];
+    if (resource.max_availability === null || resource.max_availability === undefined) {
+      return { available: false, days: [], averageUtilisationPct: null, totalDemandUnitDays: 0, totalAvailableUnitDays: null, totalShortfallUnitDays: null };
+    }
+    var totalDemand = 0;
+    var totalAvailable = 0;
+    var totalShortfall = 0;
+    var pctSum = 0;
+    var pctCount = 0;
+    var days = timeline.days.map(function (d) {
+      var avail = availabilityOnDay(resource, unavailabilities, toDayNumber(d.date));
+      totalDemand += d.allocated;
+      totalAvailable += avail;
+      if (d.allocated > avail) totalShortfall += d.allocated - avail;
+      var pct = avail > 0 ? (d.allocated / avail) * 100 : d.allocated > 0 ? null : 0;
+      if (pct !== null) {
+        pctSum += pct;
+        pctCount++;
+      }
+      return { date: d.date, allocated: d.allocated, available: avail, utilisationPct: pct };
+    });
+    return {
+      available: true,
+      days: days,
+      averageUtilisationPct: pctCount ? pctSum / pctCount : null,
+      totalDemandUnitDays: totalDemand,
+      totalAvailableUnitDays: totalAvailable,
+      totalShortfallUnitDays: totalShortfall,
+    };
+  }
+
+  /** Same bucketing shape as bucketTimeline, but AVERAGES utilisationPct per bucket
+   * instead of taking the max — a trend is about typical load, whereas bucketTimeline's
+   * max-of-bucket is deliberately tuned for spotting over-allocation spikes instead.
+   * Days with a null utilisationPct (see computeUtilisation) are excluded from the
+   * average, not treated as 0. */
+  function bucketUtilisation(days, bucketSizeDays) {
+    if (!days.length) return [];
+    var buckets = [];
+    for (var i = 0; i < days.length; i += bucketSizeDays) {
+      var slice = days.slice(i, i + bucketSizeDays);
+      var sum = 0;
+      var count = 0;
+      slice.forEach(function (d) {
+        if (d.utilisationPct !== null) {
+          sum += d.utilisationPct;
+          count++;
+        }
+      });
+      buckets.push({ bucketStart: slice[0].date, bucketEnd: slice[slice.length - 1].date, avgUtilisationPct: count ? sum / count : null });
+    }
+    return buckets;
   }
 
   /** Buckets a day timeline into fixed-size windows (e.g. weekly) for charting long
@@ -3535,6 +3639,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     detectOverAllocations: detectOverAllocations,
     portfolioOverAllocationSummary: portfolioOverAllocationSummary,
     bucketTimeline: bucketTimeline,
+    computeUtilisation: computeUtilisation,
+    bucketUtilisation: bucketUtilisation,
     diffDays: diffDays,
     addDays: addDays,
   };
@@ -3623,7 +3729,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 40;
+  var SCHEMA_VERSION = 41;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -3710,6 +3816,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       // (not project-scoped) — see the header comment above newResource() for why.
       resources: [],
       resource_assignments: [],
+      resource_unavailability: [],
       // Gate 13 (Vendor Management): Vendor Master is portfolio-wide, not scoped to a
       // single project the way Documents/Risk/RFI are — vendor_project_links is the
       // many-to-many join, same shape convention as every other join in this store
@@ -4346,7 +4453,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   //   Change Orders and Cost Tracking's Portfolio-budget fallback already established.
   // ============================================================
 
-  var RESOURCE_TYPES = ["labor", "equipment", "material"];
+  // PCC Evolution Roadmap, Tier F: Resource Management (Gate 18). Expanded additively —
+  // "labor"/"material" stay valid so resources created under Gate 11 keep whatever type
+  // they already have (no silent reclassification of existing data); the new, more
+  // granular categories from the spec are added alongside rather than replacing them.
+  var RESOURCE_TYPES = [
+    "employee", "engineer", "supervisor", "skilled_labor", "unskilled_labor",
+    "contractor", "subcontractor", "equipment", "machinery", "material", "labor",
+  ];
 
   function newResourceId() {
     return "res_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
@@ -4378,7 +4492,16 @@ https://github.com/nodeca/pako/blob/main/LICENSE
    * electricians on Rough-In Wiring"). Always tied to exactly one activity — a
    * resource needed across several activities gets several assignment records, same
    * "one link per record" shape every other link in this app uses (cost_budget_items,
-   * Gate 10's activity_id fields). */
+   * Gate 10's activity_id fields).
+   *
+   * PCC Evolution Roadmap, Tier F (Gate 18): `quantity` now specifically means PLANNED
+   * quantity — `actual_quantity` is the new, separately-tracked actual (null = not yet
+   * recorded, never assumed equal to planned). `planned_hours_per_day`/`overtime_hours`
+   * are simple aggregate totals, not a daily time-entry log (Aditya, explicit choice —
+   * "this is project resource control, not a timesheet system"). `vendor_id` is
+   * per-assignment rather than on the Resource itself (Aditya, explicit choice) — the
+   * same shared resource (e.g. "Skilled Labor") can be sourced from a different vendor
+   * on each activity it's assigned to. */
   function newResourceAssignment(overrides) {
     var now = new Date().toISOString();
     var base = {
@@ -4386,7 +4509,41 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       resource_id: "",
       activity_id: "",
       quantity: null,
+      actual_quantity: null,
+      planned_hours_per_day: null,
+      overtime_hours: null,
+      vendor_id: "",
       notes: "",
+      created_at: now,
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  function newResourceUnavailabilityId() {
+    return "runv_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  /** PCC Evolution Roadmap, Tier F (Gate 18): a date range where some quantity of a
+   * Resource is NOT available (leave, a public holiday for a labor pool, equipment
+   * down for maintenance) — reduces that resource's effective daily availability in
+   * resourceLevelingEngine.js rather than the flat `max_availability` number applying
+   * unconditionally on every day. `quantity` is how much of the resource is
+   * unavailable (e.g. "2 of 5 electricians on leave"), not an all-or-nothing flag —
+   * partial reductions are the common case, not the exception. `start_date`/`end_date`
+   * are both INCLUSIVE (Aditya's own leave dates "Aug 20 to Aug 25" means both days
+   * off) — deliberately different from Schedule activities' exclusive-end [start,
+   * finish) convention, because this field is filled in by a human picking calendar
+   * days, not computed from a duration. */
+  function newResourceUnavailability(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newResourceUnavailabilityId(),
+      resource_id: "",
+      start_date: "",
+      end_date: "",
+      quantity: null,
+      reason: "",
       created_at: now,
       updated_at: now,
     };
@@ -5639,6 +5796,23 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       loaded.schema_version = 40;
     }
 
+    if (loaded.schema_version < 41) {
+      // PCC Evolution Roadmap, Tier F: Resource Management (Gate 18). Adds
+      // actual_quantity/planned_hours_per_day/overtime_hours (all null, not recorded)
+      // and vendor_id ("", unlinked) to every existing resource_assignments row — none
+      // of this was tracked before, so there's nothing real to backfill. Brand new
+      // resource_unavailability array, same "nothing to backfill on existing records"
+      // treatment every other new register in this app has gotten.
+      (loaded.resource_assignments || []).forEach(function (a) {
+        if (a.actual_quantity === undefined) a.actual_quantity = null;
+        if (a.planned_hours_per_day === undefined) a.planned_hours_per_day = null;
+        if (a.overtime_hours === undefined) a.overtime_hours = null;
+        if (a.vendor_id === undefined) a.vendor_id = "";
+      });
+      if (!loaded.resource_unavailability) loaded.resource_unavailability = [];
+      loaded.schema_version = 41;
+    }
+
     return loaded;
   }
 
@@ -5988,6 +6162,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     newWeeklyReview: newWeeklyReview,
     newResource: newResource,
     newResourceAssignment: newResourceAssignment,
+    newResourceUnavailability: newResourceUnavailability,
     RESOURCE_TYPES: RESOURCE_TYPES,
     newVendor: newVendor,
     nextVendorCode: nextVendorCode,
@@ -10420,7 +10595,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         noRes.textContent = "No resources assigned to this project's activities yet.";
         resSection.appendChild(noRes);
       } else {
-        var portfolioOverAlloc = window.PCC.resourceLevelingEngine.portfolioOverAllocationSummary(data.resources, data.resource_assignments, data.activities);
+        var portfolioOverAlloc = window.PCC.resourceLevelingEngine.portfolioOverAllocationSummary(data.resources, data.resource_assignments, data.activities, data.resource_unavailability);
         var overAllocById = {};
         portfolioOverAlloc.forEach(function (s) { overAllocById[s.resourceId] = s; });
 
@@ -10965,7 +11140,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var assignedResourceIds = {};
     projectAssignments.forEach(function (a) { assignedResourceIds[a.resource_id] = true; });
     var portfolioOverAlloc = window.PCC.resourceLevelingEngine
-      ? window.PCC.resourceLevelingEngine.portfolioOverAllocationSummary(data.resources, data.resource_assignments, data.activities)
+      ? window.PCC.resourceLevelingEngine.portfolioOverAllocationSummary(data.resources, data.resource_assignments, data.activities, data.resource_unavailability)
       : [];
     var overAllocById = {};
     portfolioOverAlloc.forEach(function (s) { overAllocById[s.resourceId] = s; });
@@ -21752,8 +21927,39 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         if (window.PCC.resources && window.PCC.resources.expandAssignment) window.PCC.resources.expandAssignment(a.id);
         window.PCC.router.go("resources");
       },
+      // PCC Evolution Roadmap, Tier F (Gate 18): "the schedule should show which
+      // resources are required for an activity AND WHETHER THOSE RESOURCES ARE
+      // AVAILABLE" — this is the one LINKED_RECORD_SOURCES entry that needs a live
+      // availability read, not just a label. Runs the full cross-project over-
+      // allocation scan (same engine the Leveling tab uses) and checks whether any of
+      // THIS activity's own days land on one of that resource's over-allocated days —
+      // a resource can be over-allocated portfolio-wide on dates outside this
+      // activity's own window, which shouldn't flag this particular assignment.
+      badge: function (a, data, activity) {
+        var resource = data.resources.find(function (r) { return r.id === a.resource_id; });
+        if (!resource) return null;
+        if (resource.max_availability == null) return { label: "Availability Unknown", className: "info" };
+        var timeline = window.PCC.resourceLevelingEngine.computeResourceUsageTimeline(resource, data.resource_assignments, data.activities);
+        var overAlloc = window.PCC.resourceLevelingEngine.detectOverAllocations(resource, timeline, data.resource_unavailability);
+        if (overAlloc.count === 0) return { label: "Available", className: "on_track" };
+        var dates = resourceActivityEffectiveDates(activity);
+        if (!dates.start) return { label: "Over-Allocated (Elsewhere)", className: "at_risk" };
+        var conflictInWindow = overAlloc.overAllocatedDays.some(function (d) { return d.date >= dates.start && d.date < dates.finish; });
+        return conflictInWindow ? { label: "Over-Allocated", className: "critical" } : { label: "Available", className: "on_track" };
+      },
     },
   ];
+
+  /** Same calculated-wins/planned-falls-back precedence as resourceLevelingEngine.js's
+   * own effectiveDates() — duplicated here per this app's per-module-helpers
+   * convention (that engine has no DOM/store dependency and shouldn't gain one just to
+   * be called from here). */
+  function resourceActivityEffectiveDates(activity) {
+    if (activity.activity_type === "milestone") return { start: null, finish: null };
+    if (activity.early_start && activity.early_finish) return { start: activity.early_start, finish: activity.early_finish };
+    if (activity.planned_start && activity.planned_finish) return { start: activity.planned_start, finish: activity.planned_finish };
+    return { start: null, finish: null };
+  }
 
   // Gate 10 (Document Control 10: Readiness/Constraints). Same "Available"/"Overdue"/
   // "Required" status computation as pages/portfolio.js's computeRequirementStatus() and
@@ -21861,7 +22067,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var rows = [];
     LINKED_RECORD_SOURCES.forEach(function (source) {
       source.list(data, activity.id).forEach(function (record) {
-        rows.push({ text: source.label(record), view: function () { source.view(record); } });
+        rows.push({
+          text: source.label(record),
+          view: function () { source.view(record); },
+          badge: source.badge ? source.badge(record, data, activity) : null,
+        });
       });
     });
 
@@ -21888,7 +22098,17 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
         var text = document.createElement("span");
         text.textContent = row.text;
+        text.style.flex = "1";
         rowEl.appendChild(text);
+
+        if (row.badge) {
+          var badge = document.createElement("span");
+          badge.className = "status-badge status-badge--" + row.badge.className;
+          badge.style.fontSize = "11px";
+          badge.style.marginRight = "8px";
+          badge.textContent = row.badge.label;
+          rowEl.appendChild(badge);
+        }
 
         var viewBtn = document.createElement("button");
         viewBtn.className = "btn btn--ghost";
@@ -28627,16 +28847,34 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   window.PCC = window.PCC || {};
   window.PCC.pages = window.PCC.pages || {};
 
-  var TYPE_LABELS = { labor: "Labor", equipment: "Equipment", material: "Material" };
+  // PCC Evolution Roadmap, Tier F (Gate 18): expanded from the original three (labor/
+  // equipment/material) to the spec's own granular list — "labor" stays as a legacy
+  // label so resources typed under Gate 11 still display correctly (see store.js's
+  // RESOURCE_TYPES comment).
+  var TYPE_LABELS = {
+    employee: "Employee",
+    engineer: "Engineer",
+    supervisor: "Supervisor",
+    skilled_labor: "Skilled Labor",
+    unskilled_labor: "Unskilled Labor",
+    contractor: "Contractor",
+    subcontractor: "Subcontractor",
+    equipment: "Equipment",
+    machinery: "Machinery",
+    material: "Material",
+    labor: "Labor (legacy)",
+  };
 
   var uiState = {
-    tab: "register", // 'register' | 'assignments' | 'leveling'
+    tab: "register", // 'register' | 'assignments' | 'unavailability' | 'leveling'
     editingResourceId: null,
     editingAssignmentId: null,
+    editingUnavailabilityId: null,
     resourceSearch: "",
     resourceTypeFilter: "",
     assignmentResourceFilter: "",
     assignmentProjectFilter: "", // narrows the Activity select in the Assignment form
+    unavailabilityResourceFilter: "",
     levelingResourceId: "",
   };
 
@@ -28659,6 +28897,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   function activityLabel(activities, activityId) {
     var a = activities.find(function (x) { return x.id === activityId; });
     return a ? a.name || "(unnamed activity)" : "(activity deleted)";
+  }
+
+  function vendorName(vendors, vendorId) {
+    if (!vendorId) return "";
+    var v = vendors.find(function (x) { return x.id === vendorId; });
+    return v ? v.vendor_name || "(unnamed vendor)" : "(vendor deleted)";
   }
 
   /** Gate 10/11: same activityOptionsFor() pattern established in cost.js (Gate 7)
@@ -29076,7 +29320,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     var qtyField = document.createElement("div");
     qtyField.className = "field";
-    qtyField.innerHTML = "<label>Quantity *</label>";
+    qtyField.innerHTML = "<label>Planned Quantity *</label>";
     var qtyInput = document.createElement("input");
     qtyInput.type = "number";
     qtyInput.min = "0";
@@ -29085,6 +29329,69 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     qtyInput.value = assignment.quantity == null ? "" : assignment.quantity;
     qtyField.appendChild(qtyInput);
     grid.appendChild(qtyField);
+
+    // PCC Evolution Roadmap, Tier F (Gate 18): actual quantity, working hours/overtime
+    // (simple aggregate totals, not a daily time-entry log — Aditya's explicit choice),
+    // and a per-assignment vendor link (also Aditya's explicit choice, over a single
+    // vendor_id on the Resource itself — the same shared resource can be sourced from a
+    // different vendor on each activity it's assigned to).
+    var actualQtyField = document.createElement("div");
+    actualQtyField.className = "field";
+    actualQtyField.innerHTML = "<label>Actual Quantity</label>";
+    var actualQtyInput = document.createElement("input");
+    actualQtyInput.type = "number";
+    actualQtyInput.min = "0";
+    actualQtyInput.step = "any";
+    actualQtyInput.id = "asgfield-actual_quantity";
+    actualQtyInput.placeholder = "not yet recorded";
+    actualQtyInput.value = assignment.actual_quantity == null ? "" : assignment.actual_quantity;
+    actualQtyField.appendChild(actualQtyInput);
+    grid.appendChild(actualQtyField);
+
+    var hoursField = document.createElement("div");
+    hoursField.className = "field";
+    hoursField.innerHTML = "<label>Planned Hours / Day</label>";
+    var hoursInput = document.createElement("input");
+    hoursInput.type = "number";
+    hoursInput.min = "0";
+    hoursInput.step = "any";
+    hoursInput.id = "asgfield-planned_hours_per_day";
+    hoursInput.placeholder = "e.g. 8";
+    hoursInput.value = assignment.planned_hours_per_day == null ? "" : assignment.planned_hours_per_day;
+    hoursField.appendChild(hoursInput);
+    grid.appendChild(hoursField);
+
+    var otField = document.createElement("div");
+    otField.className = "field";
+    otField.innerHTML = "<label>Overtime Hours</label>";
+    var otInput = document.createElement("input");
+    otInput.type = "number";
+    otInput.min = "0";
+    otInput.step = "any";
+    otInput.id = "asgfield-overtime_hours";
+    otInput.placeholder = "total, if any";
+    otInput.value = assignment.overtime_hours == null ? "" : assignment.overtime_hours;
+    otField.appendChild(otInput);
+    grid.appendChild(otField);
+
+    var vendorField = document.createElement("div");
+    vendorField.className = "field";
+    vendorField.innerHTML = "<label>Sourced From Vendor</label>";
+    var vendorSelect = document.createElement("select");
+    vendorSelect.id = "asgfield-vendor_id";
+    var noVendorOpt = document.createElement("option");
+    noVendorOpt.value = "";
+    noVendorOpt.textContent = "(none)";
+    vendorSelect.appendChild(noVendorOpt);
+    data.vendors.forEach(function (v) {
+      var opt = document.createElement("option");
+      opt.value = v.id;
+      opt.textContent = v.vendor_name || "(unnamed vendor)";
+      vendorSelect.appendChild(opt);
+    });
+    vendorSelect.value = assignment.vendor_id || "";
+    vendorField.appendChild(vendorSelect);
+    grid.appendChild(vendorField);
 
     form.appendChild(grid);
 
@@ -29141,6 +29448,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         resource_id: resSelect.value,
         activity_id: activitySelect.value,
         quantity: qty,
+        actual_quantity: actualQtyInput.value === "" ? null : Number(actualQtyInput.value),
+        planned_hours_per_day: hoursInput.value === "" ? null : Number(hoursInput.value),
+        overtime_hours: otInput.value === "" ? null : Number(otInput.value),
+        vendor_id: vendorSelect.value,
         notes: notesArea.value,
       };
 
@@ -29267,12 +29578,19 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         card.style.flexWrap = "wrap";
         card.style.marginBottom = "6px";
 
+        var qtyText = "planned " + a.quantity + (a.actual_quantity != null ? ", actual " + a.actual_quantity : "");
+        var extraParts = [];
+        if (a.planned_hours_per_day != null) extraParts.push(a.planned_hours_per_day + " hrs/day");
+        if (a.overtime_hours) extraParts.push(a.overtime_hours + " OT hrs");
+        if (a.vendor_id) extraParts.push("via " + esc(vendorName(data.vendors, a.vendor_id)));
+
         var main = document.createElement("div");
         main.innerHTML =
-          "<strong>" + esc(resourceName(data.resources, a.resource_id)) + "</strong> — " + a.quantity + "<br/>" +
+          "<strong>" + esc(resourceName(data.resources, a.resource_id)) + "</strong> — " + qtyText + "<br/>" +
           "<span class='text-secondary' style='font-size:12px;'>" +
           esc(activityLabel(data.activities, a.activity_id)) +
           (activity ? " · " + esc(projectName(data.projects, activity.project_id)) : "") +
+          (extraParts.length ? " · " + extraParts.join(" · ") : "") +
           "</span>";
         card.appendChild(main);
 
@@ -29323,6 +29641,302 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   }
 
   // ---------------------------------------------------------------------------------
+  // Unavailability tab (PCC Evolution Roadmap, Tier F, Gate 18) — leave/downtime
+  // periods that reduce a resource's effective daily availability in the Leveling tab
+  // and resourceLevelingEngine.js, rather than the flat Max Availability number
+  // applying unconditionally on every day.
+  // ---------------------------------------------------------------------------------
+
+  function renderUnavailabilityForm(container, record, data, rerender) {
+    var isNew = uiState.editingUnavailabilityId === "new";
+    var panel = document.createElement("div");
+    panel.className = "panel";
+    panel.style.marginBottom = "16px";
+
+    var heading = document.createElement("h3");
+    heading.style.marginBottom = "14px";
+    heading.textContent = isNew ? "Add Leave / Unavailable Period" : "Edit Leave / Unavailable Period";
+    panel.appendChild(heading);
+
+    if (data.resources.length === 0) {
+      var note = document.createElement("p");
+      note.className = "text-secondary";
+      note.textContent = "Add a resource in the Register tab first.";
+      panel.appendChild(note);
+      var closeBtn = document.createElement("button");
+      closeBtn.className = "btn btn--ghost";
+      closeBtn.textContent = "Close";
+      closeBtn.onclick = function () {
+        uiState.editingUnavailabilityId = null;
+        rerender();
+      };
+      panel.appendChild(closeBtn);
+      container.appendChild(panel);
+      return;
+    }
+
+    var form = document.createElement("form");
+    var grid = document.createElement("div");
+    grid.className = "form-grid";
+
+    var resField = document.createElement("div");
+    resField.className = "field";
+    resField.innerHTML = "<label>Resource *</label>";
+    var resSelect = document.createElement("select");
+    resSelect.id = "unavfield-resource_id";
+    data.resources.forEach(function (r) {
+      var opt = document.createElement("option");
+      opt.value = r.id;
+      opt.textContent = r.name + " (" + TYPE_LABELS[r.type] + ")";
+      resSelect.appendChild(opt);
+    });
+    resSelect.value = record.resource_id || data.resources[0].id;
+    resField.appendChild(resSelect);
+    grid.appendChild(resField);
+
+    var startField = document.createElement("div");
+    startField.className = "field";
+    startField.innerHTML = "<label>Start Date * (inclusive)</label>";
+    var startInput = document.createElement("input");
+    startInput.type = "date";
+    startInput.id = "unavfield-start_date";
+    startInput.value = record.start_date || "";
+    startField.appendChild(startInput);
+    grid.appendChild(startField);
+
+    var endField = document.createElement("div");
+    endField.className = "field";
+    endField.innerHTML = "<label>End Date * (inclusive)</label>";
+    var endInput = document.createElement("input");
+    endInput.type = "date";
+    endInput.id = "unavfield-end_date";
+    endInput.value = record.end_date || "";
+    endField.appendChild(endInput);
+    grid.appendChild(endField);
+
+    var qtyField = document.createElement("div");
+    qtyField.className = "field";
+    qtyField.innerHTML = "<label>Quantity Unavailable *</label>";
+    var qtyInput = document.createElement("input");
+    qtyInput.type = "number";
+    qtyInput.min = "0";
+    qtyInput.step = "any";
+    qtyInput.id = "unavfield-quantity";
+    qtyInput.placeholder = "e.g. 2 of 5 electricians";
+    qtyInput.value = record.quantity == null ? "" : record.quantity;
+    qtyField.appendChild(qtyInput);
+    grid.appendChild(qtyField);
+
+    var reasonField = document.createElement("div");
+    reasonField.className = "field";
+    reasonField.innerHTML = "<label>Reason</label>";
+    var reasonInput = document.createElement("input");
+    reasonInput.type = "text";
+    reasonInput.id = "unavfield-reason";
+    reasonInput.placeholder = "e.g. Annual Leave, Maintenance, Public Holiday";
+    reasonInput.value = record.reason || "";
+    reasonField.appendChild(reasonInput);
+    grid.appendChild(reasonField);
+
+    form.appendChild(grid);
+
+    var errorMsg = document.createElement("p");
+    errorMsg.style.color = "var(--status-critical)";
+    errorMsg.style.fontSize = "13px";
+    errorMsg.style.display = "none";
+    errorMsg.textContent = "Resource, Start Date, End Date (on or after Start Date), and a positive Quantity are required.";
+    form.appendChild(errorMsg);
+
+    var actions = document.createElement("div");
+    actions.style.display = "flex";
+    actions.style.gap = "10px";
+    actions.style.marginTop = "12px";
+
+    var saveBtn = document.createElement("button");
+    saveBtn.type = "submit";
+    saveBtn.className = "btn btn--primary";
+    saveBtn.textContent = isNew ? "Add Period" : "Save Changes";
+
+    var cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.className = "btn btn--ghost";
+    cancelBtn.textContent = "Cancel";
+    cancelBtn.onclick = function () {
+      uiState.editingUnavailabilityId = null;
+      rerender();
+    };
+
+    actions.appendChild(saveBtn);
+    actions.appendChild(cancelBtn);
+    form.appendChild(actions);
+
+    form.onsubmit = function (e) {
+      e.preventDefault();
+      var qty = Number(qtyInput.value);
+      var valid = resSelect.value && startInput.value && endInput.value && endInput.value >= startInput.value && qty && qty > 0;
+      if (!valid) {
+        errorMsg.style.display = "block";
+        return;
+      }
+      errorMsg.style.display = "none";
+
+      var values = {
+        resource_id: resSelect.value,
+        start_date: startInput.value,
+        end_date: endInput.value,
+        quantity: qty,
+        reason: reasonInput.value,
+      };
+
+      window.PCC.store.update(function (d) {
+        if (isNew) {
+          d.resource_unavailability.push(window.PCC.store.newResourceUnavailability(values));
+        } else {
+          var existing = d.resource_unavailability.find(function (u) { return u.id === record.id; });
+          if (existing) {
+            Object.assign(existing, values);
+            existing.updated_at = new Date().toISOString();
+          }
+        }
+      });
+
+      window.PCC.notify(isNew ? "Unavailable period added." : "Unavailable period updated.", "success");
+      uiState.editingUnavailabilityId = null;
+      rerender();
+    };
+
+    panel.appendChild(form);
+    container.appendChild(panel);
+  }
+
+  function renderUnavailabilityTab(container, data, rerender) {
+    if (uiState.editingUnavailabilityId) {
+      var recordBeingEdited =
+        uiState.editingUnavailabilityId === "new"
+          ? window.PCC.store.newResourceUnavailability({})
+          : data.resource_unavailability.find(function (u) { return u.id === uiState.editingUnavailabilityId; });
+      if (recordBeingEdited) renderUnavailabilityForm(container, recordBeingEdited, data, rerender);
+    }
+
+    var toolbar = document.createElement("div");
+    toolbar.className = "toolbar";
+
+    var resSelect = document.createElement("select");
+    var allOpt = document.createElement("option");
+    allOpt.value = "";
+    allOpt.textContent = "All Resources";
+    resSelect.appendChild(allOpt);
+    data.resources.forEach(function (r) {
+      var opt = document.createElement("option");
+      opt.value = r.id;
+      opt.textContent = r.name;
+      resSelect.appendChild(opt);
+    });
+    resSelect.value = uiState.unavailabilityResourceFilter;
+    resSelect.onchange = function () {
+      uiState.unavailabilityResourceFilter = resSelect.value;
+      renderList();
+    };
+    toolbar.appendChild(resSelect);
+
+    var spacer = document.createElement("div");
+    spacer.className = "toolbar__spacer";
+    toolbar.appendChild(spacer);
+
+    var addBtn = document.createElement("button");
+    addBtn.className = "btn btn--primary";
+    addBtn.textContent = "+ Add Period";
+    addBtn.disabled = data.resources.length === 0;
+    addBtn.onclick = function () {
+      uiState.editingUnavailabilityId = "new";
+      rerender();
+    };
+    toolbar.appendChild(addBtn);
+    container.appendChild(toolbar);
+
+    var listWrap = document.createElement("div");
+    container.appendChild(listWrap);
+
+    function renderList() {
+      listWrap.innerHTML = "";
+      var filtered = data.resource_unavailability
+        .filter(function (u) {
+          if (uiState.unavailabilityResourceFilter && u.resource_id !== uiState.unavailabilityResourceFilter) return false;
+          return true;
+        })
+        .slice()
+        .sort(function (a, b) { return (a.start_date || "").localeCompare(b.start_date || ""); });
+
+      if (filtered.length === 0) {
+        var empty = document.createElement("div");
+        empty.className = "panel empty-state";
+        empty.textContent =
+          data.resources.length === 0
+            ? "Add a resource first, then record its leave/unavailable periods here."
+            : data.resource_unavailability.length === 0
+            ? "No leave/unavailable periods recorded yet. Click “+ Add Period” to add one."
+            : "No periods match this filter.";
+        listWrap.appendChild(empty);
+        return;
+      }
+
+      var list = document.createElement("div");
+      list.className = "project-list";
+      filtered.forEach(function (u) {
+        var card = document.createElement("div");
+        card.className = "detail-card";
+        card.style.display = "flex";
+        card.style.justifyContent = "space-between";
+        card.style.alignItems = "center";
+        card.style.gap = "12px";
+        card.style.flexWrap = "wrap";
+        card.style.marginBottom = "6px";
+
+        var main = document.createElement("div");
+        main.innerHTML =
+          "<strong>" + esc(resourceName(data.resources, u.resource_id)) + "</strong> — " + u.quantity + " unavailable<br/>" +
+          "<span class='text-secondary' style='font-size:12px;'>" +
+          u.start_date + " to " + u.end_date +
+          (u.reason ? " · " + esc(u.reason) : "") +
+          "</span>";
+        card.appendChild(main);
+
+        var actions = document.createElement("div");
+        actions.style.display = "flex";
+        actions.style.gap = "8px";
+
+        var editBtn = document.createElement("button");
+        editBtn.className = "btn btn--ghost";
+        editBtn.textContent = "Edit";
+        editBtn.onclick = function () {
+          uiState.editingUnavailabilityId = u.id;
+          rerender();
+        };
+        actions.appendChild(editBtn);
+
+        var deleteBtn = document.createElement("button");
+        deleteBtn.className = "btn btn--ghost";
+        deleteBtn.textContent = "Delete";
+        deleteBtn.onclick = function () {
+          if (!confirm("Delete this leave/unavailable period?")) return;
+          window.PCC.store.update(function (d) {
+            d.resource_unavailability = d.resource_unavailability.filter(function (item) { return item.id !== u.id; });
+          });
+          window.PCC.notify("Period deleted.", "success");
+          rerender();
+        };
+        actions.appendChild(deleteBtn);
+
+        card.appendChild(actions);
+        list.appendChild(card);
+      });
+      listWrap.appendChild(list);
+    }
+
+    renderList();
+  }
+
+  // ---------------------------------------------------------------------------------
   // Leveling tab
   // ---------------------------------------------------------------------------------
 
@@ -29331,6 +29945,59 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var el = document.createElementNS(SVG_NS, tag);
     if (attrs) Object.keys(attrs).forEach(function (k) { el.setAttribute(k, attrs[k]); });
     return el;
+  }
+
+  function renderUtilisationTrend(container, utilisation) {
+    if (!utilisation.available || utilisation.days.length === 0) {
+      var empty = document.createElement("p");
+      empty.className = "text-secondary";
+      empty.style.fontSize = "13px";
+      empty.textContent = utilisation.available ? "No dated assignments to chart yet." : "Max Availability isn't set for this resource, so utilisation can't be computed.";
+      container.appendChild(empty);
+      return;
+    }
+
+    var bucketSize = utilisation.days.length <= 60 ? 1 : utilisation.days.length <= 260 ? 7 : 30;
+    var buckets = window.PCC.resourceLevelingEngine.bucketUtilisation(utilisation.days, bucketSize);
+
+    var width = Math.max(400, Math.min(900, buckets.length * (bucketSize === 1 ? 10 : 20)));
+    var height = 120;
+    var padB = 20;
+    var barW = width / buckets.length;
+
+    var svg = svgEl("svg", { width: width, height: height, style: "display:block;max-width:100%;" });
+
+    // Buckets with a null avgUtilisationPct ("not computable" — see computeUtilisation)
+    // are skipped entirely rather than drawn as a misleading 0%-tall bar.
+    buckets.forEach(function (b, i) {
+      if (b.avgUtilisationPct === null) return;
+      var pct = Math.min(b.avgUtilisationPct, 150); // clamp bar height display at 150% so one wild spike doesn't flatten the rest of the chart
+      var barH = (pct / 150) * (height - padB - 6);
+      var over = b.avgUtilisationPct > 100;
+      svg.appendChild(
+        svgEl("rect", {
+          x: i * barW + 1, y: height - padB - barH, width: Math.max(barW - 2, 1), height: barH,
+          fill: over ? "var(--status-critical)" : "var(--status-info)",
+        })
+      );
+      var title = svgEl("title");
+      title.textContent = b.bucketStart + (b.bucketEnd !== b.bucketStart ? " to " + b.bucketEnd : "") + ": " + Math.round(b.avgUtilisationPct) + "%";
+      svg.lastChild.appendChild(title);
+    });
+
+    var fullLineY = height - padB - (100 / 150) * (height - padB - 6);
+    svg.appendChild(svgEl("line", { x1: 0, y1: fullLineY, x2: width, y2: fullLineY, stroke: "var(--signal-amber)", "stroke-width": 2, "stroke-dasharray": "4,3" }));
+
+    container.appendChild(svg);
+
+    var legend = document.createElement("p");
+    legend.className = "text-secondary";
+    legend.style.fontSize = "11px";
+    legend.style.marginTop = "4px";
+    legend.textContent =
+      (bucketSize === 1 ? "Daily" : bucketSize === 7 ? "Weekly" : "Monthly") +
+      " average utilisation (allocated ÷ availability after leave). Dashed line is 100%; red bars exceed it.";
+    container.appendChild(legend);
   }
 
   function renderHistogram(container, timeline, maxAvailability) {
@@ -29386,7 +30053,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   }
 
   function renderLevelingTab(container, data, rerender) {
-    var portfolioSummary = window.PCC.resourceLevelingEngine.portfolioOverAllocationSummary(data.resources, data.resource_assignments, data.activities);
+    var portfolioSummary = window.PCC.resourceLevelingEngine.portfolioOverAllocationSummary(data.resources, data.resource_assignments, data.activities, data.resource_unavailability);
 
     var summaryPanel = document.createElement("div");
     summaryPanel.className = "panel";
@@ -29455,7 +30122,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     var resource = data.resources.find(function (r) { return r.id === uiState.levelingResourceId; });
     var timeline = window.PCC.resourceLevelingEngine.computeResourceUsageTimeline(resource, data.resource_assignments, data.activities);
-    var overAlloc = window.PCC.resourceLevelingEngine.detectOverAllocations(resource, timeline);
+    var overAlloc = window.PCC.resourceLevelingEngine.detectOverAllocations(resource, timeline, data.resource_unavailability);
+    var utilisation = window.PCC.resourceLevelingEngine.computeUtilisation(resource, timeline, data.resource_unavailability);
 
     var kpiGrid = document.createElement("div");
     kpiGrid.className = "kpi-grid";
@@ -29471,7 +30139,24 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     kpi("Total Assignments", totalAssignments);
     kpi("Over-Allocated Days", overAlloc.available ? overAlloc.count : "—", overAlloc.available && overAlloc.count > 0 ? "--status-critical" : null);
     kpi("Worst Over-Allocation", overAlloc.maxOverBy == null ? "—" : "+" + overAlloc.maxOverBy, overAlloc.maxOverBy ? "--status-critical" : null);
+    kpi("Avg. Utilisation", utilisation.averageUtilisationPct == null ? "—" : Math.round(utilisation.averageUtilisationPct) + "%");
+    kpi(
+      "Demand vs Available",
+      utilisation.available ? utilisation.totalDemandUnitDays + " / " + utilisation.totalAvailableUnitDays + " unit-days" : "—",
+      utilisation.available && utilisation.totalShortfallUnitDays > 0 ? "--status-critical" : null
+    );
     container.appendChild(kpiGrid);
+
+    if (utilisation.available && utilisation.totalShortfallUnitDays > 0) {
+      var shortageNote = document.createElement("p");
+      shortageNote.style.fontSize = "12px";
+      shortageNote.style.color = "var(--status-critical)";
+      shortageNote.style.marginTop = "-8px";
+      shortageNote.style.marginBottom = "12px";
+      shortageNote.textContent =
+        "Shortfall: " + utilisation.totalShortfallUnitDays + " unit-day(s) of demand exceed availability across this resource's active date range.";
+      container.appendChild(shortageNote);
+    }
 
     if (!overAlloc.available) {
       var noteP = document.createElement("p");
@@ -29501,6 +30186,38 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     histPanel.appendChild(histHeading);
     renderHistogram(histPanel, timeline, resource.max_availability);
     container.appendChild(histPanel);
+
+    var trendPanel = document.createElement("div");
+    trendPanel.className = "panel";
+    trendPanel.style.marginBottom = "16px";
+    var trendHeading = document.createElement("h4");
+    trendHeading.style.marginBottom = "8px";
+    trendHeading.textContent = "Utilisation Trend";
+    trendPanel.appendChild(trendHeading);
+    renderUtilisationTrend(trendPanel, utilisation);
+    container.appendChild(trendPanel);
+
+    var resourceUnavailability = data.resource_unavailability
+      .filter(function (u) { return u.resource_id === resource.id; })
+      .slice()
+      .sort(function (a, b) { return (a.start_date || "").localeCompare(b.start_date || ""); });
+    if (resourceUnavailability.length > 0) {
+      var unavPanel = document.createElement("div");
+      unavPanel.className = "panel";
+      unavPanel.style.marginBottom = "16px";
+      var unavHeading = document.createElement("h4");
+      unavHeading.style.marginBottom = "8px";
+      unavHeading.textContent = "Leave / Unavailable Periods (" + resourceUnavailability.length + ")";
+      unavPanel.appendChild(unavHeading);
+      resourceUnavailability.forEach(function (u) {
+        var row = document.createElement("p");
+        row.style.fontSize = "13px";
+        row.style.margin = "4px 0";
+        row.textContent = u.start_date + " to " + u.end_date + " — " + u.quantity + " unavailable" + (u.reason ? " (" + u.reason + ")" : "");
+        unavPanel.appendChild(row);
+      });
+      container.appendChild(unavPanel);
+    }
 
     if (overAlloc.available && overAlloc.count > 0) {
       var conflictPanel = document.createElement("div");
@@ -29556,7 +30273,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     sub.style.fontSize = "12px";
     sub.style.marginBottom = "16px";
     sub.textContent =
-      "A shared resource pool (labor/equipment/material) assigned to Schedule activities across every project, with cross-project over-allocation detection. Quantity/availability only — no cost linkage.";
+      "A shared resource pool assigned to Schedule activities across every project, with cross-project over-allocation, leave-adjusted availability, and utilisation tracking. Quantity/availability only — no cost linkage.";
     outlet.appendChild(sub);
 
     var tabBar = document.createElement("div");
@@ -29564,6 +30281,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     [
       { key: "register", label: "Register" },
       { key: "assignments", label: "Assignments" },
+      { key: "unavailability", label: "Unavailability" },
       { key: "leveling", label: "Leveling" },
     ].forEach(function (t) {
       var btn = document.createElement("button");
@@ -29573,6 +30291,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         uiState.tab = t.key;
         uiState.editingResourceId = null;
         uiState.editingAssignmentId = null;
+        uiState.editingUnavailabilityId = null;
         rerender();
       };
       tabBar.appendChild(btn);
@@ -29585,6 +30304,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     if (uiState.tab === "register") renderRegisterTab(tabContent, data, rerender);
     else if (uiState.tab === "assignments") renderAssignmentsTab(tabContent, data, rerender);
+    else if (uiState.tab === "unavailability") renderUnavailabilityTab(tabContent, data, rerender);
     else if (uiState.tab === "leveling") renderLevelingTab(tabContent, data, rerender);
   }
 

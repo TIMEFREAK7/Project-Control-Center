@@ -23,6 +23,15 @@
  *   already established for a factor with no underlying data.
  * - Date precedence matches every other engine in this app: calculated (early_start/
  *   early_finish) wins when present, falling back to planned dates.
+ *
+ * PCC Evolution Roadmap, Tier F (Gate 18): resource_unavailability rows (leave, a
+ * public holiday for a labor pool, equipment down for maintenance) now reduce a
+ * resource's EFFECTIVE daily availability — `max_availability` minus whatever
+ * unavailability quantity overlaps that specific day — rather than the flat
+ * `max_availability` number applying unconditionally on every day. Unavailability
+ * date ranges are INCLUSIVE of both start_date and end_date (see store.js's
+ * newResourceUnavailability comment for why that's a deliberate departure from the
+ * exclusive-end [start, finish) convention Schedule activities use).
  */
 (function () {
   "use strict";
@@ -128,20 +137,52 @@
     };
   }
 
-  /** @returns { available: boolean (false when max_availability isn't set — "not
+  /** Sum of every unavailability record's `quantity` for one resource that overlaps
+   * dayNumber — inclusive on both ends (see file header). Several overlapping records
+   * for the same resource stack (e.g. 2 on leave + 1 separately on a training course =
+   * 3 unavailable that day), same "several records can independently affect the same
+   * day" treatment resourceLevelingEngine.js already gives overlapping assignments. */
+  function unavailableQtyOnDay(unavailabilities, resourceId, dayNumber) {
+    var total = 0;
+    unavailabilities.forEach(function (u) {
+      if (u.resource_id !== resourceId || !u.start_date || !u.end_date) return;
+      var s = toDayNumber(u.start_date);
+      var e = toDayNumber(u.end_date);
+      if (dayNumber >= s && dayNumber <= e) total += Number(u.quantity) || 0;
+    });
+    return total;
+  }
+
+  /** Effective availability for one resource on one day: max_availability minus
+   * whatever unavailability overlaps that day, floored at 0 (can't go negative — an
+   * over-recorded leave quantity just means "fully unavailable," not "negative
+   * capacity"). Returns null when max_availability itself isn't set — "not
+   * computable," never "zero capacity," same discipline as every caller already
+   * expects from a null max_availability. */
+  function availabilityOnDay(resource, unavailabilities, dayNumber) {
+    if (resource.max_availability === null || resource.max_availability === undefined) return null;
+    var reducedBy = unavailableQtyOnDay(unavailabilities, resource.id, dayNumber);
+    return Math.max(0, Number(resource.max_availability) - reducedBy);
+  }
+
+  /** @param unavailabilities  full resource_unavailability array (filtered internally
+   *   to this resource, same convention computeResourceUsageTimeline uses for
+   *   assignments) — omit/pass [] for the pre-Gate-18 flat-availability behavior.
+   * @returns { available: boolean (false when max_availability isn't set — "not
    *             computable," never "zero capacity"), overAllocatedDays: [{date,
    *             allocated, available, overBy, contributors}], count, maxOverBy,
    *             firstDate, lastDate } */
-  function detectOverAllocations(resource, timeline) {
+  function detectOverAllocations(resource, timeline, unavailabilities) {
+    unavailabilities = unavailabilities || [];
     if (resource.max_availability === null || resource.max_availability === undefined) {
       return { available: false, overAllocatedDays: [], count: 0, maxOverBy: null, firstDate: null, lastDate: null };
     }
-    var maxAvail = Number(resource.max_availability);
     var overAllocatedDays = timeline.days
-      .filter(function (d) { return d.allocated > maxAvail; })
       .map(function (d) {
-        return { date: d.date, allocated: d.allocated, available: maxAvail, overBy: d.allocated - maxAvail, contributors: d.contributors };
-      });
+        var avail = availabilityOnDay(resource, unavailabilities, toDayNumber(d.date));
+        return { date: d.date, allocated: d.allocated, available: avail, overBy: d.allocated - avail, contributors: d.contributors };
+      })
+      .filter(function (d) { return d.overBy > 0; });
     var maxOverBy = overAllocatedDays.reduce(function (m, d) { return Math.max(m, d.overBy); }, 0);
     return {
       available: true,
@@ -158,15 +199,78 @@
    * Portfolio's Details panel for a quick "N resources over-allocated" signal without
    * each caller re-running the day-by-day scan itself. Resources with
    * max_availability unset are excluded (not computable), not counted as 0. */
-  function portfolioOverAllocationSummary(resources, assignments, activities) {
+  function portfolioOverAllocationSummary(resources, assignments, activities, unavailabilities) {
+    unavailabilities = unavailabilities || [];
     return resources
       .map(function (r) {
         var timeline = computeResourceUsageTimeline(r, assignments, activities);
-        var result = detectOverAllocations(r, timeline);
+        var result = detectOverAllocations(r, timeline, unavailabilities);
         return { resourceId: r.id, resourceName: r.name || "(unnamed resource)", available: result.available, overAllocatedDayCount: result.count, maxOverBy: result.maxOverBy };
       })
       .filter(function (r) { return r.available && r.overAllocatedDayCount > 0; })
       .sort(function (a, b) { return b.overAllocatedDayCount - a.overAllocatedDayCount; });
+  }
+
+  /** Utilisation (allocated ÷ effective-available, as a %) per day, plus a
+   * demand/available/shortfall rollup across the resource's whole active date range
+   * (in "unit-days" — e.g. 3 electricians for 4 days = 12 unit-days of demand). A day
+   * where available is 0 but something is still allocated has no finite utilisation %
+   * to plot (utilisationPct: null for that day) — it's already captured by
+   * totalShortfallUnitDays and by detectOverAllocations' own per-day list, so nothing
+   * is silently lost, just not forced into a misleading percentage. */
+  function computeUtilisation(resource, timeline, unavailabilities) {
+    unavailabilities = unavailabilities || [];
+    if (resource.max_availability === null || resource.max_availability === undefined) {
+      return { available: false, days: [], averageUtilisationPct: null, totalDemandUnitDays: 0, totalAvailableUnitDays: null, totalShortfallUnitDays: null };
+    }
+    var totalDemand = 0;
+    var totalAvailable = 0;
+    var totalShortfall = 0;
+    var pctSum = 0;
+    var pctCount = 0;
+    var days = timeline.days.map(function (d) {
+      var avail = availabilityOnDay(resource, unavailabilities, toDayNumber(d.date));
+      totalDemand += d.allocated;
+      totalAvailable += avail;
+      if (d.allocated > avail) totalShortfall += d.allocated - avail;
+      var pct = avail > 0 ? (d.allocated / avail) * 100 : d.allocated > 0 ? null : 0;
+      if (pct !== null) {
+        pctSum += pct;
+        pctCount++;
+      }
+      return { date: d.date, allocated: d.allocated, available: avail, utilisationPct: pct };
+    });
+    return {
+      available: true,
+      days: days,
+      averageUtilisationPct: pctCount ? pctSum / pctCount : null,
+      totalDemandUnitDays: totalDemand,
+      totalAvailableUnitDays: totalAvailable,
+      totalShortfallUnitDays: totalShortfall,
+    };
+  }
+
+  /** Same bucketing shape as bucketTimeline, but AVERAGES utilisationPct per bucket
+   * instead of taking the max — a trend is about typical load, whereas bucketTimeline's
+   * max-of-bucket is deliberately tuned for spotting over-allocation spikes instead.
+   * Days with a null utilisationPct (see computeUtilisation) are excluded from the
+   * average, not treated as 0. */
+  function bucketUtilisation(days, bucketSizeDays) {
+    if (!days.length) return [];
+    var buckets = [];
+    for (var i = 0; i < days.length; i += bucketSizeDays) {
+      var slice = days.slice(i, i + bucketSizeDays);
+      var sum = 0;
+      var count = 0;
+      slice.forEach(function (d) {
+        if (d.utilisationPct !== null) {
+          sum += d.utilisationPct;
+          count++;
+        }
+      });
+      buckets.push({ bucketStart: slice[0].date, bucketEnd: slice[slice.length - 1].date, avgUtilisationPct: count ? sum / count : null });
+    }
+    return buckets;
   }
 
   /** Buckets a day timeline into fixed-size windows (e.g. weekly) for charting long
@@ -189,6 +293,8 @@
     detectOverAllocations: detectOverAllocations,
     portfolioOverAllocationSummary: portfolioOverAllocationSummary,
     bucketTimeline: bucketTimeline,
+    computeUtilisation: computeUtilisation,
+    bucketUtilisation: bucketUtilisation,
     diffDays: diffDays,
     addDays: addDays,
   };

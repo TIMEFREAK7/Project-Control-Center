@@ -22,16 +22,34 @@
   window.PCC = window.PCC || {};
   window.PCC.pages = window.PCC.pages || {};
 
-  var TYPE_LABELS = { labor: "Labor", equipment: "Equipment", material: "Material" };
+  // PCC Evolution Roadmap, Tier F (Gate 18): expanded from the original three (labor/
+  // equipment/material) to the spec's own granular list — "labor" stays as a legacy
+  // label so resources typed under Gate 11 still display correctly (see store.js's
+  // RESOURCE_TYPES comment).
+  var TYPE_LABELS = {
+    employee: "Employee",
+    engineer: "Engineer",
+    supervisor: "Supervisor",
+    skilled_labor: "Skilled Labor",
+    unskilled_labor: "Unskilled Labor",
+    contractor: "Contractor",
+    subcontractor: "Subcontractor",
+    equipment: "Equipment",
+    machinery: "Machinery",
+    material: "Material",
+    labor: "Labor (legacy)",
+  };
 
   var uiState = {
-    tab: "register", // 'register' | 'assignments' | 'leveling'
+    tab: "register", // 'register' | 'assignments' | 'unavailability' | 'leveling'
     editingResourceId: null,
     editingAssignmentId: null,
+    editingUnavailabilityId: null,
     resourceSearch: "",
     resourceTypeFilter: "",
     assignmentResourceFilter: "",
     assignmentProjectFilter: "", // narrows the Activity select in the Assignment form
+    unavailabilityResourceFilter: "",
     levelingResourceId: "",
   };
 
@@ -54,6 +72,12 @@
   function activityLabel(activities, activityId) {
     var a = activities.find(function (x) { return x.id === activityId; });
     return a ? a.name || "(unnamed activity)" : "(activity deleted)";
+  }
+
+  function vendorName(vendors, vendorId) {
+    if (!vendorId) return "";
+    var v = vendors.find(function (x) { return x.id === vendorId; });
+    return v ? v.vendor_name || "(unnamed vendor)" : "(vendor deleted)";
   }
 
   /** Gate 10/11: same activityOptionsFor() pattern established in cost.js (Gate 7)
@@ -471,7 +495,7 @@
 
     var qtyField = document.createElement("div");
     qtyField.className = "field";
-    qtyField.innerHTML = "<label>Quantity *</label>";
+    qtyField.innerHTML = "<label>Planned Quantity *</label>";
     var qtyInput = document.createElement("input");
     qtyInput.type = "number";
     qtyInput.min = "0";
@@ -480,6 +504,69 @@
     qtyInput.value = assignment.quantity == null ? "" : assignment.quantity;
     qtyField.appendChild(qtyInput);
     grid.appendChild(qtyField);
+
+    // PCC Evolution Roadmap, Tier F (Gate 18): actual quantity, working hours/overtime
+    // (simple aggregate totals, not a daily time-entry log — Aditya's explicit choice),
+    // and a per-assignment vendor link (also Aditya's explicit choice, over a single
+    // vendor_id on the Resource itself — the same shared resource can be sourced from a
+    // different vendor on each activity it's assigned to).
+    var actualQtyField = document.createElement("div");
+    actualQtyField.className = "field";
+    actualQtyField.innerHTML = "<label>Actual Quantity</label>";
+    var actualQtyInput = document.createElement("input");
+    actualQtyInput.type = "number";
+    actualQtyInput.min = "0";
+    actualQtyInput.step = "any";
+    actualQtyInput.id = "asgfield-actual_quantity";
+    actualQtyInput.placeholder = "not yet recorded";
+    actualQtyInput.value = assignment.actual_quantity == null ? "" : assignment.actual_quantity;
+    actualQtyField.appendChild(actualQtyInput);
+    grid.appendChild(actualQtyField);
+
+    var hoursField = document.createElement("div");
+    hoursField.className = "field";
+    hoursField.innerHTML = "<label>Planned Hours / Day</label>";
+    var hoursInput = document.createElement("input");
+    hoursInput.type = "number";
+    hoursInput.min = "0";
+    hoursInput.step = "any";
+    hoursInput.id = "asgfield-planned_hours_per_day";
+    hoursInput.placeholder = "e.g. 8";
+    hoursInput.value = assignment.planned_hours_per_day == null ? "" : assignment.planned_hours_per_day;
+    hoursField.appendChild(hoursInput);
+    grid.appendChild(hoursField);
+
+    var otField = document.createElement("div");
+    otField.className = "field";
+    otField.innerHTML = "<label>Overtime Hours</label>";
+    var otInput = document.createElement("input");
+    otInput.type = "number";
+    otInput.min = "0";
+    otInput.step = "any";
+    otInput.id = "asgfield-overtime_hours";
+    otInput.placeholder = "total, if any";
+    otInput.value = assignment.overtime_hours == null ? "" : assignment.overtime_hours;
+    otField.appendChild(otInput);
+    grid.appendChild(otField);
+
+    var vendorField = document.createElement("div");
+    vendorField.className = "field";
+    vendorField.innerHTML = "<label>Sourced From Vendor</label>";
+    var vendorSelect = document.createElement("select");
+    vendorSelect.id = "asgfield-vendor_id";
+    var noVendorOpt = document.createElement("option");
+    noVendorOpt.value = "";
+    noVendorOpt.textContent = "(none)";
+    vendorSelect.appendChild(noVendorOpt);
+    data.vendors.forEach(function (v) {
+      var opt = document.createElement("option");
+      opt.value = v.id;
+      opt.textContent = v.vendor_name || "(unnamed vendor)";
+      vendorSelect.appendChild(opt);
+    });
+    vendorSelect.value = assignment.vendor_id || "";
+    vendorField.appendChild(vendorSelect);
+    grid.appendChild(vendorField);
 
     form.appendChild(grid);
 
@@ -536,6 +623,10 @@
         resource_id: resSelect.value,
         activity_id: activitySelect.value,
         quantity: qty,
+        actual_quantity: actualQtyInput.value === "" ? null : Number(actualQtyInput.value),
+        planned_hours_per_day: hoursInput.value === "" ? null : Number(hoursInput.value),
+        overtime_hours: otInput.value === "" ? null : Number(otInput.value),
+        vendor_id: vendorSelect.value,
         notes: notesArea.value,
       };
 
@@ -662,12 +753,19 @@
         card.style.flexWrap = "wrap";
         card.style.marginBottom = "6px";
 
+        var qtyText = "planned " + a.quantity + (a.actual_quantity != null ? ", actual " + a.actual_quantity : "");
+        var extraParts = [];
+        if (a.planned_hours_per_day != null) extraParts.push(a.planned_hours_per_day + " hrs/day");
+        if (a.overtime_hours) extraParts.push(a.overtime_hours + " OT hrs");
+        if (a.vendor_id) extraParts.push("via " + esc(vendorName(data.vendors, a.vendor_id)));
+
         var main = document.createElement("div");
         main.innerHTML =
-          "<strong>" + esc(resourceName(data.resources, a.resource_id)) + "</strong> — " + a.quantity + "<br/>" +
+          "<strong>" + esc(resourceName(data.resources, a.resource_id)) + "</strong> — " + qtyText + "<br/>" +
           "<span class='text-secondary' style='font-size:12px;'>" +
           esc(activityLabel(data.activities, a.activity_id)) +
           (activity ? " · " + esc(projectName(data.projects, activity.project_id)) : "") +
+          (extraParts.length ? " · " + extraParts.join(" · ") : "") +
           "</span>";
         card.appendChild(main);
 
@@ -718,6 +816,302 @@
   }
 
   // ---------------------------------------------------------------------------------
+  // Unavailability tab (PCC Evolution Roadmap, Tier F, Gate 18) — leave/downtime
+  // periods that reduce a resource's effective daily availability in the Leveling tab
+  // and resourceLevelingEngine.js, rather than the flat Max Availability number
+  // applying unconditionally on every day.
+  // ---------------------------------------------------------------------------------
+
+  function renderUnavailabilityForm(container, record, data, rerender) {
+    var isNew = uiState.editingUnavailabilityId === "new";
+    var panel = document.createElement("div");
+    panel.className = "panel";
+    panel.style.marginBottom = "16px";
+
+    var heading = document.createElement("h3");
+    heading.style.marginBottom = "14px";
+    heading.textContent = isNew ? "Add Leave / Unavailable Period" : "Edit Leave / Unavailable Period";
+    panel.appendChild(heading);
+
+    if (data.resources.length === 0) {
+      var note = document.createElement("p");
+      note.className = "text-secondary";
+      note.textContent = "Add a resource in the Register tab first.";
+      panel.appendChild(note);
+      var closeBtn = document.createElement("button");
+      closeBtn.className = "btn btn--ghost";
+      closeBtn.textContent = "Close";
+      closeBtn.onclick = function () {
+        uiState.editingUnavailabilityId = null;
+        rerender();
+      };
+      panel.appendChild(closeBtn);
+      container.appendChild(panel);
+      return;
+    }
+
+    var form = document.createElement("form");
+    var grid = document.createElement("div");
+    grid.className = "form-grid";
+
+    var resField = document.createElement("div");
+    resField.className = "field";
+    resField.innerHTML = "<label>Resource *</label>";
+    var resSelect = document.createElement("select");
+    resSelect.id = "unavfield-resource_id";
+    data.resources.forEach(function (r) {
+      var opt = document.createElement("option");
+      opt.value = r.id;
+      opt.textContent = r.name + " (" + TYPE_LABELS[r.type] + ")";
+      resSelect.appendChild(opt);
+    });
+    resSelect.value = record.resource_id || data.resources[0].id;
+    resField.appendChild(resSelect);
+    grid.appendChild(resField);
+
+    var startField = document.createElement("div");
+    startField.className = "field";
+    startField.innerHTML = "<label>Start Date * (inclusive)</label>";
+    var startInput = document.createElement("input");
+    startInput.type = "date";
+    startInput.id = "unavfield-start_date";
+    startInput.value = record.start_date || "";
+    startField.appendChild(startInput);
+    grid.appendChild(startField);
+
+    var endField = document.createElement("div");
+    endField.className = "field";
+    endField.innerHTML = "<label>End Date * (inclusive)</label>";
+    var endInput = document.createElement("input");
+    endInput.type = "date";
+    endInput.id = "unavfield-end_date";
+    endInput.value = record.end_date || "";
+    endField.appendChild(endInput);
+    grid.appendChild(endField);
+
+    var qtyField = document.createElement("div");
+    qtyField.className = "field";
+    qtyField.innerHTML = "<label>Quantity Unavailable *</label>";
+    var qtyInput = document.createElement("input");
+    qtyInput.type = "number";
+    qtyInput.min = "0";
+    qtyInput.step = "any";
+    qtyInput.id = "unavfield-quantity";
+    qtyInput.placeholder = "e.g. 2 of 5 electricians";
+    qtyInput.value = record.quantity == null ? "" : record.quantity;
+    qtyField.appendChild(qtyInput);
+    grid.appendChild(qtyField);
+
+    var reasonField = document.createElement("div");
+    reasonField.className = "field";
+    reasonField.innerHTML = "<label>Reason</label>";
+    var reasonInput = document.createElement("input");
+    reasonInput.type = "text";
+    reasonInput.id = "unavfield-reason";
+    reasonInput.placeholder = "e.g. Annual Leave, Maintenance, Public Holiday";
+    reasonInput.value = record.reason || "";
+    reasonField.appendChild(reasonInput);
+    grid.appendChild(reasonField);
+
+    form.appendChild(grid);
+
+    var errorMsg = document.createElement("p");
+    errorMsg.style.color = "var(--status-critical)";
+    errorMsg.style.fontSize = "13px";
+    errorMsg.style.display = "none";
+    errorMsg.textContent = "Resource, Start Date, End Date (on or after Start Date), and a positive Quantity are required.";
+    form.appendChild(errorMsg);
+
+    var actions = document.createElement("div");
+    actions.style.display = "flex";
+    actions.style.gap = "10px";
+    actions.style.marginTop = "12px";
+
+    var saveBtn = document.createElement("button");
+    saveBtn.type = "submit";
+    saveBtn.className = "btn btn--primary";
+    saveBtn.textContent = isNew ? "Add Period" : "Save Changes";
+
+    var cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.className = "btn btn--ghost";
+    cancelBtn.textContent = "Cancel";
+    cancelBtn.onclick = function () {
+      uiState.editingUnavailabilityId = null;
+      rerender();
+    };
+
+    actions.appendChild(saveBtn);
+    actions.appendChild(cancelBtn);
+    form.appendChild(actions);
+
+    form.onsubmit = function (e) {
+      e.preventDefault();
+      var qty = Number(qtyInput.value);
+      var valid = resSelect.value && startInput.value && endInput.value && endInput.value >= startInput.value && qty && qty > 0;
+      if (!valid) {
+        errorMsg.style.display = "block";
+        return;
+      }
+      errorMsg.style.display = "none";
+
+      var values = {
+        resource_id: resSelect.value,
+        start_date: startInput.value,
+        end_date: endInput.value,
+        quantity: qty,
+        reason: reasonInput.value,
+      };
+
+      window.PCC.store.update(function (d) {
+        if (isNew) {
+          d.resource_unavailability.push(window.PCC.store.newResourceUnavailability(values));
+        } else {
+          var existing = d.resource_unavailability.find(function (u) { return u.id === record.id; });
+          if (existing) {
+            Object.assign(existing, values);
+            existing.updated_at = new Date().toISOString();
+          }
+        }
+      });
+
+      window.PCC.notify(isNew ? "Unavailable period added." : "Unavailable period updated.", "success");
+      uiState.editingUnavailabilityId = null;
+      rerender();
+    };
+
+    panel.appendChild(form);
+    container.appendChild(panel);
+  }
+
+  function renderUnavailabilityTab(container, data, rerender) {
+    if (uiState.editingUnavailabilityId) {
+      var recordBeingEdited =
+        uiState.editingUnavailabilityId === "new"
+          ? window.PCC.store.newResourceUnavailability({})
+          : data.resource_unavailability.find(function (u) { return u.id === uiState.editingUnavailabilityId; });
+      if (recordBeingEdited) renderUnavailabilityForm(container, recordBeingEdited, data, rerender);
+    }
+
+    var toolbar = document.createElement("div");
+    toolbar.className = "toolbar";
+
+    var resSelect = document.createElement("select");
+    var allOpt = document.createElement("option");
+    allOpt.value = "";
+    allOpt.textContent = "All Resources";
+    resSelect.appendChild(allOpt);
+    data.resources.forEach(function (r) {
+      var opt = document.createElement("option");
+      opt.value = r.id;
+      opt.textContent = r.name;
+      resSelect.appendChild(opt);
+    });
+    resSelect.value = uiState.unavailabilityResourceFilter;
+    resSelect.onchange = function () {
+      uiState.unavailabilityResourceFilter = resSelect.value;
+      renderList();
+    };
+    toolbar.appendChild(resSelect);
+
+    var spacer = document.createElement("div");
+    spacer.className = "toolbar__spacer";
+    toolbar.appendChild(spacer);
+
+    var addBtn = document.createElement("button");
+    addBtn.className = "btn btn--primary";
+    addBtn.textContent = "+ Add Period";
+    addBtn.disabled = data.resources.length === 0;
+    addBtn.onclick = function () {
+      uiState.editingUnavailabilityId = "new";
+      rerender();
+    };
+    toolbar.appendChild(addBtn);
+    container.appendChild(toolbar);
+
+    var listWrap = document.createElement("div");
+    container.appendChild(listWrap);
+
+    function renderList() {
+      listWrap.innerHTML = "";
+      var filtered = data.resource_unavailability
+        .filter(function (u) {
+          if (uiState.unavailabilityResourceFilter && u.resource_id !== uiState.unavailabilityResourceFilter) return false;
+          return true;
+        })
+        .slice()
+        .sort(function (a, b) { return (a.start_date || "").localeCompare(b.start_date || ""); });
+
+      if (filtered.length === 0) {
+        var empty = document.createElement("div");
+        empty.className = "panel empty-state";
+        empty.textContent =
+          data.resources.length === 0
+            ? "Add a resource first, then record its leave/unavailable periods here."
+            : data.resource_unavailability.length === 0
+            ? "No leave/unavailable periods recorded yet. Click “+ Add Period” to add one."
+            : "No periods match this filter.";
+        listWrap.appendChild(empty);
+        return;
+      }
+
+      var list = document.createElement("div");
+      list.className = "project-list";
+      filtered.forEach(function (u) {
+        var card = document.createElement("div");
+        card.className = "detail-card";
+        card.style.display = "flex";
+        card.style.justifyContent = "space-between";
+        card.style.alignItems = "center";
+        card.style.gap = "12px";
+        card.style.flexWrap = "wrap";
+        card.style.marginBottom = "6px";
+
+        var main = document.createElement("div");
+        main.innerHTML =
+          "<strong>" + esc(resourceName(data.resources, u.resource_id)) + "</strong> — " + u.quantity + " unavailable<br/>" +
+          "<span class='text-secondary' style='font-size:12px;'>" +
+          u.start_date + " to " + u.end_date +
+          (u.reason ? " · " + esc(u.reason) : "") +
+          "</span>";
+        card.appendChild(main);
+
+        var actions = document.createElement("div");
+        actions.style.display = "flex";
+        actions.style.gap = "8px";
+
+        var editBtn = document.createElement("button");
+        editBtn.className = "btn btn--ghost";
+        editBtn.textContent = "Edit";
+        editBtn.onclick = function () {
+          uiState.editingUnavailabilityId = u.id;
+          rerender();
+        };
+        actions.appendChild(editBtn);
+
+        var deleteBtn = document.createElement("button");
+        deleteBtn.className = "btn btn--ghost";
+        deleteBtn.textContent = "Delete";
+        deleteBtn.onclick = function () {
+          if (!confirm("Delete this leave/unavailable period?")) return;
+          window.PCC.store.update(function (d) {
+            d.resource_unavailability = d.resource_unavailability.filter(function (item) { return item.id !== u.id; });
+          });
+          window.PCC.notify("Period deleted.", "success");
+          rerender();
+        };
+        actions.appendChild(deleteBtn);
+
+        card.appendChild(actions);
+        list.appendChild(card);
+      });
+      listWrap.appendChild(list);
+    }
+
+    renderList();
+  }
+
+  // ---------------------------------------------------------------------------------
   // Leveling tab
   // ---------------------------------------------------------------------------------
 
@@ -726,6 +1120,59 @@
     var el = document.createElementNS(SVG_NS, tag);
     if (attrs) Object.keys(attrs).forEach(function (k) { el.setAttribute(k, attrs[k]); });
     return el;
+  }
+
+  function renderUtilisationTrend(container, utilisation) {
+    if (!utilisation.available || utilisation.days.length === 0) {
+      var empty = document.createElement("p");
+      empty.className = "text-secondary";
+      empty.style.fontSize = "13px";
+      empty.textContent = utilisation.available ? "No dated assignments to chart yet." : "Max Availability isn't set for this resource, so utilisation can't be computed.";
+      container.appendChild(empty);
+      return;
+    }
+
+    var bucketSize = utilisation.days.length <= 60 ? 1 : utilisation.days.length <= 260 ? 7 : 30;
+    var buckets = window.PCC.resourceLevelingEngine.bucketUtilisation(utilisation.days, bucketSize);
+
+    var width = Math.max(400, Math.min(900, buckets.length * (bucketSize === 1 ? 10 : 20)));
+    var height = 120;
+    var padB = 20;
+    var barW = width / buckets.length;
+
+    var svg = svgEl("svg", { width: width, height: height, style: "display:block;max-width:100%;" });
+
+    // Buckets with a null avgUtilisationPct ("not computable" — see computeUtilisation)
+    // are skipped entirely rather than drawn as a misleading 0%-tall bar.
+    buckets.forEach(function (b, i) {
+      if (b.avgUtilisationPct === null) return;
+      var pct = Math.min(b.avgUtilisationPct, 150); // clamp bar height display at 150% so one wild spike doesn't flatten the rest of the chart
+      var barH = (pct / 150) * (height - padB - 6);
+      var over = b.avgUtilisationPct > 100;
+      svg.appendChild(
+        svgEl("rect", {
+          x: i * barW + 1, y: height - padB - barH, width: Math.max(barW - 2, 1), height: barH,
+          fill: over ? "var(--status-critical)" : "var(--status-info)",
+        })
+      );
+      var title = svgEl("title");
+      title.textContent = b.bucketStart + (b.bucketEnd !== b.bucketStart ? " to " + b.bucketEnd : "") + ": " + Math.round(b.avgUtilisationPct) + "%";
+      svg.lastChild.appendChild(title);
+    });
+
+    var fullLineY = height - padB - (100 / 150) * (height - padB - 6);
+    svg.appendChild(svgEl("line", { x1: 0, y1: fullLineY, x2: width, y2: fullLineY, stroke: "var(--signal-amber)", "stroke-width": 2, "stroke-dasharray": "4,3" }));
+
+    container.appendChild(svg);
+
+    var legend = document.createElement("p");
+    legend.className = "text-secondary";
+    legend.style.fontSize = "11px";
+    legend.style.marginTop = "4px";
+    legend.textContent =
+      (bucketSize === 1 ? "Daily" : bucketSize === 7 ? "Weekly" : "Monthly") +
+      " average utilisation (allocated ÷ availability after leave). Dashed line is 100%; red bars exceed it.";
+    container.appendChild(legend);
   }
 
   function renderHistogram(container, timeline, maxAvailability) {
@@ -781,7 +1228,7 @@
   }
 
   function renderLevelingTab(container, data, rerender) {
-    var portfolioSummary = window.PCC.resourceLevelingEngine.portfolioOverAllocationSummary(data.resources, data.resource_assignments, data.activities);
+    var portfolioSummary = window.PCC.resourceLevelingEngine.portfolioOverAllocationSummary(data.resources, data.resource_assignments, data.activities, data.resource_unavailability);
 
     var summaryPanel = document.createElement("div");
     summaryPanel.className = "panel";
@@ -850,7 +1297,8 @@
 
     var resource = data.resources.find(function (r) { return r.id === uiState.levelingResourceId; });
     var timeline = window.PCC.resourceLevelingEngine.computeResourceUsageTimeline(resource, data.resource_assignments, data.activities);
-    var overAlloc = window.PCC.resourceLevelingEngine.detectOverAllocations(resource, timeline);
+    var overAlloc = window.PCC.resourceLevelingEngine.detectOverAllocations(resource, timeline, data.resource_unavailability);
+    var utilisation = window.PCC.resourceLevelingEngine.computeUtilisation(resource, timeline, data.resource_unavailability);
 
     var kpiGrid = document.createElement("div");
     kpiGrid.className = "kpi-grid";
@@ -866,7 +1314,24 @@
     kpi("Total Assignments", totalAssignments);
     kpi("Over-Allocated Days", overAlloc.available ? overAlloc.count : "—", overAlloc.available && overAlloc.count > 0 ? "--status-critical" : null);
     kpi("Worst Over-Allocation", overAlloc.maxOverBy == null ? "—" : "+" + overAlloc.maxOverBy, overAlloc.maxOverBy ? "--status-critical" : null);
+    kpi("Avg. Utilisation", utilisation.averageUtilisationPct == null ? "—" : Math.round(utilisation.averageUtilisationPct) + "%");
+    kpi(
+      "Demand vs Available",
+      utilisation.available ? utilisation.totalDemandUnitDays + " / " + utilisation.totalAvailableUnitDays + " unit-days" : "—",
+      utilisation.available && utilisation.totalShortfallUnitDays > 0 ? "--status-critical" : null
+    );
     container.appendChild(kpiGrid);
+
+    if (utilisation.available && utilisation.totalShortfallUnitDays > 0) {
+      var shortageNote = document.createElement("p");
+      shortageNote.style.fontSize = "12px";
+      shortageNote.style.color = "var(--status-critical)";
+      shortageNote.style.marginTop = "-8px";
+      shortageNote.style.marginBottom = "12px";
+      shortageNote.textContent =
+        "Shortfall: " + utilisation.totalShortfallUnitDays + " unit-day(s) of demand exceed availability across this resource's active date range.";
+      container.appendChild(shortageNote);
+    }
 
     if (!overAlloc.available) {
       var noteP = document.createElement("p");
@@ -896,6 +1361,38 @@
     histPanel.appendChild(histHeading);
     renderHistogram(histPanel, timeline, resource.max_availability);
     container.appendChild(histPanel);
+
+    var trendPanel = document.createElement("div");
+    trendPanel.className = "panel";
+    trendPanel.style.marginBottom = "16px";
+    var trendHeading = document.createElement("h4");
+    trendHeading.style.marginBottom = "8px";
+    trendHeading.textContent = "Utilisation Trend";
+    trendPanel.appendChild(trendHeading);
+    renderUtilisationTrend(trendPanel, utilisation);
+    container.appendChild(trendPanel);
+
+    var resourceUnavailability = data.resource_unavailability
+      .filter(function (u) { return u.resource_id === resource.id; })
+      .slice()
+      .sort(function (a, b) { return (a.start_date || "").localeCompare(b.start_date || ""); });
+    if (resourceUnavailability.length > 0) {
+      var unavPanel = document.createElement("div");
+      unavPanel.className = "panel";
+      unavPanel.style.marginBottom = "16px";
+      var unavHeading = document.createElement("h4");
+      unavHeading.style.marginBottom = "8px";
+      unavHeading.textContent = "Leave / Unavailable Periods (" + resourceUnavailability.length + ")";
+      unavPanel.appendChild(unavHeading);
+      resourceUnavailability.forEach(function (u) {
+        var row = document.createElement("p");
+        row.style.fontSize = "13px";
+        row.style.margin = "4px 0";
+        row.textContent = u.start_date + " to " + u.end_date + " — " + u.quantity + " unavailable" + (u.reason ? " (" + u.reason + ")" : "");
+        unavPanel.appendChild(row);
+      });
+      container.appendChild(unavPanel);
+    }
 
     if (overAlloc.available && overAlloc.count > 0) {
       var conflictPanel = document.createElement("div");
@@ -951,7 +1448,7 @@
     sub.style.fontSize = "12px";
     sub.style.marginBottom = "16px";
     sub.textContent =
-      "A shared resource pool (labor/equipment/material) assigned to Schedule activities across every project, with cross-project over-allocation detection. Quantity/availability only — no cost linkage.";
+      "A shared resource pool assigned to Schedule activities across every project, with cross-project over-allocation, leave-adjusted availability, and utilisation tracking. Quantity/availability only — no cost linkage.";
     outlet.appendChild(sub);
 
     var tabBar = document.createElement("div");
@@ -959,6 +1456,7 @@
     [
       { key: "register", label: "Register" },
       { key: "assignments", label: "Assignments" },
+      { key: "unavailability", label: "Unavailability" },
       { key: "leveling", label: "Leveling" },
     ].forEach(function (t) {
       var btn = document.createElement("button");
@@ -968,6 +1466,7 @@
         uiState.tab = t.key;
         uiState.editingResourceId = null;
         uiState.editingAssignmentId = null;
+        uiState.editingUnavailabilityId = null;
         rerender();
       };
       tabBar.appendChild(btn);
@@ -980,6 +1479,7 @@
 
     if (uiState.tab === "register") renderRegisterTab(tabContent, data, rerender);
     else if (uiState.tab === "assignments") renderAssignmentsTab(tabContent, data, rerender);
+    else if (uiState.tab === "unavailability") renderUnavailabilityTab(tabContent, data, rerender);
     else if (uiState.tab === "leveling") renderLevelingTab(tabContent, data, rerender);
   }
 
