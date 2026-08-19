@@ -2506,6 +2506,70 @@ and closed here — the next gate (likely the Project Lookahead or a Management-
 of Gate 9's existing health engine) needs to be scoped and confirmed before it starts, same as
 every gate in this session's history.
 
+## Gate 30 — Project Lookahead (PCC Evolution Roadmap, Gate 2) (2026-08-19)
+
+**The second gate of the PCC Evolution Roadmap.** Scoped and confirmed via two direct questions
+before building, same discipline as Gate 29. Distinct from Gate 29's Planner Action Centre in two
+ways: this is a flat, chronological, DATE-sorted table with a 7/14/30/60-day window toggle, not
+urgency buckets — and it's forward-only (nothing overdue shows here; that's the Action Centre's
+job). It's also the first cross-module planner view to touch **Schedule activities and
+milestones**, and the first to surface **upcoming Meetings** by their own date rather than just
+their action items.
+
+**What changed:**
+
+- New page, `pages/projectLookahead.js` (registered in `app.js`, added to the sidebar's OVERVIEW
+  group right after Action Centre in `layout.js`, added to `build.js`'s `JS_ORDER`). A window
+  toggle (7/14/30/60 days, default 7) drives a single chronological list combining:
+  - **Schedule activities/milestones** — `activity_type` "task" or "milestone" only (summary/
+    wbs_summary rows are structural, not real work, and excluded); completed activities excluded.
+    Date is `early_start || planned_start` — same calculated-wins-over-planned precedence as
+    `scheduleGanttLayout.js`'s own `effectiveDates()`, duplicated here per convention. Status badge
+    (Critical/Near-Critical/On Track) reuses the schedule's own `near_critical_threshold_days`
+    against `total_float` — same threshold Schedule's Gantt view and Executive Center both already
+    use. Reads the schedule's last **persisted** calculated fields rather than re-running the CPM
+    engine live, matching the Gantt view's own trust model (Executive Center's live-recompute is a
+    deliberate outlier there, for health-score freshness specifically).
+  - **Meetings** — the meeting's own `meeting_date` (new: nothing in PCC surfaced "you have a
+    meeting on this date" before this gate) plus Meeting Actions (`due_date`, reused from Gate 29).
+  - **RFI/TQ** (`date_required`, `status: open` only — reused from Gate 29).
+  - **Document Requirements** — reuses the Available/Overdue/Required computation every Document
+    Control gate since Gate 18 has used (the ninth independent copy now); only "required" rows
+    ever land in a forward window by construction — an "overdue" row's date is already in the
+    past, so the date-window filter itself excludes it with no special-casing needed.
+  - Each row shows date, record kind, title, project, owner (`responsible_person`/`contractor`
+    for activities, `assigned_to` for RFIs, vendor name for documents, `owner` for meeting
+    actions), a status badge, and a **View** button reusing existing navigation hooks — the new
+    one is `window.PCC.schedule.viewActivity(projectId, scheduleId, activityId)` (Gate 10's own
+    reverse-navigation API), alongside the same `expandMeeting()`/`expandRfi()`/`viewProject()`
+    hooks Gate 29 already used. No new public API needed anywhere.
+  - Deliberately excluded, same reasoning as Gate 29: Change Orders and Risks/Issues have no
+    due-date field in the schema at all, so they can never sit on a date-driven timeline.
+  - **No schema changes.** `schema_version` stays at 34.
+
+**Tested before delivery (new file, 34 e2e checks — full suite re-run clean, 30 files, 664 checks
+total):**
+
+- **End-to-end against the actual bundled `index.html`** (new file,
+  `test_project_lookahead_e2e.js`): the empty state and 7-day default before any project exists;
+  every exclusion rule explicitly (a structural summary-type row, a completed activity, a past-due
+  activity confirming forward-only behavior, an archived project's activity, an answered RFI, an
+  available document requirement despite an in-window date, an overdue document requirement
+  despite forward-only exclusion); float-derived badge correctness (critical/near-critical/on-track
+  activities all asserted individually); ascending date sort; the window toggle adding exactly the
+  expected items at each boundary (a day-20 meeting appearing only at 30/60 days, a day-45 activity
+  and RFI appearing only at 60 days); "View" navigating into Schedule with the right activity's
+  detail panel open (new) and into Meetings with the right meeting expanded; confirmed the gate
+  writes nothing back; a full 19-route smoke test.
+- **Real-browser verification** (Chromium via Playwright, screenshots captured and sent): seeded a
+  project with activities spanning critical/near-critical/on-track, a milestone, a meeting with an
+  action, an RFI, and a document requirement; confirmed the 7-day and 30-day windows both rendered
+  correctly — zero console/page errors.
+
+**What I have not tested:** this on your actual device. Same standard as every prior gate. Per the
+roadmap's own gate discipline, this gate is reported and closed here — the next gate needs to be
+scoped and confirmed before it starts.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
@@ -2574,13 +2638,13 @@ Assistant, Lessons Learned, final polish
 
 **Tier 2 is complete, and the entire 14-gate Document Control sub-spec Aditya handed over is now
 built** (Gates 14-28) — no gates from that spec remain. A new, separate roadmap started with Gate
-29 (Planner Action Centre, 2026-08-19) — see that gate's own write-up above for the full
-inspection findings behind it. That roadmap's own next gate is **not yet started or scoped** — per
-its explicit gate discipline, each gate gets proposed in a short paragraph and confirmed before
-building, one at a time; the two strongest candidates raised so far are a consolidated **Project
-Lookahead** (7/14/30/60-day view spanning Schedule, Vendors, Documents, RFIs, Meetings) and
-surfacing Gate 9's existing health-score/diagnostics engine as a **Management Attention** strip on
-the Dashboard — both still need Aditya's confirmation before either starts.
+29 (Planner Action Centre) and continued with Gate 30 (Project Lookahead), both 2026-08-19 — see
+each gate's own write-up above for the inspection findings and detail behind them. That roadmap's
+own next gate is **not yet started or scoped** — per its explicit gate discipline, each gate gets
+proposed in a short paragraph and confirmed before building, one at a time. The strongest
+candidate raised so far and still unconfirmed: surfacing Gate 9's existing health-score/
+diagnostics engine as a **Management Attention** strip on the Dashboard (near-zero new code —
+reuse, don't rebuild).
 
 Other open items, none blocking daily use: rate × usage from
 Resource Management feeding Cost Tracking/EVM (explicitly deferred, Gate 11); a
