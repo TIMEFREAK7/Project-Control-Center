@@ -179,6 +179,53 @@
     }
     doc.appendChild(coSection);
 
+    // Recovery Actions (PCC Evolution Roadmap, Tier C: Delay & Recovery Management)
+    var recoveryActions = data.recovery_actions.filter(function (r) { return r.project_id === project.id; });
+    var openRecovery = recoveryActions.filter(function (r) { return r.status === "open" || r.status === "in_progress"; });
+    var overdueRecovery = openRecovery.filter(function (r) { return r.target_recovery_date && r.target_recovery_date < today(); });
+    var activitiesById = {};
+    data.activities.forEach(function (a) { activitiesById[a.id] = a; });
+    var recoverySection = sectionEl("Recovery Actions — " + openRecovery.length + " open, " + overdueRecovery.length + " overdue");
+    if (openRecovery.length === 0) {
+      recoverySection.appendChild(emptyNote("No open recovery actions."));
+    } else {
+      recoverySection.appendChild(
+        table(
+          ["Description", "Activity", "Status", "Target Date", "Responsible"],
+          openRecovery.map(function (r) {
+            var overdue = r.target_recovery_date && r.target_recovery_date < today();
+            var activity = activitiesById[r.activity_id];
+            return [
+              esc(r.description || "(untitled)"),
+              esc(activity ? activity.name : "—"),
+              esc(r.status) + (overdue ? " — OVERDUE" : ""),
+              esc(r.target_recovery_date || "—"),
+              esc(r.responsible_person || "—"),
+            ];
+          })
+        )
+      );
+    }
+    doc.appendChild(recoverySection);
+
+    // Decisions (PCC Evolution Roadmap, Tier C: Decision Register)
+    var decisions = data.decisions.filter(function (d) { return d.project_id === project.id; });
+    var pendingDecisions = decisions.filter(function (d) { return d.status === "pending"; });
+    var decisionSection = sectionEl("Decisions — " + pendingDecisions.length + " pending of " + decisions.length + " total");
+    if (pendingDecisions.length === 0) {
+      decisionSection.appendChild(emptyNote("No pending decisions."));
+    } else {
+      decisionSection.appendChild(
+        table(
+          ["Title", "Decided By", "Decision Date"],
+          pendingDecisions.map(function (d) {
+            return [esc(d.title || "(untitled)"), esc(d.decided_by || "—"), esc(d.decision_date || "—")];
+          })
+        )
+      );
+    }
+    doc.appendChild(decisionSection);
+
     // Meetings
     var meetings = data.meetings
       .filter(function (m) { return m.project_id === project.id; })
@@ -336,6 +383,23 @@
     var pendingCos = data.change_orders.filter(function (co) { return co.status === "pending"; });
     var coSection = sectionEl("Change Orders \u2014 " + openCos.length + " open, " + pendingCos.length + " pending decision across portfolio");
     doc.appendChild(coSection);
+
+    // Recovery Actions (PCC Evolution Roadmap, Tier C: Delay & Recovery Management)
+    var activeProjectIdsForRecovery = {};
+    activeProjects.forEach(function (p) { activeProjectIdsForRecovery[p.id] = true; });
+    var portfolioOpenRecovery = data.recovery_actions.filter(function (r) {
+      return activeProjectIdsForRecovery[r.project_id] && (r.status === "open" || r.status === "in_progress");
+    });
+    var portfolioOverdueRecovery = portfolioOpenRecovery.filter(function (r) { return r.target_recovery_date && r.target_recovery_date < today(); });
+    var recoverySection = sectionEl("Recovery Actions \u2014 " + portfolioOpenRecovery.length + " open, " + portfolioOverdueRecovery.length + " overdue across portfolio");
+    doc.appendChild(recoverySection);
+
+    // Decisions (PCC Evolution Roadmap, Tier C: Decision Register)
+    var portfolioPendingDecisions = data.decisions.filter(function (d) {
+      return activeProjectIdsForRecovery[d.project_id] && d.status === "pending";
+    });
+    var decisionSection = sectionEl("Decisions \u2014 " + portfolioPendingDecisions.length + " pending across portfolio");
+    doc.appendChild(decisionSection);
 
     // Gate 28 (Document Control 14: Portfolio Compliance) \u2014 the final gate of the
     // 14-gate Document Control sub-spec. Same Available/Overdue/Required computation as
