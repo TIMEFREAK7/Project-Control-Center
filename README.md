@@ -2124,6 +2124,58 @@ reminders, dashboards, executive/portfolio compliance) — this gate only adds t
 mechanism, nothing surfaces overdue/upcoming requirements across the portfolio yet (that's later
 gates' job).
 
+## Gate 23 — Document Control 9: Vendor Lookahead (2026-08-18)
+
+Ninth gate of the 14-gate Document Control spec. Scoped and confirmed before building, same
+discipline as every gate in this sub-spec. Flagged up front, same as Gate 20 was for "Vendor
+Register": this app already has a full Vendor Management module (Gate 13) with its own 9-tab
+Vendor Profile page — "Vendor Lookahead" here means a read-only view of what's expected from a
+vendor, surfaced inside that existing profile, not a new page or a new register.
+
+**What changed:**
+
+- `pages/vendors.js`: a new 10th tab, **"Document Lookahead,"** on the existing Vendor Profile
+  page. Pure read-only aggregation — no schema changes, nothing written back:
+  - New `renderLookaheadTab()` lists every `project_document_requirements` row with a matching
+    `vendor_id` (Gate 6), across **all** of that vendor's projects — deliberately not scoped to
+    only projects with a formal `vendor_project_links` record, since the document requirement
+    assignment itself (made from Portfolio's Add/Edit Project form) is the actual source of truth
+    for "is this vendor expected to submit something here."
+  - Each row shows the document type, project name, due date (or "No due date set" — never
+    fabricates one), a computed Available/Overdue/Required badge (same
+    `computeRequirementStatus()` logic as `pages/portfolio.js`'s own, duplicated per this app's
+    per-module-helpers convention), and — when set — the linked Schedule activity (Gate 21) and
+    lead time (Gate 22).
+  - Sorted soonest-due-first; requirements with no due date sort last rather than first, so the
+    most time-sensitive items surface at the top.
+  - A summary line at the top: total requirements assigned, how many distinct projects they span,
+    and an overdue count (only shown when nonzero).
+  - Empty state when nothing is assigned yet, pointing back to where assignment actually happens
+    (Portfolio's Add/Edit Project form) rather than leaving a blank tab with no next step.
+
+**Tested before delivery (11 new e2e checks in a new file, full suite re-run clean, 525 checks
+total):**
+
+- **End-to-end against the actual bundled `index.html`** (new file,
+  `test_vendor_lookahead_e2e.js`, 11 checks): the tab shows an empty state before any assignment;
+  seeding three requirements (one overdue, one with a matching document despite also having a past
+  due date, one linked to a future Schedule activity with a 15-day lead time but no manual due
+  date) produces the correct summary counts, per-row status badges (confirming a matching document
+  wins over a past due date — Available, not Overdue), project names, due dates, and the linked
+  activity/lead-time text; sort order is verified soonest-due-first with the no-due-date row last;
+  unassigning a vendor from a requirement removes it from the lookahead on the very next render
+  with no separate wiring, since the tab computes directly from the store; full route smoke check.
+- **Real-browser verification** (Chromium via Playwright): seeded a vendor and an overdue
+  requirement directly via the store, opened the vendor's profile, clicked "Document Lookahead,"
+  and confirmed the summary line and the row (with its Overdue badge and due date) rendered
+  correctly — zero console/page errors.
+
+**What I have not tested:** this on your actual device. Same standard as every prior gate. Not
+done, deliberately: Document Control gates 10-14 (readiness/constraint flagging on activities,
+reminders/notifications, dashboards, executive summary, portfolio compliance rollups) — this gate
+only adds a vendor-facing view; nothing yet acts on what it surfaces (no reminders sent, no
+portfolio-wide rollup of overdue-by-vendor).
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
@@ -2151,7 +2203,7 @@ line items on the original locked Tier 2/3 list. Built in a separate parallel se
 Gates 8-11 and reconciled into `main` together with them (see each gate's own write-up above for
 the schema-numbering note on how the reconciliation renumbered them).
 
-**Document Control** (Gates 14-22 = Document Control gates 1-8 of a separate 14-gate sub-spec,
+**Document Control** (Gates 14-23 = Document Control gates 1-9 of a separate 14-gate sub-spec,
 done) — same footing as Executive Center/Activity Linking/Vendor Management above: a directly
 requested, explicitly incremental upgrade to Documents, not a Tier 1/2/3 line item. The Master
 Document Repository (the type taxonomy, Gate 14), Project-Specific Document Requirements (which
@@ -2166,9 +2218,11 @@ submission date per requirement, with a computed Overdue status alongside Availa
 Management module rather than a second register. **Gate 21** added an optional link from a
 requirement to one of the project's own Schedule activities — purely a link, no date derived from
 it either way. **Gate 22** added an optional lead time that, combined with Gate 21's link, computes
-a suggested due date — applied only via an explicit "Use" action, never automatically. Document
-Control gates 9-14 (vendor lookahead, readiness/constraints, reminders, dashboards,
-executive/portfolio compliance) are intentionally not started — see Gates 14-22's own write-ups
+a suggested due date — applied only via an explicit "Use" action, never automatically. **Gate 23**
+added a "Document Lookahead" tab to Vendor Management's existing Vendor Profile page — a read-only
+view of every requirement assigned to that vendor, across all their projects, sorted soonest-due-
+first. Document Control gates 10-14 (readiness/constraints, reminders, dashboards,
+executive/portfolio compliance) are intentionally not started — see Gates 14-23's own write-ups
 above.
 
 **Tier 3 (deferred until Tier 1 is in daily use):** AI Document Processing, Knowledge Base, AI Project
@@ -2178,17 +2232,17 @@ Assistant, Lessons Learned, final polish
 
 **Tier 2 is complete**, and Vendor Management / the in-app Excel editor / the Document Control
 foundation (repository + per-project requirements + classification/nomenclature + status/version
-control + manual due dates + vendor assignment + schedule linking + lead-time suggestions) are all
-done alongside it. The most likely next piece of work is **Document Control gate 9 (Vendor
-Lookahead)** — a vendor-facing view of what's expected from them, using Gate 20's assignment —
-per the sub-spec's own locked gate order, but confirm scope before starting it rather than
-assuming, same discipline as every gate before this one. Other open items, none blocking daily
-use: rate × usage from Resource Management feeding Cost Tracking/EVM (explicitly deferred, Gate
-11); a persisted/logo-customizable report-template system; portfolio-level executive dashboard
-filtering; 10,000+ activity Gantt virtualization; per-activity linking extended to Resource
-Assignments' own sub-fields if that turns out to matter in practice; Vendor↔Cost/Schedule
-integration beyond the current Vendor↔Project/Meeting/RFI/Risk links, if that turns out to matter
-in practice; reconciling Documents' `category` / Vendor
+control + manual due dates + vendor assignment + schedule linking + lead-time suggestions + vendor
+lookahead) are all done alongside it. The most likely next piece of work is **Document Control
+gate 10 (Readiness/Constraints)** — flagging Schedule activities whose governing document
+requirements aren't yet Available, per the sub-spec's own locked gate order, but confirm scope
+before starting it rather than assuming, same discipline as every gate before this one. Other open
+items, none blocking daily use: rate × usage from Resource Management feeding Cost Tracking/EVM
+(explicitly deferred, Gate 11); a persisted/logo-customizable report-template system;
+portfolio-level executive dashboard filtering; 10,000+ activity Gantt virtualization;
+per-activity linking extended to Resource Assignments' own sub-fields if that turns out to matter
+in practice; Vendor↔Cost/Schedule integration beyond the current Vendor↔Project/Meeting/RFI/Risk
+links, if that turns out to matter in practice; reconciling Documents' `category` / Vendor
 Management's document categories / the Gate 14 master repository into one classification scheme,
 explicitly deferred twice now (Gates 14 and 16) — worth revisiting once real usage shows whether
 it's actually needed. Tier 3 (AI Document

@@ -958,6 +958,7 @@
       { key: "risks", label: "Risks" },
       { key: "performance", label: "Performance" },
       { key: "notes", label: "Notes" },
+      { key: "lookahead", label: "Document Lookahead" },
     ].forEach(function (t) {
       var btn = document.createElement("button");
       btn.className = "tab-btn" + (uiState.profileTab === t.key ? " tab-btn--active" : "");
@@ -2338,6 +2339,132 @@
     });
   }
 
+  // Gate 9 (Document Control 9: Vendor Lookahead). Same "Available"/"Overdue"/"Required"
+  // status computation as pages/portfolio.js's computeRequirementStatus() — duplicated
+  // here per this app's per-module-helpers convention rather than sharing a util layer.
+  function computeRequirementStatus(data, projectId, documentTypeId, plannedDate) {
+    var available = data.documents.some(function (d) {
+      return d.project_id === projectId && d.document_type_id === documentTypeId;
+    });
+    if (available) return "available";
+    if (plannedDate && plannedDate < today()) return "overdue";
+    return "required";
+  }
+
+  var REQUIREMENT_STATUS_BADGE = {
+    available: { className: "complete", label: "Available" },
+    overdue: { className: "critical", label: "Overdue" },
+    required: { className: "at_risk", label: "Required" },
+  };
+
+  /** Pure read-only aggregation: every project_document_requirements row assigned to
+   * this vendor (Gate 6's vendor_id), across ALL of that vendor's projects — not just
+   * ones formally linked via vendor_project_links, since a document requirement
+   * assignment (made from Portfolio's Add/Edit Project form) is the source of truth
+   * for "is this vendor expected to submit something here," independent of whether a
+   * separate project-link record also exists. Nothing is written back; this is purely
+   * a lookahead view. Sorted soonest-due-first so the most time-sensitive items surface
+   * at the top; requirements with no due date sort last. */
+  function renderLookaheadTab(container, vendor, data) {
+    var typesById = {};
+    data.document_types.forEach(function (t) {
+      typesById[t.id] = t;
+    });
+    var activitiesById = {};
+    data.activities.forEach(function (a) {
+      activitiesById[a.id] = a;
+    });
+    var schedulesById = {};
+    data.schedules.forEach(function (s) {
+      schedulesById[s.id] = s;
+    });
+
+    var rows = data.project_document_requirements.filter(function (r) {
+      return r.vendor_id === vendor.id && typesById[r.document_type_id];
+    });
+
+    if (rows.length === 0) {
+      var empty = document.createElement("div");
+      empty.className = "panel empty-state";
+      empty.textContent =
+        "No document requirements are currently assigned to this vendor. Assign this vendor to a project's document requirements from Portfolio's Add/Edit Project form (Document Requirements section).";
+      container.appendChild(empty);
+      return;
+    }
+
+    var overdueCount = rows.filter(function (r) {
+      return computeRequirementStatus(data, r.project_id, r.document_type_id, r.planned_submission_date) === "overdue";
+    }).length;
+
+    var summary = document.createElement("div");
+    summary.className = "panel";
+    summary.style.marginBottom = "12px";
+    summary.innerHTML =
+      "<p class='text-secondary' style='font-size:11px;margin-bottom:4px'>DOCUMENT LOOKAHEAD</p>" +
+      "<p style='font-size:13px;margin:0'>" +
+      rows.length +
+      " document requirement" +
+      (rows.length === 1 ? "" : "s") +
+      " assigned across " +
+      new Set(rows.map(function (r) { return r.project_id; })).size +
+      " project(s)" +
+      (overdueCount > 0 ? ", <strong style='color:var(--status-critical)'>" + overdueCount + " overdue</strong>" : "") +
+      "</p>";
+    container.appendChild(summary);
+
+    rows
+      .slice()
+      .sort(function (a, b) {
+        var da = a.planned_submission_date || "9999-99-99";
+        var db = b.planned_submission_date || "9999-99-99";
+        return da.localeCompare(db);
+      })
+      .forEach(function (r) {
+        var t = typesById[r.document_type_id];
+        var status = computeRequirementStatus(data, r.project_id, r.document_type_id, r.planned_submission_date);
+        var badgeInfo = REQUIREMENT_STATUS_BADGE[status];
+        var linkedActivity = r.activity_id ? activitiesById[r.activity_id] : null;
+        var linkedSchedule = linkedActivity ? schedulesById[linkedActivity.schedule_id] : null;
+
+        var card = document.createElement("div");
+        card.className = "project-card";
+
+        var top = document.createElement("div");
+        top.style.display = "flex";
+        top.style.justifyContent = "space-between";
+        top.style.alignItems = "center";
+        top.innerHTML =
+          "<strong>" +
+          (t.name || "(unnamed type)") +
+          (t.code ? " (" + t.code + ")" : "") +
+          "</strong> <span class='status-badge status-badge--" +
+          badgeInfo.className +
+          "'>" +
+          badgeInfo.label +
+          "</span>";
+        card.appendChild(top);
+
+        var meta = document.createElement("p");
+        meta.className = "text-secondary";
+        meta.style.fontSize = "12px";
+        meta.style.margin = "4px 0 0";
+        meta.textContent =
+          "Project: " +
+          projectName(data.projects, r.project_id) +
+          (r.planned_submission_date ? " · Due " + r.planned_submission_date : " · No due date set") +
+          (linkedActivity
+            ? " · Linked to " +
+              (linkedSchedule ? linkedSchedule.name : "(schedule)") +
+              ": " +
+              (linkedActivity.name || "(unnamed activity)") +
+              (r.lead_time_days ? " (" + r.lead_time_days + "d lead time)" : "")
+            : "");
+        card.appendChild(meta);
+
+        container.appendChild(card);
+      });
+  }
+
   function renderProfile(container, data, rerender) {
     var vendor = data.vendors.find(function (v) {
       return v.id === uiState.profileVendorId;
@@ -2401,6 +2528,7 @@
     else if (uiState.profileTab === "risks") renderRisksTab(tabContent, vendor, data, rerender);
     else if (uiState.profileTab === "performance") renderPerformanceTab(tabContent, vendor, data, rerender);
     else if (uiState.profileTab === "notes") renderNotesTab(tabContent, vendor, data, rerender);
+    else if (uiState.profileTab === "lookahead") renderLookaheadTab(tabContent, vendor, data);
   }
 
   // ---------------------------------------------------------------------------------
