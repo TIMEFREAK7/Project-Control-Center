@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 36;
+  var SCHEMA_VERSION = 37;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -69,6 +69,12 @@
       // Gate 4: thin index only \u2014 see scheduleBaselineStore.js for the actual
       // frozen snapshot payload, which lives in IndexedDB, not here.
       schedule_baselines: [],
+      // PCC Evolution Roadmap, Tier C: Delay & Recovery Management. One row per
+      // corrective action logged against a Schedule activity that's fallen behind \u2014
+      // see newRecoveryAction() below for why this is deliberately decoupled from any
+      // one baseline comparison (baseline compare, Gate 4, is on-demand/ephemeral;
+      // recovery actions need to persist regardless of which baseline is currently open).
+      recovery_actions: [],
       // Gate 5b (Tier 2 Cost Tracking): budget line items and the actual-cost log
       // against them. Deliberately two separate arrays, not one shape distinguished by
       // a type field \u2014 unlike Risk/Issue/Opportunity or RFI/TQ, a budget line item and
@@ -941,6 +947,37 @@
     };
     return Object.assign(base, overrides || {});
   }
+
+  function newRecoveryActionId() {
+    return "rec_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  /** PCC Evolution Roadmap, Tier C: Delay & Recovery Management. A corrective action
+   * logged against one Schedule activity that's fallen behind — what's being done to
+   * recover the delay, who owns it, and by when. Deliberately NOT tied to any one
+   * baseline comparison (Gate 4's compareBaselineToCurrent() is computed on demand, not
+   * stored, and a schedule can have multiple baselines) — this just needs an activity_id
+   * to attach to; a PM typically adds one right after noticing a delay in the Gantt or a
+   * baseline compare, but nothing here requires a baseline to exist at all. `project_id`
+   * is denormalized from the activity for portfolio-wide queries, same convention
+   * newScheduleBaseline() above already uses. */
+  function newRecoveryAction(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newRecoveryActionId(),
+      activity_id: "",
+      project_id: "",
+      description: "",
+      responsible_person: "",
+      target_recovery_date: "",
+      status: "open", // open | in_progress | completed | cancelled
+      created_at: now,
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  var RECOVERY_ACTION_STATUSES = ["open", "in_progress", "completed", "cancelled"];
 
   // ============================================================
   // GATE 9 — Vendor Management. Vendor Master is portfolio-wide (like Projects
@@ -1830,6 +1867,14 @@
       loaded.schema_version = 36;
     }
 
+    if (loaded.schema_version < 37) {
+      // PCC Evolution Roadmap, Tier C: Delay & Recovery Management. Brand new array,
+      // nothing to backfill on existing records — same as every prior gate that
+      // introduced a new register.
+      if (!loaded.recovery_actions) loaded.recovery_actions = [];
+      loaded.schema_version = 37;
+    }
+
     return loaded;
   }
 
@@ -2163,6 +2208,8 @@
     newActivity: newActivity,
     newRelationship: newRelationship,
     newScheduleBaseline: newScheduleBaseline,
+    newRecoveryAction: newRecoveryAction,
+    RECOVERY_ACTION_STATUSES: RECOVERY_ACTION_STATUSES,
     SCHEDULE_STATUSES: SCHEDULE_STATUSES,
     ACTIVITY_TYPES: ACTIVITY_TYPES,
     ACTIVITY_STATUSES: ACTIVITY_STATUSES,

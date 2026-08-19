@@ -3567,7 +3567,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 36;
+  var SCHEMA_VERSION = 37;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -3627,6 +3627,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       // Gate 4: thin index only \u2014 see scheduleBaselineStore.js for the actual
       // frozen snapshot payload, which lives in IndexedDB, not here.
       schedule_baselines: [],
+      // PCC Evolution Roadmap, Tier C: Delay & Recovery Management. One row per
+      // corrective action logged against a Schedule activity that's fallen behind \u2014
+      // see newRecoveryAction() below for why this is deliberately decoupled from any
+      // one baseline comparison (baseline compare, Gate 4, is on-demand/ephemeral;
+      // recovery actions need to persist regardless of which baseline is currently open).
+      recovery_actions: [],
       // Gate 5b (Tier 2 Cost Tracking): budget line items and the actual-cost log
       // against them. Deliberately two separate arrays, not one shape distinguished by
       // a type field \u2014 unlike Risk/Issue/Opportunity or RFI/TQ, a budget line item and
@@ -4499,6 +4505,37 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     };
     return Object.assign(base, overrides || {});
   }
+
+  function newRecoveryActionId() {
+    return "rec_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  /** PCC Evolution Roadmap, Tier C: Delay & Recovery Management. A corrective action
+   * logged against one Schedule activity that's fallen behind — what's being done to
+   * recover the delay, who owns it, and by when. Deliberately NOT tied to any one
+   * baseline comparison (Gate 4's compareBaselineToCurrent() is computed on demand, not
+   * stored, and a schedule can have multiple baselines) — this just needs an activity_id
+   * to attach to; a PM typically adds one right after noticing a delay in the Gantt or a
+   * baseline compare, but nothing here requires a baseline to exist at all. `project_id`
+   * is denormalized from the activity for portfolio-wide queries, same convention
+   * newScheduleBaseline() above already uses. */
+  function newRecoveryAction(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newRecoveryActionId(),
+      activity_id: "",
+      project_id: "",
+      description: "",
+      responsible_person: "",
+      target_recovery_date: "",
+      status: "open", // open | in_progress | completed | cancelled
+      created_at: now,
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  var RECOVERY_ACTION_STATUSES = ["open", "in_progress", "completed", "cancelled"];
 
   // ============================================================
   // GATE 9 — Vendor Management. Vendor Master is portfolio-wide (like Projects
@@ -5388,6 +5425,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       loaded.schema_version = 36;
     }
 
+    if (loaded.schema_version < 37) {
+      // PCC Evolution Roadmap, Tier C: Delay & Recovery Management. Brand new array,
+      // nothing to backfill on existing records — same as every prior gate that
+      // introduced a new register.
+      if (!loaded.recovery_actions) loaded.recovery_actions = [];
+      loaded.schema_version = 37;
+    }
+
     return loaded;
   }
 
@@ -5721,6 +5766,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     newActivity: newActivity,
     newRelationship: newRelationship,
     newScheduleBaseline: newScheduleBaseline,
+    newRecoveryAction: newRecoveryAction,
+    RECOVERY_ACTION_STATUSES: RECOVERY_ACTION_STATUSES,
     SCHEDULE_STATUSES: SCHEDULE_STATUSES,
     ACTIVITY_TYPES: ACTIVITY_TYPES,
     ACTIVITY_STATUSES: ACTIVITY_STATUSES,
@@ -5878,6 +5925,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       label: "PLANNING",
       items: [
         { key: "schedule", label: "Schedule", code: "SC" },
+        { key: "delayRecoveryDashboard", label: "Delay & Recovery Dashboard", code: "DR" },
         { key: "cost", label: "Cost Tracking", code: "CT" },
         { key: "resources", label: "Resources", code: "RS" },
       ],
@@ -5911,6 +5959,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     resources: "Resource Management",
     reports: "Reports",
     schedule: "Schedule",
+    delayRecoveryDashboard: "Delay & Recovery Dashboard",
     settings: "Settings",
     notfound: "Not Found",
   };
@@ -17411,6 +17460,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   var ACTIVITY_STATUS_LABELS = { not_started: "Not Started", in_progress: "In Progress", complete: "Complete", on_hold: "On Hold" };
   var RELATIONSHIP_TYPE_LABELS = { FS: "Finish-to-Start", SS: "Start-to-Start", FF: "Finish-to-Finish", SF: "Start-to-Finish" };
   var PRIORITY_LABELS = { low: "Low", medium: "Medium", high: "High" };
+  var RECOVERY_ACTION_STATUS_LABELS = { open: "Open", in_progress: "In Progress", completed: "Completed", cancelled: "Cancelled" };
 
   var uiState = {
     projectId: "", // currently selected project \u2014 everything below scopes to this
@@ -17421,6 +17471,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     editingActivityId: null,
     editingRelationshipId: null,
     activityFilter: "",
+    // PCC Evolution Roadmap, Tier C: Delay & Recovery Management. Recovery action id
+    // currently being added/edited in the Activity Detail Panel, or "new", or null.
+    editingRecoveryActionId: null,
     // Gate 4: baseline capture/compare. Baseline list is scoped to the selected
     // *project* (not the selected schedule) since comparing a baseline against a
     // later re-imported revision is the point \u2014 see scheduleBaselineEngine.js header.
@@ -17497,13 +17550,21 @@ https://github.com/nodeca/pako/blob/main/LICENSE
    * both delete the same way — confirm, then remove the activity and any relationship
    * referencing it, matching the pattern every other register's delete already uses. */
   function deleteActivityWithConfirm(activity, rerender) {
-    if (!confirm('Delete activity "' + activity.name + '"? This also removes any relationships referencing it.')) return;
+    if (!confirm('Delete activity "' + activity.name + '"? This also removes any relationships and recovery actions referencing it.')) return;
     window.PCC.store.update(function (data2) {
       data2.activities = data2.activities.filter(function (item) {
         return item.id !== activity.id;
       });
       data2.relationships = data2.relationships.filter(function (rel) {
         return rel.predecessor_id !== activity.id && rel.successor_id !== activity.id;
+      });
+      // Unlike risks/rfis/meetings/document requirements (which keep their own
+      // independent life if their activity_id link goes stale), a recovery_action has
+      // no existence apart from the activity it's recovering — it's only ever surfaced
+      // via that activity's own Detail Panel, so leaving it behind would make it
+      // permanently unreachable dead data rather than a visible "orphaned link."
+      data2.recovery_actions = data2.recovery_actions.filter(function (r) {
+        return r.activity_id !== activity.id;
       });
     });
     window.PCC.notify("Activity deleted.", "success");
@@ -20379,6 +20440,231 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     return wrap;
   }
 
+  function recoveryActionOverdue(action) {
+    if (action.status === "completed" || action.status === "cancelled") return false;
+    if (!action.target_recovery_date) return false;
+    return action.target_recovery_date < todayIso();
+  }
+
+  /** PCC Evolution Roadmap, Tier C: Delay & Recovery Management. Corrective actions
+   * logged against THIS activity — full CRUD inline, same "add/edit/remove within the
+   * record's own detail view" pattern vendors.js's renderPerformanceTab() uses for
+   * vendor reviews. Deliberately not gated on the activity currently showing delay in
+   * an open baseline compare (Gate 4) — see newRecoveryAction()'s header comment in
+   * store.js for why. */
+  function renderRecoveryActionsSection(activity, data, rerender) {
+    var wrap = document.createElement("div");
+    wrap.style.marginTop = "14px";
+    wrap.style.paddingTop = "10px";
+    wrap.style.borderTop = "1px solid var(--divider)";
+
+    var rows = data.recovery_actions
+      .filter(function (r) { return r.activity_id === activity.id; })
+      .sort(function (a, b) { return (a.target_recovery_date || "9999-99-99").localeCompare(b.target_recovery_date || "9999-99-99"); });
+
+    var heading = document.createElement("p");
+    heading.className = "detail-item__label";
+    heading.style.marginBottom = "6px";
+    heading.textContent = "RECOVERY ACTIONS (" + rows.length + ")";
+    wrap.appendChild(heading);
+
+    var addBtn = document.createElement("button");
+    addBtn.className = "btn btn--ghost";
+    addBtn.style.marginBottom = "8px";
+    addBtn.textContent = "+ Add Recovery Action";
+    addBtn.onclick = function () {
+      uiState.editingRecoveryActionId = "new";
+      rerender();
+    };
+    wrap.appendChild(addBtn);
+
+    if (uiState.editingRecoveryActionId) {
+      var editing =
+        uiState.editingRecoveryActionId === "new"
+          ? window.PCC.store.newRecoveryAction({ activity_id: activity.id, project_id: activity.project_id })
+          : data.recovery_actions.find(function (r) { return r.id === uiState.editingRecoveryActionId; });
+      if (editing) {
+        var formPanel = document.createElement("div");
+        formPanel.className = "panel";
+        formPanel.style.marginBottom = "10px";
+        var form = document.createElement("form");
+        var grid = document.createElement("div");
+        grid.className = "form-grid";
+
+        var descField = document.createElement("div");
+        descField.style.gridColumn = "1 / -1";
+        descField.className = "field";
+        descField.innerHTML = "<label>Description *</label>";
+        var descInput = document.createElement("textarea");
+        descInput.id = "recactionfield-description";
+        descInput.rows = 2;
+        descInput.value = editing.description || "";
+        descField.appendChild(descInput);
+        grid.appendChild(descField);
+
+        var respField = document.createElement("div");
+        respField.className = "field";
+        respField.innerHTML = "<label>Responsible Person</label>";
+        var respInput = document.createElement("input");
+        respInput.type = "text";
+        respInput.id = "recactionfield-responsible_person";
+        respInput.value = editing.responsible_person || "";
+        respField.appendChild(respInput);
+        grid.appendChild(respField);
+
+        var dateField = document.createElement("div");
+        dateField.className = "field";
+        dateField.innerHTML = "<label>Target Recovery Date</label>";
+        var dateInput = document.createElement("input");
+        dateInput.type = "date";
+        dateInput.id = "recactionfield-target_recovery_date";
+        dateInput.value = editing.target_recovery_date || "";
+        dateField.appendChild(dateInput);
+        grid.appendChild(dateField);
+
+        var statusField = document.createElement("div");
+        statusField.className = "field";
+        statusField.innerHTML = "<label>Status</label>";
+        var statusSelect = document.createElement("select");
+        statusSelect.id = "recactionfield-status";
+        window.PCC.store.RECOVERY_ACTION_STATUSES.forEach(function (s) {
+          var opt = document.createElement("option");
+          opt.value = s;
+          opt.textContent = RECOVERY_ACTION_STATUS_LABELS[s];
+          statusSelect.appendChild(opt);
+        });
+        statusSelect.value = editing.status || "open";
+        statusField.appendChild(statusSelect);
+        grid.appendChild(statusField);
+
+        form.appendChild(grid);
+
+        var errorMsg = document.createElement("p");
+        errorMsg.style.color = "var(--status-critical)";
+        errorMsg.style.fontSize = "12px";
+        errorMsg.style.display = "none";
+        form.appendChild(errorMsg);
+
+        var formActions = document.createElement("div");
+        formActions.style.display = "flex";
+        formActions.style.gap = "10px";
+        formActions.style.marginTop = "10px";
+        var saveBtn = document.createElement("button");
+        saveBtn.type = "submit";
+        saveBtn.className = "btn btn--primary";
+        saveBtn.textContent = uiState.editingRecoveryActionId === "new" ? "Add Recovery Action" : "Save Changes";
+        var cancelBtn = document.createElement("button");
+        cancelBtn.type = "button";
+        cancelBtn.className = "btn btn--ghost";
+        cancelBtn.textContent = "Cancel";
+        cancelBtn.onclick = function () {
+          uiState.editingRecoveryActionId = null;
+          rerender();
+        };
+        formActions.appendChild(saveBtn);
+        formActions.appendChild(cancelBtn);
+        form.appendChild(formActions);
+
+        form.onsubmit = function (e) {
+          e.preventDefault();
+          if (!descInput.value.trim()) {
+            errorMsg.textContent = "Description is required.";
+            errorMsg.style.display = "block";
+            return;
+          }
+          errorMsg.style.display = "none";
+          var values = {
+            description: descInput.value.trim(),
+            responsible_person: respInput.value,
+            target_recovery_date: dateInput.value,
+            status: statusSelect.value,
+            updated_at: new Date().toISOString(),
+          };
+          window.PCC.store.update(function (d) {
+            if (uiState.editingRecoveryActionId === "new") {
+              d.recovery_actions.push(window.PCC.store.newRecoveryAction(Object.assign({ activity_id: activity.id, project_id: activity.project_id }, values)));
+            } else {
+              var existing = d.recovery_actions.find(function (r) { return r.id === editing.id; });
+              if (existing) Object.assign(existing, values);
+            }
+          });
+          window.PCC.notify("Recovery action saved.", "success");
+          uiState.editingRecoveryActionId = null;
+          rerender();
+        };
+
+        formPanel.appendChild(form);
+        wrap.appendChild(formPanel);
+      }
+    }
+
+    if (rows.length === 0) {
+      var empty = document.createElement("p");
+      empty.className = "text-secondary";
+      empty.style.fontSize = "12px";
+      empty.textContent = "No recovery actions logged against this activity yet.";
+      wrap.appendChild(empty);
+      return wrap;
+    }
+
+    rows.forEach(function (r) {
+      var overdue = recoveryActionOverdue(r);
+      var rowEl = document.createElement("div");
+      rowEl.style.display = "flex";
+      rowEl.style.justifyContent = "space-between";
+      rowEl.style.alignItems = "flex-start";
+      rowEl.style.gap = "8px";
+      rowEl.style.marginBottom = "8px";
+      rowEl.style.fontSize = "13px";
+
+      var left = document.createElement("div");
+      left.innerHTML =
+        "<strong>" + r.description + "</strong>" +
+        "<p class='text-secondary' style='font-size:12px;margin:4px 0 0'>" +
+        (r.responsible_person ? r.responsible_person + " · " : "") +
+        (r.target_recovery_date ? "target " + r.target_recovery_date : "no target date") +
+        "</p>";
+      rowEl.appendChild(left);
+
+      var right = document.createElement("div");
+      right.style.display = "flex";
+      right.style.alignItems = "center";
+      right.style.gap = "6px";
+      right.style.flexShrink = "0";
+
+      var badge = document.createElement("span");
+      badge.className =
+        "status-badge status-badge--" +
+        (overdue ? "critical" : r.status === "completed" ? "complete" : r.status === "cancelled" ? "info" : "at_risk");
+      badge.style.fontSize = "11px";
+      badge.textContent = overdue ? "Overdue" : RECOVERY_ACTION_STATUS_LABELS[r.status];
+      right.appendChild(badge);
+
+      var editRowBtn = document.createElement("button");
+      editRowBtn.className = "btn btn--ghost";
+      editRowBtn.textContent = "Edit";
+      editRowBtn.onclick = function () {
+        uiState.editingRecoveryActionId = r.id;
+        rerender();
+      };
+      right.appendChild(editRowBtn);
+
+      var removeBtn = document.createElement("button");
+      removeBtn.className = "btn btn--ghost";
+      removeBtn.textContent = "Remove";
+      removeBtn.onclick = function () {
+        window.PCC.store.update(function (d) { d.recovery_actions = d.recovery_actions.filter(function (x) { return x.id !== r.id; }); });
+        rerender();
+      };
+      right.appendChild(removeBtn);
+
+      rowEl.appendChild(right);
+      wrap.appendChild(rowEl);
+    });
+
+    return wrap;
+  }
+
   function renderActivityDetailPanel(container, activity, data, wbsItems, scheduleActivities, relationships, rerender) {
     var panel = document.createElement("div");
     panel.className = "panel";
@@ -20480,6 +20766,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     panel.appendChild(renderLinkedRecordsSection(activity, data));
     panel.appendChild(renderDocumentReadinessSection(activity, data));
+    panel.appendChild(renderRecoveryActionsSection(activity, data, rerender));
 
     var actions = document.createElement("div");
     actions.style.display = "flex";
@@ -21295,6 +21582,218 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       uiState.ganttDetailActivityId = activityId;
     },
   };
+})();
+
+
+/* ---- js/pages/delayRecoveryDashboard.js ---- */
+/* Delay & Recovery Dashboard (PCC Evolution Roadmap, Tier C: Project Performance).
+ *
+ * Portfolio-wide rollup of recovery actions — distinct from the Schedule module's own
+ * baseline-compare view (Gate 4/5, delay analysis: finish variance, delayed/ahead/on-time
+ * counts) which stays exactly where it is and is untouched by this gate. This page is
+ * about Recovery specifically, not Delay: it does not try to re-derive or roll up
+ * delay/baseline stats portfolio-wide, since which baseline to compare against per
+ * schedule is a real ambiguity (a schedule can have several) that this gate deliberately
+ * does not resolve. Recovery actions themselves are entered from the Schedule module's
+ * Activity Detail Panel (see renderRecoveryActionsSection() in pages/schedule.js) — this
+ * page is read-only, same "entry lives on the record, dashboard is a separate rollup"
+ * split as the Vendor Performance Centre.
+ */
+(function () {
+  "use strict";
+  window.PCC = window.PCC || {};
+  window.PCC.pages = window.PCC.pages || {};
+
+  var RECOVERY_ACTION_STATUS_LABELS = { open: "Open", in_progress: "In Progress", completed: "Completed", cancelled: "Cancelled" };
+
+  function todayIso() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  // Duplicated from pages/schedule.js verbatim — small enough to fit this app's
+  // established per-module-helpers convention rather than exporting a shared one.
+  function recoveryActionOverdue(action) {
+    if (action.status === "completed" || action.status === "cancelled") return false;
+    if (!action.target_recovery_date) return false;
+    return action.target_recovery_date < todayIso();
+  }
+
+  function kpiCard(label, value, colorVar) {
+    var card = document.createElement("div");
+    card.className = "kpi-card";
+    var valueStyle = colorVar ? ' style="color:var(' + colorVar + ')"' : "";
+    card.innerHTML =
+      '<span class="kpi-card__label">' + label + '</span><span class="kpi-card__value mono"' + valueStyle + ">" + value + "</span>";
+    return card;
+  }
+
+  function viewInScheduleBtn(activity) {
+    var btn = document.createElement("button");
+    btn.className = "btn btn--ghost";
+    btn.textContent = "View in Schedule";
+    btn.onclick = function () {
+      window.PCC.schedule.viewActivity(activity.project_id, activity.schedule_id, activity.id);
+      window.PCC.router.go("schedule");
+      window.PCC.router.render();
+    };
+    return btn;
+  }
+
+  function actionRow(r, activity, project, showBadge) {
+    var row = document.createElement("div");
+    row.style.display = "flex";
+    row.style.justifyContent = "space-between";
+    row.style.alignItems = "flex-start";
+    row.style.gap = "8px";
+    row.style.padding = "8px 0";
+    row.style.borderBottom = "1px solid var(--divider)";
+    row.style.fontSize = "13px";
+
+    var overdue = recoveryActionOverdue(r);
+    var left = document.createElement("div");
+    left.innerHTML =
+      "<strong>" + r.description + "</strong>" +
+      "<p class='text-secondary' style='font-size:12px;margin:4px 0 0'>" +
+      (activity ? activity.name : "(deleted activity)") + " — " + (project ? project.name || "(unnamed project)" : "(deleted project)") +
+      "</p>" +
+      "<p class='text-secondary' style='font-size:12px;margin:4px 0 0'>" +
+      (r.responsible_person ? r.responsible_person + " · " : "") +
+      (r.target_recovery_date ? "target " + r.target_recovery_date : "no target date") +
+      "</p>";
+    row.appendChild(left);
+
+    var right = document.createElement("div");
+    right.style.display = "flex";
+    right.style.alignItems = "center";
+    right.style.gap = "8px";
+    right.style.flexShrink = "0";
+
+    if (showBadge) {
+      var badge = document.createElement("span");
+      badge.className =
+        "status-badge status-badge--" +
+        (overdue ? "critical" : r.status === "completed" ? "complete" : r.status === "cancelled" ? "info" : "at_risk");
+      badge.style.fontSize = "11px";
+      badge.textContent = overdue ? "Overdue" : RECOVERY_ACTION_STATUS_LABELS[r.status];
+      right.appendChild(badge);
+    }
+
+    if (activity) right.appendChild(viewInScheduleBtn(activity));
+
+    row.appendChild(right);
+    return row;
+  }
+
+  function render(outlet) {
+    var data = window.PCC.store.get();
+    var activeProjectIds = {};
+    data.projects.forEach(function (p) {
+      if (!p.archived) activeProjectIds[p.id] = true;
+    });
+    var projectsById = {};
+    data.projects.forEach(function (p) { projectsById[p.id] = p; });
+    var activitiesById = {};
+    data.activities.forEach(function (a) { activitiesById[a.id] = a; });
+
+    var actions = data.recovery_actions.filter(function (r) {
+      return activeProjectIds[r.project_id];
+    });
+
+    var wrap = document.createElement("div");
+    var h1 = document.createElement("h2");
+    h1.textContent = "Delay & Recovery Dashboard";
+    h1.style.marginBottom = "4px";
+    wrap.appendChild(h1);
+
+    var sub = document.createElement("p");
+    sub.className = "text-secondary";
+    sub.style.marginTop = "0";
+    sub.style.marginBottom = "20px";
+    sub.textContent =
+      actions.length === 0
+        ? "No recovery actions logged across the active portfolio yet — add one from an activity's own Detail Panel in the Schedule module (Gantt tab)."
+        : "Portfolio-wide recovery actions across " + Object.keys(activeProjectIds).length + " active project" + (Object.keys(activeProjectIds).length === 1 ? "" : "s") + ". Delay analysis itself (finish variance, critical slip) stays in each schedule's own Baselines tab.";
+    wrap.appendChild(sub);
+
+    if (actions.length === 0) {
+      var empty = document.createElement("div");
+      empty.className = "panel empty-state";
+      empty.textContent = "Nothing to show yet. Once activities have recovery actions logged against them, this dashboard will list the open ones overdue-first.";
+      wrap.appendChild(empty);
+      outlet.appendChild(wrap);
+      return;
+    }
+
+    var open = actions.filter(function (r) { return r.status === "open" || r.status === "in_progress"; });
+    var closed = actions.filter(function (r) { return r.status === "completed" || r.status === "cancelled"; });
+    var overdueCount = open.filter(recoveryActionOverdue).length;
+
+    var openSorted = open.slice().sort(function (a, b) {
+      var aOverdue = recoveryActionOverdue(a);
+      var bOverdue = recoveryActionOverdue(b);
+      if (aOverdue !== bOverdue) return aOverdue ? -1 : 1; // overdue first
+      var aDate = a.target_recovery_date || "9999-99-99";
+      var bDate = b.target_recovery_date || "9999-99-99";
+      return aDate.localeCompare(bDate); // then soonest target date first
+    });
+
+    var kpiGrid = document.createElement("div");
+    kpiGrid.className = "kpi-grid";
+    kpiGrid.appendChild(kpiCard("TOTAL RECOVERY ACTIONS", actions.length, null));
+    kpiGrid.appendChild(kpiCard("OPEN", open.length, null));
+    kpiGrid.appendChild(kpiCard("OVERDUE", overdueCount, overdueCount > 0 ? "--status-critical" : null));
+    kpiGrid.appendChild(kpiCard("COMPLETED", actions.filter(function (r) { return r.status === "completed"; }).length, null));
+    wrap.appendChild(kpiGrid);
+
+    var openPanel = document.createElement("div");
+    openPanel.className = "panel";
+    openPanel.style.marginTop = "16px";
+    var openHeading = document.createElement("h3");
+    openHeading.style.marginBottom = "8px";
+    openHeading.textContent = "Open Recovery Actions (overdue first)";
+    openPanel.appendChild(openHeading);
+
+    if (openSorted.length === 0) {
+      var noOpen = document.createElement("p");
+      noOpen.className = "text-secondary";
+      noOpen.style.fontSize = "13px";
+      noOpen.textContent = "No open recovery actions — every logged action has been completed or cancelled.";
+      openPanel.appendChild(noOpen);
+    } else {
+      openSorted.forEach(function (r) {
+        openPanel.appendChild(actionRow(r, activitiesById[r.activity_id], projectsById[r.project_id], true));
+      });
+    }
+    wrap.appendChild(openPanel);
+
+    var closedPanel = document.createElement("div");
+    closedPanel.className = "panel";
+    closedPanel.style.marginTop = "16px";
+    var closedHeading = document.createElement("h3");
+    closedHeading.style.marginBottom = "8px";
+    closedHeading.textContent = "Completed / Cancelled (" + closed.length + ")";
+    closedPanel.appendChild(closedHeading);
+
+    if (closed.length === 0) {
+      var noClosed = document.createElement("p");
+      noClosed.className = "text-secondary";
+      noClosed.style.fontSize = "13px";
+      noClosed.textContent = "None yet.";
+      closedPanel.appendChild(noClosed);
+    } else {
+      closed
+        .slice()
+        .sort(function (a, b) { return (b.updated_at || "").localeCompare(a.updated_at || ""); })
+        .forEach(function (r) {
+          closedPanel.appendChild(actionRow(r, activitiesById[r.activity_id], projectsById[r.project_id], true));
+        });
+    }
+    wrap.appendChild(closedPanel);
+
+    outlet.appendChild(wrap);
+  }
+
+  window.PCC.pages.delayRecoveryDashboard = render;
 })();
 
 
@@ -27801,6 +28300,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     router.register("documentControlDashboard", window.PCC.pages.documentControlDashboard);
     router.register("dailylog", window.PCC.pages.dailylog);
     router.register("schedule", window.PCC.pages.schedule);
+    router.register("delayRecoveryDashboard", window.PCC.pages.delayRecoveryDashboard);
     router.register("risks", window.PCC.pages.risks);
     router.register("meetings", window.PCC.pages.meetings);
     router.register("rfis", window.PCC.pages.rfis);
