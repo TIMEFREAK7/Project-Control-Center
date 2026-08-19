@@ -2375,6 +2375,60 @@ re-run clean, 580 checks total):**
 done, deliberately: Document Control gate 14 (Portfolio Compliance) — this gate is a per-project
 narrative addition, not a portfolio-wide rollup/report.
 
+## Gate 28 — Document Control 14: Portfolio Compliance — the 14-gate sub-spec is complete (2026-08-18)
+
+**The final gate of Aditya's 14-gate Document Control spec.** Scoped and confirmed before
+building, same discipline every single gate in this sub-spec has followed since Gate 14. Rather
+than building a new, parallel portfolio-wide report page, this gate completes the existing
+printable Portfolio Summary Report (`reports.js`, `window.print()`, no PDF library — the same
+convention this app has used for every report since Gate 1) by adding the one section it was
+still missing: document compliance. Reports.js already had sections for Projects, Risks, RFIs, and
+Change Orders portfolio-wide; Document Control simply never had a seat at that table until now.
+
+**What changed:**
+
+- `pages/reports.js`: a new **"Document Control Compliance"** section appended to
+  `buildPortfolioReport()`, printed alongside the report's existing sections:
+  - A header line stating the overall % Available, total requirement count, and overdue count
+    across every active project's document requirements portfolio-wide.
+  - A per-project table (Project / Available / Overdue / % Available), sorted **worst-compliance-
+    first** — same convention Gate 26's Document Control Dashboard already established — so a
+    reader scanning the printed page sees problem projects first, not alphabetically.
+  - Empty state when no active project has any requirement assigned yet.
+  - Same Available/Overdue/Required computation every Document Control gate since Gate 18 has
+    used, duplicated here per this app's per-module-helpers convention — the seventh copy now
+    (`portfolio.js`, `vendors.js`, `schedule.js`, `dashboard.js`, `documentControlDashboard.js`,
+    `executiveCenter.js`, `reports.js`).
+  - No schema changes, nothing written back — purely computed at render/print time.
+
+**Tested before delivery (26 new e2e checks in a new file — the first dedicated test file for
+`reports.js` itself, since none existed before this gate — full suite re-run clean, 606 checks
+total):**
+
+- **End-to-end against the actual bundled `index.html`** (new file,
+  `test_reports_document_control_e2e.js`, 26 checks): empty state before any requirement exists;
+  seeding requirements across two active projects plus one archived project (whose requirement
+  must never appear in this section) produces the correct header line and per-project table,
+  worst-compliance-first, with exact "N of M" / overdue / percentage values per row; confirmed the
+  section writes nothing back; confirmed "Print / Save as PDF" still calls `window.print()` with
+  the new section present; a full 17-route smoke test. One test-scoping lesson worth keeping in
+  mind for this specific file: the Reports page keeps a `display:none` project-status dropdown
+  listing *every* project (including archived) in the DOM at all times regardless of which report
+  mode is selected, so a whole-page `textContent` search for "must never appear" assertions can
+  give a false positive — scoped those checks to the compliance section's own subtree instead.
+- **Real-browser verification** (Chromium via Playwright): seeded two projects with different
+  compliance levels directly via the store, switched to the Portfolio Summary Report, and
+  confirmed the section rendered with exactly the expected header line and table rows — zero
+  console/page errors.
+
+**What I have not tested:** this on your actual device. Same standard as every prior gate. **With
+this gate, all 14 gates of the Document Control spec Aditya originally handed over are now
+built** — Master Repository, Project-Specific Requirements, Classification + Nomenclature,
+Status + Version Control, Schedule Due Dates, Vendor Register, Schedule↔Document Linking,
+Schedule-Driven Dates/Lead Time, Vendor Lookahead, Readiness/Constraints,
+Reminders/Notifications, Dashboards, Executive Summary, and Portfolio Compliance. Nothing from
+this sub-spec remains unstarted.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
@@ -2402,58 +2456,56 @@ line items on the original locked Tier 2/3 list. Built in a separate parallel se
 Gates 8-11 and reconciled into `main` together with them (see each gate's own write-up above for
 the schema-numbering note on how the reconciliation renumbered them).
 
-**Document Control** (Gates 14-27 = Document Control gates 1-13 of a separate 14-gate sub-spec,
-done) — same footing as Executive Center/Activity Linking/Vendor Management above: a directly
-requested, explicitly incremental upgrade to Documents, not a Tier 1/2/3 line item. The Master
-Document Repository (the type taxonomy, Gate 14), Project-Specific Document Requirements (which
-types apply to which project, Gate 15), Classification + Nomenclature (document-level metadata +
-a non-blocking naming-convention check, Gate 16), and Status + Version Control (a lifecycle status
-plus real revision history, Gate 17) are built; **Gate 18** then reworked Gate 14/15's UX per
-direct user feedback — requirement selection moved into the Add/Edit Project form itself,
-availability became a computed status instead of anything stored, and ten project-setup-flavored
-document types were added to the master repository. **Gate 19** added a manual, optional planned
-submission date per requirement, with a computed Overdue status alongside Available/Required.
-**Gate 20** added an optional assigned vendor per requirement, reusing the existing Vendor
-Management module rather than a second register. **Gate 21** added an optional link from a
-requirement to one of the project's own Schedule activities — purely a link, no date derived from
-it either way. **Gate 22** added an optional lead time that, combined with Gate 21's link, computes
-a suggested due date — applied only via an explicit "Use" action, never automatically. **Gate 23**
-added a "Document Lookahead" tab to Vendor Management's existing Vendor Profile page — a read-only
-view of every requirement assigned to that vendor, across all their projects, sorted soonest-due-
-first. **Gate 24** added a "Document Readiness" section to the Schedule module's Activity Detail
-Panel — reads Gate 21's activity link in reverse, flagging an activity NOT READY the moment any
-one of its governing requirements isn't yet Available; purely informational, never enforced.
-**Gate 25** added a portfolio-wide "Document Reminders" panel and two KPI cards to the Dashboard —
-this app's in-app equivalent of push/email notifications, since it has no server or network
-channel for either. **Gate 26** added a new "Document Control Dashboard" page — portfolio-wide
-compliance KPIs plus worst-first breakdowns by project and by document type, distinct from Gate
-25's time-sensitive reminders panel. **Gate 27** added a sixth auto+override section, "Document
-Control Status," to Executive Center's existing per-project Executive Summary — reusing Gate 9's
-proven pattern verbatim, and flowing automatically into the Project Snapshot and Management Pack
-print views since both already iterate the same section list generically. Document Control gate
-14 (portfolio/executive compliance rollups) is the only one intentionally not started — see
-Gates 14-27's own write-ups above.
+**Document Control** (Gates 14-28 = Document Control gates 1-14 of a separate 14-gate sub-spec —
+**the entire sub-spec is now complete**) — same footing as Executive Center/Activity
+Linking/Vendor Management above: a directly requested, explicitly incremental upgrade to
+Documents, not a Tier 1/2/3 line item. The Master Document Repository (the type taxonomy, Gate
+14), Project-Specific Document Requirements (which types apply to which project, Gate 15),
+Classification + Nomenclature (document-level metadata + a non-blocking naming-convention check,
+Gate 16), and Status + Version Control (a lifecycle status plus real revision history, Gate 17)
+are built; **Gate 18** then reworked Gate 14/15's UX per direct user feedback — requirement
+selection moved into the Add/Edit Project form itself, availability became a computed status
+instead of anything stored, and ten project-setup-flavored document types were added to the
+master repository. **Gate 19** added a manual, optional planned submission date per requirement,
+with a computed Overdue status alongside Available/Required. **Gate 20** added an optional
+assigned vendor per requirement, reusing the existing Vendor Management module rather than a
+second register. **Gate 21** added an optional link from a requirement to one of the project's own
+Schedule activities — purely a link, no date derived from it either way. **Gate 22** added an
+optional lead time that, combined with Gate 21's link, computes a suggested due date — applied
+only via an explicit "Use" action, never automatically. **Gate 23** added a "Document Lookahead"
+tab to Vendor Management's existing Vendor Profile page — a read-only view of every requirement
+assigned to that vendor, across all their projects, sorted soonest-due-first. **Gate 24** added a
+"Document Readiness" section to the Schedule module's Activity Detail Panel — reads Gate 21's
+activity link in reverse, flagging an activity NOT READY the moment any one of its governing
+requirements isn't yet Available; purely informational, never enforced. **Gate 25** added a
+portfolio-wide "Document Reminders" panel and two KPI cards to the Dashboard — this app's in-app
+equivalent of push/email notifications, since it has no server or network channel for either.
+**Gate 26** added a new "Document Control Dashboard" page — portfolio-wide compliance KPIs plus
+worst-first breakdowns by project and by document type, distinct from Gate 25's time-sensitive
+reminders panel. **Gate 27** added a sixth auto+override section, "Document Control Status," to
+Executive Center's existing per-project Executive Summary — reusing Gate 9's proven pattern
+verbatim, and flowing automatically into the Project Snapshot and Management Pack print views
+since both already iterate the same section list generically. **Gate 28** — the sub-spec's final
+gate — added a "Document Control Compliance" section to the existing printable Portfolio Summary
+Report, completing it alongside its pre-existing Risk/RFI/Change Order sections. See Gates 14-28's
+own write-ups above for the full detail on each.
 
 **Tier 3 (deferred until Tier 1 is in daily use):** AI Document Processing, Knowledge Base, AI Project
 Assistant, Lessons Learned, final polish
 
 ## Next phase
 
-**Tier 2 is complete**, and Vendor Management / the in-app Excel editor / the Document Control
-foundation (repository + per-project requirements + classification/nomenclature + status/version
-control + manual due dates + vendor assignment + schedule linking + lead-time suggestions + vendor
-lookahead + readiness flagging + portfolio-wide reminders + a compliance dashboard + an executive
-summary section) are all done alongside it. The most likely next piece of work is **Document
-Control gate 14 (Portfolio Compliance)** — the final gate of the sub-spec, likely a portfolio-wide
-compliance rollup/printable report analogous to Gate 9's own Management Pack — per the sub-spec's
-own locked gate order, but confirm scope before starting it rather than assuming, same discipline
-as every gate before this one. Other open items, none blocking daily use: rate × usage from
+**Tier 2 is complete, and the entire 14-gate Document Control sub-spec Aditya handed over is now
+built** (Gates 14-28) — no gates from that spec remain. The most likely next piece of work is
+whatever Aditya wants to tackle next; there's no locked next item the way there was while
+Document Control was in progress. Open items, none blocking daily use: rate × usage from
 Resource Management feeding Cost Tracking/EVM (explicitly deferred, Gate 11); a
 persisted/logo-customizable report-template system; portfolio-level executive dashboard filtering;
 10,000+ activity Gantt virtualization; per-activity linking extended to Resource Assignments' own
 sub-fields if that turns out to matter in practice; Vendor↔Cost/Schedule integration beyond the
 current Vendor↔Project/Meeting/RFI/Risk links, if that turns out to matter in practice; the
 Document Reminders panel's 14-day due-soon window is currently hardcoded, not user-configurable;
+a Gantt-bar-level visual flag for "not ready" activities (considered and deferred at Gate 24);
 reconciling Documents' `category` / Vendor
 Management's document categories / the Gate 14 master repository into one classification scheme,
 explicitly deferred twice now (Gates 14 and 16) — worth revisiting once real usage shows whether

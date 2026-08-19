@@ -25951,6 +25951,61 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var coSection = sectionEl("Change Orders \u2014 " + openCos.length + " open, " + pendingCos.length + " pending decision across portfolio");
     doc.appendChild(coSection);
 
+    // Gate 28 (Document Control 14: Portfolio Compliance) \u2014 the final gate of the
+    // 14-gate Document Control sub-spec. Same Available/Overdue/Required computation as
+    // every Document Control gate since Gate 18 (portfolio.js/vendors.js/schedule.js/
+    // dashboard.js/documentControlDashboard.js/executiveCenter.js all have their own
+    // copy already; this is the seventh), reused here to complete the existing
+    // portfolio-wide printable report rather than building a parallel one.
+    var docTypesById = {};
+    data.document_types.forEach(function (t) { docTypesById[t.id] = t; });
+    var activeProjectIds = {};
+    activeProjects.forEach(function (p) { activeProjectIds[p.id] = true; });
+    var docRows = data.project_document_requirements
+      .filter(function (r) { return activeProjectIds[r.project_id] && docTypesById[r.document_type_id]; })
+      .map(function (r) {
+        var available = data.documents.some(function (d) { return d.project_id === r.project_id && d.document_type_id === r.document_type_id; });
+        var status = available ? "available" : (r.planned_submission_date && r.planned_submission_date < today() ? "overdue" : "required");
+        return { row: r, status: status };
+      });
+    var docTotal = docRows.length;
+    var docAvailable = docRows.filter(function (x) { return x.status === "available"; }).length;
+    var docOverdue = docRows.filter(function (x) { return x.status === "overdue"; }).length;
+    var docPct = docTotal === 0 ? 0 : Math.round((docAvailable / docTotal) * 100);
+    var docSection = sectionEl("Document Control Compliance \u2014 " + docPct + "% available across portfolio (" + docTotal + " requirement(s), " + docOverdue + " overdue)");
+    if (docTotal === 0) {
+      docSection.appendChild(emptyNote("No document requirements assigned across the active portfolio."));
+    } else {
+      var byProject = {};
+      docRows.forEach(function (x) {
+        var pid = x.row.project_id;
+        if (!byProject[pid]) byProject[pid] = { total: 0, available: 0, overdue: 0 };
+        byProject[pid].total++;
+        if (x.status === "available") byProject[pid].available++;
+        if (x.status === "overdue") byProject[pid].overdue++;
+      });
+      var docProjectRows = Object.keys(byProject)
+        .map(function (pid) {
+          var proj = activeProjects.find(function (p) { return p.id === pid; });
+          var stats = byProject[pid];
+          var pct = stats.total === 0 ? 0 : Math.round((stats.available / stats.total) * 100);
+          return { name: proj ? proj.name || "(unnamed project)" : "(deleted project)", stats: stats, pct: pct };
+        })
+        .sort(function (a, b) {
+          if (a.pct !== b.pct) return a.pct - b.pct;
+          return b.stats.overdue - a.stats.overdue;
+        });
+      docSection.appendChild(
+        table(
+          ["Project", "Available", "Overdue", "% Available"],
+          docProjectRows.map(function (pr) {
+            return [esc(pr.name), pr.stats.available + " of " + pr.stats.total, String(pr.stats.overdue), pr.pct + "%"];
+          })
+        )
+      );
+    }
+    doc.appendChild(docSection);
+
     return doc;
   }
 
