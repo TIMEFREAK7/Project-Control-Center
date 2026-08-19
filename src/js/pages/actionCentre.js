@@ -63,9 +63,21 @@
         if (a.status !== "open") return;
         var bucket = bucketFor(a.due_date || "");
         if (!bucket) return;
+        // Gate 33 (PCC Evolution Roadmap, Tier B: Meeting Action → Control Linking) —
+        // surface whichever of the action's own optional links are set, same "only show
+        // what's actually there" convention meetings.js's own read-only detail uses.
+        var linkParts = [];
+        if (a.vendor_id) {
+          var v = data.vendors.find(function (x) { return x.id === a.vendor_id; });
+          if (v) linkParts.push("Vendor: " + (v.vendor_name || "(unnamed vendor)"));
+        }
+        if (a.activity_id) {
+          var linkedAct = data.activities.find(function (x) { return x.id === a.activity_id; });
+          if (linkedAct) linkParts.push("Activity: " + (linkedAct.name || "(unnamed activity)"));
+        }
         items.push({
           kind: "Meeting Action",
-          title: a.description || "(no description)",
+          title: (a.description || "(no description)") + (linkParts.length ? " (" + linkParts.join(", ") + ")" : ""),
           projectId: m.project_id,
           owner: a.owner || "—",
           dueDate: a.due_date || "",

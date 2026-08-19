@@ -45,6 +45,58 @@
     select.value = selectedActivityId || "";
   }
 
+  // Gate 33 (PCC Evolution Roadmap, Tier B: Meeting Action → Control Linking). Same
+  // "clear + rebuild options, set value" pattern as activityOptionsFor() above, one per
+  // linkable type an individual action item can now carry.
+  function vendorOptionsFor(select, data, selectedVendorId) {
+    select.innerHTML = "";
+    var noneOpt = document.createElement("option");
+    noneOpt.value = "";
+    noneOpt.textContent = "No vendor";
+    select.appendChild(noneOpt);
+    data.vendors.forEach(function (v) {
+      var opt = document.createElement("option");
+      opt.value = v.id;
+      opt.textContent = v.vendor_name || "(unnamed vendor)";
+      select.appendChild(opt);
+    });
+    select.value = selectedVendorId || "";
+  }
+
+  function rfiOptionsFor(select, data, projectId, selectedRfiId) {
+    select.innerHTML = "";
+    var noneOpt = document.createElement("option");
+    noneOpt.value = "";
+    noneOpt.textContent = "No RFI";
+    select.appendChild(noneOpt);
+    data.rfis
+      .filter(function (r) { return r.project_id === projectId; })
+      .forEach(function (r) {
+        var opt = document.createElement("option");
+        opt.value = r.id;
+        opt.textContent = (r.number || "") + (r.subject ? " — " + r.subject : "");
+        select.appendChild(opt);
+      });
+    select.value = selectedRfiId || "";
+  }
+
+  function riskOptionsFor(select, data, projectId, selectedRiskId) {
+    select.innerHTML = "";
+    var noneOpt = document.createElement("option");
+    noneOpt.value = "";
+    noneOpt.textContent = "No risk";
+    select.appendChild(noneOpt);
+    data.risks
+      .filter(function (r) { return r.project_id === projectId; })
+      .forEach(function (r) {
+        var opt = document.createElement("option");
+        opt.value = r.id;
+        opt.textContent = r.title || "(untitled)";
+        select.appendChild(opt);
+      });
+    select.value = selectedRiskId || "";
+  }
+
   function isOverdue(action) {
     return action.status === "open" && action.due_date && action.due_date < todayStr();
   }
@@ -70,7 +122,7 @@
 
   // ===== Action-item sub-editor (dynamic rows within the meeting form) =====
 
-  function buildActionRow(action) {
+  function buildActionRow(action, data, projectId) {
     var row = document.createElement("div");
     row.className = "action-editor-row";
     row.dataset.actionId = action.id;
@@ -111,6 +163,35 @@
     });
     status.value = action.status || "open";
 
+    // Gate 33 (PCC Evolution Roadmap, Tier B: Meeting Action → Control Linking). Four
+    // optional links, independent of the parent meeting's own single activity_id — an
+    // action item can relate to a different vendor/activity/RFI/risk than the meeting
+    // as a whole. `title` gives a native tooltip since the row has no room for full
+    // field labels; each select's own placeholder option names the field instead.
+    var vendorSelect = document.createElement("select");
+    vendorSelect.className = "action-vendor";
+    vendorSelect.title = "Linked Vendor";
+    vendorSelect.style.flex = "1 1 140px";
+    vendorOptionsFor(vendorSelect, data, action.vendor_id);
+
+    var activitySelect = document.createElement("select");
+    activitySelect.className = "action-activity";
+    activitySelect.title = "Linked Activity";
+    activitySelect.style.flex = "1 1 160px";
+    activityOptionsFor(activitySelect, data, projectId, action.activity_id);
+
+    var rfiSelect = document.createElement("select");
+    rfiSelect.className = "action-rfi";
+    rfiSelect.title = "Linked RFI";
+    rfiSelect.style.flex = "1 1 160px";
+    rfiOptionsFor(rfiSelect, data, projectId, action.rfi_id);
+
+    var riskSelect = document.createElement("select");
+    riskSelect.className = "action-risk";
+    riskSelect.title = "Linked Risk";
+    riskSelect.style.flex = "1 1 160px";
+    riskOptionsFor(riskSelect, data, projectId, action.risk_id);
+
     var removeBtn = document.createElement("button");
     removeBtn.type = "button";
     removeBtn.className = "btn btn--ghost";
@@ -123,11 +204,20 @@
     row.appendChild(owner);
     row.appendChild(due);
     row.appendChild(status);
+    row.appendChild(vendorSelect);
+    row.appendChild(activitySelect);
+    row.appendChild(rfiSelect);
+    row.appendChild(riskSelect);
     row.appendChild(removeBtn);
     return row;
   }
 
-  function renderActionsEditor(container, initialActions) {
+  // `projSelect` is the meeting's own Project <select> element, not a resolved project
+  // id string — read live via `projSelect.value` everywhere below (including inside the
+  // "+ Add Action" handler), so a brand-new row always scopes its Activity/RFI/Risk
+  // options to whichever project is currently selected, not whatever it was when this
+  // editor first rendered.
+  function renderActionsEditor(container, initialActions, data, projSelect) {
     var wrap = document.createElement("div");
     wrap.className = "field";
     wrap.style.gridColumn = "1 / -1";
@@ -136,7 +226,7 @@
     var rowsContainer = document.createElement("div");
     rowsContainer.id = "action-rows-container";
     initialActions.forEach(function (a) {
-      rowsContainer.appendChild(buildActionRow(a));
+      rowsContainer.appendChild(buildActionRow(a, data, projSelect.value));
     });
     wrap.appendChild(rowsContainer);
 
@@ -145,11 +235,12 @@
     addBtn.className = "btn btn--ghost";
     addBtn.textContent = "+ Add Action";
     addBtn.onclick = function () {
-      rowsContainer.appendChild(buildActionRow(window.PCC.store.newMeetingAction()));
+      rowsContainer.appendChild(buildActionRow(window.PCC.store.newMeetingAction(), window.PCC.store.get(), projSelect.value));
     };
     wrap.appendChild(addBtn);
 
     container.appendChild(wrap);
+    return rowsContainer;
   }
 
   function readActionsFromForm(formEl) {
@@ -160,6 +251,10 @@
       var owner = row.querySelector(".action-owner").value.trim();
       var due_date = row.querySelector(".action-due").value;
       var status = row.querySelector(".action-status").value;
+      var vendor_id = row.querySelector(".action-vendor").value;
+      var activity_id = row.querySelector(".action-activity").value;
+      var rfi_id = row.querySelector(".action-rfi").value;
+      var risk_id = row.querySelector(".action-risk").value;
       // Skip fully-empty rows (e.g. an "+ Add Action" row nobody filled in) rather than
       // saving blank action items.
       if (!description && !owner && !due_date) return;
@@ -169,6 +264,10 @@
         owner: owner,
         due_date: due_date,
         status: status,
+        vendor_id: vendor_id,
+        activity_id: activity_id,
+        rfi_id: rfi_id,
+        risk_id: risk_id,
       });
     });
     return actions;
@@ -331,6 +430,12 @@
     grid.appendChild(activityField);
     projSelect.onchange = function () {
       activityOptionsFor(activitySelect, window.PCC.store.get(), projSelect.value, "");
+      var freshData = window.PCC.store.get();
+      Array.from(actionRowsContainer.querySelectorAll(".action-editor-row")).forEach(function (row) {
+        activityOptionsFor(row.querySelector(".action-activity"), freshData, projSelect.value, "");
+        rfiOptionsFor(row.querySelector(".action-rfi"), freshData, projSelect.value, "");
+        riskOptionsFor(row.querySelector(".action-risk"), freshData, projSelect.value, "");
+      });
     };
 
     var titleField = document.createElement("div");
@@ -388,7 +493,7 @@
 
     form.appendChild(grid);
 
-    renderActionsEditor(form, meeting.actions || []);
+    var actionRowsContainer = renderActionsEditor(form, meeting.actions || [], window.PCC.store.get(), projSelect);
     renderRecordingsEditor(form, meeting.recordings || []);
 
     var errorMsg = document.createElement("p");
@@ -607,6 +712,7 @@
       list.style.flexDirection = "column";
       list.style.gap = "6px";
 
+      var linkData = window.PCC.store.get();
       m.actions.forEach(function (a) {
         var row = document.createElement("div");
         row.style.display = "flex";
@@ -617,7 +723,29 @@
 
         var overdue = isOverdue(a);
         var label = document.createElement("span");
-        label.textContent = (a.description || "(no description)") + (a.owner ? " \u2014 " + a.owner : "") + (a.due_date ? " \u00b7 " + a.due_date : "");
+        // Gate 33 (PCC Evolution Roadmap, Tier B: Meeting Action \u2192 Control Linking) \u2014
+        // append whichever of the four optional links are set, same "only show what's
+        // actually there" convention every other reciprocal display in this app follows.
+        var linkParts = [];
+        if (a.vendor_id) {
+          var v = linkData.vendors.find(function (x) { return x.id === a.vendor_id; });
+          if (v) linkParts.push("Vendor: " + (v.vendor_name || "(unnamed vendor)"));
+        }
+        if (a.activity_id) {
+          var linkedAct = linkData.activities.find(function (x) { return x.id === a.activity_id; });
+          if (linkedAct) linkParts.push("Activity: " + (linkedAct.name || "(unnamed activity)"));
+        }
+        if (a.rfi_id) {
+          var linkedRfi = linkData.rfis.find(function (x) { return x.id === a.rfi_id; });
+          if (linkedRfi) linkParts.push((linkedRfi.type === "technical_query" ? "TQ: " : "RFI: ") + (linkedRfi.number || ""));
+        }
+        if (a.risk_id) {
+          var linkedRisk = linkData.risks.find(function (x) { return x.id === a.risk_id; });
+          if (linkedRisk) linkParts.push("Risk: " + (linkedRisk.title || "(untitled)"));
+        }
+        label.textContent =
+          (a.description || "(no description)") + (a.owner ? " \u2014 " + a.owner : "") + (a.due_date ? " \u00b7 " + a.due_date : "") +
+          (linkParts.length ? " \u00b7 " + linkParts.join(", ") : "");
         if (overdue) label.style.color = "var(--status-critical)";
 
         var statusBadge = document.createElement("span");
