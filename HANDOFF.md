@@ -42,24 +42,22 @@ that override default behavior).
 - **Document Control is a separate 14-gate sub-spec being built incrementally, one confirmed
   gate at a time.** Aditya provided the full spec up front but is explicit that it must NOT be
   built all at once — inspect current state, propose the next gate's scope in a short paragraph,
-  wait for "yes, build it," then build exactly that and stop. Eight gates in as of this handoff
+  wait for "yes, build it," then build exactly that and stop. Nine gates in as of this handoff
   (see below); do not jump ahead to a later gate's fields "while you're in there."
 
-## Where things stand — everything through Gate 22 is merged into `main`
+## Where things stand — everything through Gate 23 is merged into `main`
 
-`main` is fully up to date through **Gate 22** (Document Control gate 8 of 14: Schedule-Driven
-Dates/Lead Time), merge commit `260de5f`, `schema_version` **33**. This session built and merged
-three gates in sequence — Gate 21 (Schedule↔Document Linking, merged as part of `480ca18` earlier
-this session), then Gate 22 — each time rebuilding, running the full suite, merging directly (no
-PR — solo repo, no CI/reviewers, and Aditya has now made this a standing instruction, see above),
-pushing `main`, and restarting `claude/gate-5-startup-1ubxfh` from the new `main` before starting
-the next gate. The full test suite (**23 files, 514 checks**) passes clean, and a real-Chromium
-pass confirmed Gate 22's suggested-date computation end to end (a seeded activity with
-`planned_start: 2026-12-01` and a 7-day lead time produced `Suggested: 2026-11-24`, applied via
-"Use," and round-tripped into the store exactly as computed). **No branch currently carries
-unmerged app features** — `claude/gate-5-startup-1ubxfh` was reset to match `main` after the Gate
-22 merge and has no commits of its own on top. Verify with `git log origin/main..HEAD` before
-assuming this is still true by the time you read this.
+`main` is fully up to date through **Gate 23** (Document Control gate 9 of 14: Vendor Lookahead),
+merge commit `ded0deb`, `schema_version` still **33** (this gate added no schema fields — pure UI
+aggregation). This session built and merged two gates in sequence — Gate 22 (Schedule-Driven
+Dates/Lead Time, merged as `260de5f`), then Gate 23 — each time rebuilding, running the full
+suite, merging directly (no PR — standing instruction, see above), pushing `main`, and restarting
+`claude/gate-5-startup-1ubxfh` from the new `main` before starting the next gate. The full test
+suite (**24 files, 525 checks**) passes clean, and a real-Chromium pass confirmed the new
+"Document Lookahead" vendor-profile tab end to end. **No branch currently carries unmerged app
+features** — `claude/gate-5-startup-1ubxfh` was reset to match `main` after the Gate 23 merge and
+has no commits of its own on top. Verify with `git log origin/main..HEAD` before assuming this is
+still true by the time you read this.
 
 **Feature summary, in build order (Gates 1-13 summarized; Gates 14-17 — Document Control — in
 full detail since they're what's newest and least likely to be in a future session's training/
@@ -90,15 +88,15 @@ memory of this project):**
   8/9," that's why — see README.md's own Gate 12/13 sections for the full story, not repeated
   here since it's settled history now.)*
 
-### Document Control (Gates 14-22 = sub-spec gates 1-8) — the current frontier, one gate at a time
+### Document Control (Gates 14-23 = sub-spec gates 1-9) — the current frontier, one gate at a time
 
 Aditya's Document Control spec has 14 gates total (Master Repository → Project Requirements →
 Classification/Nomenclature → Status/Version Control → Schedule Due Dates → Vendor Register →
 Schedule↔Document Linking → Schedule-Driven Dates/Lead Time → Vendor Lookahead → Readiness/
 Constraints → Reminders/Notifications → Dashboards → Executive Summary → Portfolio Compliance).
-**The first eight are built** (plus Gate 18, an unnumbered UX fix between sub-spec gates 4 and 5).
+**The first nine are built** (plus Gate 18, an unnumbered UX fix between sub-spec gates 4 and 5).
 Each was scoped in a short paragraph, confirmed by Aditya ("yes, build Gate N as scoped"), then
-built — that back-and-forth pattern should continue for gate 9 onward, not be skipped.
+built — that back-and-forth pattern should continue for gate 10 onward, not be skipped.
 
 - **Gate 14 — Master Document Repository.** The first user-configurable taxonomy in this app:
   `document_types` (name/code/category/default_criticality/active), seeded with ~28 starting
@@ -195,16 +193,29 @@ built — that back-and-forth pattern should continue for gate 9 onward, not be 
   New day-math helpers (`toDayNumber`/`toIsoDate`/`addDays`) duplicate `scheduleGanttLayout.js`'s
   own versions, per this app's per-module-helpers convention. Read-only Details summary appends
   `"(Nd lead time)"` after the linked activity's name.
+- **Gate 23 — Document Control 9: Vendor Lookahead (this session, on a branch freshly restarted
+  from `main` after Gate 22 merged).** Scoped and confirmed — flagged up front, same as Gate 20
+  was, that this app already has a full Vendor Management module (Gate 13) with its own 9-tab
+  Vendor Profile, so "Vendor Lookahead" means a new tab there, not a new page/register. A 10th
+  tab, **"Document Lookahead,"** on `pages/vendors.js`'s existing profile: pure read-only
+  aggregation, no schema changes. New `renderLookaheadTab()` lists every
+  `project_document_requirements` row with a matching `vendor_id` across ALL of that vendor's
+  projects (deliberately not scoped to `vendor_project_links` — the requirement assignment itself
+  is the source of truth for what's expected), sorted soonest-due-first (no-due-date rows sort
+  last), each showing document type, project name, due date, a computed Available/Overdue/Required
+  badge (`computeRequirementStatus()`, same logic as `portfolio.js`'s own, duplicated per
+  convention), and the linked Schedule activity + lead time when set. A summary line at top:
+  total assigned, project count, overdue count (only when nonzero). Empty state points back to
+  where assignment actually happens (Portfolio's Add/Edit Project form).
 
 **Deliberately still open / explicitly deferred, don't assume these got done:**
 - Reconciling Documents' `category` / Vendor's `VENDOR_DOCUMENT_CATEGORIES` / the Gate 14 master
   repository into one classification scheme (deferred at both Gate 14 and Gate 16).
-- Document Control gates 9-14: vendor lookahead (gate 9), readiness/constraint flagging on
-  activities (gate 10), reminders/notifications (gate 11), dashboards (gate 12), executive summary
-  (gate 13), portfolio compliance rollups (gate 14). Gates 5 (manual due dates), 6 (vendor
-  assignment), 7 (schedule
-  link), and 8 (lead time) are now done — see Gates 19/20/21/22 above; everything from gate 9 on
-  is still unstarted.
+- Document Control gates 10-14: readiness/constraint flagging on activities (gate 10),
+  reminders/notifications (gate 11), dashboards (gate 12), executive summary (gate 13), portfolio
+  compliance rollups (gate 14). Gates 5 (manual due dates), 6 (vendor assignment), 7 (schedule
+  link), 8 (lead time), and 9 (vendor lookahead) are now done — see Gates 19/20/21/22/23 above;
+  everything from gate 10 on is still unstarted.
 - Rate × usage from Resource Management feeding Cost Tracking/EVM (deferred at Gate 11).
 - Portfolio-level executive dashboard filtering by client/country/sector/PM/date range.
 
@@ -278,7 +289,7 @@ built — that back-and-forth pattern should continue for gate 9 onward, not be 
   there fails `npm test` with a bare `MODULE_NOT_FOUND` even though every individual test file is
   fine (hit this exact thing shipping Gate 19; fixed by editing `tests/package.json` alongside the
   `git mv`).
-- Testing: `cd tests && npm test` must pass before anything ships (23 files, 514 checks as of
+- Testing: `cd tests && npm test` must pass before anything ships (24 files, 525 checks as of
   this handoff). Pure-logic tests eval the real source file directly. E2E tests load the actual
   bundled `index.html` via jsdom (+ `fake-indexeddb` for IndexedDB-touching code). Also do one
   real-Chromium pass per gate (`/opt/pw-browsers/chromium-1194/chrome-linux/chrome --no-sandbox`,
@@ -333,7 +344,7 @@ built — that back-and-forth pattern should continue for gate 9 onward, not be 
 
 ## Repo/branch state
 
-`main` is fully up to date through **Gate 22** (`260de5f`, a direct merge — no PR, per Aditya's
+`main` is fully up to date through **Gate 23** (`ded0deb`, a direct merge — no PR, per Aditya's
 now-standing "always merge after completing a gate/phase" instruction, see above).
 `schema_version` on `main` is **33**. `claude/gate-5-startup-1ubxfh` was reset to match this `main`
 immediately after the merge and carries no commits of its own on top — it's the correct starting
@@ -346,8 +357,8 @@ assuming this is still true by the time you read this.
 real Chromium (title and `#page-outlet` render, zero console errors).
 
 **Next steps, in likely priority order:**
-1. Ask Aditya whether Document Control Gate 9 (Vendor Lookahead) is next — a vendor-facing view of
-   what's expected from them, using Gate 20's `vendor_id` assignment — do not assume and start
+1. Ask Aditya whether Document Control Gate 10 (Readiness/Constraints) is next — flagging Schedule
+   activities whose governing document requirements aren't yet Available — do not assume and start
    building without the explicit "yes, build Gate N as scoped" confirmation this project has
    consistently required so far.
 2. Optional cleanup: these branches on `origin` are all fully merged into `main` and safe to
