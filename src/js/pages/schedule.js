@@ -13,6 +13,7 @@
   var ACTIVITY_STATUS_LABELS = { not_started: "Not Started", in_progress: "In Progress", complete: "Complete", on_hold: "On Hold" };
   var RELATIONSHIP_TYPE_LABELS = { FS: "Finish-to-Start", SS: "Start-to-Start", FF: "Finish-to-Finish", SF: "Start-to-Finish" };
   var PRIORITY_LABELS = { low: "Low", medium: "Medium", high: "High" };
+  var RECOVERY_ACTION_STATUS_LABELS = { open: "Open", in_progress: "In Progress", completed: "Completed", cancelled: "Cancelled" };
 
   var uiState = {
     projectId: "", // currently selected project \u2014 everything below scopes to this
@@ -23,6 +24,9 @@
     editingActivityId: null,
     editingRelationshipId: null,
     activityFilter: "",
+    // PCC Evolution Roadmap, Tier C: Delay & Recovery Management. Recovery action id
+    // currently being added/edited in the Activity Detail Panel, or "new", or null.
+    editingRecoveryActionId: null,
     // Gate 4: baseline capture/compare. Baseline list is scoped to the selected
     // *project* (not the selected schedule) since comparing a baseline against a
     // later re-imported revision is the point \u2014 see scheduleBaselineEngine.js header.
@@ -99,13 +103,21 @@
    * both delete the same way — confirm, then remove the activity and any relationship
    * referencing it, matching the pattern every other register's delete already uses. */
   function deleteActivityWithConfirm(activity, rerender) {
-    if (!confirm('Delete activity "' + activity.name + '"? This also removes any relationships referencing it.')) return;
+    if (!confirm('Delete activity "' + activity.name + '"? This also removes any relationships and recovery actions referencing it.')) return;
     window.PCC.store.update(function (data2) {
       data2.activities = data2.activities.filter(function (item) {
         return item.id !== activity.id;
       });
       data2.relationships = data2.relationships.filter(function (rel) {
         return rel.predecessor_id !== activity.id && rel.successor_id !== activity.id;
+      });
+      // Unlike risks/rfis/meetings/document requirements (which keep their own
+      // independent life if their activity_id link goes stale), a recovery_action has
+      // no existence apart from the activity it's recovering — it's only ever surfaced
+      // via that activity's own Detail Panel, so leaving it behind would make it
+      // permanently unreachable dead data rather than a visible "orphaned link."
+      data2.recovery_actions = data2.recovery_actions.filter(function (r) {
+        return r.activity_id !== activity.id;
       });
     });
     window.PCC.notify("Activity deleted.", "success");
@@ -2981,6 +2993,231 @@
     return wrap;
   }
 
+  function recoveryActionOverdue(action) {
+    if (action.status === "completed" || action.status === "cancelled") return false;
+    if (!action.target_recovery_date) return false;
+    return action.target_recovery_date < todayIso();
+  }
+
+  /** PCC Evolution Roadmap, Tier C: Delay & Recovery Management. Corrective actions
+   * logged against THIS activity — full CRUD inline, same "add/edit/remove within the
+   * record's own detail view" pattern vendors.js's renderPerformanceTab() uses for
+   * vendor reviews. Deliberately not gated on the activity currently showing delay in
+   * an open baseline compare (Gate 4) — see newRecoveryAction()'s header comment in
+   * store.js for why. */
+  function renderRecoveryActionsSection(activity, data, rerender) {
+    var wrap = document.createElement("div");
+    wrap.style.marginTop = "14px";
+    wrap.style.paddingTop = "10px";
+    wrap.style.borderTop = "1px solid var(--divider)";
+
+    var rows = data.recovery_actions
+      .filter(function (r) { return r.activity_id === activity.id; })
+      .sort(function (a, b) { return (a.target_recovery_date || "9999-99-99").localeCompare(b.target_recovery_date || "9999-99-99"); });
+
+    var heading = document.createElement("p");
+    heading.className = "detail-item__label";
+    heading.style.marginBottom = "6px";
+    heading.textContent = "RECOVERY ACTIONS (" + rows.length + ")";
+    wrap.appendChild(heading);
+
+    var addBtn = document.createElement("button");
+    addBtn.className = "btn btn--ghost";
+    addBtn.style.marginBottom = "8px";
+    addBtn.textContent = "+ Add Recovery Action";
+    addBtn.onclick = function () {
+      uiState.editingRecoveryActionId = "new";
+      rerender();
+    };
+    wrap.appendChild(addBtn);
+
+    if (uiState.editingRecoveryActionId) {
+      var editing =
+        uiState.editingRecoveryActionId === "new"
+          ? window.PCC.store.newRecoveryAction({ activity_id: activity.id, project_id: activity.project_id })
+          : data.recovery_actions.find(function (r) { return r.id === uiState.editingRecoveryActionId; });
+      if (editing) {
+        var formPanel = document.createElement("div");
+        formPanel.className = "panel";
+        formPanel.style.marginBottom = "10px";
+        var form = document.createElement("form");
+        var grid = document.createElement("div");
+        grid.className = "form-grid";
+
+        var descField = document.createElement("div");
+        descField.style.gridColumn = "1 / -1";
+        descField.className = "field";
+        descField.innerHTML = "<label>Description *</label>";
+        var descInput = document.createElement("textarea");
+        descInput.id = "recactionfield-description";
+        descInput.rows = 2;
+        descInput.value = editing.description || "";
+        descField.appendChild(descInput);
+        grid.appendChild(descField);
+
+        var respField = document.createElement("div");
+        respField.className = "field";
+        respField.innerHTML = "<label>Responsible Person</label>";
+        var respInput = document.createElement("input");
+        respInput.type = "text";
+        respInput.id = "recactionfield-responsible_person";
+        respInput.value = editing.responsible_person || "";
+        respField.appendChild(respInput);
+        grid.appendChild(respField);
+
+        var dateField = document.createElement("div");
+        dateField.className = "field";
+        dateField.innerHTML = "<label>Target Recovery Date</label>";
+        var dateInput = document.createElement("input");
+        dateInput.type = "date";
+        dateInput.id = "recactionfield-target_recovery_date";
+        dateInput.value = editing.target_recovery_date || "";
+        dateField.appendChild(dateInput);
+        grid.appendChild(dateField);
+
+        var statusField = document.createElement("div");
+        statusField.className = "field";
+        statusField.innerHTML = "<label>Status</label>";
+        var statusSelect = document.createElement("select");
+        statusSelect.id = "recactionfield-status";
+        window.PCC.store.RECOVERY_ACTION_STATUSES.forEach(function (s) {
+          var opt = document.createElement("option");
+          opt.value = s;
+          opt.textContent = RECOVERY_ACTION_STATUS_LABELS[s];
+          statusSelect.appendChild(opt);
+        });
+        statusSelect.value = editing.status || "open";
+        statusField.appendChild(statusSelect);
+        grid.appendChild(statusField);
+
+        form.appendChild(grid);
+
+        var errorMsg = document.createElement("p");
+        errorMsg.style.color = "var(--status-critical)";
+        errorMsg.style.fontSize = "12px";
+        errorMsg.style.display = "none";
+        form.appendChild(errorMsg);
+
+        var formActions = document.createElement("div");
+        formActions.style.display = "flex";
+        formActions.style.gap = "10px";
+        formActions.style.marginTop = "10px";
+        var saveBtn = document.createElement("button");
+        saveBtn.type = "submit";
+        saveBtn.className = "btn btn--primary";
+        saveBtn.textContent = uiState.editingRecoveryActionId === "new" ? "Add Recovery Action" : "Save Changes";
+        var cancelBtn = document.createElement("button");
+        cancelBtn.type = "button";
+        cancelBtn.className = "btn btn--ghost";
+        cancelBtn.textContent = "Cancel";
+        cancelBtn.onclick = function () {
+          uiState.editingRecoveryActionId = null;
+          rerender();
+        };
+        formActions.appendChild(saveBtn);
+        formActions.appendChild(cancelBtn);
+        form.appendChild(formActions);
+
+        form.onsubmit = function (e) {
+          e.preventDefault();
+          if (!descInput.value.trim()) {
+            errorMsg.textContent = "Description is required.";
+            errorMsg.style.display = "block";
+            return;
+          }
+          errorMsg.style.display = "none";
+          var values = {
+            description: descInput.value.trim(),
+            responsible_person: respInput.value,
+            target_recovery_date: dateInput.value,
+            status: statusSelect.value,
+            updated_at: new Date().toISOString(),
+          };
+          window.PCC.store.update(function (d) {
+            if (uiState.editingRecoveryActionId === "new") {
+              d.recovery_actions.push(window.PCC.store.newRecoveryAction(Object.assign({ activity_id: activity.id, project_id: activity.project_id }, values)));
+            } else {
+              var existing = d.recovery_actions.find(function (r) { return r.id === editing.id; });
+              if (existing) Object.assign(existing, values);
+            }
+          });
+          window.PCC.notify("Recovery action saved.", "success");
+          uiState.editingRecoveryActionId = null;
+          rerender();
+        };
+
+        formPanel.appendChild(form);
+        wrap.appendChild(formPanel);
+      }
+    }
+
+    if (rows.length === 0) {
+      var empty = document.createElement("p");
+      empty.className = "text-secondary";
+      empty.style.fontSize = "12px";
+      empty.textContent = "No recovery actions logged against this activity yet.";
+      wrap.appendChild(empty);
+      return wrap;
+    }
+
+    rows.forEach(function (r) {
+      var overdue = recoveryActionOverdue(r);
+      var rowEl = document.createElement("div");
+      rowEl.style.display = "flex";
+      rowEl.style.justifyContent = "space-between";
+      rowEl.style.alignItems = "flex-start";
+      rowEl.style.gap = "8px";
+      rowEl.style.marginBottom = "8px";
+      rowEl.style.fontSize = "13px";
+
+      var left = document.createElement("div");
+      left.innerHTML =
+        "<strong>" + r.description + "</strong>" +
+        "<p class='text-secondary' style='font-size:12px;margin:4px 0 0'>" +
+        (r.responsible_person ? r.responsible_person + " · " : "") +
+        (r.target_recovery_date ? "target " + r.target_recovery_date : "no target date") +
+        "</p>";
+      rowEl.appendChild(left);
+
+      var right = document.createElement("div");
+      right.style.display = "flex";
+      right.style.alignItems = "center";
+      right.style.gap = "6px";
+      right.style.flexShrink = "0";
+
+      var badge = document.createElement("span");
+      badge.className =
+        "status-badge status-badge--" +
+        (overdue ? "critical" : r.status === "completed" ? "complete" : r.status === "cancelled" ? "info" : "at_risk");
+      badge.style.fontSize = "11px";
+      badge.textContent = overdue ? "Overdue" : RECOVERY_ACTION_STATUS_LABELS[r.status];
+      right.appendChild(badge);
+
+      var editRowBtn = document.createElement("button");
+      editRowBtn.className = "btn btn--ghost";
+      editRowBtn.textContent = "Edit";
+      editRowBtn.onclick = function () {
+        uiState.editingRecoveryActionId = r.id;
+        rerender();
+      };
+      right.appendChild(editRowBtn);
+
+      var removeBtn = document.createElement("button");
+      removeBtn.className = "btn btn--ghost";
+      removeBtn.textContent = "Remove";
+      removeBtn.onclick = function () {
+        window.PCC.store.update(function (d) { d.recovery_actions = d.recovery_actions.filter(function (x) { return x.id !== r.id; }); });
+        rerender();
+      };
+      right.appendChild(removeBtn);
+
+      rowEl.appendChild(right);
+      wrap.appendChild(rowEl);
+    });
+
+    return wrap;
+  }
+
   function renderActivityDetailPanel(container, activity, data, wbsItems, scheduleActivities, relationships, rerender) {
     var panel = document.createElement("div");
     panel.className = "panel";
@@ -3082,6 +3319,7 @@
 
     panel.appendChild(renderLinkedRecordsSection(activity, data));
     panel.appendChild(renderDocumentReadinessSection(activity, data));
+    panel.appendChild(renderRecoveryActionsSection(activity, data, rerender));
 
     var actions = document.createElement("div");
     actions.style.display = "flex";

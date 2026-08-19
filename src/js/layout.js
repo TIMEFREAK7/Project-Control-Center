@@ -36,6 +36,7 @@
       label: "PLANNING",
       items: [
         { key: "schedule", label: "Schedule", code: "SC" },
+        { key: "delayRecoveryDashboard", label: "Delay & Recovery Dashboard", code: "DR" },
         { key: "cost", label: "Cost Tracking", code: "CT" },
         { key: "resources", label: "Resources", code: "RS" },
       ],
@@ -69,6 +70,7 @@
     resources: "Resource Management",
     reports: "Reports",
     schedule: "Schedule",
+    delayRecoveryDashboard: "Delay & Recovery Dashboard",
     settings: "Settings",
     notfound: "Not Found",
   };

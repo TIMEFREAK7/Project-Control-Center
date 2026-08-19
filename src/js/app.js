@@ -16,6 +16,7 @@
     router.register("documentControlDashboard", window.PCC.pages.documentControlDashboard);
     router.register("dailylog", window.PCC.pages.dailylog);
     router.register("schedule", window.PCC.pages.schedule);
+    router.register("delayRecoveryDashboard", window.PCC.pages.delayRecoveryDashboard);
     router.register("risks", window.PCC.pages.risks);
     router.register("meetings", window.PCC.pages.meetings);
     router.register("rfis", window.PCC.pages.rfis);
