@@ -2570,6 +2570,69 @@ total):**
 roadmap's own gate discipline, this gate is reported and closed here — the next gate needs to be
 scoped and confirmed before it starts.
 
+## Gate 31 — Management Attention (PCC Evolution Roadmap, Gate 3) (2026-08-19)
+
+**The third gate of the PCC Evolution Roadmap.** Scoped and confirmed via two direct questions
+before building. Unlike Gates 29-30, this gate deliberately built almost no new logic — it
+surfaces Gate 9's *existing* rule-based diagnostics engine (`projectHealthEngine.computeDiagnostics()`,
+already proven inside Executive Center's Diagnostics panel) portfolio-wide, on the Dashboard,
+instead of one project at a time.
+
+**What changed:**
+
+- `pages/executiveCenter.js`: exported one new function on its existing public API,
+  `window.PCC.executiveCenter.getDiagnostics(projectId)`, which runs the same private
+  `buildProjectContext()` → `diagnosticsContextFrom()` → `computeDiagnostics()` pipeline the
+  Diagnostics panel already uses, for any given project. **Deliberately not** duplicated as a
+  ~220-line copy of `buildProjectContext()` into `dashboard.js` — that function gathers from
+  Schedule/Cost/EVM/Risk/RFI/Meetings/Change Orders and duplicating it would risk the two views
+  silently disagreeing after a future bug fix landed in only one copy. This is a genuine
+  departure from this app's usual "duplicate small helpers" convention, made deliberately because
+  that convention was never meant to apply to something this large — see the file's own comment.
+- `pages/dashboard.js`: a new **"Management Attention"** panel, inserted right after the KPI grid
+  and before the existing Document Reminders panel (both untouched) — the single most urgent
+  thing on the page comes first. Loops every active project, calls the new `getDiagnostics()` for
+  each, and keeps only **Critical + Warning** severities — Info-level detail (near-critical
+  activities, pending Change Orders) deliberately stays out, so this doesn't turn into a
+  portfolio-wide firehose of low-urgency notes; that detail is still one click away in Executive
+  Center's own Diagnostics panel. Projects with a hit are grouped, sorted **worst-first** (highest
+  critical count, then highest warning count, then name), each group showing its alerts and a
+  single **"View Project"** button (`window.PCC.executiveCenter.viewProject()`, already existed)
+  that lands on that project's Executive Center Overview — the same destination for every alert
+  type, since Executive Center's own Diagnostics panel already has correct per-record links.
+  Projects with zero Critical/Warning alerts, and archived projects, never appear. No schema
+  changes — this reads, nothing is written.
+
+**Tested before delivery (new file, 31 e2e checks — full suite re-run clean, 31 files, 695 checks
+total):**
+
+- **End-to-end against the actual bundled `index.html`** (new file,
+  `test_management_attention_e2e.js`): no panel at all before any project exists (matches the
+  existing Reminders panel's own empty-state convention); seeded a project that goes critical (a
+  lone unconstrained schedule activity naturally computes to zero float via a live CPM run — same
+  mechanism Executive Center's own Overview already uses, confirmed by asserting the alert
+  persists even when a stale `total_float` is set directly on the record, since the diagnostics
+  engine recomputes live rather than trusting it), a project with a high-probability/high-impact
+  open risk (warning), a clean project (must never appear), and an archived project with the same
+  critical setup as the first (must never appear, confirming archived projects are excluded before
+  diagnostics even run); worst-first sort order verified explicitly; severity badges scoped
+  correctly; "View Project" confirmed landing on the right project's Executive Center; removing the
+  underlying critical activity confirmed the alert clears on the next render (nothing cached/
+  stale); confirmed nothing is written back; a full 19-route smoke test.
+- **Real-browser verification** (Chromium via Playwright, screenshots captured and sent): a clean
+  Dashboard with no panel, then a critical activity + a high risk surfacing worst-first with
+  correct badges, then clicking "View Project" and confirming it lands on the correct project's
+  Executive Center — zero console/page errors.
+
+**What I have not tested:** this on your actual device. Same standard as every prior gate. Per the
+roadmap's own gate discipline, this gate is reported and closed here — the next gate needs to be
+scoped and confirmed before it starts. With Tier A's four gates now built (Project Control Centre
+was substantially pre-existing per the original inspection; Planner Action Centre, Project
+Lookahead, and Management Attention are all done), the roadmap's Tier B (Control Integration) is
+the likely next area, though most of it — Schedule↔Activity and Activity↔Risk/RFI relationships —
+also already existed before this roadmap started (Gate 10). Worth a fresh look at what's
+genuinely still missing in Tier B before proposing the next gate.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
@@ -2638,13 +2701,16 @@ Assistant, Lessons Learned, final polish
 
 **Tier 2 is complete, and the entire 14-gate Document Control sub-spec Aditya handed over is now
 built** (Gates 14-28) — no gates from that spec remain. A new, separate roadmap started with Gate
-29 (Planner Action Centre) and continued with Gate 30 (Project Lookahead), both 2026-08-19 — see
-each gate's own write-up above for the inspection findings and detail behind them. That roadmap's
-own next gate is **not yet started or scoped** — per its explicit gate discipline, each gate gets
-proposed in a short paragraph and confirmed before building, one at a time. The strongest
-candidate raised so far and still unconfirmed: surfacing Gate 9's existing health-score/
-diagnostics engine as a **Management Attention** strip on the Dashboard (near-zero new code —
-reuse, don't rebuild).
+29 (Planner Action Centre), continued with Gate 30 (Project Lookahead) and Gate 31 (Management
+Attention), all 2026-08-19 — see each gate's own write-up above for the inspection findings and
+detail behind them. **Tier A (Daily Planner Value) of that roadmap is now effectively done** — its
+own Gate 4 (Management Attention) just shipped, and its own Gate 1 (Project Control Centre) was
+found substantially pre-existing at the original inspection. That roadmap's own next gate is
+**not yet started or scoped** — per its explicit gate discipline, each gate gets proposed in a
+short paragraph and confirmed before building, one at a time. Tier B (Control Integration) is the
+likely next area, though a fresh inspection is needed first — its Schedule↔Activity and
+Activity↔Risk/RFI/Meeting relationships already exist too (Gate 10, well before this roadmap
+started), so the genuinely new part of Tier B (if any) isn't yet identified.
 
 Other open items, none blocking daily use: rate × usage from
 Resource Management feeding Cost Tracking/EVM (explicitly deferred, Gate 11); a
