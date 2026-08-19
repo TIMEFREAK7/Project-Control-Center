@@ -6,6 +6,8 @@
   var TYPE_LABELS = { rfi: "RFI", technical_query: "Technical Query" };
   var STATUS_LABELS = { open: "Open", answered: "Answered", closed: "Closed" };
   var PRIORITY_LABELS = { low: "Low", medium: "Medium", high: "High" };
+  // PCC Evolution Roadmap, Tier E: Personal Workbench ("Waiting For" section).
+  var WAITING_ON_LABELS = { vendor: "Vendor", client: "Client", consultant: "Consultant", management: "Management" };
 
   var FIELD_CONFIG = [
     { key: "subject", label: "Subject", type: "text", required: true },
@@ -15,6 +17,7 @@
     { key: "assigned_to", label: "Assigned To", type: "text" },
     { key: "date_raised", label: "Date Raised", type: "date" },
     { key: "date_required", label: "Response Required By", type: "date" },
+    { key: "waiting_on_party", label: "Waiting On", type: "select", options: "WAITING_ON_PARTIES", labels: WAITING_ON_LABELS, optional: true },
     { key: "question", label: "Question / Query", type: "textarea", required: true },
   ];
 
@@ -58,13 +61,19 @@
     var input;
     if (cfg.type === "select") {
       input = document.createElement("select");
+      if (cfg.optional) {
+        var noneOpt = document.createElement("option");
+        noneOpt.value = "";
+        noneOpt.textContent = "Not set";
+        input.appendChild(noneOpt);
+      }
       window.PCC.store[cfg.options].forEach(function (val) {
         var opt = document.createElement("option");
         opt.value = val;
         opt.textContent = cfg.labels[val] || val;
         input.appendChild(opt);
       });
-      input.value = rfi[cfg.key];
+      input.value = rfi[cfg.key] || "";
     } else if (cfg.type === "textarea") {
       input = document.createElement("textarea");
       input.rows = 3;

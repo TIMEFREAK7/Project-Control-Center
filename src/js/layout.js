@@ -11,6 +11,7 @@
       label: "OVERVIEW",
       items: [
         { key: "dashboard", label: "Dashboard", code: "DB" },
+        { key: "myWork", label: "My Work", code: "MW" },
         { key: "actionCentre", label: "Action Centre", code: "AC" },
         { key: "projectLookahead", label: "Project Lookahead", code: "LA" },
         { key: "portfolio", label: "Portfolio", code: "PF" },
@@ -53,6 +54,7 @@
 
   var PAGE_TITLES = {
     dashboard: "Dashboard",
+    myWork: "My Work",
     actionCentre: "Planner Action Centre",
     projectLookahead: "Project Lookahead",
     portfolio: "Portfolio",

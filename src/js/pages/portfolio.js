@@ -10,6 +10,12 @@
     complete: "Complete",
   };
 
+  // PCC Evolution Roadmap, Tier E: Personal Workbench ("Reviews" section). Cadence is
+  // stored as a day count (review_cadence_days) so "biweekly"/"monthly" are just
+  // different numbers rather than new enum states — see newProject() in store.js.
+  var REVIEW_CADENCE_OPTIONS = [7, 14, 30];
+  var REVIEW_CADENCE_LABELS = { 7: "Weekly", 14: "Biweekly", 30: "Monthly" };
+
   var FIELD_CONFIG = [
     { key: "name", label: "Project Name", type: "text", required: true },
     // Gate 16 (Document Control 3: Nomenclature): short code used as the PROJECT token
@@ -41,6 +47,7 @@
     { key: "contractor", label: "Contractor", type: "text" },
     { key: "consultant", label: "Consultant", type: "text" },
     { key: "owner", label: "Owner", type: "text" },
+    { key: "review_cadence_days", label: "Review Cadence", type: "cadence_select" },
   ];
 
   // View-local UI state (not persisted — resets each time you navigate away and back).
@@ -118,6 +125,19 @@
         input.appendChild(opt);
       });
       input.value = project[cfg.key] || "on_track";
+    } else if (cfg.type === "cadence_select") {
+      input = document.createElement("select");
+      var noneOpt = document.createElement("option");
+      noneOpt.value = "";
+      noneOpt.textContent = "None";
+      input.appendChild(noneOpt);
+      REVIEW_CADENCE_OPTIONS.forEach(function (days) {
+        var opt = document.createElement("option");
+        opt.value = String(days);
+        opt.textContent = REVIEW_CADENCE_LABELS[days];
+        input.appendChild(opt);
+      });
+      input.value = project[cfg.key] != null ? String(project[cfg.key]) : "";
     } else {
       input = document.createElement("input");
       input.type = cfg.type;
@@ -140,7 +160,7 @@
     FIELD_CONFIG.forEach(function (cfg) {
       var el = formEl.querySelector("#field-" + cfg.key);
       if (!el) return;
-      if (cfg.type === "number") {
+      if (cfg.type === "number" || cfg.type === "cadence_select") {
         values[cfg.key] = el.value === "" ? null : Number(el.value);
       } else {
         values[cfg.key] = el.value;
