@@ -2276,6 +2276,57 @@ done, deliberately: Document Control gates 12-14 (dashboards, executive summary,
 compliance rollups) — this gate is a single reminders panel, not a full dashboards suite; the
 14-day due-soon window is currently hardcoded, not user-configurable.
 
+## Gate 26 — Document Control 12: Dashboards (2026-08-18)
+
+Twelfth gate of the 14-gate Document Control spec. Scoped and confirmed before building, same
+discipline as every gate in this sub-spec. Distinct from Gate 25's Dashboard reminders panel
+(time-sensitive Overdue/Due-Soon alerts) and from the later Executive Summary (gate 13, narrative
+text) and Portfolio Compliance (gate 14, a rollup/printable report) gates — this one is
+charts/tables only: portfolio-wide compliance stats, nothing narrative, no print view.
+
+**What changed:**
+
+- New page, **`pages/documentControlDashboard.js`**, registered in `app.js`, added to the sidebar
+  under REGISTERS (next to Document Types) in `layout.js`, and added to `build.js`'s `JS_ORDER`:
+  - Overall KPI row: total requirements, % Available, count Required, count Overdue — across
+    every active (non-archived) project's document requirements portfolio-wide.
+  - **Compliance by Project** — every active project with at least one requirement, each showing
+    "N of M available (X%)" and an overdue-count badge when nonzero, sorted **worst-compliance-
+    first** (lowest % Available, ties broken by highest overdue count) so problem projects surface
+    at the top rather than being buried alphabetically. Each row has a "View Project" button
+    reusing Gate 25's `window.PCC.portfolio.viewProject()` hook.
+  - **Compliance by Document Type** — the same grouping/sort, but by document type instead of
+    project, so a type that's chronically late across the whole portfolio (not just one project)
+    is visible too.
+  - `computeRequirementStatus()` duplicated a fifth time now (`portfolio.js`, `vendors.js`,
+    `schedule.js`, `dashboard.js`, `documentControlDashboard.js`) — same
+    Available/Overdue/Required logic every Document Control gate since Gate 18 has used. Purely
+    computed, read-only: nothing here is stored or written back.
+  - Empty state before any requirement exists anywhere in the active portfolio.
+
+**Tested before delivery (27 new e2e checks in a new file, full suite re-run clean, 571 checks
+total):**
+
+- **End-to-end against the actual bundled `index.html`** (new file,
+  `test_document_control_dashboard_e2e.js`, 27 checks): empty state before any requirement exists;
+  seeding requirements across two active projects plus one archived project (whose requirement
+  must never appear anywhere on this dashboard) produces correct portfolio-wide KPI counts; the
+  per-project grouping correctly combines multiple requirements per project and sorts the
+  0%-available project ahead of the 50%-available one; the per-document-type grouping correctly
+  combines the same document type's requirements *across* both projects into one line; "View
+  Project" navigates into Portfolio with that project's Details expanded; confirmed the dashboard
+  writes nothing back (all 4 seeded rows survive byte-for-byte); a full 17-route smoke test
+  confirming the new route joins cleanly with every existing page.
+- **Real-browser verification** (Chromium via Playwright): seeded two projects with different
+  compliance levels directly via the store, clicked the new sidebar link, confirmed the KPI row
+  and both compliance breakdowns rendered with exactly the expected numbers — zero console/page
+  errors.
+
+**What I have not tested:** this on your actual device. Same standard as every prior gate. Not
+done, deliberately: Document Control gates 13-14 (Executive Summary narrative text, Portfolio
+Compliance rollup/report) — this gate is the compliance dashboard itself, not a summary or a
+printable output built on top of it.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
@@ -2303,7 +2354,7 @@ line items on the original locked Tier 2/3 list. Built in a separate parallel se
 Gates 8-11 and reconciled into `main` together with them (see each gate's own write-up above for
 the schema-numbering note on how the reconciliation renumbered them).
 
-**Document Control** (Gates 14-25 = Document Control gates 1-11 of a separate 14-gate sub-spec,
+**Document Control** (Gates 14-26 = Document Control gates 1-12 of a separate 14-gate sub-spec,
 done) — same footing as Executive Center/Activity Linking/Vendor Management above: a directly
 requested, explicitly incremental upgrade to Documents, not a Tier 1/2/3 line item. The Master
 Document Repository (the type taxonomy, Gate 14), Project-Specific Document Requirements (which
@@ -2326,8 +2377,10 @@ Panel — reads Gate 21's activity link in reverse, flagging an activity NOT REA
 one of its governing requirements isn't yet Available; purely informational, never enforced.
 **Gate 25** added a portfolio-wide "Document Reminders" panel and two KPI cards to the Dashboard —
 this app's in-app equivalent of push/email notifications, since it has no server or network
-channel for either. Document Control gates 12-14 (dashboards, executive summary,
-portfolio/executive compliance rollups) are intentionally not started — see Gates 14-25's own
+channel for either. **Gate 26** added a new "Document Control Dashboard" page — portfolio-wide
+compliance KPIs plus worst-first breakdowns by project and by document type, distinct from Gate
+25's time-sensitive reminders panel. Document Control gates 13-14 (executive summary,
+portfolio/executive compliance rollups) are intentionally not started — see Gates 14-26's own
 write-ups above.
 
 **Tier 3 (deferred until Tier 1 is in daily use):** AI Document Processing, Knowledge Base, AI Project
@@ -2338,11 +2391,12 @@ Assistant, Lessons Learned, final polish
 **Tier 2 is complete**, and Vendor Management / the in-app Excel editor / the Document Control
 foundation (repository + per-project requirements + classification/nomenclature + status/version
 control + manual due dates + vendor assignment + schedule linking + lead-time suggestions + vendor
-lookahead + readiness flagging + portfolio-wide reminders) are all done alongside it. The most
-likely next piece of work is **Document Control gate 12 (Dashboards)** — a dedicated Document
-Control dashboard/report view beyond the Dashboard's single reminders panel, per the sub-spec's
-own locked gate order, but confirm scope before starting it rather than assuming, same discipline
-as every gate before this one. Other open items, none blocking daily use: rate × usage from
+lookahead + readiness flagging + portfolio-wide reminders + a compliance dashboard) are all done
+alongside it. The most likely next piece of work is **Document Control gate 13 (Executive
+Summary)** — narrative document-control status text, likely following Gate 9's own
+Executive-Summary-override pattern — per the sub-spec's own locked gate order, but confirm scope
+before starting it rather than assuming, same discipline as every gate before this one. Other open
+items, none blocking daily use: rate × usage from
 Resource Management feeding Cost Tracking/EVM (explicitly deferred, Gate 11); a
 persisted/logo-customizable report-template system; portfolio-level executive dashboard filtering;
 10,000+ activity Gantt virtualization; per-activity linking extended to Resource Assignments' own

@@ -21,6 +21,7 @@
       items: [
         { key: "documents", label: "Documents", code: "DC" },
         { key: "documentTypes", label: "Document Types", code: "DT" },
+        { key: "documentControlDashboard", label: "Document Control Dashboard", code: "DD" },
         { key: "dailylog", label: "Daily Log", code: "DL" },
         { key: "risks", label: "Risk Register", code: "RK" },
         { key: "meetings", label: "Meetings", code: "MT" },
@@ -52,6 +53,7 @@
     vendors: "Vendor Management",
     documents: "Documents",
     documentTypes: "Document Types",
+    documentControlDashboard: "Document Control Dashboard",
     dailylog: "Daily Log",
     risks: "Risk Register",
     meetings: "Meetings",
