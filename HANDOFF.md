@@ -61,28 +61,29 @@ that override default behavior).
   populated state, and again on the zip-verification pass) and send the PNGs via `SendUserFile`
   before or alongside the written report. Applies to every gate from here on, not just this one.
 
-## Where things stand — everything through Gate 29 is merged into `main`
+## Where things stand — everything through Gate 30 is merged into `main`
 
-`main` is fully up to date through **Gate 29** (PCC Evolution Roadmap gate 1 of ~27: Planner
-Action Centre), merge commit `005dbd2`, `schema_version` **34** (unchanged — Gate 29 added no
-schema fields, everything computed at render time from existing data). This session built and
-merged Gate 29 on its own, following the same rebuild → full suite → merge (no PR, standing
-instruction, see above) → push `main` → restart `claude/gate-5-startup-1ubxfh` from the new
-`main` sequence used for every prior gate. The full test suite (**29 files, 630 checks**) passes
-clean, and a real-Chromium pass (with screenshots, per the new standing instruction above)
-confirmed the new Planner Action Centre page end to end — bucket assignment, KPI counts, View
-navigation into Meetings/RFI/Change Orders, zero JS errors. **No branch currently carries
-unmerged app features** — `claude/gate-5-startup-1ubxfh` was reset to match `main` after the
-Gate 29 merge and has no commits of its own on top. Verify with `git log origin/main..HEAD`
-before assuming this is still true by the time you read this.
+`main` is fully up to date through **Gate 30** (PCC Evolution Roadmap gate 2 of ~27: Project
+Lookahead), merge commit `ab5b7c8`, `schema_version` **34** (unchanged — Gate 30 added no schema
+fields, everything computed at render time from existing data). This session built and merged
+Gate 30 on its own, following the same rebuild → full suite → merge (no PR, standing instruction,
+see above) → push `main` → restart `claude/gate-5-startup-1ubxfh` from the new `main` sequence
+used for every prior gate. The full test suite (**30 files, 664 checks**) passes clean, and a
+real-Chromium pass (with screenshots, per the standing instruction below) confirmed the new
+Project Lookahead page end to end — the 7/14/30/60-day window toggle, Schedule activity/milestone
+integration, meeting/RFI/document items, View navigation into Schedule with the right activity's
+detail panel open, zero JS errors. **No branch currently carries unmerged app features** —
+`claude/gate-5-startup-1ubxfh` was reset to match `main` after the Gate 30 merge and has no
+commits of its own on top. Verify with `git log origin/main..HEAD` before assuming this is still
+true by the time you read this.
 
 **The entire 14-gate Document Control sub-spec Aditya originally handed over is complete (Gates
 14-28)** — Master Repository, Project Requirements, Classification/Nomenclature, Status/Version
 Control, Schedule Due Dates, Vendor Register, Schedule↔Document Linking, Schedule-Driven
 Dates/Lead Time, Vendor Lookahead, Readiness/Constraints, Reminders/Notifications, Dashboards,
 Executive Summary, and Portfolio Compliance. **A new, separate PCC Evolution Roadmap started
-with Gate 29** (see its own section below) — only its first gate (Planner Action Centre) is
-done; ~26 more gates remain in that roadmap, none started, none scoped yet.
+with Gate 29** (see its own section below) — its first two gates (Planner Action Centre, Project
+Lookahead) are done; ~25 more gates remain in that roadmap, none started, none scoped yet.
 
 **Feature summary, in build order (Gates 1-13 summarized; Gates 14-17 — Document Control — in
 full detail since they're what's newest and least likely to be in a future session's training/
@@ -305,7 +306,7 @@ that back-and-forth pattern held for all 14 gates through to the last one.
   "Document Control Compliance" `<h3>`, returns its `parentElement`) instead of searching the
   whole page.
 
-### PCC Evolution Roadmap (Gate 29 = roadmap's own Gate 1) — 1 of ~27 gates done
+### PCC Evolution Roadmap (Gates 29-30 = roadmap's own Gates 1-2) — 2 of ~27 gates done
 
 Aditya handed over a large roadmap (Tiers A-F: Daily Planner Value, Control Integration, Project
 Performance, Management, Portfolio, then Tier F's advanced planning/controls gates — Resource
@@ -337,12 +338,27 @@ view — that became the Planner Action Centre.
   `schema_version` stays 34. New test file `test_action_centre_e2e.js` (35 checks) covers every
   bucket boundary explicitly (day 7 vs. day 8, day 30 vs. day 31 falling outside every bucket).
 
-**Next roadmap gate: not yet scoped.** Two candidates raised so far, neither confirmed: (1) a
-consolidated **Project Lookahead** (7/14/30/60-day view spanning Schedule, Vendors, Documents,
-RFIs, Meetings — a natural extension of Gate 29's `bucketFor()`/`collectItems()` pattern), or (2)
-surfacing Gate 9's *existing* health-score/diagnostics engine as a **Management Attention** strip
-on the Dashboard (near-zero new code — reuse, don't rebuild). Per the roadmap's own gate
-discipline, propose one, get "yes, build it," then build only that.
+- **Gate 30 — Project Lookahead.** New page, `pages/projectLookahead.js`, sidebar entry in
+  OVERVIEW right after Action Centre. Distinct from Gate 29 in shape (flat DATE-sorted table with
+  a 7/14/30/60-day window toggle, not urgency buckets) and in being forward-only (nothing overdue
+  shows — that's the Action Centre's job). First cross-module planner view to touch **Schedule
+  activities/milestones** (`activity_type` "task"/"milestone" only, excludes completed and
+  structural summary rows; date = `early_start || planned_start`, same precedence as
+  `scheduleGanttLayout.js`'s `effectiveDates()`; status badge from `total_float` against the
+  schedule's own `near_critical_threshold_days`, reading the schedule's last **persisted**
+  calculated fields rather than re-running CPM live) and the first to surface **upcoming Meetings**
+  by their own `meeting_date` (new — nothing showed "you have a meeting on this date" before this
+  gate). Reuses Gate 29's Meeting Actions/RFI/Document sources, re-sorted chronologically instead
+  of bucketed. New navigation hook used: `window.PCC.schedule.viewActivity(projectId, scheduleId,
+  activityId)` (Gate 10's own reverse-navigation API, not new). Change Orders/Risks excluded, same
+  reasoning as Gate 29 — no due-date field to place them on a timeline. No schema changes. New test
+  file `test_project_lookahead_e2e.js` (34 checks) covers every window-boundary case (a day-20 item
+  appearing only at 30/60 days, a day-45 item only at 60) and float-derived badge correctness.
+
+**Next roadmap gate: not yet scoped.** Strongest remaining candidate: surfacing Gate 9's
+*existing* health-score/diagnostics engine as a **Management Attention** strip on the Dashboard
+(near-zero new code — reuse, don't rebuild). Per the roadmap's own gate discipline, propose it (or
+something else), get "yes, build it," then build only that.
 
 **Deliberately still open / explicitly deferred, don't assume these got done:**
 - Reconciling Documents' `category` / Vendor's `VENDOR_DOCUMENT_CATEGORIES` / the Gate 14 master
@@ -355,8 +371,8 @@ discipline, propose one, get "yes, build it," then build only that.
   `actionCentre.js`) are both hardcoded, not user-configurable — noted as a possible follow-up.
 - Rate × usage from Resource Management feeding Cost Tracking/EVM (deferred at Gate 11).
 - Portfolio-level executive dashboard filtering by client/country/sector/PM/date range.
-- Every other gate in the PCC Evolution Roadmap beyond Gate 29 — ~26 gates, none started. See
-  the roadmap section above for the two candidates raised for the actual next gate.
+- Every other gate in the PCC Evolution Roadmap beyond Gates 29-30 — ~25 gates, none started. See
+  the roadmap section above for the candidate raised for the actual next gate.
 
 ## Key technical conventions to carry forward
 
@@ -428,7 +444,7 @@ discipline, propose one, get "yes, build it," then build only that.
   there fails `npm test` with a bare `MODULE_NOT_FOUND` even though every individual test file is
   fine (hit this exact thing shipping Gate 19; fixed by editing `tests/package.json` alongside the
   `git mv`).
-- Testing: `cd tests && npm test` must pass before anything ships (29 files, 630 checks as of
+- Testing: `cd tests && npm test` must pass before anything ships (30 files, 664 checks as of
   this handoff). Pure-logic tests eval the real source file directly. E2E tests load the actual
   bundled `index.html` via jsdom (+ `fake-indexeddb` for IndexedDB-touching code). Also do one
   real-Chromium pass per gate (`/opt/pw-browsers/chromium-1194/chrome-linux/chrome --no-sandbox`,
@@ -483,9 +499,9 @@ discipline, propose one, get "yes, build it," then build only that.
 
 ## Repo/branch state
 
-`main` is fully up to date through **Gate 29** (`005dbd2`, a direct merge — no PR, per Aditya's
+`main` is fully up to date through **Gate 30** (`ab5b7c8`, a direct merge — no PR, per Aditya's
 now-standing "always merge after completing a gate/phase" instruction, see above). This is the
-first gate of the new PCC Evolution Roadmap, built on top of the already-complete 14-gate
+second gate of the new PCC Evolution Roadmap, built on top of the already-complete 14-gate
 Document Control sub-spec. `schema_version` on `main` is **34**. `claude/gate-5-startup-1ubxfh`
 was reset to match this `main` immediately after the merge and carries no commits of its own on
 top — it's the correct starting point for whatever comes next, no restart needed before you
@@ -495,19 +511,19 @@ true by the time you read this.
 
 **Zip delivered this round:** `Project-Control-Center.zip` — `index.html` + `README.md` +
 `data/`/`files/` (existing `README.txt` placeholders), verified via a fresh extraction opened in
-real Chromium (title and `#page-outlet` render, Action Centre navigable, zero console errors;
-screenshots taken and sent per the new standing instruction).
+real Chromium (title and `#page-outlet` render, Project Lookahead navigable, zero console errors;
+screenshots taken and sent per the standing instruction).
 
 **Next steps, in likely priority order:**
-1. **PCC Evolution Roadmap Gate 2 is not yet scoped — ask Aditya before building anything.** The
-   two strongest candidates from this session's own inspection are (a) a consolidated Project
-   Lookahead (7/14/30/60-day view) or (b) surfacing Gate 9's existing health-score/diagnostics
-   engine as a Management Attention strip on the Dashboard. Do not start either without the
-   explicit "yes, build X as scoped" confirmation this project has consistently required.
+1. **PCC Evolution Roadmap Gate 3 is not yet scoped — ask Aditya before building anything.** The
+   strongest candidate from this session's own inspection is surfacing Gate 9's existing
+   health-score/diagnostics engine as a Management Attention strip on the Dashboard. Do not start
+   without the explicit "yes, build X as scoped" confirmation this project has consistently
+   required.
 2. Older still-open items, none blocking daily use: category-scheme reconciliation
-   (Documents/Vendor/Document-Types), the Gantt-bar readiness flag, the two hardcoded reminder
-   windows (14-day Document Reminders, 30-day Action Centre Upcoming), Resource Management rate ×
-   usage into Cost/EVM, portfolio dashboard filtering.
+   (Documents/Vendor/Document-Types), the Gantt-bar readiness flag, the two hardcoded reminder/
+   lookahead windows (14-day Document Reminders, 30-day Action Centre Upcoming), Resource
+   Management rate × usage into Cost/EVM, portfolio dashboard filtering.
 3. Optional cleanup: these branches on `origin` are all fully merged into `main` and safe to
    delete (not urgent) — `integration/gates-8-13`, `claude/phase-11c-planning-executive-frty7j`,
    `claude/excel-schedule-pcc-editing-dgyy9m`, `claude/doc-control-gate14-master-repo`,
