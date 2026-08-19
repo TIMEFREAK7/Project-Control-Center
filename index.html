@@ -18515,6 +18515,103 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     },
   ];
 
+  // Gate 10 (Document Control 10: Readiness/Constraints). Same "Available"/"Overdue"/
+  // "Required" status computation as pages/portfolio.js's computeRequirementStatus() and
+  // pages/vendors.js's own copy — duplicated here per this app's per-module-helpers
+  // convention rather than sharing a util layer.
+  function computeRequirementStatus(data, projectId, documentTypeId, plannedDate) {
+    var available = data.documents.some(function (d) {
+      return d.project_id === projectId && d.document_type_id === documentTypeId;
+    });
+    if (available) return "available";
+    if (plannedDate && plannedDate < todayIso()) return "overdue";
+    return "required";
+  }
+
+  var REQUIREMENT_STATUS_BADGE = {
+    available: { className: "complete", label: "Available" },
+    overdue: { className: "critical", label: "Overdue" },
+    required: { className: "at_risk", label: "Required" },
+  };
+
+  /** Reads Gate 21's activity_id link in reverse: every project_document_requirements
+   * row that names THIS activity as its governing activity. Pure read-only — nothing is
+   * written back, and this never blocks editing/scheduling the activity itself; it's a
+   * visibility aid, not an enforced constraint (this app has no workflow-blocking
+   * anywhere else either, e.g. Gate 17's document status is a plain select). An activity
+   * is "Not Ready" when at least one linked requirement isn't yet Available. */
+  function renderDocumentReadinessSection(activity, data) {
+    var wrap = document.createElement("div");
+    wrap.style.marginTop = "14px";
+    wrap.style.paddingTop = "10px";
+    wrap.style.borderTop = "1px solid var(--divider)";
+
+    var typesById = {};
+    data.document_types.forEach(function (t) {
+      typesById[t.id] = t;
+    });
+    var rows = data.project_document_requirements.filter(function (r) {
+      return r.activity_id === activity.id && typesById[r.document_type_id];
+    });
+
+    var heading = document.createElement("p");
+    heading.className = "detail-item__label";
+    heading.style.marginBottom = "6px";
+    heading.textContent = "DOCUMENT READINESS (" + rows.length + ")";
+    wrap.appendChild(heading);
+
+    if (rows.length === 0) {
+      var empty = document.createElement("p");
+      empty.className = "text-secondary";
+      empty.style.fontSize = "12px";
+      empty.textContent =
+        "No document requirements are linked to this activity yet — link one from Portfolio's Add/Edit Project form (Document Requirements section).";
+      wrap.appendChild(empty);
+      return wrap;
+    }
+
+    var statuses = rows.map(function (r) {
+      return computeRequirementStatus(data, r.project_id, r.document_type_id, r.planned_submission_date);
+    });
+    var notReady = statuses.some(function (s) {
+      return s !== "available";
+    });
+
+    var readinessLine = document.createElement("p");
+    readinessLine.style.fontSize = "13px";
+    readinessLine.style.fontWeight = "600";
+    readinessLine.style.margin = "0 0 6px";
+    readinessLine.style.color = notReady ? "var(--status-critical)" : "var(--status-on-track)";
+    readinessLine.textContent = notReady ? "NOT READY — one or more governing documents are not yet Available" : "READY — every governing document is Available";
+    wrap.appendChild(readinessLine);
+
+    rows.forEach(function (r, idx) {
+      var t = typesById[r.document_type_id];
+      var badgeInfo = REQUIREMENT_STATUS_BADGE[statuses[idx]];
+
+      var rowEl = document.createElement("div");
+      rowEl.style.display = "flex";
+      rowEl.style.justifyContent = "space-between";
+      rowEl.style.alignItems = "center";
+      rowEl.style.fontSize = "13px";
+      rowEl.style.marginBottom = "4px";
+
+      var text = document.createElement("span");
+      text.textContent = t.name + (t.code ? " (" + t.code + ")" : "") + (r.planned_submission_date ? " — due " + r.planned_submission_date : "");
+      rowEl.appendChild(text);
+
+      var badge = document.createElement("span");
+      badge.className = "status-badge status-badge--" + badgeInfo.className;
+      badge.style.fontSize = "11px";
+      badge.textContent = badgeInfo.label;
+      rowEl.appendChild(badge);
+
+      wrap.appendChild(rowEl);
+    });
+
+    return wrap;
+  }
+
   function renderLinkedRecordsSection(activity, data) {
     var wrap = document.createElement("div");
     wrap.style.marginTop = "14px";
@@ -18656,6 +18753,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     panel.appendChild(relWrap);
 
     panel.appendChild(renderLinkedRecordsSection(activity, data));
+    panel.appendChild(renderDocumentReadinessSection(activity, data));
 
     var actions = document.createElement("div");
     actions.style.display = "flex";
