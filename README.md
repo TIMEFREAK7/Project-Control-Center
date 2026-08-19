@@ -2633,6 +2633,64 @@ the likely next area, though most of it — Schedule↔Activity and Activity↔R
 also already existed before this roadmap started (Gate 10). Worth a fresh look at what's
 genuinely still missing in Tier B before proposing the next gate.
 
+## Gate 32 — Activity → Vendor (PCC Evolution Roadmap, Tier B) (2026-08-19)
+
+**The fourth gate of the PCC Evolution Roadmap — the first from Tier B (Control Integration).**
+Before building, this session ran a fresh inspection of Tier B's four gates against the real
+code: Gate 5 (Schedule→Activity) turned out to be inherent in the base schema already (every
+activity carries its own `schedule_id`), and Gate 7 (Activity→Risk/Issue/RFI) was already built
+pre-roadmap (Gate 10). The two genuine gaps were Gate 6 (Activity→Vendor — checked all ten
+`vendor_id` fields in the schema, none live on `activities`) and Gate 8 (Meeting Action→Control
+linking — `newMeetingAction()`'s shape has zero linking fields). Confirmed via `AskUserQuestion`:
+build Activity→Vendor first.
+
+**What changed:**
+
+- `store.js`: `activities` gained `vendor_id` (optional, `""` default — `schema_version` 34→35).
+  Deliberately distinct from the pre-existing free-text `contractor` field: this is a real link
+  into the Vendor Management module (Gate 13), the same "reuse the existing module, don't invent
+  a second vendor list" precedent every Document Control gate touching vendors already followed
+  (Gates 6, 9, 20, 23).
+- `pages/schedule.js`: the Activity Add/Edit form gains a **Vendor** picker — a hand-built
+  `<select>` (dynamic, vendor-list-driven options don't fit `ACTIVITY_FIELD_CONFIG`'s
+  static-enum-driven select handling), same pattern as the form's existing WBS picker. The
+  Activity Detail Panel gains a read-only **Vendor** row resolving `vendor_id` to the vendor's
+  name.
+- `pages/vendors.js`: the Vendor Profile page gains an 11th tab, **"Activities"** — read-only,
+  portfolio-wide: every Schedule activity across ALL of that vendor's projects with a matching
+  `vendor_id`, sorted soonest-start-first, each showing a Critical/Near-Critical/On Track badge
+  (same convention as `projectLookahead.js`'s own copy) and a "View in Schedule" button reusing
+  `window.PCC.schedule.viewActivity()` (Gate 10's own reverse-navigation API — no new API needed).
+  Answers the roadmap's own "what exactly is Vendor ABC responsible for?" question at the activity
+  level, distinct from the pre-existing Projects tab's project-level, free-text `scope_of_work`.
+
+**Tested before delivery (new file, 30 e2e checks, plus a new schema migration check — full suite
+re-run clean, 32 files, 763 checks total):**
+
+- **Schema migration** (`test_store_schema_v35_migration.js`, renamed from v34 per the established
+  canonical-file convention): a v34 dataset backfills `vendor_id: ""` onto an existing activity
+  with none, and leaves an already-assigned activity's `vendor_id` untouched; every older
+  intermediate-version check in the file re-verified landing on the new latest version (35), since
+  `migrate()` always fast-forwards a loaded dataset all the way to the current schema regardless of
+  its starting version.
+- **End-to-end against the actual bundled `index.html`** (new file,
+  `test_activity_vendor_link_e2e.js`): the Detail Panel shows no vendor before one is assigned; the
+  form's Vendor picker is populated with every vendor, defaulting to unassigned; assigning and
+  saving persists `vendor_id` and the Detail Panel reflects it immediately; the vendor's own
+  Activities tab shows the assigned activity with correct project/badge/counts; a *different*
+  vendor's Activities tab correctly shows the empty state (no cross-contamination between
+  vendors); "View in Schedule" navigates correctly with the right activity's panel open;
+  unassigning (back to "(none)") clears the field and the activity disappears from the vendor's
+  tab; confirmed no other record was touched; a full 19-route smoke test.
+- **Real-browser verification** (Chromium via Playwright, screenshots captured and sent): the
+  Vendor picker on a real Activity form, the Detail Panel showing the assigned vendor, and the
+  vendor's Activities tab showing the reciprocal view — zero console/page errors.
+
+**What I have not tested:** this on your actual device. Same standard as every prior gate. Per the
+roadmap's own gate discipline, this gate is reported and closed here — the next gate (likely Gate
+8, Meeting Action→Control linking, the other Tier B gap identified at inspection) needs its own
+scoping and confirmation before it starts.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
@@ -2701,16 +2759,17 @@ Assistant, Lessons Learned, final polish
 
 **Tier 2 is complete, and the entire 14-gate Document Control sub-spec Aditya handed over is now
 built** (Gates 14-28) — no gates from that spec remain. A new, separate roadmap started with Gate
-29 (Planner Action Centre), continued with Gate 30 (Project Lookahead) and Gate 31 (Management
-Attention), all 2026-08-19 — see each gate's own write-up above for the inspection findings and
-detail behind them. **Tier A (Daily Planner Value) of that roadmap is now effectively done** — its
-own Gate 4 (Management Attention) just shipped, and its own Gate 1 (Project Control Centre) was
-found substantially pre-existing at the original inspection. That roadmap's own next gate is
-**not yet started or scoped** — per its explicit gate discipline, each gate gets proposed in a
-short paragraph and confirmed before building, one at a time. Tier B (Control Integration) is the
-likely next area, though a fresh inspection is needed first — its Schedule↔Activity and
-Activity↔Risk/RFI/Meeting relationships already exist too (Gate 10, well before this roadmap
-started), so the genuinely new part of Tier B (if any) isn't yet identified.
+29 (Planner Action Centre), continued with Gate 30 (Project Lookahead), Gate 31 (Management
+Attention), and Gate 32 (Activity → Vendor), all 2026-08-19 — see each gate's own write-up above
+for the inspection findings and detail behind them. **Tier A (Daily Planner Value) is effectively
+done**, and **Tier B (Control Integration) is half done** — a fresh inspection at Gate 32 found
+two of Tier B's four gates already satisfied before this roadmap even started (Schedule→Activity
+is inherent in the base schema; Activity→Risk/Issue/RFI was Gate 10), leaving Activity→Vendor
+(now built, Gate 32) and Meeting Action→Control linking (the remaining gap — individual meeting
+action items currently have zero linking fields, only the parent meeting does) as Tier B's real
+work. That roadmap's own next gate is **not yet started or scoped** — per its explicit gate
+discipline, each gate gets proposed in a short paragraph and confirmed before building, one at a
+time. Meeting Action→Control linking is the natural next candidate to close out Tier B.
 
 Other open items, none blocking daily use: rate × usage from
 Resource Management feeding Cost Tracking/EVM (explicitly deferred, Gate 11); a

@@ -1575,7 +1575,7 @@
     return field;
   }
 
-  function renderActivityForm(container, activity, wbsItems, rerender) {
+  function renderActivityForm(container, activity, wbsItems, vendors, rerender) {
     var isNew = uiState.editingActivityId === "new";
     var panel = document.createElement("div");
     panel.className = "panel";
@@ -1605,6 +1605,28 @@
     wbsSelect.value = activity.wbs_id || "";
     wbsField.appendChild(wbsSelect);
     form.appendChild(wbsField);
+
+    // Gate 32 (PCC Evolution Roadmap, Tier B: Activity → Vendor). Same hand-built select
+    // pattern as the WBS field above (dynamic, data-driven options — not a fit for
+    // ACTIVITY_FIELD_CONFIG's static-enum-driven select handling).
+    var vendorField = document.createElement("div");
+    vendorField.className = "field";
+    vendorField.innerHTML = "<label>Vendor</label>";
+    var vendorSelect = document.createElement("select");
+    vendorSelect.id = "actfield-vendor_id";
+    var noVendorOpt = document.createElement("option");
+    noVendorOpt.value = "";
+    noVendorOpt.textContent = "(none)";
+    vendorSelect.appendChild(noVendorOpt);
+    vendors.forEach(function (v) {
+      var opt = document.createElement("option");
+      opt.value = v.id;
+      opt.textContent = v.vendor_name || "(unnamed vendor)";
+      vendorSelect.appendChild(opt);
+    });
+    vendorSelect.value = activity.vendor_id || "";
+    vendorField.appendChild(vendorSelect);
+    form.appendChild(vendorField);
 
     var grid = document.createElement("div");
     grid.className = "form-grid";
@@ -1678,7 +1700,7 @@
       }
       errorMsg.style.display = "none";
 
-      var values = { wbs_id: wbsSelect.value || null };
+      var values = { wbs_id: wbsSelect.value || null, vendor_id: vendorSelect.value || "" };
       ACTIVITY_FIELD_CONFIG.forEach(function (cfg) {
         var el = form.querySelector("#actfield-" + cfg.key);
         if (!el) return;
@@ -1735,7 +1757,7 @@
               return a.id === uiState.editingActivityId;
             });
       uiState.newActivityTypeHint = null;
-      if (activityBeingEdited) renderActivityForm(container, activityBeingEdited, wbsItems, rerender);
+      if (activityBeingEdited) renderActivityForm(container, activityBeingEdited, wbsItems, data.vendors, rerender);
     }
 
     var toolbar = document.createElement("div");
@@ -3016,6 +3038,15 @@
     item("Discipline", activity.discipline);
     item("Contractor", activity.contractor);
     item("Responsible Person", activity.responsible_person);
+    item(
+      "Vendor",
+      activity.vendor_id
+        ? (function () {
+            var v = data.vendors.find(function (x) { return x.id === activity.vendor_id; });
+            return v ? v.vendor_name || "(unnamed vendor)" : "(deleted vendor)";
+          })()
+        : ""
+    );
     item("Constraint", activity.constraint_type ? activity.constraint_type + (activity.constraint_date ? " (" + activity.constraint_date + ")" : "") : "");
     panel.appendChild(grid);
 
