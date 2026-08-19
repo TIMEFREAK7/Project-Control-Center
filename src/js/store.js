@@ -858,7 +858,16 @@
       late_finish: null,
       total_float: null,
       free_float: null,
+      // Schedule-based progress: from the imported schedule file's own % Complete column
+      // (Gate 2), or hand-edited directly. This is what costEvmEngine.js's EV calculation
+      // uses (see that file's header for why).
       percent_complete: 0,
+      // Physical/quantity-based progress: a separate, manually-entered assessment (e.g. from
+      // a site quantity survey) of how much of the activity's actual work is done — distinct
+      // from percent_complete on purpose, since schedule progress and physical progress can
+      // and do diverge in the field. Never imported from a schedule file; only ever set via
+      // the Activity form. Feeds executiveCenter.js's "Physical Progress" KPI/report line —
+      // that line reports 0% for every activity until this field is actually entered.
       physical_progress: 0,
       status: "not_started",
       priority: "medium",

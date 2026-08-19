@@ -4416,7 +4416,16 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       late_finish: null,
       total_float: null,
       free_float: null,
+      // Schedule-based progress: from the imported schedule file's own % Complete column
+      // (Gate 2), or hand-edited directly. This is what costEvmEngine.js's EV calculation
+      // uses (see that file's header for why).
       percent_complete: 0,
+      // Physical/quantity-based progress: a separate, manually-entered assessment (e.g. from
+      // a site quantity survey) of how much of the activity's actual work is done — distinct
+      // from percent_complete on purpose, since schedule progress and physical progress can
+      // and do diverge in the field. Never imported from a schedule file; only ever set via
+      // the Activity form. Feeds executiveCenter.js's "Physical Progress" KPI/report line —
+      // that line reports 0% for every activity until this field is actually entered.
       physical_progress: 0,
       status: "not_started",
       priority: "medium",
@@ -18681,6 +18690,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     { key: "duration", label: "Duration (days)", type: "number" },
     { key: "remaining_duration", label: "Remaining Duration (days)", type: "number" },
     { key: "percent_complete", label: "% Complete", type: "number" },
+    { key: "physical_progress", label: "Physical Progress (%)", type: "number" },
     { key: "discipline", label: "Discipline", type: "text" },
     { key: "contractor", label: "Contractor", type: "text" },
     { key: "responsible_person", label: "Responsible Person", type: "text" },
@@ -18979,7 +18989,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           wbsName(wbsItems, a.wbs_id) + " \u00b7 " + ACTIVITY_TYPE_LABELS[a.activity_type] +
           (a.planned_start ? " \u00b7 " + a.planned_start : "") +
           (a.planned_finish ? " \u2192 " + a.planned_finish : "") +
-          " \u00b7 " + (a.percent_complete || 0) + "% complete</span>";
+          " \u00b7 " + (a.percent_complete || 0) + "% complete" +
+          " \u00b7 " + (a.physical_progress || 0) + "% physical</span>";
         card.appendChild(main);
 
         var badge = document.createElement("span");
@@ -20183,6 +20194,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         : activity.total_float + " day(s) total, " + (activity.free_float == null ? "—" : activity.free_float) + " free"
     );
     item("% Complete", (activity.percent_complete || 0) + "%");
+    item("Physical Progress", (activity.physical_progress || 0) + "%");
     item("Discipline", activity.discipline);
     item("Contractor", activity.contractor);
     item("Responsible Person", activity.responsible_person);
