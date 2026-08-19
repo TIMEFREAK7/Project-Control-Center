@@ -12,6 +12,7 @@
       items: [
         { key: "dashboard", label: "Dashboard", code: "DB" },
         { key: "actionCentre", label: "Action Centre", code: "AC" },
+        { key: "projectLookahead", label: "Project Lookahead", code: "LA" },
         { key: "portfolio", label: "Portfolio", code: "PF" },
         { key: "executiveCenter", label: "Executive Center", code: "EC" },
         { key: "vendors", label: "Vendors", code: "VN" },
@@ -50,6 +51,7 @@
   var PAGE_TITLES = {
     dashboard: "Dashboard",
     actionCentre: "Planner Action Centre",
+    projectLookahead: "Project Lookahead",
     portfolio: "Portfolio",
     executiveCenter: "Executive Center",
     vendors: "Vendor Management",

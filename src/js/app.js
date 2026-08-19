@@ -6,6 +6,7 @@
 
     router.register("dashboard", window.PCC.pages.dashboard);
     router.register("actionCentre", window.PCC.pages.actionCentre);
+    router.register("projectLookahead", window.PCC.pages.projectLookahead);
     router.register("portfolio", window.PCC.pages.portfolio);
     router.register("executiveCenter", window.PCC.pages.executiveCenter);
     router.register("vendors", window.PCC.pages.vendors);

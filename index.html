@@ -5802,6 +5802,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       items: [
         { key: "dashboard", label: "Dashboard", code: "DB" },
         { key: "actionCentre", label: "Action Centre", code: "AC" },
+        { key: "projectLookahead", label: "Project Lookahead", code: "LA" },
         { key: "portfolio", label: "Portfolio", code: "PF" },
         { key: "executiveCenter", label: "Executive Center", code: "EC" },
         { key: "vendors", label: "Vendors", code: "VN" },
@@ -5840,6 +5841,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   var PAGE_TITLES = {
     dashboard: "Dashboard",
     actionCentre: "Planner Action Centre",
+    projectLookahead: "Project Lookahead",
     portfolio: "Portfolio",
     executiveCenter: "Executive Center",
     vendors: "Vendor Management",
@@ -7016,6 +7018,363 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   }
 
   window.PCC.pages.actionCentre = render;
+})();
+
+
+/* ---- js/pages/projectLookahead.js ---- */
+/* Project Lookahead — Gate 30 (PCC Evolution Roadmap, Gate 2 of ~27). A consolidated,
+ * forward-only, chronological view answering "what's coming next?" across a 7/14/30/60-day
+ * window the user picks. Distinct from Gate 29's Planner Action Centre in two ways: this is
+ * a flat DATE-sorted table, not urgency buckets, and it's forward-only — nothing overdue
+ * shows here (that's the Action Centre's job) — and it's the first cross-module planner
+ * view to include Schedule activities/milestones and upcoming Meetings.
+ *
+ * Sources, all read-only, nothing written back:
+ * - Schedule activities/milestones (`activity_type` "task" or "milestone" only — summary/
+ *   wbs_summary rows are structural, not real work; excludes completed activities). Date is
+ *   `early_start || planned_start` — same calculated-wins-over-planned precedence as
+ *   `scheduleGanttLayout.js`'s own `effectiveDates()`, duplicated here per this app's
+ *   per-module-helpers convention. Status badge reuses the schedule's own
+ *   `near_critical_threshold_days` against `total_float`, same threshold `schedule.js`'s
+ *   Gantt view and Executive Center both already use. Reads the PERSISTED calculated fields
+ *   (from the schedule's last "Calculate" run) rather than re-running the CPM engine live —
+ *   matches the Gantt view's own trust model, not Executive Center's live-recompute (that's
+ *   a deliberate outlier there for health-score freshness).
+ * - Meetings — the meeting's own `meeting_date` (new: nothing in PCC surfaced "you have a
+ *   meeting on this date" before this gate) — plus Meeting Actions (`due_date`, reused from
+ *   Gate 29).
+ * - RFI/TQ (`date_required`, status "open" only — reused from Gate 29).
+ * - Document Requirements — reuses the Available/Overdue/Required computation every Document
+ *   Control gate since Gate 18 has used (the ninth independent copy now); only "required" rows
+ *   ever land in a forward window by construction (an "overdue" row's date is already in the
+ *   past, so it's excluded by the date filter itself — no special-casing needed).
+ *
+ * Deliberately excluded, same reasoning as Gate 29: Change Orders and Risks/Issues have no
+ * due-date field in the schema at all, so they can never sit on a date-driven timeline.
+ */
+(function () {
+  "use strict";
+  window.PCC = window.PCC || {};
+  window.PCC.pages = window.PCC.pages || {};
+
+  var WINDOW_OPTIONS = [7, 14, 30, 60];
+  var DEFAULT_WINDOW_DAYS = 7;
+
+  var uiState = {
+    windowDays: DEFAULT_WINDOW_DAYS,
+  };
+
+  function todayIso() {
+    return new Date().toISOString().slice(0, 10);
+  }
+  function addDaysIso(isoDateStr, days) {
+    var d = new Date(isoDateStr + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0, 10);
+  }
+
+  // Same Available/Overdue/Required computation as portfolio.js/vendors.js/schedule.js/
+  // dashboard.js/documentControlDashboard.js/executiveCenter.js/actionCentre.js's own
+  // copies — duplicated here per this app's per-module-helpers convention.
+  function computeRequirementStatus(data, projectId, documentTypeId, plannedDate) {
+    var available = data.documents.some(function (d) {
+      return d.project_id === projectId && d.document_type_id === documentTypeId;
+    });
+    if (available) return "available";
+    if (plannedDate && plannedDate < todayIso()) return "overdue";
+    return "required";
+  }
+
+  // Same primary-schedule selection as executiveCenter.js's own pickPrimarySchedule() —
+  // duplicated here per convention: prefer an active schedule, highest revision number,
+  // most recently updated as the tiebreak.
+  function pickPrimarySchedule(schedules) {
+    if (schedules.length === 0) return null;
+    var active = schedules.filter(function (s) {
+      return s.status === "active";
+    });
+    var pool = active.length ? active : schedules;
+    return pool.slice().sort(function (a, b) {
+      if (a.revision_number !== b.revision_number) return b.revision_number - a.revision_number;
+      return new Date(b.updated_at) - new Date(a.updated_at);
+    })[0];
+  }
+
+  function collectItems(data, activeProjectIds, windowDays) {
+    var today = todayIso();
+    var windowEnd = addDaysIso(today, windowDays);
+    var items = [];
+
+    var schedulesByProject = {};
+    data.schedules.forEach(function (s) {
+      if (!activeProjectIds[s.project_id]) return;
+      (schedulesByProject[s.project_id] = schedulesByProject[s.project_id] || []).push(s);
+    });
+    Object.keys(schedulesByProject).forEach(function (projectId) {
+      var schedule = pickPrimarySchedule(schedulesByProject[projectId]);
+      if (!schedule) return;
+      var thresholdDays = schedule.near_critical_threshold_days || 5;
+      data.activities.forEach(function (a) {
+        if (a.schedule_id !== schedule.id) return;
+        if (a.activity_type !== "task" && a.activity_type !== "milestone") return;
+        if (a.status === "complete") return;
+        var date = a.early_start || a.planned_start;
+        if (!date || date < today || date > windowEnd) return;
+        var floatVal = a.total_float;
+        var critical = floatVal != null && floatVal <= 0;
+        var nearCritical = floatVal != null && floatVal > 0 && floatVal <= thresholdDays;
+        items.push({
+          kind: a.activity_type === "milestone" ? "Milestone" : "Activity",
+          title: a.name || "(unnamed activity)",
+          projectId: projectId,
+          owner: a.responsible_person || a.contractor || "—",
+          date: date,
+          badgeClass: critical ? "critical" : nearCritical ? "at_risk" : "on_track",
+          badgeLabel: critical ? "Critical" : nearCritical ? "Near-Critical" : "On Track",
+          view: (function (pId, schedId, actId) {
+            return function () {
+              window.PCC.schedule.viewActivity(pId, schedId, actId);
+              window.PCC.router.go("schedule");
+              window.PCC.router.render();
+            };
+          })(projectId, schedule.id, a.id),
+        });
+      });
+    });
+
+    data.meetings.forEach(function (m) {
+      if (!activeProjectIds[m.project_id]) return;
+      if (m.meeting_date && m.meeting_date >= today && m.meeting_date <= windowEnd) {
+        items.push({
+          kind: "Meeting",
+          title: m.title || "(untitled meeting)",
+          projectId: m.project_id,
+          owner: "—",
+          date: m.meeting_date,
+          badgeClass: "info",
+          badgeLabel: "Scheduled",
+          view: (function (id) {
+            return function () {
+              window.PCC.meetings.expandMeeting(id);
+              window.PCC.router.go("meetings");
+              window.PCC.router.render();
+            };
+          })(m.id),
+        });
+      }
+      (m.actions || []).forEach(function (a) {
+        if (a.status !== "open") return;
+        if (!a.due_date || a.due_date < today || a.due_date > windowEnd) return;
+        items.push({
+          kind: "Meeting Action",
+          title: a.description || "(no description)",
+          projectId: m.project_id,
+          owner: a.owner || "—",
+          date: a.due_date,
+          badgeClass: "info",
+          badgeLabel: "Open",
+          view: (function (id) {
+            return function () {
+              window.PCC.meetings.expandMeeting(id);
+              window.PCC.router.go("meetings");
+              window.PCC.router.render();
+            };
+          })(m.id),
+        });
+      });
+    });
+
+    data.rfis.forEach(function (r) {
+      if (!activeProjectIds[r.project_id]) return;
+      if (r.status !== "open") return;
+      if (!r.date_required || r.date_required < today || r.date_required > windowEnd) return;
+      items.push({
+        kind: r.type === "technical_query" ? "TQ" : "RFI",
+        title: (r.number || "") + (r.subject ? " — " + r.subject : ""),
+        projectId: r.project_id,
+        owner: r.assigned_to || "—",
+        date: r.date_required,
+        badgeClass: "info",
+        badgeLabel: "Open",
+        view: (function (id) {
+          return function () {
+            window.PCC.rfis.expandRfi(id);
+            window.PCC.router.go("rfis");
+            window.PCC.router.render();
+          };
+        })(r.id),
+      });
+    });
+
+    var typesById = {};
+    data.document_types.forEach(function (t) {
+      typesById[t.id] = t;
+    });
+    var vendorsById = {};
+    data.vendors.forEach(function (v) {
+      vendorsById[v.id] = v;
+    });
+    data.project_document_requirements.forEach(function (req) {
+      if (!activeProjectIds[req.project_id]) return;
+      var type = typesById[req.document_type_id];
+      if (!type) return;
+      var status = computeRequirementStatus(data, req.project_id, req.document_type_id, req.planned_submission_date);
+      if (status !== "required") return;
+      if (!req.planned_submission_date || req.planned_submission_date < today || req.planned_submission_date > windowEnd) return;
+      var vendor = req.vendor_id ? vendorsById[req.vendor_id] : null;
+      items.push({
+        kind: "Document",
+        title: type.name + (type.code ? " (" + type.code + ")" : ""),
+        projectId: req.project_id,
+        owner: vendor ? vendor.vendor_name || "(unnamed vendor)" : "—",
+        date: req.planned_submission_date,
+        badgeClass: "at_risk",
+        badgeLabel: "Required",
+        view: (function (pId) {
+          return function () {
+            window.PCC.portfolio.viewProject(pId);
+            window.PCC.router.go("portfolio");
+            window.PCC.router.render();
+          };
+        })(req.project_id),
+      });
+    });
+
+    return items;
+  }
+
+  function windowToggle(rerender) {
+    var wrap = document.createElement("div");
+    wrap.style.display = "flex";
+    wrap.style.gap = "8px";
+    wrap.style.marginBottom = "16px";
+
+    WINDOW_OPTIONS.forEach(function (days) {
+      var btn = document.createElement("button");
+      btn.className = "btn" + (uiState.windowDays === days ? "" : " btn--ghost");
+      btn.textContent = days + " Day";
+      btn.onclick = function () {
+        uiState.windowDays = days;
+        rerender();
+      };
+      wrap.appendChild(btn);
+    });
+
+    return wrap;
+  }
+
+  function itemRow(item, projectsById) {
+    var project = projectsById[item.projectId];
+
+    var row = document.createElement("div");
+    row.style.display = "flex";
+    row.style.justifyContent = "space-between";
+    row.style.alignItems = "center";
+    row.style.fontSize = "13px";
+    row.style.gap = "8px";
+    row.style.padding = "6px 0";
+    row.style.borderBottom = "1px solid var(--divider)";
+
+    var text = document.createElement("span");
+    text.textContent =
+      item.date + " — [" + item.kind + "] " +
+      item.title +
+      " — " +
+      (project ? project.name || "(unnamed project)" : "(deleted project)") +
+      " — " +
+      item.owner;
+    row.appendChild(text);
+
+    var right = document.createElement("div");
+    right.style.display = "flex";
+    right.style.alignItems = "center";
+    right.style.gap = "8px";
+    right.style.flexShrink = "0";
+
+    var badge = document.createElement("span");
+    badge.className = "status-badge status-badge--" + item.badgeClass;
+    badge.style.fontSize = "11px";
+    badge.textContent = item.badgeLabel;
+    right.appendChild(badge);
+
+    if (project) {
+      var viewBtn = document.createElement("button");
+      viewBtn.className = "btn btn--ghost";
+      viewBtn.textContent = "View";
+      viewBtn.onclick = item.view;
+      right.appendChild(viewBtn);
+    }
+
+    row.appendChild(right);
+    return row;
+  }
+
+  function render(outlet) {
+    var data = window.PCC.store.get();
+    var activeProjects = data.projects.filter(function (p) {
+      return !p.archived;
+    });
+    var activeProjectIds = {};
+    var projectsById = {};
+    activeProjects.forEach(function (p) {
+      activeProjectIds[p.id] = true;
+      projectsById[p.id] = p;
+    });
+
+    function rerender() {
+      outlet.innerHTML = "";
+      render(outlet);
+    }
+
+    var items = collectItems(data, activeProjectIds, uiState.windowDays);
+    items.sort(function (a, b) {
+      return a.date.localeCompare(b.date) || a.kind.localeCompare(b.kind) || a.title.localeCompare(b.title);
+    });
+
+    var wrap = document.createElement("div");
+
+    var h1 = document.createElement("h2");
+    h1.textContent = "Project Lookahead";
+    h1.style.marginBottom = "4px";
+    wrap.appendChild(h1);
+
+    var sub = document.createElement("p");
+    sub.className = "text-secondary";
+    sub.style.marginTop = "0";
+    sub.style.marginBottom = "16px";
+    sub.textContent =
+      "Schedule activities, milestones, meetings, RFI/TQ, and document submissions due in the next " +
+      uiState.windowDays + " day" + (uiState.windowDays === 1 ? "" : "s") +
+      " across " + activeProjects.length + " active project" + (activeProjects.length === 1 ? "" : "s") + ".";
+    wrap.appendChild(sub);
+
+    wrap.appendChild(windowToggle(rerender));
+
+    var panel = document.createElement("div");
+    panel.className = "panel";
+
+    var heading = document.createElement("h3");
+    heading.style.marginBottom = "8px";
+    heading.textContent = "Coming Up (" + items.length + ")";
+    panel.appendChild(heading);
+
+    if (items.length === 0) {
+      var empty = document.createElement("p");
+      empty.className = "text-secondary";
+      empty.style.margin = "0";
+      empty.textContent = "Nothing scheduled, due, or required in the next " + uiState.windowDays + " days across the active portfolio.";
+      panel.appendChild(empty);
+    } else {
+      items.forEach(function (item) {
+        panel.appendChild(itemRow(item, projectsById));
+      });
+    }
+
+    wrap.appendChild(panel);
+    outlet.appendChild(wrap);
+  }
+
+  window.PCC.pages.projectLookahead = render;
 })();
 
 
@@ -26742,6 +27101,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     router.register("dashboard", window.PCC.pages.dashboard);
     router.register("actionCentre", window.PCC.pages.actionCentre);
+    router.register("projectLookahead", window.PCC.pages.projectLookahead);
     router.register("portfolio", window.PCC.pages.portfolio);
     router.register("executiveCenter", window.PCC.pages.executiveCenter);
     router.register("vendors", window.PCC.pages.vendors);
