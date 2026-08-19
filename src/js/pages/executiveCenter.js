@@ -289,6 +289,31 @@
       .filter(function (id) { return overAllocById[id]; })
       .map(function (id) { return overAllocById[id]; });
 
+    // ---- Document Control (Gate 27: Executive Summary section only — same computed
+    // Available/Overdue/Required status every Document Control gate since Gate 18 has
+    // used, duplicated here per this app's per-module-helpers convention). ----
+    var docTypesById = {};
+    data.document_types.forEach(function (t) { docTypesById[t.id] = t; });
+    var projectDocRequirements = data.project_document_requirements.filter(function (r) {
+      return r.project_id === projectId && docTypesById[r.document_type_id];
+    });
+    var docControlAvailable = 0;
+    var docControlOverdue = 0;
+    var docControlOverdueTypeNames = [];
+    projectDocRequirements.forEach(function (r) {
+      var available = data.documents.some(function (d) { return d.project_id === projectId && d.document_type_id === r.document_type_id; });
+      if (available) {
+        docControlAvailable++;
+      } else if (r.planned_submission_date && r.planned_submission_date < todayIso) {
+        docControlOverdue++;
+        docControlOverdueTypeNames.push(docTypesById[r.document_type_id].name);
+      }
+    });
+    ctx.docControlTotal = projectDocRequirements.length;
+    ctx.docControlAvailable = docControlAvailable;
+    ctx.docControlOverdue = docControlOverdue;
+    ctx.docControlOverdueTypeNames = docControlOverdueTypeNames;
+
     return ctx;
   }
 
@@ -1136,6 +1161,7 @@
     { key: "challenges", label: "Challenges", overrideKey: "challenges_override", auto: autoChallengesText },
     { key: "attention", label: "Management Attention", overrideKey: "management_attention_override", auto: autoAttentionText },
     { key: "upcoming", label: "Upcoming", overrideKey: "upcoming_override", auto: autoUpcomingText },
+    { key: "documentControl", label: "Document Control Status", overrideKey: "document_control_override", auto: autoDocumentControlText },
   ];
 
   function autoStatusText(ctx) {
@@ -1199,6 +1225,19 @@
     if (ctx.criticalActivities.length) lines.push(ctx.criticalActivities.length + " critical-path activity(ies) to watch.");
     if (ctx.upcomingMeetings.length) lines.push(ctx.upcomingMeetings.length + " meeting(s) scheduled.");
     if (lines.length === 0) return "No upcoming milestones, meetings, or critical activities on record.";
+    return lines.join(" ");
+  }
+
+  // Gate 27 (Document Control 13: Executive Summary).
+  function autoDocumentControlText(ctx) {
+    if (!ctx.docControlTotal) return "No document requirements have been assigned to this project yet.";
+    var lines = [];
+    lines.push(ctx.docControlAvailable + " of " + ctx.docControlTotal + " required documents are Available.");
+    if (ctx.docControlOverdue > 0) {
+      lines.push(ctx.docControlOverdue + " overdue: " + ctx.docControlOverdueTypeNames.join(", ") + ".");
+    } else {
+      lines.push("Nothing is overdue.");
+    }
     return lines.join(" ");
   }
 

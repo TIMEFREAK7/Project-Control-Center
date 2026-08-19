@@ -205,6 +205,26 @@ function findButtonByText(dom, text) {
     assert.ok(outlet.textContent.indexOf("Slack Task") !== -1, "achievements should mention the completed activity");
   });
 
+  await check("Gate 27: Document Control Status section shows the no-requirements default before any are assigned", () => {
+    var outlet = win.document.getElementById("page-outlet");
+    assert.ok(outlet.textContent.indexOf("DOCUMENT CONTROL STATUS") !== -1, "the new 6th summary section must render");
+    assert.ok(outlet.textContent.indexOf("No document requirements have been assigned to this project yet.") !== -1);
+  });
+
+  await check("Gate 27: assigning an overdue document requirement updates the Document Control Status auto-text", () => {
+    var boqType = win.PCC.store.get().document_types.find((t) => t.name === "BOQ");
+    win.PCC.store.update(function (d) {
+      d.project_document_requirements.push(
+        win.PCC.store.newProjectDocumentRequirement({ project_id: projectId, document_type_id: boqType.id, planned_submission_date: "2020-01-01" })
+      );
+    });
+    win.PCC.router.render();
+    var outlet = win.document.getElementById("page-outlet");
+    assert.ok(outlet.textContent.indexOf("0 of 1 required documents are Available.") !== -1);
+    assert.ok(outlet.textContent.indexOf("1 overdue: BOQ.") !== -1);
+    assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
+  });
+
   await check("editing and saving an Executive Summary section persists an override that replaces the auto text", () => {
     var editButtons = Array.from(win.document.querySelectorAll("button")).filter((b) => b.textContent.trim() === "Edit");
     assert.ok(editButtons.length > 0, "no Edit buttons found in Executive Summary");
@@ -237,6 +257,7 @@ function findButtonByText(dom, text) {
     assert.ok(outlet.querySelector(".snapshot-doc"), "snapshot-doc should render by default");
     assert.ok(outlet.textContent.indexOf("Exec Center Tower") !== -1);
     assert.ok(outlet.textContent.indexOf("Executive Summary") !== -1);
+    assert.ok(outlet.textContent.indexOf("Document Control Status:") !== -1, "Gate 27's new section must flow into the Project Snapshot print view too, same as the other 5 sections");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 

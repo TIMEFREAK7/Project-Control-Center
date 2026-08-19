@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 33;
+  var SCHEMA_VERSION = 34;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -729,6 +729,12 @@
       challenges_override: "",
       management_attention_override: "",
       upcoming_override: "",
+      // Gate 27 (Document Control 13: Executive Summary): sixth auto+override section,
+      // same shape as the five above — auto-generated from this project's own
+      // project_document_requirements at render time (executiveCenter.js), with this
+      // field holding the user's edited override, empty string meaning "still showing
+      // the auto-generated text."
+      document_control_override: "",
       updated_at: now,
     };
     return Object.assign(base, overrides || {});
@@ -1759,6 +1765,17 @@
         if (r.lead_time_days === undefined) r.lead_time_days = null;
       });
       loaded.schema_version = 33;
+    }
+
+    if (loaded.schema_version < 34) {
+      // Gate 27 (Document Control 13: Executive Summary). Adds an optional
+      // document_control_override to every existing executive_summaries row — "" (no
+      // override yet, same as the other five override fields default), so an existing
+      // project's summary just shows the new auto-generated text until the user edits it.
+      (loaded.executive_summaries || []).forEach(function (s) {
+        if (s.document_control_override === undefined) s.document_control_override = "";
+      });
+      loaded.schema_version = 34;
     }
 
     return loaded;
