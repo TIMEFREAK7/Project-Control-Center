@@ -1533,6 +1533,7 @@
     { key: "duration", label: "Duration (days)", type: "number" },
     { key: "remaining_duration", label: "Remaining Duration (days)", type: "number" },
     { key: "percent_complete", label: "% Complete", type: "number" },
+    { key: "physical_progress", label: "Physical Progress (%)", type: "number" },
     { key: "discipline", label: "Discipline", type: "text" },
     { key: "contractor", label: "Contractor", type: "text" },
     { key: "responsible_person", label: "Responsible Person", type: "text" },
@@ -1831,7 +1832,8 @@
           wbsName(wbsItems, a.wbs_id) + " \u00b7 " + ACTIVITY_TYPE_LABELS[a.activity_type] +
           (a.planned_start ? " \u00b7 " + a.planned_start : "") +
           (a.planned_finish ? " \u2192 " + a.planned_finish : "") +
-          " \u00b7 " + (a.percent_complete || 0) + "% complete</span>";
+          " \u00b7 " + (a.percent_complete || 0) + "% complete" +
+          " \u00b7 " + (a.physical_progress || 0) + "% physical</span>";
         card.appendChild(main);
 
         var badge = document.createElement("span");
@@ -3035,6 +3037,7 @@
         : activity.total_float + " day(s) total, " + (activity.free_float == null ? "—" : activity.free_float) + " free"
     );
     item("% Complete", (activity.percent_complete || 0) + "%");
+    item("Physical Progress", (activity.physical_progress || 0) + "%");
     item("Discipline", activity.discipline);
     item("Contractor", activity.contractor);
     item("Responsible Person", activity.responsible_person);
