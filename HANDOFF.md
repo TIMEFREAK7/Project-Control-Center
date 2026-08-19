@@ -61,29 +61,31 @@ that override default behavior).
   populated state, and again on the zip-verification pass) and send the PNGs via `SendUserFile`
   before or alongside the written report. Applies to every gate from here on, not just this one.
 
-## Where things stand — everything through Gate 31 is merged into `main`
+## Where things stand — everything through Gate 32 is merged into `main`
 
-`main` is fully up to date through **Gate 31** (PCC Evolution Roadmap gate 3 of ~27: Management
-Attention), merge commit `b70e9a9`, `schema_version` **34** (unchanged — Gate 31 added no schema
-fields, everything computed at render time from existing data). This session built and merged
-Gate 31 on its own, following the same rebuild → full suite → merge (no PR, standing instruction,
-see above) → push `main` → restart `claude/gate-5-startup-1ubxfh` from the new `main` sequence
-used for every prior gate. The full test suite (**31 files, 695 checks**) passes clean, and a
-real-Chromium pass (with screenshots, per the standing instruction below) confirmed the new
-Dashboard "Management Attention" panel end to end — a critical activity and a high risk surfacing
-worst-first, correct badges, "View Project" landing on the right project's Executive Center, zero
-JS errors. **No branch currently carries unmerged app features** — `claude/gate-5-startup-1ubxfh`
-was reset to match `main` after the Gate 31 merge and has no commits of its own on top. Verify
-with `git log origin/main..HEAD` before assuming this is still true by the time you read this.
+`main` is fully up to date through **Gate 32** (PCC Evolution Roadmap gate 4 of ~27: Activity →
+Vendor, the first from Tier B), merge commit `7c8080f`, `schema_version` **35** (`activities`
+gained an optional `vendor_id`). This session built and merged Gate 32 on its own, following the
+same rebuild → full suite → merge (no PR, standing instruction, see above) → push `main` →
+restart `claude/gate-5-startup-1ubxfh` from the new `main` sequence used for every prior gate. The
+full test suite (**32 files, 763 checks**) passes clean, and a real-Chromium pass (with
+screenshots, per the standing instruction below) confirmed the new Vendor picker on the Activity
+form, the Detail Panel showing the assigned vendor, and the Vendor Profile's new "Activities" tab
+end to end, zero JS errors. **No branch currently carries unmerged app features** —
+`claude/gate-5-startup-1ubxfh` was reset to match `main` after the Gate 32 merge and has no
+commits of its own on top. Verify with `git log origin/main..HEAD` before assuming this is still
+true by the time you read this.
 
 **The entire 14-gate Document Control sub-spec Aditya originally handed over is complete (Gates
 14-28)** — Master Repository, Project Requirements, Classification/Nomenclature, Status/Version
 Control, Schedule Due Dates, Vendor Register, Schedule↔Document Linking, Schedule-Driven
 Dates/Lead Time, Vendor Lookahead, Readiness/Constraints, Reminders/Notifications, Dashboards,
 Executive Summary, and Portfolio Compliance. **A new, separate PCC Evolution Roadmap started
-with Gate 29** (see its own section below) — its first three gates (Planner Action Centre, Project
-Lookahead, Management Attention) are done, effectively completing the roadmap's own Tier A (Daily
-Planner Value); ~24 more gates remain, none started, none scoped yet.
+with Gate 29** (see its own section below) — its first four gates (Planner Action Centre, Project
+Lookahead, Management Attention, Activity → Vendor) are done — Tier A (Daily Planner Value) is
+effectively complete, and Tier B (Control Integration) is half done (its other two gates,
+Schedule→Activity and Activity→Risk/Issue/RFI, were already satisfied before this roadmap even
+started); ~23 more gates remain, none started, none scoped yet.
 
 **Feature summary, in build order (Gates 1-13 summarized; Gates 14-17 — Document Control — in
 full detail since they're what's newest and least likely to be in a future session's training/
@@ -306,7 +308,7 @@ that back-and-forth pattern held for all 14 gates through to the last one.
   "Document Control Compliance" `<h3>`, returns its `parentElement`) instead of searching the
   whole page.
 
-### PCC Evolution Roadmap (Gates 29-31 = roadmap's own Gates 1-3) — 3 of ~27 gates done, Tier A effectively complete
+### PCC Evolution Roadmap (Gates 29-32 = roadmap's own Gates 1-4) — 4 of ~27 gates done, Tier A complete, Tier B half done
 
 Aditya handed over a large roadmap (Tiers A-F: Daily Planner Value, Control Integration, Project
 Performance, Management, Portfolio, then Tier F's advanced planning/controls gates — Resource
@@ -375,13 +377,31 @@ view — that became the Planner Action Centre.
   result; the underlying schedule data does. No schema changes. New test file
   `test_management_attention_e2e.js` (31 checks).
 
-**Next roadmap gate: not yet scoped.** Tier A (Daily Planner Value) is now effectively complete —
-Gate 1 (Project Control Centre) was found substantially pre-existing at the original inspection,
-and Gates 2-4 (Action Centre, Lookahead, Management Attention) are all done. Tier B (Control
-Integration) is the likely next area, but a fresh look is needed first: its Schedule↔Activity and
-Activity↔Risk/RFI/Meeting relationships already existed before this roadmap even started (Gate 10)
-— so what Tier B genuinely still needs isn't yet identified. Per the roadmap's own gate discipline,
-inspect first, then propose one gate, get "yes, build it," then build only that.
+- **Gate 32 — Activity → Vendor (Tier B, Control Integration's first gate).** A fresh inspection
+  at this point in the roadmap checked Tier B's 4 gates against the real code: Gate 5
+  (Schedule→Activity) turned out to be inherent in the base schema already (every activity carries
+  its own `schedule_id`); Gate 7 (Activity→Risk/Issue/RFI) was already built pre-roadmap (Gate 10).
+  The two genuine gaps: Gate 6 (Activity→Vendor — checked all ten `vendor_id` fields in the schema,
+  none live on `activities`) and Gate 8 (Meeting Action→Control linking — `newMeetingAction()`'s
+  shape has zero linking fields, only the *parent meeting* has `activity_id` from Gate 10).
+  Confirmed via `AskUserQuestion`: build Activity→Vendor first. `activities` gained an optional
+  `vendor_id` (schema v34→35) — a real link into Vendor Management (Gate 13), distinct from the
+  pre-existing free-text `contractor` field. Schedule's Activity form gained a Vendor picker
+  (hand-built `<select>`, same pattern as the form's existing WBS picker — dynamic options don't
+  fit `ACTIVITY_FIELD_CONFIG`'s static-enum select handling); the Activity Detail Panel gained a
+  read-only Vendor row. Vendor Profile gained an 11th tab, **"Activities"** — read-only,
+  portfolio-wide, every activity with a matching `vendor_id` across all that vendor's projects,
+  sorted soonest-start-first with a Critical/Near-Critical/On Track badge and a "View in Schedule"
+  button (reuses Gate 10's `window.PCC.schedule.viewActivity()`, no new API). Answers "what exactly
+  is Vendor ABC responsible for?" at the activity level — distinct from the Projects tab's
+  project-level, free-text `scope_of_work`. New test file `test_activity_vendor_link_e2e.js` (30
+  checks) plus the renamed schema migration file (`test_store_schema_v35_migration.js`).
+
+**Next roadmap gate: not yet scoped.** Tier A (Daily Planner Value) is complete. Tier B (Control
+Integration) is now half done — only **Meeting Action→Control linking** remains (individual
+meeting action items currently have zero linking fields; only the parent meeting has
+`activity_id`). That's the natural next candidate to close out Tier B. Per the roadmap's own gate
+discipline, inspect first, then propose one gate, get "yes, build it," then build only that.
 
 **Deliberately still open / explicitly deferred, don't assume these got done:**
 - Reconciling Documents' `category` / Vendor's `VENDOR_DOCUMENT_CATEGORIES` / the Gate 14 master
@@ -394,8 +414,9 @@ inspect first, then propose one gate, get "yes, build it," then build only that.
   `actionCentre.js`) are both hardcoded, not user-configurable — noted as a possible follow-up.
 - Rate × usage from Resource Management feeding Cost Tracking/EVM (deferred at Gate 11).
 - Portfolio-level executive dashboard filtering by client/country/sector/PM/date range.
-- Every other gate in the PCC Evolution Roadmap beyond Gates 29-31 — ~24 gates, none started. See
-  the roadmap section above for where Tier B currently stands.
+- Every other gate in the PCC Evolution Roadmap beyond Gates 29-32 — ~23 gates, none started
+  (Tier B's last gap, Meeting Action→Control linking, is the natural next candidate). See the
+  roadmap section above for detail.
 
 ## Key technical conventions to carry forward
 
@@ -460,14 +481,14 @@ inspect first, then propose one gate, get "yes, build it," then build only that.
 - Reports are printable HTML (`window.print()`), not generated PDFs.
 - No File System Access API; export/import-as-JSON is the deliberate cross-platform answer.
 - **Schema migration test convention:** one canonical file targeting the latest version
-  (`tests/test_store_schema_v34_migration.js` as of this handoff) — when you bump
+  (`tests/test_store_schema_v35_migration.js` as of this handoff) — when you bump
   `SCHEMA_VERSION`, `git mv` it to the new version number and fold in new assertions, rather than
   keeping old version-specific files around. Also remember to update the filename inside
   `tests/package.json`'s `test` script — it's not derived automatically and a stale reference
   there fails `npm test` with a bare `MODULE_NOT_FOUND` even though every individual test file is
   fine (hit this exact thing shipping Gate 19; fixed by editing `tests/package.json` alongside the
   `git mv`).
-- Testing: `cd tests && npm test` must pass before anything ships (31 files, 695 checks as of
+- Testing: `cd tests && npm test` must pass before anything ships (32 files, 763 checks as of
   this handoff). Pure-logic tests eval the real source file directly. E2E tests load the actual
   bundled `index.html` via jsdom (+ `fake-indexeddb` for IndexedDB-touching code). Also do one
   real-Chromium pass per gate (`/opt/pw-browsers/chromium-1194/chrome-linux/chrome --no-sandbox`,
@@ -522,10 +543,10 @@ inspect first, then propose one gate, get "yes, build it," then build only that.
 
 ## Repo/branch state
 
-`main` is fully up to date through **Gate 31** (`b70e9a9`, a direct merge — no PR, per Aditya's
+`main` is fully up to date through **Gate 32** (`7c8080f`, a direct merge — no PR, per Aditya's
 now-standing "always merge after completing a gate/phase" instruction, see above). This is the
-third gate of the new PCC Evolution Roadmap, built on top of the already-complete 14-gate
-Document Control sub-spec. `schema_version` on `main` is **34**. `claude/gate-5-startup-1ubxfh`
+fourth gate of the new PCC Evolution Roadmap, built on top of the already-complete 14-gate
+Document Control sub-spec. `schema_version` on `main` is **35**. `claude/gate-5-startup-1ubxfh`
 was reset to match this `main` immediately after the merge and carries no commits of its own on
 top — it's the correct starting point for whatever comes next, no restart needed before you
 begin. No branch carries unmerged app features. Verify with
@@ -534,16 +555,17 @@ true by the time you read this.
 
 **Zip delivered this round:** `Project-Control-Center.zip` — `index.html` + `README.md` +
 `data/`/`files/` (existing `README.txt` placeholders), verified via a fresh extraction opened in
-real Chromium (title and `#page-outlet` render, Management Attention navigable, zero console
-errors; screenshots taken and sent per the standing instruction).
+real Chromium (title and `#page-outlet` render, the Vendor Profile's new Activities tab navigable,
+zero console errors; screenshots taken and sent per the standing instruction).
 
 **Next steps, in likely priority order:**
-1. **PCC Evolution Roadmap Gate 4 is not yet scoped — ask Aditya before building anything.**
-   Tier A (Daily Planner Value) is now effectively complete. Tier B (Control Integration) is the
-   likely next area, but its headline items — Schedule↔Activity and Activity↔Risk/RFI/Meeting
-   relationships — already existed before this roadmap started (Gate 10), so a fresh inspection is
-   needed to find what Tier B genuinely still needs before proposing a gate. Do not start without
-   the explicit "yes, build X as scoped" confirmation this project has consistently required.
+1. **PCC Evolution Roadmap Gate 5 is not yet scoped — ask Aditya before building anything.**
+   Tier B (Control Integration) has one gap left: **Meeting Action→Control linking** — individual
+   meeting action items have zero linking fields today (only the parent meeting has
+   `activity_id`). Likely shape: optional `vendor_id`/`activity_id` (and maybe `rfi_id`/`risk_id`)
+   on `meeting.actions[]` entries, a picker on the action form, and surfacing the link in the
+   Planner Action Centre's meeting-action rows. Do not start without the explicit "yes, build X as
+   scoped" confirmation this project has consistently required.
 2. Older still-open items, none blocking daily use: category-scheme reconciliation
    (Documents/Vendor/Document-Types), the Gantt-bar readiness flag, the two hardcoded reminder/
    lookahead windows (14-day Document Reminders, 30-day Action Centre Upcoming), Resource
