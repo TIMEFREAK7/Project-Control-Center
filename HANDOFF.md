@@ -63,10 +63,11 @@ that override default behavior).
 
 ## Where things stand — Tiers A, B, and C are COMPLETE; Tier D (Management) is underway
 
-`main` is fully up to date through the **Weekly Project Review** gate (PCC Evolution Roadmap,
-Tier D: Management's first built gate), merge commit `c3af1d9`, `schema_version` **39** (new
-`weekly_reviews` array). See the "PCC Evolution Roadmap" section below for the complete gate-by-
-gate history — this section covers only the current tier's state.
+`main` is fully up to date through **wiring Recovery Actions/Decisions into diagnostics,
+Executive Summary, and Reports** (PCC Evolution Roadmap, Tier D's second round this session),
+merge commit `fef89f6`, `schema_version` still **39** (no schema change — this round only wires
+up existing data). See the "PCC Evolution Roadmap" section below for the complete gate-by-gate
+history — this section covers only the current tier's state.
 
 **Tier C (Project Performance) — complete, four gates, all built and merged in an earlier round
 this session** (physical_progress fix, Vendor Performance Centre, Delay & Recovery Management,
@@ -79,16 +80,14 @@ Weekly Project Review, Gate 14 Executive Centre, Gate 15 Executive Summary/Repor
 
 - **Executive Centre** — already fully built as Gate 9's Project Executive Center. Nothing to do.
 - **Executive Summary/Reporting** — mostly already built (Gate 9's six-section summary + the
-  Reports module's Project Status/Portfolio Summary reports), BUT a real gap found: none of the
-  three Tier C registers (Vendor Performance, Recovery Actions, Decisions) are represented in
-  Executive Summary's auto-text, Reports' sections, or Dashboard's Management Attention panel —
-  every comparable register (Risk, RFI, Change Orders, etc.) has one, these don't. **Not fixed
-  this round** — flagged as a separate, smaller follow-on, distinct from the Weekly Review gate.
+  Reports module's Project Status/Portfolio Summary reports); a real gap was found (none of the
+  three Tier C registers were represented anywhere) and **is now fixed for two of the three** — see
+  the follow-on round below. Vendor Performance stays out on purpose (see below).
 - **Weekly Project Review** — did not exist at all. No persisted review record anywhere; the
   closest artifact (Executive Center's Project Snapshot print view) is explicitly commented as fit
   for "weekly/client/steering-committee use" but is a live, ephemeral render with no saved
-  history. **Built this round** — confirmed via `AskUserQuestion` to capture a frozen KPI snapshot
-  per review (not a notes-only log) for trend tracking.
+  history. **Built this session** — confirmed via `AskUserQuestion` to capture a frozen KPI
+  snapshot per review (not a notes-only log) for trend tracking.
 
 **Weekly Project Review** (merge `c3af1d9`): new `weekly_reviews` array — `review_date`,
 `attendees`, `reviewed_by`, three notes fields (Progress This Week/Issues & Blockers/Actions for
@@ -108,14 +107,40 @@ previous review's health score and progress once two reviews exist. Schema migra
 data changes underneath it — closing an already-reviewed risk afterward must not retroactively
 change what an earlier review showed).
 
-Real-Chromium pass (screenshot taken and sent, per the standing instruction below) confirmed
-capturing a review, its frozen snapshot and RAG badge, and the notes-only edit path — zero console
-errors. The full test suite (**39 files, 947 checks**) passes clean as of this handoff. **No
-branch currently carries unmerged app features** — `claude/tier-c-code-inspection-jysweb` (name is
-now stale relative to its content — it's carried every gate this session, Tier C and D alike; a
-future session may want to start a fresh branch with a name matching current work) was merged into
-`main` in full and should be restarted from the new `main` before the next gate. Verify with
-`git log origin/main..HEAD` before assuming this is still true by the time you read this.
+Real-Chromium pass confirmed capturing a review, its frozen snapshot and RAG badge, and the
+notes-only edit path — zero console errors. Merge commit `c3af1d9`.
+
+**Wiring Recovery Actions/Decisions into diagnostics/Executive Summary/Reports** (merge `fef89f6`,
+same session, follow-on round after Weekly Project Review): closes the gap the Tier D inspection
+above found, for two of the three affected registers. Checked whether Vendor Performance could be
+included too — its `project_id` field is never actually set by any UI (`vendors.js`'s Performance
+tab form only ever saves `vendor_id`), so it can't be meaningfully project-scoped, and it already
+has its own portfolio-wide Vendor Performance Centre page; excluded on inspection, nothing missing
+for it. Confirmed via `AskUserQuestion`: pending Decisions get **WARNING** severity in diagnostics
+(not INFO like pending Change Orders) since a Decision has no separate approval workflow to fall
+back on the way a Change Order does. `projectHealthEngine.js`'s `computeDiagnostics()` gained two
+new rule blocks — overdue recovery actions and pending decisions, both WARNING — shared by both
+Executive Center's own Diagnostics panel and Dashboard's Management Attention panel (Gate 31's
+exported `getDiagnostics()`), so one change closed two of the three originally-flagged surfaces at
+once. `executiveCenter.js`: `autoChallengesText()`/`autoAttentionText()` now mention them;
+`navigateToLink()` gained cases for `decisionRegister` (expands the specific decision) and
+`delayRecoveryDashboard` (lands on the dashboard, already sorted overdue-first — no per-record
+expand API exists there since it's a portfolio rollup, not a detail page). `reports.js`:
+`buildProjectReport()` gained Recovery Actions and Decisions table sections matching the existing
+Risk/RFI/Change Order pattern; `buildPortfolioReport()` gained matching count-only sections
+matching its own lighter style. No schema change. New test file
+`test_recovery_decision_reporting_e2e.js` (31 checks) plus a 22-route smoke test; full suite
+re-run clean with zero regressions in the 39 pre-existing files. Real-Chromium pass confirmed both
+Diagnostics/Management Attention panels show the new WARNING alerts with working navigation, and
+both Reports views show the new sections with correct counts — zero console errors.
+
+The full test suite (**40 files, 978 checks**) passes clean as of this handoff. **No branch
+currently carries unmerged app features** — `claude/tier-c-code-inspection-jysweb` (name is now
+stale relative to its content — it's carried every gate this session, Tier C and D alike; a future
+session may want to start a fresh branch with a name matching current work) was merged into `main`
+in full (two more merges this round, `c3af1d9` then `fef89f6`) and should be restarted from the
+new `main` before the next gate. Verify with `git log origin/main..HEAD` before assuming this is
+still true by the time you read this.
 
 **The entire 14-gate Document Control sub-spec Aditya originally handed over is complete (Gates
 14-28)** — Master Repository, Project Requirements, Classification/Nomenclature, Status/Version
@@ -586,9 +611,10 @@ is" section below.
   line — none of the three Tier C registers (Vendor Performance, Recovery Actions, Decisions) are
   referenced anywhere in them, even though every comparable register (Risk, RFI, Change Orders,
   Documents, Meetings, Daily Log) has its own section/mention. Dashboard's Management Attention
-  panel (Gate 31) inherits the same blind spot since it reuses the same diagnostics engine. **Not
-  fixed this round** — this is a distinct, smaller follow-on gate from Weekly Project Review, still
-  unscoped.
+  panel (Gate 31) inherits the same blind spot since it reuses the same diagnostics engine.
+  **Fixed this session, follow-on round, for Recovery Actions and Decisions** — see below. Vendor
+  Performance stays out on purpose: its `project_id` is never actually set by any UI, so it can't
+  be meaningfully project-scoped, and it already has its own portfolio-wide page.
 - **Weekly Project Review (built this session).** Confirmed via `AskUserQuestion`: capture a
   frozen KPI snapshot per review (health score, RAG, schedule/physical progress %, cost
   budget/actual/variance, open risks incl. high-severity, open/overdue RFIs, pending change
@@ -613,15 +639,39 @@ is" section below.
   `test_store_schema_v38_migration.js` → `test_store_schema_v39_migration.js`. New test file
   `test_weekly_reviews_e2e.js` (33 checks) plus a 22-route smoke test. Merge commit `c3af1d9`.
 
-**Next roadmap gate: not yet scoped.** Tiers A, B, and C are complete; Tier D has Executive Centre
-done, Weekly Project Review built, and one gap identified but not yet built: wiring the three
-Tier C registers into Executive Summary's auto-text, Reports' sections, and Dashboard's
-Management Attention panel. Propose that (or ask Aditya if Tier D should be considered done enough
-to move to Tier E/F instead — the three named Tier D gates are all now either built or explicitly
-assessed as already-satisfied). ~21 more gates remain across Tiers E-F (Portfolio, then Tier F's
-advanced planning/controls gates — Commitment Management, Status-Date Control, Reforecasting,
-Baseline/Revision Control, Advanced Delay Analysis, Recovery Planning, Schedule Performance — note
-some of these names may already be partially covered by gates built this session; get the named
+- **Wire Recovery Actions/Decisions into diagnostics/Executive Summary/Reports (this session,
+  follow-on round after Weekly Project Review).** Closes the Executive Summary/Reporting gap above
+  for two of the three affected registers — Vendor Performance excluded on inspection (see that
+  bullet's note). Confirmed via `AskUserQuestion`: pending Decisions get **WARNING** severity
+  (not INFO like pending Change Orders), since a Decision has no separate approval workflow to
+  fall back on the way a Change Order does. `projectHealthEngine.js`'s `computeDiagnostics()`
+  gained two new rule blocks — overdue recovery actions and pending decisions, both WARNING —
+  shared by both Executive Center's own Diagnostics panel and Dashboard's Management Attention
+  panel (Gate 31's exported `getDiagnostics()`), so one engine change closed two of the three
+  originally-flagged surfaces at once. `executiveCenter.js`: `autoChallengesText()` now mentions
+  overdue recovery actions, `autoAttentionText()` now mentions pending decisions;
+  `navigateToLink()` gained cases for `decisionRegister` (expands the specific decision via
+  `expandDecision()`) and `delayRecoveryDashboard` (lands on the dashboard, which already sorts
+  overdue-first — no per-record expand API exists there since it's a portfolio rollup, not a
+  detail page, same trade-off already accepted for the `cost` module landing on its Budget tab
+  only). `reports.js`: `buildProjectReport()` gained Recovery Actions and Decisions table
+  sections matching the existing Risk/RFI/Change Order table pattern; `buildPortfolioReport()`
+  gained matching count-only sections matching its own lighter Risk/RFI/Change Order style — no
+  table there, just a count line. No schema change (`schema_version` stays 39). New test file
+  `test_recovery_decision_reporting_e2e.js` (31 checks — Executive Center Diagnostics showing both
+  new WARNING alerts, the View-button navigation, Executive Summary auto-text, Dashboard
+  Management Attention, and both Reports views) plus a 22-route smoke test; full suite re-run
+  clean with zero regressions in the 39 pre-existing files. Merge commit `fef89f6`.
+
+**Next roadmap gate: not yet scoped.** Tiers A, B, and C are complete; **Tier D (Management) is
+now fully done** — all three named gates are built or already-satisfied, and the follow-on
+reporting-wiring gap is closed for the two registers where it was actually fixable. Ask Aditya for
+Tier E (Portfolio)'s named gate breakdown the same way Tier D's came (the original roadmap
+document was never saved as a file in this repo). ~21 more gates remain across Tiers E-F
+(Portfolio, then Tier F's advanced planning/controls gates — Commitment Management, Status-Date
+Control, Reforecasting, Baseline/Revision Control, Advanced Delay Analysis, Recovery Planning,
+Schedule Performance — note some of these names may already be partially covered by gates built
+this session; get the named
 breakdown from Aditya directly, the same way Tier D's came, rather than guessing).
 
 **Deliberately still open / explicitly deferred, don't assume these got done:**
@@ -709,7 +759,7 @@ breakdown from Aditya directly, the same way Tier D's came, rather than guessing
   there fails `npm test` with a bare `MODULE_NOT_FOUND` even though every individual test file is
   fine (hit this exact thing shipping Gate 19; fixed by editing `tests/package.json` alongside the
   `git mv`).
-- Testing: `cd tests && npm test` must pass before anything ships (39 files, 947 checks as of
+- Testing: `cd tests && npm test` must pass before anything ships (40 files, 978 checks as of
   this handoff). Pure-logic tests eval the real source file directly. E2E tests load the actual
   bundled `index.html` via jsdom (+ `fake-indexeddb` for IndexedDB-touching code). Also do one
   real-Chromium pass per gate (`/opt/pw-browsers/chromium-1194/chrome-linux/chrome --no-sandbox`,
@@ -764,44 +814,47 @@ breakdown from Aditya directly, the same way Tier D's came, rather than guessing
 
 ## Repo/branch state
 
-`main` is fully up to date through the **Weekly Project Review** gate (`c3af1d9`, a direct merge —
-no PR, per Aditya's now-standing "always merge after completing a gate/phase" instruction, see
-above) — **Tiers A, B, and C are fully complete; Tier D (Management) is underway** (Executive
-Centre already satisfied, Weekly Project Review built, Executive Summary/Reporting's Tier-C-blind-
-spot gap still open). Five rounds landed on `main` this session, all via the same designated
-remote-session branch, `claude/tier-c-code-inspection-jysweb` (name is stale now — it's carried
-Tier C and D gates alike), restarted from the new `main` between each per the standing "restart
-before the next gate" instruction: the Tier C inspection + `physical_progress` fix first (merge
-`fba3d42`), then Vendor Performance Centre (merge `0801b10`), then Delay & Recovery Management
-(merge `4882f79`), then Decision Register (merge `d57a056`), then Weekly Project Review (merge
-`c3af1d9`). Aditya confirmed via `AskUserQuestion` to proceed with each merge given the branch's
-own "never push elsewhere without permission" constraint; see the git log for the exact sequence
-if that matters later. This builds on top of **Tier B (Control Integration)**, complete as of
-Gate 33, and the already-complete 14-gate Document Control sub-spec. `schema_version` on `main` is
-**39** (`weekly_reviews` — new every round except Vendor Performance Centre, which was read-only).
-`claude/tier-c-code-inspection-jysweb` carries the same history as `main` as of this merge (nothing
-unmerged on it) but was NOT reset/deleted after this *fifth* merge — do that (or start a fresh
-branch, maybe with a name matching current work this time) before the next gate, per the standing
-"restart the working branch from the new main" instruction. No branch carries unmerged app features
-as of this handoff. Verify with `git log origin/main..HEAD` and `git status` before assuming this
-is still true by the time you read this.
+`main` is fully up to date through **wiring Recovery Actions/Decisions into diagnostics/Executive
+Summary/Reports** (`fef89f6`, a direct merge — no PR, per Aditya's now-standing "always merge
+after completing a gate/phase" instruction, see above) — **Tiers A, B, and C are fully complete;
+Tier D (Management) is now fully done too**, all three named gates built/satisfied and the
+reporting gap closed for the two registers where it was fixable. Six rounds landed on `main` this
+session, all via the same designated remote-session branch, `claude/tier-c-code-inspection-jysweb`
+(name is stale now — it's carried Tier C and D gates alike), restarted from the new `main` between
+each per the standing "restart before the next gate" instruction: the Tier C inspection +
+`physical_progress` fix first (merge `fba3d42`), then Vendor Performance Centre (merge `0801b10`),
+then Delay & Recovery Management (merge `4882f79`), then Decision Register (merge `d57a056`), then
+Weekly Project Review (merge `c3af1d9`), then the Recovery Actions/Decisions reporting-wiring
+follow-on (merge `fef89f6`). Aditya confirmed via `AskUserQuestion` to proceed with each merge
+given the branch's own "never push elsewhere without permission" constraint; see the git log for
+the exact sequence if that matters later. This builds on top of **Tier B (Control Integration)**,
+complete as of Gate 33, and the already-complete 14-gate Document Control sub-spec.
+`schema_version` on `main` is **39** — unchanged from the Weekly Project Review round, since the
+reporting-wiring round needed no schema change. `claude/tier-c-code-inspection-jysweb` carries the
+same history as `main` as of this merge (nothing unmerged on it) but was NOT reset/deleted after
+this *sixth* merge — do that (or start a fresh branch, maybe with a name matching current work
+this time) before the next gate, per the standing "restart the working branch from the new main"
+instruction. No branch carries unmerged app features as of this handoff. Verify with
+`git log origin/main..HEAD` and `git status` before assuming this is still true by the time you
+read this.
 
 **Zip delivered this round:** `Project-Control-Center.zip` — `index.html` + `README.md` +
 `data/`/`files/` (existing `README.txt` placeholders), verified via a fresh extraction
-(`/tmp/pcc_zip_verify5/`, not the dev working copy) opened in real Chromium — title and
-`#page-outlet` render, the new Weekly Reviews tab renders correctly with a seeded project, zero
-console errors; screenshot taken and sent per the standing instruction.
+(`/tmp/pcc_zip_verify6/`, not the dev working copy) opened in real Chromium — title and
+`#page-outlet` render, a seeded pending decision correctly appears on Dashboard's Management
+Attention panel, zero console errors; screenshot taken and sent per the standing instruction.
 
 **Next steps, in likely priority order:**
-1. **PCC Evolution Roadmap's next gate is not yet scoped — ask Aditya before building anything.**
-   Tiers A, B, and C are all complete. Tier D (Management) has Executive Centre already satisfied
-   and Weekly Project Review built; one identified gap remains: wiring Vendor Performance/Recovery
-   Actions/Decisions into Executive Summary's auto-text, Reports' sections, and Dashboard's
-   Management Attention panel (found during this session's Tier D inspection, not yet built).
-   Propose that, or ask whether Tier D counts as done enough to move to Tier E (Portfolio) — get
-   Tier E/F's named gate breakdown directly from Aditya first, the same way Tier D's three names
-   came this session (the original roadmap document was never saved as a file in this repo, only
-   ever handed over conversationally — don't assume a future session can find it).
+1. **PCC Evolution Roadmap's next tier is not yet scoped — ask Aditya before building anything.**
+   Tiers A, B, C, and now D are all complete. Get Tier E (Portfolio)'s named gate breakdown
+   directly from Aditya the same way Tier D's three names came this session (the original roadmap
+   document was never saved as a file in this repo, only ever handed over conversationally — don't
+   assume a future session can find it or guess from the one-line tier summary in "What this
+   project is" above). Then inspect Tier E against the real code before proposing anything, same
+   discipline as every tier so far — some of Tier E/F's likely gates (per the one-line summary:
+   Commitment Management, Status-Date Control, Reforecasting, Baseline/Revision Control, Advanced
+   Delay Analysis, Recovery Planning, Schedule Performance) may already be partially covered by
+   what's been built across this session and earlier ones.
 2. Older still-open items, none blocking daily use: category-scheme reconciliation
    (Documents/Vendor/Document-Types), the Gantt-bar readiness flag, the two hardcoded reminder/
    lookahead windows (14-day Document Reminders, 30-day Action Centre Upcoming), Resource
