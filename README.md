@@ -2176,6 +2176,55 @@ reminders/notifications, dashboards, executive summary, portfolio compliance rol
 only adds a vendor-facing view; nothing yet acts on what it surfaces (no reminders sent, no
 portfolio-wide rollup of overdue-by-vendor).
 
+## Gate 24 — Document Control 10: Readiness/Constraints (2026-08-18)
+
+Tenth gate of the 14-gate Document Control spec. Scoped and confirmed before building, same
+discipline as every gate in this sub-spec. Reads Gate 21's `activity_id` link in reverse: an
+activity is "Not Ready" when at least one document requirement governed by it isn't yet Available.
+Deliberately kept to the Activity Detail Panel only — a purely informational, read-only signal,
+never an enforced constraint (this app has no workflow-blocking anywhere else either; Gate 17's
+document status is a plain select, not a gate). Visual overlay on the Gantt bars themselves was
+explicitly considered and deferred — a bigger lift better suited to a later Dashboards-style gate,
+not this one.
+
+**What changed:**
+
+- `pages/schedule.js`: a new **"Document Readiness"** section on the existing Activity Detail
+  Panel, right after Gate 10 (Activity Linking)'s own Linked Records section:
+  - New `computeRequirementStatus()` — same Available/Overdue/Required logic as
+    `portfolio.js`/`vendors.js`'s own copies, duplicated per this app's per-module-helpers
+    convention.
+  - New `renderDocumentReadinessSection()` lists every `project_document_requirements` row whose
+    `activity_id` names this activity, each with its computed status badge and due date (or no
+    due date, never fabricated). An overall **READY** / **NOT READY** summary line at top — NOT
+    READY the moment even one linked requirement isn't yet Available, regardless of how many
+    others already are.
+  - Empty state ("No document requirements are linked to this activity yet...") when nothing is
+    linked — no readiness line rendered at all in that case, since there's nothing to be ready
+    about.
+
+**Tested before delivery (9 new e2e checks in a new file, full suite re-run clean, 534 checks
+total):**
+
+- **End-to-end against the actual bundled `index.html`** (new file,
+  `test_activity_document_readiness_e2e.js`, 9 checks): an unlinked activity shows the empty state
+  with no readiness line; linking one unfulfilled requirement shows NOT READY with a Required
+  badge and its due date; a past due date on it flips the badge to Overdue, still NOT READY;
+  attaching a matching document flips both the row to Available and the overall line to READY; an
+  activity with two linked requirements (one Available, one still Required) reads NOT READY
+  overall — confirming "any one unfulfilled requirement" logic, not "all fulfilled" majority logic;
+  the Edit button remains present throughout, confirming readiness is informational and never
+  blocks editing; full route smoke check.
+- **Real-browser verification** (Chromium via Playwright): seeded a project/schedule/activity with
+  one overdue, unfulfilled requirement directly via the store, opened the activity's detail panel,
+  and confirmed the "NOT READY" line and the requirement's Overdue badge rendered correctly — zero
+  console/page errors.
+
+**What I have not tested:** this on your actual device. Same standard as every prior gate. Not
+done, deliberately: Document Control gates 11-14 (reminders/notifications, dashboards, executive
+summary, portfolio compliance rollups) — this gate only surfaces readiness when you open an
+activity's own detail panel; there's no portfolio-wide rollup or Gantt-level visual flag yet.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
@@ -2203,7 +2252,7 @@ line items on the original locked Tier 2/3 list. Built in a separate parallel se
 Gates 8-11 and reconciled into `main` together with them (see each gate's own write-up above for
 the schema-numbering note on how the reconciliation renumbered them).
 
-**Document Control** (Gates 14-23 = Document Control gates 1-9 of a separate 14-gate sub-spec,
+**Document Control** (Gates 14-24 = Document Control gates 1-10 of a separate 14-gate sub-spec,
 done) — same footing as Executive Center/Activity Linking/Vendor Management above: a directly
 requested, explicitly incremental upgrade to Documents, not a Tier 1/2/3 line item. The Master
 Document Repository (the type taxonomy, Gate 14), Project-Specific Document Requirements (which
@@ -2221,9 +2270,12 @@ it either way. **Gate 22** added an optional lead time that, combined with Gate 
 a suggested due date — applied only via an explicit "Use" action, never automatically. **Gate 23**
 added a "Document Lookahead" tab to Vendor Management's existing Vendor Profile page — a read-only
 view of every requirement assigned to that vendor, across all their projects, sorted soonest-due-
-first. Document Control gates 10-14 (readiness/constraints, reminders, dashboards,
-executive/portfolio compliance) are intentionally not started — see Gates 14-23's own write-ups
-above.
+first. **Gate 24** added a "Document Readiness" section to the Schedule module's Activity Detail
+Panel — reads Gate 21's activity link in reverse, flagging an activity NOT READY the moment any
+one of its governing requirements isn't yet Available; purely informational, never enforced.
+Document Control gates 11-14 (reminders/notifications, dashboards, executive summary,
+portfolio/executive compliance rollups) are intentionally not started — see Gates 14-24's own
+write-ups above.
 
 **Tier 3 (deferred until Tier 1 is in daily use):** AI Document Processing, Knowledge Base, AI Project
 Assistant, Lessons Learned, final polish
@@ -2233,16 +2285,17 @@ Assistant, Lessons Learned, final polish
 **Tier 2 is complete**, and Vendor Management / the in-app Excel editor / the Document Control
 foundation (repository + per-project requirements + classification/nomenclature + status/version
 control + manual due dates + vendor assignment + schedule linking + lead-time suggestions + vendor
-lookahead) are all done alongside it. The most likely next piece of work is **Document Control
-gate 10 (Readiness/Constraints)** — flagging Schedule activities whose governing document
-requirements aren't yet Available, per the sub-spec's own locked gate order, but confirm scope
-before starting it rather than assuming, same discipline as every gate before this one. Other open
-items, none blocking daily use: rate × usage from Resource Management feeding Cost Tracking/EVM
-(explicitly deferred, Gate 11); a persisted/logo-customizable report-template system;
-portfolio-level executive dashboard filtering; 10,000+ activity Gantt virtualization;
-per-activity linking extended to Resource Assignments' own sub-fields if that turns out to matter
-in practice; Vendor↔Cost/Schedule integration beyond the current Vendor↔Project/Meeting/RFI/Risk
-links, if that turns out to matter in practice; reconciling Documents' `category` / Vendor
+lookahead + readiness flagging) are all done alongside it. The most likely next piece of work is
+**Document Control gate 11 (Reminders/Notifications)** — surfacing upcoming/overdue requirements
+proactively rather than only when you open the relevant project/vendor/activity, per the
+sub-spec's own locked gate order, but confirm scope before starting it rather than assuming, same
+discipline as every gate before this one. Other open items, none blocking daily use: rate × usage
+from Resource Management feeding Cost Tracking/EVM (explicitly deferred, Gate 11); a
+persisted/logo-customizable report-template system; portfolio-level executive dashboard filtering;
+10,000+ activity Gantt virtualization; per-activity linking extended to Resource Assignments' own
+sub-fields if that turns out to matter in practice; Vendor↔Cost/Schedule integration beyond the
+current Vendor↔Project/Meeting/RFI/Risk links, if that turns out to matter in practice;
+reconciling Documents' `category` / Vendor
 Management's document categories / the Gate 14 master repository into one classification scheme,
 explicitly deferred twice now (Gates 14 and 16) — worth revisiting once real usage shows whether
 it's actually needed. Tier 3 (AI Document
