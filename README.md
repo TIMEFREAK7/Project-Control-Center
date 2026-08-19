@@ -2429,6 +2429,83 @@ Schedule-Driven Dates/Lead Time, Vendor Lookahead, Readiness/Constraints,
 Reminders/Notifications, Dashboards, Executive Summary, and Portfolio Compliance. Nothing from
 this sub-spec remains unstarted.
 
+## Gate 29 — Planner Action Centre (PCC Evolution Roadmap, Gate 1) (2026-08-19)
+
+**The first gate of a new, separate roadmap** Aditya handed over on 2026-08-19 to evolve PCC from
+a collection of registers into a connected "project control centre" — Portfolio → Project Control
+Centre → Planner Action Centre → Lookahead → Schedule → Risk/Issue/RFI/Vendor/Change →
+Recovery/Decision → Executive Centre. Before building anything, this session ran a full inspection
+of the existing codebase against that roadmap (recorded in this session's own history rather than
+re-duplicated here) and reported back that a surprising amount of the roadmap's "Tier A/B" was
+already built: Gate 9's Executive Center already provides a transparent, rule-based project health
+score and diagnostics; Gate 10 already links Schedule activities bidirectionally to Risks, RFIs,
+Meetings, Documents, Daily Logs, and Change Orders; Gate 11 already is portfolio-wide Resource
+Management. What was genuinely missing and chosen as the roadmap's actual Gate 1: a **Planner
+Action Centre** — a new page answering "what do I need to do today?" by aggregating every
+existing record type that carries a real due date into dated buckets, since nothing in PCC
+did that yet.
+
+Scoped and confirmed via two direct questions before building: (1) a new dedicated page with its
+own sidebar entry, rather than folding it into the existing Dashboard — keeps Dashboard's Document
+Reminders panel (Gate 25) untouched; (2) include Change Orders pending decision as a dateless
+"Waiting For" item alongside the date-driven sources, even though Change Orders have no due-date
+field to bucket by.
+
+**What changed:**
+
+- New page, `pages/actionCentre.js` (registered in `app.js`, added to the sidebar's OVERVIEW group
+  right after Dashboard in `layout.js`, added to `build.js`'s `JS_ORDER`). Aggregates:
+  - **Meeting Actions** (`due_date`, `status: open`) — date-bucketed, or Waiting For if undated.
+  - **RFI/TQ** (`date_required`, `status: open` only — `answered`/`closed` excluded since those
+    are no longer awaiting a response) — date-bucketed, or Waiting For if undated.
+  - **Document Requirements** — reuses the Available/Overdue/Required computation every Document
+    Control gate since Gate 18 has used (the eighth independent copy now); only Overdue/Required
+    rows appear, Available never does even with a past due date — date-bucketed by
+    `planned_submission_date`, or Waiting For if undated.
+  - **Change Orders** (`status: pending`) — always Waiting For; that record has no due-date field
+    at all, so it can never be bucketed by a real date.
+- Five buckets, each its own panel: **Overdue** (< today), **Due Today** (= today), **Due This
+  Week** (≤ 7 days out), **Upcoming** (8–30 days out, a hardcoded window matching Gate 25's own
+  `DUE_SOON_WINDOW_DAYS` precedent), and **Waiting For** (no due date, or a date beyond the
+  30-day upcoming window). Each bucket sorts ascending by due date; Waiting For sorts by project
+  name then record kind for a stable order. Each row shows the record kind, title, project,
+  owner/vendor, due date if any, and a **View** button that jumps straight to the source record
+  already expanded — reusing existing `window.PCC.meetings.expandMeeting()`,
+  `window.PCC.rfis.expandRfi()`, `window.PCC.changeOrders.expandChangeOrder()`, and
+  `window.PCC.portfolio.viewProject()` hooks rather than inventing new navigation.
+- Deliberately excluded from this gate: Risks/Issues have no due-date field in the schema at all,
+  so including them would mean either fabricating a date or inventing a new field — left for a
+  future gate if/when that data exists. No "Recently Updated" section either, since it wasn't part
+  of the confirmed scope.
+- **No schema changes.** `schema_version` stays at 34 — everything here is computed at render time
+  from data that already existed.
+
+**Tested before delivery (new file, 35 e2e checks — full suite re-run clean, 29 files, 630 checks
+total):**
+
+- **End-to-end against the actual bundled `index.html`** (new file, `test_action_centre_e2e.js`):
+  the empty state before any project exists; every bucket boundary explicitly (day -2 overdue,
+  day 0 due today, day 7 the exact edge of due-this-week, day 8 and day 30 both landing in
+  Upcoming, day 31 correctly excluded from every bucket entirely); status filtering (a `done`
+  meeting action, an `answered` RFI, and an `approved` Change Order all correctly excluded); an
+  Available document requirement excluded despite carrying a past due date; an archived project's
+  meeting action never appearing; ascending sort order within a bucket verified explicitly; KPI
+  card counts; "View" navigating into Meetings/RFI/TQ/Change Mgmt with the right record already
+  expanded; confirmed the gate writes nothing back to the store; a full 18-route smoke test
+  (including this new route).
+- **Real-browser verification** (Chromium via Playwright, screenshots captured): seeded two
+  projects with meeting actions, RFIs, a document requirement, and a pending Change Order spanning
+  every bucket, confirmed the page rendered with correct bucket counts and content, clicked a View
+  button and confirmed real navigation with the target record pre-expanded, confirmed the sidebar
+  entry renders and routes correctly — zero console/page errors.
+
+**What I have not tested:** this on your actual device. Same standard as every prior gate. Per the
+new roadmap's own gate discipline (inspect → plan → implement → build → test → regression test →
+verify real data → close gate, then stop for approval before the next gate), this gate is reported
+and closed here — the next gate (likely the Project Lookahead or a Management-Attention surfacing
+of Gate 9's existing health engine) needs to be scoped and confirmed before it starts, same as
+every gate in this session's history.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
@@ -2496,15 +2573,23 @@ Assistant, Lessons Learned, final polish
 ## Next phase
 
 **Tier 2 is complete, and the entire 14-gate Document Control sub-spec Aditya handed over is now
-built** (Gates 14-28) — no gates from that spec remain. The most likely next piece of work is
-whatever Aditya wants to tackle next; there's no locked next item the way there was while
-Document Control was in progress. Open items, none blocking daily use: rate × usage from
+built** (Gates 14-28) — no gates from that spec remain. A new, separate roadmap started with Gate
+29 (Planner Action Centre, 2026-08-19) — see that gate's own write-up above for the full
+inspection findings behind it. That roadmap's own next gate is **not yet started or scoped** — per
+its explicit gate discipline, each gate gets proposed in a short paragraph and confirmed before
+building, one at a time; the two strongest candidates raised so far are a consolidated **Project
+Lookahead** (7/14/30/60-day view spanning Schedule, Vendors, Documents, RFIs, Meetings) and
+surfacing Gate 9's existing health-score/diagnostics engine as a **Management Attention** strip on
+the Dashboard — both still need Aditya's confirmation before either starts.
+
+Other open items, none blocking daily use: rate × usage from
 Resource Management feeding Cost Tracking/EVM (explicitly deferred, Gate 11); a
 persisted/logo-customizable report-template system; portfolio-level executive dashboard filtering;
 10,000+ activity Gantt virtualization; per-activity linking extended to Resource Assignments' own
 sub-fields if that turns out to matter in practice; Vendor↔Cost/Schedule integration beyond the
 current Vendor↔Project/Meeting/RFI/Risk links, if that turns out to matter in practice; the
-Document Reminders panel's 14-day due-soon window is currently hardcoded, not user-configurable;
+Document Reminders panel's 14-day due-soon window and the new Action Centre's 30-day upcoming
+window are both currently hardcoded, not user-configurable;
 a Gantt-bar-level visual flag for "not ready" activities (considered and deferred at Gate 24);
 reconciling Documents' `category` / Vendor
 Management's document categories / the Gate 14 master repository into one classification scheme,
