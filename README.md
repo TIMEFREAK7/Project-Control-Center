@@ -2061,6 +2061,69 @@ done, deliberately: Document Control gates 8-14 (schedule-derived lead time off 
 lookahead, readiness/constraints, reminders, dashboards, executive/portfolio compliance) — this
 gate only adds the link itself, nothing reads or acts on it yet.
 
+## Gate 22 — Document Control 8: Schedule-Driven Dates/Lead Time (2026-08-18)
+
+Eighth gate of the 14-gate Document Control spec. Scoped and confirmed before building, same
+discipline as every gate in this sub-spec. Builds directly on Gate 21's `activity_id` link: a
+requirement can now carry a lead time (in days) that, combined with the linked activity's start
+date, produces a *suggested* due date — but the suggestion never writes itself in. It's applied
+only via an explicit one-click action, the same "suggested, not enforced" shape Gate 15's project
+templates and Gate 16's criticality auto-suggestion already established for this app. Deliberately
+does not touch `planned_submission_date` or `activity_id` automatically in any other path — no
+recalculation on activity reschedule, no silent overwrite of a manually-set due date.
+
+**What changed:**
+
+- `store.js` (schema v32→v33): `project_document_requirements` rows gain an optional
+  `lead_time_days` (`null` default), meaningful only alongside `activity_id`. The migration
+  backfills `null` onto every existing row that predates this gate.
+- `pages/portfolio.js`:
+  - New day-math helpers (`toDayNumber`/`toIsoDate`/`addDays`) — same shape as
+    `scheduleGanttLayout.js`'s own versions, duplicated per this app's per-module-helpers
+    convention — plus `activityStartDate(activity)`, which applies this app's standing date
+    precedence (calculated `early_start` wins over `planned_start`), and
+    `computeSuggestedDueDate(data, activityId, leadTimeDays)`, which returns the activity's start
+    date minus the lead time, or `null` if either input is missing or the activity has no usable
+    start date yet.
+  - `renderDocumentRequirementsField()` (the Add/Edit Project form's checklist) grows a lead-time
+    number input next to Gate 21's activity select, mirrored in a new uncommitted
+    `uiState.formLeadTimes` map with the same seeded-at-button-click/uncommitted-until-Save
+    treatment as the others. When a suggested date is computable and differs from the current due
+    date, a `"Suggested: <date>"` note appears with a **"Use"** button that copies it into the due
+    date field — a single explicit click, never automatic, and the note disappears once the due
+    date already matches (nothing left to suggest).
+  - `renderForm()`'s submit handler reconciles `lead_time_days` onto each selected type's row in
+    the same `store.update()` call that already reconciles due date, vendor, and activity link.
+  - `renderDocumentRequirementsSection()` (Portfolio Details' read-only summary) appends
+    `"(Nd lead time)"` after the linked activity's name when a lead time is set.
+
+**Tested before delivery (2 migration + 6 new e2e checks added to the existing Document Control
+files, full suite re-run clean, 514 checks total):**
+
+- **Schema migration** (`test_store_schema_v33_migration.js`, renamed from the v32 file): the full
+  chain and a legacy/brand-new install land on schema_version 33; `newProjectDocumentRequirement()`
+  defaults `lead_time_days` to `null`; a dedicated check migrates a v32 dataset with one
+  requirement row missing `lead_time_days` (backfilled to `null`) and one that already has one set
+  (survives untouched).
+- **End-to-end against the actual bundled `index.html`** (`test_project_document_requirements_e2e.js`,
+  extended in place again): entering a lead time next to a linked activity shows the exact
+  suggested date (verified against a seeded `planned_start`, e.g. 10 days before `2026-10-01` reads
+  `Suggested: 2026-09-21`) without touching the due-date field until "Use" is explicitly clicked;
+  clicking it applies the date and the suggestion disappears; Save persists both fields atomically
+  with the rest of the requirement; re-opening Edit pre-fills the stored lead time; the read-only
+  Details summary shows it inline with the linked activity; full 16-route smoke test.
+- **Real-browser verification** (Chromium via Playwright): seeded a project with an activity dated
+  `planned_start: 2026-12-01`, opened Edit, checked BOQ, linked the activity, entered a 7-day lead
+  time, confirmed `Suggested: 2026-11-24` rendered correctly (2026-12-01 minus 7 days), clicked
+  "Use," saved, and confirmed both `lead_time_days: 7` and `planned_submission_date: "2026-11-24"`
+  round-tripped into the store exactly as computed — zero console/page errors.
+
+**What I have not tested:** this on your actual device. Same standard as every prior gate. Not
+done, deliberately: Document Control gates 9-14 (vendor lookahead, readiness/constraints,
+reminders, dashboards, executive/portfolio compliance) — this gate only adds the suggestion
+mechanism, nothing surfaces overdue/upcoming requirements across the portfolio yet (that's later
+gates' job).
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
@@ -2088,7 +2151,7 @@ line items on the original locked Tier 2/3 list. Built in a separate parallel se
 Gates 8-11 and reconciled into `main` together with them (see each gate's own write-up above for
 the schema-numbering note on how the reconciliation renumbered them).
 
-**Document Control** (Gates 14-21 = Document Control gates 1-7 of a separate 14-gate sub-spec,
+**Document Control** (Gates 14-22 = Document Control gates 1-8 of a separate 14-gate sub-spec,
 done) — same footing as Executive Center/Activity Linking/Vendor Management above: a directly
 requested, explicitly incremental upgrade to Documents, not a Tier 1/2/3 line item. The Master
 Document Repository (the type taxonomy, Gate 14), Project-Specific Document Requirements (which
@@ -2102,9 +2165,11 @@ submission date per requirement, with a computed Overdue status alongside Availa
 **Gate 20** added an optional assigned vendor per requirement, reusing the existing Vendor
 Management module rather than a second register. **Gate 21** added an optional link from a
 requirement to one of the project's own Schedule activities — purely a link, no date derived from
-it either way. Document Control gates 8-14 (schedule-derived lead time off that link, vendor
-lookahead, readiness/constraints, reminders, dashboards, executive/portfolio compliance) are
-intentionally not started — see Gates 14-21's own write-ups above.
+it either way. **Gate 22** added an optional lead time that, combined with Gate 21's link, computes
+a suggested due date — applied only via an explicit "Use" action, never automatically. Document
+Control gates 9-14 (vendor lookahead, readiness/constraints, reminders, dashboards,
+executive/portfolio compliance) are intentionally not started — see Gates 14-22's own write-ups
+above.
 
 **Tier 3 (deferred until Tier 1 is in daily use):** AI Document Processing, Knowledge Base, AI Project
 Assistant, Lessons Learned, final polish
@@ -2113,17 +2178,17 @@ Assistant, Lessons Learned, final polish
 
 **Tier 2 is complete**, and Vendor Management / the in-app Excel editor / the Document Control
 foundation (repository + per-project requirements + classification/nomenclature + status/version
-control + manual due dates + vendor assignment + schedule linking) are all done alongside it. The
-most likely next piece of work is **Document Control gate 8 (Schedule-Driven Dates/Lead Time)** —
-using Gate 21's new activity link plus a configurable lead time to derive/suggest a requirement's
-planned submission date, per the sub-spec's own locked gate order, but confirm scope before
-starting it rather than assuming, same discipline as every gate before this one. Other open items,
-none blocking daily use: rate × usage from Resource Management feeding Cost Tracking/EVM
-(explicitly deferred, Gate 11); a persisted/logo-customizable report-template system;
-portfolio-level executive dashboard filtering; 10,000+ activity Gantt virtualization;
-per-activity linking extended to Resource Assignments' own sub-fields if that turns out to matter
-in practice; Vendor↔Cost/Schedule integration beyond the current Vendor↔Project/Meeting/RFI/Risk
-links, if that turns out to matter in practice; reconciling Documents' `category` / Vendor
+control + manual due dates + vendor assignment + schedule linking + lead-time suggestions) are all
+done alongside it. The most likely next piece of work is **Document Control gate 9 (Vendor
+Lookahead)** — a vendor-facing view of what's expected from them, using Gate 20's assignment —
+per the sub-spec's own locked gate order, but confirm scope before starting it rather than
+assuming, same discipline as every gate before this one. Other open items, none blocking daily
+use: rate × usage from Resource Management feeding Cost Tracking/EVM (explicitly deferred, Gate
+11); a persisted/logo-customizable report-template system; portfolio-level executive dashboard
+filtering; 10,000+ activity Gantt virtualization; per-activity linking extended to Resource
+Assignments' own sub-fields if that turns out to matter in practice; Vendor↔Cost/Schedule
+integration beyond the current Vendor↔Project/Meeting/RFI/Risk links, if that turns out to matter
+in practice; reconciling Documents' `category` / Vendor
 Management's document categories / the Gate 14 master repository into one classification scheme,
 explicitly deferred twice now (Gates 14 and 16) — worth revisiting once real usage shows whether
 it's actually needed. Tier 3 (AI Document

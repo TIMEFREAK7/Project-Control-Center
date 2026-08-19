@@ -485,6 +485,76 @@ function findFieldByLabel(dom, labelText) {
     assert.strictEqual(data.activities[0].id, testActivityId);
   });
 
+  // ---- Gate 8 (Document Control 8: Schedule-Driven Dates/Lead Time) ----
+  await check("give the seeded activity a real planned_start so a suggested due date can be computed", () => {
+    win.PCC.store.update(function (d) {
+      var act = d.activities.find((a) => a.id === testActivityId);
+      act.planned_start = "2026-10-01";
+    });
+    assert.strictEqual(win.PCC.store.get().activities.find((a) => a.id === testActivityId).planned_start, "2026-10-01");
+  });
+
+  await check("entering a lead time next to the linked activity shows a 'Suggested: <date>' affordance (activity start minus lead time)", () => {
+    ensureCardExpanded(dom, "Vendor Register Test Project");
+    win.PCC.router.render();
+    findButtonByText(dom, "Edit Requirements").click();
+    win.PCC.router.render();
+
+    var kickoffLabel = findLabelContaining(dom, "Kickoff Checklist");
+    var leadTimeInput = kickoffLabel.querySelector('input[type="number"]');
+    assert.ok(leadTimeInput, "a checked, activity-linked requirement must show a lead-time number input");
+    leadTimeInput.value = "10";
+    leadTimeInput.dispatchEvent(new win.Event("change"));
+
+    kickoffLabel = findLabelContaining(dom, "Kickoff Checklist");
+    assert.ok(kickoffLabel.textContent.indexOf("Suggested: 2026-09-21") !== -1, "10 days before 2026-10-01 is 2026-09-21");
+    assert.ok(findButtonByText(dom, "Use"), "the suggestion must offer an explicit 'Use' action, not apply itself automatically");
+
+    var dueInputBeforeUse = kickoffLabel.querySelector('input[type="date"]');
+    assert.strictEqual(dueInputBeforeUse.value, "", "the suggestion must not have written to the due-date field on its own");
+  });
+
+  await check("clicking 'Use' applies the suggested date to the due-date field, and it disappears once applied (nothing left to suggest)", () => {
+    findButtonByText(dom, "Use").click();
+
+    var kickoffLabel = findLabelContaining(dom, "Kickoff Checklist");
+    var dueInput = kickoffLabel.querySelector('input[type="date"]');
+    assert.strictEqual(dueInput.value, "2026-09-21", "the due-date field must now hold the suggested date");
+    assert.ok(kickoffLabel.textContent.indexOf("Suggested:") === -1, "no more suggestion once the due date already matches it");
+  });
+
+  await check("Save persists lead_time_days and the applied planned_submission_date together, atomically with the rest of the requirement", () => {
+    findButtonByText(dom, "Save Changes").click();
+
+    var data = win.PCC.store.get();
+    var kickoffType = data.document_types.find((t) => t.name === "Kickoff Checklist");
+    var row = data.project_document_requirements.find(
+      (r) => r.project_id === vendorProjectId && r.document_type_id === kickoffType.id
+    );
+    assert.ok(row, "the requirement row must survive the save");
+    assert.strictEqual(row.lead_time_days, 10, "the lead time must be persisted");
+    assert.strictEqual(row.planned_submission_date, "2026-09-21", "the applied suggested date must be persisted as the actual due date");
+    assert.strictEqual(row.activity_id, testActivityId, "the previously-linked activity must be untouched by this save");
+  });
+
+  await check("Edit Requirements pre-fills the stored lead time back into the form's input", () => {
+    ensureCardExpanded(dom, "Vendor Register Test Project");
+    win.PCC.router.render();
+    findButtonByText(dom, "Edit Requirements").click();
+    win.PCC.router.render();
+
+    var kickoffLabel = findLabelContaining(dom, "Kickoff Checklist");
+    var leadTimeInput = kickoffLabel.querySelector('input[type="number"]');
+    assert.strictEqual(leadTimeInput.value, "10", "re-opening Edit must show the previously-saved lead time, not blank");
+    findButtonByText(dom, "Cancel").click();
+    win.PCC.router.render();
+  });
+
+  await check("the Details summary shows the lead time alongside the linked activity", () => {
+    var bodyText = win.document.getElementById("page-outlet").textContent;
+    assert.ok(bodyText.indexOf("10d lead time") !== -1, "the read-only summary must show the lead time inline with the linked activity");
+  });
+
   await check("deactivating a document type hides it from the Edit form's checklist but the Details summary still shows its existing requirement", () => {
     var data = win.PCC.store.get();
     var kickoffType = data.document_types.find((t) => t.name === "Kickoff Checklist");

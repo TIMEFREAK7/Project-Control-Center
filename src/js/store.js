@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 32;
+  var SCHEMA_VERSION = 33;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -1281,12 +1281,17 @@
    * `activity_id` (Gate 7: Document Control 7, Schedule↔Document Linking) is an optional
    * link to one of the project's own Schedule activities — same "one linkable field,
    * cross-module join owned by the new side" pattern Gate 10 established for Documents/
-   * Risks/RFIs/etc. Purely a link: it does not read or write `planned_submission_date`
-   * in either direction — deriving a due date FROM the linked activity's own dates is
-   * explicitly gate 8's job (Schedule-Driven Dates/Lead Time), not this gate's. Beyond
-   * that, still no status or criticality on the row itself — those stay later gates'
-   * job; this gate only adds "which activity governs it," on top of "who's submitting
-   * it," "when is this due," and "does this type apply to this project." */
+   * Risks/RFIs/etc. `lead_time_days` (Gate 8: Document Control 8, Schedule-Driven
+   * Dates/Lead Time) is an optional number, only meaningful alongside `activity_id` —
+   * together they let the UI *suggest* a `planned_submission_date` (the linked
+   * activity's start date minus this many days), but neither field writes
+   * `planned_submission_date` automatically; the user applies the suggestion with an
+   * explicit action, same "suggested, not enforced" shape as Gate 15's project
+   * templates and Gate 16's criticality auto-suggestion. Beyond that, still no status
+   * or criticality on the row itself — those stay later gates' job; this gate only adds
+   * "how far ahead of the activity it's due," on top of "which activity governs it,"
+   * "who's submitting it," "when is this due," and "does this type apply to this
+   * project." */
   function newProjectDocumentRequirement(overrides) {
     var now = new Date().toISOString();
     var base = {
@@ -1296,6 +1301,7 @@
       planned_submission_date: null,
       vendor_id: "",
       activity_id: "",
+      lead_time_days: null,
       created_at: now,
     };
     return Object.assign(base, overrides || {});
@@ -1742,6 +1748,17 @@
         if (r.activity_id === undefined) r.activity_id = "";
       });
       loaded.schema_version = 32;
+    }
+
+    if (loaded.schema_version < 33) {
+      // Gate 8 (Document Control 8: Schedule-Driven Dates/Lead Time). Adds an optional
+      // lead_time_days to every existing requirement row — null (not set), same
+      // treatment planned_submission_date got at Gate 5, since there's nothing to infer
+      // a pre-Gate-8 requirement's lead time from.
+      (loaded.project_document_requirements || []).forEach(function (r) {
+        if (r.lead_time_days === undefined) r.lead_time_days = null;
+      });
+      loaded.schema_version = 33;
     }
 
     return loaded;

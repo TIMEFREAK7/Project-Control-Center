@@ -67,6 +67,12 @@
     // linked Schedule activity, keyed by document_type_id. Same treatment as
     // formDueDates/formVendorIds — purely a link, no date is derived from it here.
     formActivityIds: {},
+    // Gate 8 (Document Control 8: Schedule-Driven Dates/Lead Time): uncommitted per-type
+    // lead time in days, keyed by document_type_id. Only meaningful alongside
+    // formActivityIds — used to compute a *suggested* due date, applied to
+    // formDueDates only via an explicit "Use suggested date" action, never
+    // automatically. Same seeded-at-button-click treatment as the others.
+    formLeadTimes: {},
   };
 
   function formatMoney(value, currency) {
@@ -185,6 +191,44 @@
     select.value = selectedActivityId || "";
   }
 
+  // Gate 8 (Document Control 8: Schedule-Driven Dates/Lead Time). Same day-math helpers
+  // as scheduleGanttLayout.js's own toDayNumber()/toIsoDate()/addDays(), duplicated per
+  // this app's per-module-helpers convention.
+  var DAY_MS = 24 * 60 * 60 * 1000;
+  function toDayNumber(isoDateStr) {
+    return Math.round(new Date(isoDateStr + "T00:00:00Z").getTime() / DAY_MS);
+  }
+  function toIsoDate(dayNumber) {
+    return new Date(dayNumber * DAY_MS).toISOString().slice(0, 10);
+  }
+  function addDays(isoDateStr, days) {
+    return toIsoDate(toDayNumber(isoDateStr) + days);
+  }
+
+  /** Same date precedence as scheduleGanttLayout.js's effectiveDates(): calculated
+   * (early_start) wins over planned (planned_start) when present. Only the start date
+   * matters here — a document requirement's suggested due date is anchored to when the
+   * governing activity BEGINS, not when it finishes. */
+  function activityStartDate(activity) {
+    if (!activity) return null;
+    return activity.early_start || activity.planned_start || null;
+  }
+
+  /** Returns a suggested planned_submission_date (YYYY-MM-DD) — the linked activity's
+   * start date minus the lead time — or null if activity_id/lead_time_days aren't both
+   * set, the activity can't be found, or it has no usable start date yet (e.g. the CPM
+   * engine hasn't run and no planned_start was given either). Purely advisory: never
+   * written to formDueDates except via an explicit "Use suggested date" click. */
+  function computeSuggestedDueDate(data, activityId, leadTimeDays) {
+    if (!activityId || !leadTimeDays) return null;
+    var activity = data.activities.find(function (a) {
+      return a.id === activityId;
+    });
+    var startDate = activityStartDate(activity);
+    if (!startDate) return null;
+    return addDays(startDate, -leadTimeDays);
+  }
+
   function renderForm(container, project, onSaved) {
     var isNew = uiState.editingId === "new";
     var panel = document.createElement("div");
@@ -268,7 +312,8 @@
         // (Document Control 5) additionally reconciles each selected type's planned
         // submission date from uiState.formDueDates; Gate 6 does the same for the
         // assigned vendor from uiState.formVendorIds; Gate 7 does the same for the
-        // linked Schedule activity from uiState.formActivityIds.
+        // linked Schedule activity from uiState.formActivityIds; Gate 8 does the same
+        // for the lead time from uiState.formLeadTimes.
         var selected = {};
         uiState.formSelectedDocTypeIds.forEach(function (typeId) {
           selected[typeId] = true;
@@ -288,11 +333,13 @@
           var plannedDate = uiState.formDueDates[typeId] || null;
           var vendorId = uiState.formVendorIds[typeId] || "";
           var activityId = uiState.formActivityIds[typeId] || "";
+          var leadTimeDays = uiState.formLeadTimes[typeId] || null;
           var existingRow = existingByTypeId[typeId];
           if (existingRow) {
             existingRow.planned_submission_date = plannedDate;
             existingRow.vendor_id = vendorId;
             existingRow.activity_id = activityId;
+            existingRow.lead_time_days = leadTimeDays;
           } else {
             data.project_document_requirements.push(
               window.PCC.store.newProjectDocumentRequirement({
@@ -301,6 +348,7 @@
                 planned_submission_date: plannedDate,
                 vendor_id: vendorId,
                 activity_id: activityId,
+                lead_time_days: leadTimeDays,
               })
             );
           }
@@ -390,10 +438,12 @@
       uiState.formDueDates = {};
       uiState.formVendorIds = {};
       uiState.formActivityIds = {};
+      uiState.formLeadTimes = {};
       projectRequirements.forEach(function (r) {
         if (r.planned_submission_date) uiState.formDueDates[r.document_type_id] = r.planned_submission_date;
         if (r.vendor_id) uiState.formVendorIds[r.document_type_id] = r.vendor_id;
         if (r.activity_id) uiState.formActivityIds[r.document_type_id] = r.activity_id;
+        if (r.lead_time_days) uiState.formLeadTimes[r.document_type_id] = r.lead_time_days;
       });
       uiState.formDocTemplateKey = "";
       uiState.editingId = p.id;
@@ -465,8 +515,11 @@
    * optional assigned vendor per selected type the same way, in uiState.formVendorIds,
    * reusing the existing Vendor Management vendor list rather than a new register; Gate
    * 7 (Document Control 7: Schedule↔Document Linking) adds an optional link to one of
-   * this project's own Schedule activities, in uiState.formActivityIds — all four are
-   * uncommitted until Save. */
+   * this project's own Schedule activities, in uiState.formActivityIds; Gate 8
+   * (Schedule-Driven Dates/Lead Time) adds an optional lead time in
+   * uiState.formLeadTimes, used only to compute a *suggested* due date (the linked
+   * activity's start date minus the lead time) — applied to formDueDates solely via an
+   * explicit "Use" click, never automatically. All five are uncommitted until Save. */
   function renderDocumentRequirementsField(project) {
     var fieldWrap = document.createElement("div");
     fieldWrap.style.marginTop = "18px";
@@ -616,6 +669,7 @@
               delete uiState.formDueDates[t.id];
               delete uiState.formVendorIds[t.id];
               delete uiState.formActivityIds[t.id];
+              delete uiState.formLeadTimes[t.id];
             }
             refresh();
           };
@@ -684,8 +738,53 @@
               } else {
                 delete uiState.formActivityIds[t.id];
               }
+              refresh();
             };
             row.appendChild(activitySelect);
+
+            // Gate 8 (Document Control 8: Schedule-Driven Dates/Lead Time): optional
+            // lead time, only meaningful alongside the linked activity above. Never
+            // computes/writes a due date by itself — see the "Use suggested date"
+            // affordance below for the one explicit path that does.
+            var leadTimeInput = document.createElement("input");
+            leadTimeInput.type = "number";
+            leadTimeInput.min = "0";
+            leadTimeInput.style.fontSize = "12px";
+            leadTimeInput.style.padding = "2px 4px";
+            leadTimeInput.style.width = "60px";
+            leadTimeInput.title = "Lead time in days before the linked activity starts (optional)";
+            leadTimeInput.placeholder = "Lead days";
+            leadTimeInput.value = uiState.formLeadTimes[t.id] || "";
+            leadTimeInput.onchange = function () {
+              var num = leadTimeInput.value === "" ? null : Number(leadTimeInput.value);
+              if (num) {
+                uiState.formLeadTimes[t.id] = num;
+              } else {
+                delete uiState.formLeadTimes[t.id];
+              }
+              refresh();
+            };
+            row.appendChild(leadTimeInput);
+
+            var suggestedDate = computeSuggestedDueDate(data, uiState.formActivityIds[t.id], uiState.formLeadTimes[t.id]);
+            if (suggestedDate && suggestedDate !== (uiState.formDueDates[t.id] || "")) {
+              var suggestionWrap = document.createElement("span");
+              suggestionWrap.style.fontSize = "11px";
+              suggestionWrap.style.color = "var(--text-secondary)";
+              suggestionWrap.textContent = "Suggested: " + suggestedDate + " ";
+              var useSuggestedBtn = document.createElement("button");
+              useSuggestedBtn.type = "button";
+              useSuggestedBtn.className = "btn btn--ghost";
+              useSuggestedBtn.style.fontSize = "11px";
+              useSuggestedBtn.style.padding = "1px 6px";
+              useSuggestedBtn.textContent = "Use";
+              useSuggestedBtn.onclick = function () {
+                uiState.formDueDates[t.id] = suggestedDate;
+                refresh();
+              };
+              suggestionWrap.appendChild(useSuggestedBtn);
+              row.appendChild(suggestionWrap);
+            }
 
             var status = computeRequirementStatus(data, project.id, t.id, uiState.formDueDates[t.id] || null);
             var badgeInfo = REQUIREMENT_STATUS_BADGE[status];
@@ -792,10 +891,12 @@
       uiState.formDueDates = {};
       uiState.formVendorIds = {};
       uiState.formActivityIds = {};
+      uiState.formLeadTimes = {};
       projectRequirements.forEach(function (r) {
         if (r.planned_submission_date) uiState.formDueDates[r.document_type_id] = r.planned_submission_date;
         if (r.vendor_id) uiState.formVendorIds[r.document_type_id] = r.vendor_id;
         if (r.activity_id) uiState.formActivityIds[r.document_type_id] = r.activity_id;
+        if (r.lead_time_days) uiState.formLeadTimes[r.document_type_id] = r.lead_time_days;
       });
       uiState.formDocTemplateKey = "";
       uiState.editingId = p.id;
@@ -848,7 +949,8 @@
             ? " — linked to " +
               (scheduleNameByIdForSummary[linkedActivity.schedule_id] || "(schedule)") +
               ": " +
-              (linkedActivity.name || "(unnamed activity)")
+              (linkedActivity.name || "(unnamed activity)") +
+              (r.lead_time_days ? " (" + r.lead_time_days + "d lead time)" : "")
             : "");
         row.appendChild(nameSpan);
 
@@ -1805,6 +1907,7 @@
       uiState.formDueDates = {};
       uiState.formVendorIds = {};
       uiState.formActivityIds = {};
+      uiState.formLeadTimes = {};
       uiState.editingId = "new";
       rerender();
     };
