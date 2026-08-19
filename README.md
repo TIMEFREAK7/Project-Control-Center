@@ -2327,6 +2327,54 @@ done, deliberately: Document Control gates 13-14 (Executive Summary narrative te
 Compliance rollup/report) — this gate is the compliance dashboard itself, not a summary or a
 printable output built on top of it.
 
+## Gate 27 — Document Control 13: Executive Summary (2026-08-18)
+
+Thirteenth gate of the 14-gate Document Control spec. Scoped and confirmed before building, same
+discipline as every gate in this sub-spec. Reuses Gate 9's proven "auto-generated text with an
+optional saved override" pattern verbatim rather than inventing a new one: a sixth section on the
+existing per-project Executive Summary panel, computed from that project's own document
+requirements, editable and overridable exactly like the other five.
+
+**What changed:**
+
+- `store.js` (schema v33→v34): `executive_summaries` rows gain a sixth override field,
+  `document_control_override` (`""` default, same as the other five). Migration backfills `""`
+  onto every existing row.
+- `pages/executiveCenter.js`:
+  - `buildProjectContext()` gains a small Document Control block: total requirements, Available
+    count, Overdue count, and the names of any overdue document types — computed the same
+    Available/Overdue/Required way every Document Control gate since Gate 18 has, duplicated here
+    per this app's per-module-helpers convention.
+  - New `autoDocumentControlText(ctx)` — e.g. *"0 of 1 required documents are Available. 1
+    overdue: BOQ."* — and a new "Document Control Status" entry appended to `SUMMARY_SECTIONS`.
+    Because the Executive Summary panel, the Project Snapshot print view, and the Management Pack
+    print view all already iterate `SUMMARY_SECTIONS` generically (no hardcoded section count or
+    index anywhere), the new section flowed into all three automatically — no changes needed to
+    the panel/snapshot/pack rendering code itself.
+
+**Tested before delivery (1 migration + 4 new e2e checks added to existing files, full suite
+re-run clean, 580 checks total):**
+
+- **Schema migration** (`test_store_schema_v34_migration.js`, renamed from the v33 file): the full
+  chain and a legacy/brand-new install land on schema_version 34; `newExecutiveSummary()` defaults
+  `document_control_override` to `""`; a dedicated check migrates a v33 dataset with one summary
+  row missing the field (backfilled to `""`) and one that already has an override set (survives
+  untouched).
+- **End-to-end against the actual bundled `index.html`** (`test_executive_center_e2e.js`, extended
+  in place): the new section shows the "no requirements assigned" default before any exist;
+  assigning one overdue requirement updates the auto-text live to the exact expected count/type
+  name; confirmed the section also appears in the Project Snapshot print view with the same label
+  format as the other five sections, proving the generic iteration actually works rather than
+  assuming it does; the pre-existing override-editing test (targeting the *first* section) still
+  passes untouched, confirming the new 6th section didn't disturb the others' ordering/behavior.
+- **Real-browser verification** (Chromium via Playwright): seeded a project with one overdue
+  requirement directly via the store, opened Executive Center, and confirmed the "Document Control
+  Status" section rendered the exact expected text — zero console/page errors.
+
+**What I have not tested:** this on your actual device. Same standard as every prior gate. Not
+done, deliberately: Document Control gate 14 (Portfolio Compliance) — this gate is a per-project
+narrative addition, not a portfolio-wide rollup/report.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
@@ -2354,7 +2402,7 @@ line items on the original locked Tier 2/3 list. Built in a separate parallel se
 Gates 8-11 and reconciled into `main` together with them (see each gate's own write-up above for
 the schema-numbering note on how the reconciliation renumbered them).
 
-**Document Control** (Gates 14-26 = Document Control gates 1-12 of a separate 14-gate sub-spec,
+**Document Control** (Gates 14-27 = Document Control gates 1-13 of a separate 14-gate sub-spec,
 done) — same footing as Executive Center/Activity Linking/Vendor Management above: a directly
 requested, explicitly incremental upgrade to Documents, not a Tier 1/2/3 line item. The Master
 Document Repository (the type taxonomy, Gate 14), Project-Specific Document Requirements (which
@@ -2379,9 +2427,12 @@ one of its governing requirements isn't yet Available; purely informational, nev
 this app's in-app equivalent of push/email notifications, since it has no server or network
 channel for either. **Gate 26** added a new "Document Control Dashboard" page — portfolio-wide
 compliance KPIs plus worst-first breakdowns by project and by document type, distinct from Gate
-25's time-sensitive reminders panel. Document Control gates 13-14 (executive summary,
-portfolio/executive compliance rollups) are intentionally not started — see Gates 14-26's own
-write-ups above.
+25's time-sensitive reminders panel. **Gate 27** added a sixth auto+override section, "Document
+Control Status," to Executive Center's existing per-project Executive Summary — reusing Gate 9's
+proven pattern verbatim, and flowing automatically into the Project Snapshot and Management Pack
+print views since both already iterate the same section list generically. Document Control gate
+14 (portfolio/executive compliance rollups) is the only one intentionally not started — see
+Gates 14-27's own write-ups above.
 
 **Tier 3 (deferred until Tier 1 is in daily use):** AI Document Processing, Knowledge Base, AI Project
 Assistant, Lessons Learned, final polish
@@ -2391,12 +2442,12 @@ Assistant, Lessons Learned, final polish
 **Tier 2 is complete**, and Vendor Management / the in-app Excel editor / the Document Control
 foundation (repository + per-project requirements + classification/nomenclature + status/version
 control + manual due dates + vendor assignment + schedule linking + lead-time suggestions + vendor
-lookahead + readiness flagging + portfolio-wide reminders + a compliance dashboard) are all done
-alongside it. The most likely next piece of work is **Document Control gate 13 (Executive
-Summary)** — narrative document-control status text, likely following Gate 9's own
-Executive-Summary-override pattern — per the sub-spec's own locked gate order, but confirm scope
-before starting it rather than assuming, same discipline as every gate before this one. Other open
-items, none blocking daily use: rate × usage from
+lookahead + readiness flagging + portfolio-wide reminders + a compliance dashboard + an executive
+summary section) are all done alongside it. The most likely next piece of work is **Document
+Control gate 14 (Portfolio Compliance)** — the final gate of the sub-spec, likely a portfolio-wide
+compliance rollup/printable report analogous to Gate 9's own Management Pack — per the sub-spec's
+own locked gate order, but confirm scope before starting it rather than assuming, same discipline
+as every gate before this one. Other open items, none blocking daily use: rate × usage from
 Resource Management feeding Cost Tracking/EVM (explicitly deferred, Gate 11); a
 persisted/logo-customizable report-template system; portfolio-level executive dashboard filtering;
 10,000+ activity Gantt virtualization; per-activity linking extended to Resource Assignments' own

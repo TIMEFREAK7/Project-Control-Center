@@ -3567,7 +3567,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 33;
+  var SCHEMA_VERSION = 34;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -4287,6 +4287,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       challenges_override: "",
       management_attention_override: "",
       upcoming_override: "",
+      // Gate 27 (Document Control 13: Executive Summary): sixth auto+override section,
+      // same shape as the five above — auto-generated from this project's own
+      // project_document_requirements at render time (executiveCenter.js), with this
+      // field holding the user's edited override, empty string meaning "still showing
+      // the auto-generated text."
+      document_control_override: "",
       updated_at: now,
     };
     return Object.assign(base, overrides || {});
@@ -5317,6 +5323,17 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         if (r.lead_time_days === undefined) r.lead_time_days = null;
       });
       loaded.schema_version = 33;
+    }
+
+    if (loaded.schema_version < 34) {
+      // Gate 27 (Document Control 13: Executive Summary). Adds an optional
+      // document_control_override to every existing executive_summaries row — "" (no
+      // override yet, same as the other five override fields default), so an existing
+      // project's summary just shows the new auto-generated text until the user edits it.
+      (loaded.executive_summaries || []).forEach(function (s) {
+        if (s.document_control_override === undefined) s.document_control_override = "";
+      });
+      loaded.schema_version = 34;
     }
 
     return loaded;
@@ -8931,6 +8948,31 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       .filter(function (id) { return overAllocById[id]; })
       .map(function (id) { return overAllocById[id]; });
 
+    // ---- Document Control (Gate 27: Executive Summary section only — same computed
+    // Available/Overdue/Required status every Document Control gate since Gate 18 has
+    // used, duplicated here per this app's per-module-helpers convention). ----
+    var docTypesById = {};
+    data.document_types.forEach(function (t) { docTypesById[t.id] = t; });
+    var projectDocRequirements = data.project_document_requirements.filter(function (r) {
+      return r.project_id === projectId && docTypesById[r.document_type_id];
+    });
+    var docControlAvailable = 0;
+    var docControlOverdue = 0;
+    var docControlOverdueTypeNames = [];
+    projectDocRequirements.forEach(function (r) {
+      var available = data.documents.some(function (d) { return d.project_id === projectId && d.document_type_id === r.document_type_id; });
+      if (available) {
+        docControlAvailable++;
+      } else if (r.planned_submission_date && r.planned_submission_date < todayIso) {
+        docControlOverdue++;
+        docControlOverdueTypeNames.push(docTypesById[r.document_type_id].name);
+      }
+    });
+    ctx.docControlTotal = projectDocRequirements.length;
+    ctx.docControlAvailable = docControlAvailable;
+    ctx.docControlOverdue = docControlOverdue;
+    ctx.docControlOverdueTypeNames = docControlOverdueTypeNames;
+
     return ctx;
   }
 
@@ -9778,6 +9820,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     { key: "challenges", label: "Challenges", overrideKey: "challenges_override", auto: autoChallengesText },
     { key: "attention", label: "Management Attention", overrideKey: "management_attention_override", auto: autoAttentionText },
     { key: "upcoming", label: "Upcoming", overrideKey: "upcoming_override", auto: autoUpcomingText },
+    { key: "documentControl", label: "Document Control Status", overrideKey: "document_control_override", auto: autoDocumentControlText },
   ];
 
   function autoStatusText(ctx) {
@@ -9841,6 +9884,19 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     if (ctx.criticalActivities.length) lines.push(ctx.criticalActivities.length + " critical-path activity(ies) to watch.");
     if (ctx.upcomingMeetings.length) lines.push(ctx.upcomingMeetings.length + " meeting(s) scheduled.");
     if (lines.length === 0) return "No upcoming milestones, meetings, or critical activities on record.";
+    return lines.join(" ");
+  }
+
+  // Gate 27 (Document Control 13: Executive Summary).
+  function autoDocumentControlText(ctx) {
+    if (!ctx.docControlTotal) return "No document requirements have been assigned to this project yet.";
+    var lines = [];
+    lines.push(ctx.docControlAvailable + " of " + ctx.docControlTotal + " required documents are Available.");
+    if (ctx.docControlOverdue > 0) {
+      lines.push(ctx.docControlOverdue + " overdue: " + ctx.docControlOverdueTypeNames.join(", ") + ".");
+    } else {
+      lines.push("Nothing is overdue.");
+    }
     return lines.join(" ");
   }
 
