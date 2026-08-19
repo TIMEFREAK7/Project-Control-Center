@@ -61,15 +61,15 @@ that override default behavior).
   populated state, and again on the zip-verification pass) and send the PNGs via `SendUserFile`
   before or alongside the written report. Applies to every gate from here on, not just this one.
 
-## Where things stand — everything through the Tier C inspection + physical_progress fix is merged into `main`
+## Where things stand — Tier C inspection, physical_progress fix, and Vendor Performance Centre are all merged into `main`
 
-`main` is fully up to date through a **Tier C inspection round** (not a numbered roadmap gate on
-its own — an inspection, plus one confirmed bug fix that came out of it), merge commit `fba3d42`,
-`schema_version` still **36** (no bump — `physical_progress` already existed in the schema from
-Gate 1, it just had no data-entry path until now). Aditya asked for the same "inspect before
-proposing" pass Tier B got, this time against **Tier C (Project Performance)**: Progress
-Management, Vendor Performance Centre, Delay & Recovery Management, Decision Register. Findings
-(see the "PCC Evolution Roadmap" section below for full detail):
+`main` is fully up to date through the **Vendor Performance Centre** gate (PCC Evolution Roadmap,
+Tier C: Project Performance's first built gate), merge commit `0801b10`, `schema_version` still
+**36** (no bump — this gate is entirely read-only, no new stored fields). This round started with
+a **Tier C inspection** (not a numbered roadmap gate on its own) — Aditya asked for the same
+"inspect before proposing" pass Tier B got, this time against **Tier C**: Progress Management,
+Vendor Performance Centre, Delay & Recovery Management, Decision Register. Findings (see the "PCC
+Evolution Roadmap" section below for full detail):
 
 - **Progress Management** — mostly built, but `physical_progress` (a schema field since Gate 1,
   distinct from `percent_complete`) was never wired to any data-entry UI, while Executive Center
@@ -83,34 +83,48 @@ Management, Vendor Performance Centre, Delay & Recovery Management, Decision Reg
   `physical_progress` is meant to be a manual, site-assessed figure, so mirroring it into the
   bulk/import paths would blur that distinction. `costEvmEngine.js`'s EV calculation was
   deliberately left alone (still uses `percent_complete` only) — changing what drives Earned Value
-  is a bigger, separate decision nobody asked for here.
-- **Vendor Performance Centre** — the per-vendor data model and entry flow are fully built (Gate
-  13's `vendor_performance` records: quality/delivery/communication/safety ratings 0-5, a running
-  average, inside each Vendor Profile's "Performance" tab). What's missing: any portfolio-wide
-  view — the vendor list page shows no rating at all, there's no ranking/worst-first dashboard, no
-  other page references `vendor_performance`. Not built this round — flagged as the likely next
-  Tier C gate to scope.
-- **Delay & Recovery Management** — Delay analysis already exists and is shipped: 
+  is a bigger, separate decision nobody asked for here. **Fixed this round** — see below.
+- **Vendor Performance Centre** — the per-vendor data model and entry flow were already fully
+  built (Gate 13's `vendor_performance` records: quality/delivery/communication/safety ratings
+  0-5, a running average, inside each Vendor Profile's "Performance" tab). What was missing: any
+  portfolio-wide view — the vendor list page showed no rating at all, no ranking/worst-first
+  dashboard, no other page referenced `vendor_performance`. **Built this round** — see below.
+- **Delay & Recovery Management** — Delay analysis already exists and is shipped:
   `scheduleBaselineEngine.compareBaselineToCurrent()` computes finish variance, delayed/ahead/
   on-time counts, and max delay days, wired into the Schedule module's baseline-compare UI (Gate
   4/5). **Recovery does not exist at all** — grepped the whole `src/` tree; every "recovery" hit is
   the unrelated corrupted-data-backup feature. No recovery plan, corrective-action tracking, or
-  recovery schedule concept anywhere. Not built this round.
+  recovery schedule concept anywhere. Not built yet — still the likely next Tier C gate to scope.
 - **Decision Register** — does not exist at all. No `decisions` array in `store.js`'s data object;
   every "decision" hit in the codebase is just the English word inside Change Order/RFI approval
   flows (`decision_by`, "pending decision" copy), not a register. Same shape as Risk Register or
-  RFI/TQ would be. Not built this round.
+  RFI/TQ would be. Not built yet.
 
-This session fixed the physical_progress bug (confirmed via `AskUserQuestion`), following the same
-rebuild → full suite → merge (no PR, standing instruction, see above) → push `main` sequence used
-for every prior gate. The full test suite (**34 files, 783 checks**) passes clean, and a
-real-Chromium pass (screenshots taken and sent, per the standing instruction below) confirmed the
-new field persists independently of `percent_complete`, displays correctly in both the Activity
-Detail Panel and the activities list, and Executive Center's Schedule Progress / Physical Progress
-KPIs now show two distinct, correct values — zero console/page errors. **No branch currently
-carries unmerged app features** — `claude/tier-c-code-inspection-jysweb` was merged into `main` in
-full (direct merge, `fba3d42`) and should be restarted from the new `main` before the next gate.
-Verify with `git log origin/main..HEAD` before assuming this is still true by the time you read
+Two gates were built and merged this round, each following the same rebuild → full suite → merge
+(no PR, standing instruction, see above) → push `main` sequence used for every prior gate:
+
+1. **physical_progress fix** (merge `fba3d42`) — confirmed via `AskUserQuestion`. New test file
+   `test_activity_physical_progress_e2e.js` (29 checks). Real-Chromium pass confirmed the new
+   field persists independently of `percent_complete`, displays correctly in both the Activity
+   Detail Panel and the activities list, and Executive Center's Schedule Progress / Physical
+   Progress KPIs show two distinct, correct values — zero console/page errors.
+2. **Vendor Performance Centre** (merge `0801b10`) — confirmed via `AskUserQuestion` to build a
+   new dedicated page (`pages/vendorPerformanceCentre.js`, sidebar entry right after Vendors)
+   rather than extend the existing Vendor Dashboard, matching the roadmap's literal naming and the
+   Document Control Dashboard's own precedent (Gate 26). KPI cards (Total/Reviewed/Not Yet
+   Reviewed/Portfolio Avg Rating), a worst-first ranked panel, and a separate "Not Yet Reviewed"
+   list so unrated vendors are never conflated with a 0/5 score. `vendors.js`'s `openProfile()`
+   gained an optional `tab` argument (defaults to `"overview"`, every existing caller unaffected)
+   so "View Profile" lands directly on the Performance tab. Read-only — writes nothing back to
+   `vendor_performance`. New test file `test_vendor_performance_centre_e2e.js` (31 checks). Both
+   real-Chromium passes (screenshots taken and sent, per the standing instruction below) showed
+   zero console errors.
+
+The full test suite (**35 files, 814 checks**) passes clean as of this handoff. **No branch
+currently carries unmerged app features** — `claude/tier-c-code-inspection-jysweb` was merged into
+`main` in full (two direct merges, `fba3d42` then `0801b10`) and should be restarted from the new
+`main` before the next gate. Verify with `git log origin/main..HEAD` before assuming this is still
+true by the time you read
 this.
 
 **The entire 14-gate Document Control sub-spec Aditya originally handed over is complete (Gates
@@ -346,7 +360,7 @@ that back-and-forth pattern held for all 14 gates through to the last one.
   "Document Control Compliance" `<h3>`, returns its `parentElement`) instead of searching the
   whole page.
 
-### PCC Evolution Roadmap (Gates 29-33 = roadmap's own Gates 1-5) — 5 of ~27 gates done, Tiers A + B complete; Tier C inspected, one bug fixed
+### PCC Evolution Roadmap (Gates 29-33 = roadmap's own Gates 1-5) — 5 of ~27 gates done, Tiers A + B complete; Tier C inspected, one bug fixed, its first gate built
 
 Aditya handed over a large roadmap (Tiers A-F: Daily Planner Value, Control Integration, Project
 Performance, Management, Portfolio, then Tier F's advanced planning/controls gates — Resource
@@ -467,11 +481,36 @@ view — that became the Planner Action Centre.
   `test_activity_physical_progress_e2e.js` (29 checks) — no schema migration file needed, no
   version bump. Merge commit `fba3d42`.
 
-**Next roadmap gate: not yet scoped.** Tiers A and B are complete; Tier C has been inspected and
-its one live bug fixed, but none of its three remaining gaps (Vendor Performance Centre's
-portfolio-wide dashboard, Delay & Recovery Management's missing Recovery half, Decision Register)
-have been scoped or built yet. Per the roadmap's own gate discipline, propose one of those three,
-get "yes, build it," then build only that — don't chain them.
+- **Vendor Performance Centre (this session, Tier C's first built gate).** Aditya confirmed
+  starting Tier C with this one after the inspection above. Scoped in a short paragraph, then a
+  placement decision confirmed via `AskUserQuestion`: extend the existing Vendor Dashboard vs. a
+  new dedicated page — Aditya chose **a new dedicated page**, matching the roadmap's literal
+  "Vendor Performance Centre" naming and the Document Control Dashboard's own precedent (Gate 26).
+  New page `pages/vendorPerformanceCentre.js`, sidebar entry in OVERVIEW right after Vendors.
+  Entirely reuses Gate 13's `vendor_performance` data — no new stored fields. KPI cards (Total
+  Vendors / Reviewed / Not Yet Reviewed / Portfolio Avg Rating — the average excludes unreviewed
+  vendors from its denominator), a **"Vendor Performance (worst first)"** ranked panel (reviewed
+  vendors only, sorted lowest-overall-rating-first, same convention as the Document Control
+  Dashboard's worst-first project/type breakdowns; each row shows the overall rating plus the
+  quality/delivery/communication/safety breakdown and a status badge using the same 80%/60%
+  on_track/at_risk/critical thresholds `projectHealthEngine.js` uses on its 0-100 health score,
+  scaled to this page's 0-5 rating range — i.e. ≥4.0 On Track, ≥3.0 At Risk, else Critical), and a
+  separate **"Not Yet Reviewed"** panel so a vendor with zero reviews is never conflated with one
+  that scored 0/5 (same "not rated ≠ rated 0" distinction `overallRating()`'s own comment in
+  vendors.js already documents). `vendors.js`'s `openProfile(vendorId)` gained an optional second
+  `tab` argument (defaults to `"overview"`) so this page's "View Profile" buttons land directly on
+  the vendor's Performance tab — same "land exactly on the linked record" convention as Gate 10's
+  `viewActivity()`; every existing caller of `openProfile()` is unaffected since the argument is
+  optional. Read-only — nothing here writes back to `vendor_performance` or `vendors`. New test
+  file `test_vendor_performance_centre_e2e.js` (31 checks) plus a 20-route smoke test. Merge
+  commit `0801b10`.
+
+**Next roadmap gate: not yet scoped.** Tiers A and B are complete; Tier C has its inspection done,
+one live bug fixed, and its first gate (Vendor Performance Centre) built. Two gaps remain unscoped:
+Delay & Recovery Management's missing Recovery half (Delay analysis already exists, Gate 4/5), and
+Decision Register (doesn't exist at all — same shape as Risk Register or RFI/TQ would be). Per the
+roadmap's own gate discipline, propose one of those two, get "yes, build it," then build only
+that — don't chain them.
 
 **Deliberately still open / explicitly deferred, don't assume these got done:**
 - Reconciling Documents' `category` / Vendor's `VENDOR_DOCUMENT_CATEGORIES` / the Gate 14 master
@@ -558,7 +597,7 @@ get "yes, build it," then build only that — don't chain them.
   there fails `npm test` with a bare `MODULE_NOT_FOUND` even though every individual test file is
   fine (hit this exact thing shipping Gate 19; fixed by editing `tests/package.json` alongside the
   `git mv`).
-- Testing: `cd tests && npm test` must pass before anything ships (34 files, 783 checks as of
+- Testing: `cd tests && npm test` must pass before anything ships (35 files, 814 checks as of
   this handoff). Pure-logic tests eval the real source file directly. E2E tests load the actual
   bundled `index.html` via jsdom (+ `fake-indexeddb` for IndexedDB-touching code). Also do one
   real-Chromium pass per gate (`/opt/pw-browsers/chromium-1194/chrome-linux/chrome --no-sandbox`,
@@ -613,35 +652,39 @@ get "yes, build it," then build only that — don't chain them.
 
 ## Repo/branch state
 
-`main` is fully up to date through the **Tier C inspection + physical_progress fix** (`fba3d42`, a
-direct merge — no PR, per Aditya's now-standing "always merge after completing a gate/phase"
-instruction, see above; note this specific round used a designated remote-session branch,
-`claude/tier-c-code-inspection-jysweb`, and Aditya confirmed via `AskUserQuestion` to proceed with
-the merge given that branch's own "never push elsewhere without permission" constraint — see the
-git log for the exact sequence if that matters later). This builds on top of **Tier B (Control
-Integration)**, complete as of Gate 33, and the already-complete 14-gate Document Control sub-spec.
-`schema_version` on `main` is still **36** — this round wired up an existing field, no migration
-needed. `claude/tier-c-code-inspection-jysweb` carries the same history as `main` as of this merge
-(nothing unmerged on it) but was NOT reset/deleted — do that (or just start a fresh branch) before
-the next gate, per the standing "restart the working branch from the new main" instruction. No
-branch carries unmerged app features as of this handoff. Verify with `git log origin/main..HEAD`
-and `git status` before assuming this is still true by the time you read this.
+`main` is fully up to date through the **Vendor Performance Centre** gate (`0801b10`, a direct
+merge — no PR, per Aditya's now-standing "always merge after completing a gate/phase" instruction,
+see above). Two rounds landed on `main` this session, both via the same designated remote-session
+branch, `claude/tier-c-code-inspection-jysweb`: the Tier C inspection + `physical_progress` fix
+first (merge `fba3d42`), then — after the branch was reset to the new `main` per the standing
+"restart before the next gate" instruction — the Vendor Performance Centre gate on top of that
+(merge `0801b10`). Aditya confirmed via `AskUserQuestion` to proceed with each merge given the
+branch's own "never push elsewhere without permission" constraint; see the git log for the exact
+sequence if that matters later. This builds on top of **Tier B (Control Integration)**, complete
+as of Gate 33, and the already-complete 14-gate Document Control sub-spec. `schema_version` on
+`main` is still **36** — neither round needed a migration (one wired up an existing field, the
+other is read-only). `claude/tier-c-code-inspection-jysweb` carries the same history as `main` as
+of this merge (nothing unmerged on it) but was NOT reset/deleted after the *second* merge — do
+that (or just start a fresh branch) before the next gate, per the standing "restart the working
+branch from the new main" instruction. No branch carries unmerged app features as of this handoff.
+Verify with `git log origin/main..HEAD` and `git status` before assuming this is still true by the
+time you read this.
 
 **Zip delivered this round:** `Project-Control-Center.zip` — `index.html` + `README.md` +
 `data/`/`files/` (existing `README.txt` placeholders), verified via a fresh extraction
-(`/tmp/pcc_zip_verify/`, not the dev working copy) opened in real Chromium — title and
-`#page-outlet` render, `window.PCC.pages.schedule` present, zero console errors; screenshot taken
-and sent per the standing instruction.
+(`/tmp/pcc_zip_verify2/`, not the dev working copy) opened in real Chromium — title and
+`#page-outlet` render, a seeded vendor's performance review shows correctly ranked on the new
+Vendor Performance Centre page, zero console errors; screenshot taken and sent per the standing
+instruction.
 
 **Next steps, in likely priority order:**
 1. **PCC Evolution Roadmap's next gate is not yet scoped — ask Aditya before building anything.**
-   Tiers A and B are both complete. Tier C (Project Performance) has now been inspected against the
-   real code this round — Progress Management's `physical_progress` bug is fixed, but three gaps
-   remain unscoped: Vendor Performance Centre's portfolio-wide dashboard (per-vendor entry already
-   exists, Gate 13), Delay & Recovery Management's missing Recovery half (Delay analysis already
-   exists, Gate 4/5), and Decision Register (doesn't exist at all — same shape as Risk Register or
-   RFI/TQ would be). Propose one of these three in a short paragraph, wait for "yes, build it," then
-   build only that — do not chain them.
+   Tiers A and B are both complete. Tier C (Project Performance) has been inspected against the
+   real code, its `physical_progress` bug is fixed, and its first gate (Vendor Performance Centre)
+   is built. Two gaps remain unscoped: Delay & Recovery Management's missing Recovery half (Delay
+   analysis already exists, Gate 4/5), and Decision Register (doesn't exist at all — same shape as
+   Risk Register or RFI/TQ would be). Propose one of these two in a short paragraph, wait for "yes,
+   build it," then build only that — do not chain them.
 2. Older still-open items, none blocking daily use: category-scheme reconciliation
    (Documents/Vendor/Document-Types), the Gantt-bar readiness flag, the two hardcoded reminder/
    lookahead windows (14-day Document Reminders, 30-day Action Centre Upcoming), Resource
