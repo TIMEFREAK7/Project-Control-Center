@@ -194,6 +194,8 @@
    *   overdueRfis: [{id, number, subject, daysOverdue}]
    *   overdueMeetingActions: [{meetingId, meetingTitle, description, dueDate}]
    *   pendingChangeOrders: [{id, number, title}]
+   *   overdueRecoveryActions: [{id, description}] (PCC Evolution Roadmap, Tier C)
+   *   pendingDecisions: [{id, title}] (PCC Evolution Roadmap, Tier C)
    *   budgetTotal, actualTotal, bac, eac (numbers or null)
    * @returns [{ id, severity, source, description, date, link }] */
   function computeDiagnostics(context) {
@@ -311,6 +313,27 @@
         description: co.number + " “" + co.title + "” is pending a decision.",
         date: today,
         link: { module: "changeOrders", recordId: co.id },
+      });
+    });
+    // PCC Evolution Roadmap, Tier C: Delay & Recovery Management + Decision Register.
+    (ctx.overdueRecoveryActions || []).forEach(function (r) {
+      alerts.push({
+        id: "recovery_" + r.id,
+        severity: SEVERITY.WARNING,
+        source: "Recovery",
+        description: "Recovery action overdue: " + r.description,
+        date: today,
+        link: { module: "delayRecoveryDashboard", recordId: r.id },
+      });
+    });
+    (ctx.pendingDecisions || []).forEach(function (d) {
+      alerts.push({
+        id: "decision_" + d.id,
+        severity: SEVERITY.WARNING,
+        source: "Decision",
+        description: "Decision pending: “" + d.title + "”.",
+        date: today,
+        link: { module: "decisionRegister", recordId: d.id },
       });
     });
 

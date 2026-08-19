@@ -375,6 +375,8 @@
       overdueRfis: ctx.overdueRfis,
       overdueMeetingActions: ctx.overdueMeetingActions,
       pendingChangeOrders: ctx.pendingChangeOrders ? ctx.pendingChangeOrders.map(function (co) { return { id: co.id, number: co.number, title: co.title }; }) : [],
+      overdueRecoveryActions: ctx.overdueRecoveryActions ? ctx.overdueRecoveryActions.map(function (r) { return { id: r.id, description: r.description }; }) : [],
+      pendingDecisions: ctx.pendingDecisions ? ctx.pendingDecisions.map(function (d) { return { id: d.id, title: d.title }; }) : [],
     };
   }
 
@@ -1182,6 +1184,12 @@
       if (link.recordId && window.PCC.meetings.expandMeeting) window.PCC.meetings.expandMeeting(link.recordId);
     } else if (link.module === "changeOrders" && window.PCC.changeOrders) {
       if (uiState.projectId && window.PCC.changeOrders.filterByProject) window.PCC.changeOrders.filterByProject(uiState.projectId);
+    } else if (link.module === "decisionRegister" && window.PCC.decisionRegister) {
+      if (link.recordId && window.PCC.decisionRegister.expandDecision) window.PCC.decisionRegister.expandDecision(link.recordId);
+    } else if (link.module === "delayRecoveryDashboard") {
+      // No per-record expand API on that dashboard (it's a portfolio rollup, not a
+      // detail page) — landing there is enough since it already sorts overdue-first,
+      // same trade-off "cost" below accepts for its own Budget-tab-only landing.
     } else if (link.module === "cost" && window.PCC.cost) {
       // cost.js's filterByProject() always lands on its Budget tab (no public API to
       // pick EVM/Summary directly) — acceptable here since the project filter still
@@ -1246,6 +1254,7 @@
     if (ctx.delayedActivities.length) lines.push(ctx.delayedActivities.length + " activity(ies) currently delayed.");
     if (ctx.highRisks.length) lines.push(ctx.highRisks.length + " open high-severity risk(s): " + ctx.highRisks.map(function (r) { return r.title; }).join(", ") + ".");
     if (ctx.openIssues.length) lines.push(ctx.openIssues.length + " open issue(s).");
+    if (ctx.overdueRecoveryActions.length) lines.push(ctx.overdueRecoveryActions.length + " recovery action(s) overdue.");
     if (lines.length === 0) return "No significant delays, high risks, or open issues at this time.";
     return lines.join(" ");
   }
@@ -1255,6 +1264,7 @@
     if (ctx.pendingChangeOrders.length) lines.push(ctx.pendingChangeOrders.length + " Change Order(s) awaiting a decision.");
     if (ctx.overdueRfis.length) lines.push(ctx.overdueRfis.length + " overdue RFI/TQ requiring response.");
     if (ctx.highRisks.length) lines.push(ctx.highRisks.length + " high-severity risk(s) needing a mitigation decision.");
+    if (ctx.pendingDecisions.length) lines.push(ctx.pendingDecisions.length + " decision(s) pending in the Decision Register.");
     if (lines.length === 0) return "Nothing currently requires management decision or approval.";
     return lines.join(" ");
   }
