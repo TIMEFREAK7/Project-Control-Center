@@ -61,29 +61,29 @@ that override default behavior).
   populated state, and again on the zip-verification pass) and send the PNGs via `SendUserFile`
   before or alongside the written report. Applies to every gate from here on, not just this one.
 
-## Where things stand — everything through Gate 30 is merged into `main`
+## Where things stand — everything through Gate 31 is merged into `main`
 
-`main` is fully up to date through **Gate 30** (PCC Evolution Roadmap gate 2 of ~27: Project
-Lookahead), merge commit `ab5b7c8`, `schema_version` **34** (unchanged — Gate 30 added no schema
+`main` is fully up to date through **Gate 31** (PCC Evolution Roadmap gate 3 of ~27: Management
+Attention), merge commit `b70e9a9`, `schema_version` **34** (unchanged — Gate 31 added no schema
 fields, everything computed at render time from existing data). This session built and merged
-Gate 30 on its own, following the same rebuild → full suite → merge (no PR, standing instruction,
+Gate 31 on its own, following the same rebuild → full suite → merge (no PR, standing instruction,
 see above) → push `main` → restart `claude/gate-5-startup-1ubxfh` from the new `main` sequence
-used for every prior gate. The full test suite (**30 files, 664 checks**) passes clean, and a
+used for every prior gate. The full test suite (**31 files, 695 checks**) passes clean, and a
 real-Chromium pass (with screenshots, per the standing instruction below) confirmed the new
-Project Lookahead page end to end — the 7/14/30/60-day window toggle, Schedule activity/milestone
-integration, meeting/RFI/document items, View navigation into Schedule with the right activity's
-detail panel open, zero JS errors. **No branch currently carries unmerged app features** —
-`claude/gate-5-startup-1ubxfh` was reset to match `main` after the Gate 30 merge and has no
-commits of its own on top. Verify with `git log origin/main..HEAD` before assuming this is still
-true by the time you read this.
+Dashboard "Management Attention" panel end to end — a critical activity and a high risk surfacing
+worst-first, correct badges, "View Project" landing on the right project's Executive Center, zero
+JS errors. **No branch currently carries unmerged app features** — `claude/gate-5-startup-1ubxfh`
+was reset to match `main` after the Gate 31 merge and has no commits of its own on top. Verify
+with `git log origin/main..HEAD` before assuming this is still true by the time you read this.
 
 **The entire 14-gate Document Control sub-spec Aditya originally handed over is complete (Gates
 14-28)** — Master Repository, Project Requirements, Classification/Nomenclature, Status/Version
 Control, Schedule Due Dates, Vendor Register, Schedule↔Document Linking, Schedule-Driven
 Dates/Lead Time, Vendor Lookahead, Readiness/Constraints, Reminders/Notifications, Dashboards,
 Executive Summary, and Portfolio Compliance. **A new, separate PCC Evolution Roadmap started
-with Gate 29** (see its own section below) — its first two gates (Planner Action Centre, Project
-Lookahead) are done; ~25 more gates remain in that roadmap, none started, none scoped yet.
+with Gate 29** (see its own section below) — its first three gates (Planner Action Centre, Project
+Lookahead, Management Attention) are done, effectively completing the roadmap's own Tier A (Daily
+Planner Value); ~24 more gates remain, none started, none scoped yet.
 
 **Feature summary, in build order (Gates 1-13 summarized; Gates 14-17 — Document Control — in
 full detail since they're what's newest and least likely to be in a future session's training/
@@ -306,7 +306,7 @@ that back-and-forth pattern held for all 14 gates through to the last one.
   "Document Control Compliance" `<h3>`, returns its `parentElement`) instead of searching the
   whole page.
 
-### PCC Evolution Roadmap (Gates 29-30 = roadmap's own Gates 1-2) — 2 of ~27 gates done
+### PCC Evolution Roadmap (Gates 29-31 = roadmap's own Gates 1-3) — 3 of ~27 gates done, Tier A effectively complete
 
 Aditya handed over a large roadmap (Tiers A-F: Daily Planner Value, Control Integration, Project
 Performance, Management, Portfolio, then Tier F's advanced planning/controls gates — Resource
@@ -355,10 +355,33 @@ view — that became the Planner Action Centre.
   file `test_project_lookahead_e2e.js` (34 checks) covers every window-boundary case (a day-20 item
   appearing only at 30/60 days, a day-45 item only at 60) and float-derived badge correctness.
 
-**Next roadmap gate: not yet scoped.** Strongest remaining candidate: surfacing Gate 9's
-*existing* health-score/diagnostics engine as a **Management Attention** strip on the Dashboard
-(near-zero new code — reuse, don't rebuild). Per the roadmap's own gate discipline, propose it (or
-something else), get "yes, build it," then build only that.
+- **Gate 31 — Management Attention.** Deliberately almost no new logic: exported
+  `window.PCC.executiveCenter.getDiagnostics(projectId)` — one function composing Executive
+  Center's existing private `buildProjectContext()` → `diagnosticsContextFrom()` →
+  `projectHealthEngine.computeDiagnostics()` pipeline (already proven inside its own Diagnostics
+  panel) — rather than duplicating that ~220-line context builder into `dashboard.js`. A genuine,
+  deliberate departure from this app's usual "duplicate small helpers" convention: that convention
+  was scoped to ~10-30 line functions, never to something this large, and duplicating it would risk
+  Dashboard and Executive Center silently disagreeing after a future fix landed in only one copy.
+  New Dashboard panel, **"Management Attention,"** right after the KPI grid and before the existing
+  Document Reminders panel (both untouched) — loops every active project, keeps only **Critical +
+  Warning** severities (Info-level detail like near-critical activities/pending Change Orders stays
+  Executive-Center-only, to avoid a portfolio-wide firehose of low-urgency notes), groups by
+  project worst-first (critical count, then warning count, then name), one **"View Project"**
+  button per group landing on that project's Executive Center Overview (same destination for every
+  alert type — Executive Center's own Diagnostics panel already has correct per-record links from
+  there). Confirmed via test that the diagnostics engine recomputes CPM **live** rather than
+  trusting a stale stored `total_float` — a directly-edited float on a record doesn't change the
+  result; the underlying schedule data does. No schema changes. New test file
+  `test_management_attention_e2e.js` (31 checks).
+
+**Next roadmap gate: not yet scoped.** Tier A (Daily Planner Value) is now effectively complete —
+Gate 1 (Project Control Centre) was found substantially pre-existing at the original inspection,
+and Gates 2-4 (Action Centre, Lookahead, Management Attention) are all done. Tier B (Control
+Integration) is the likely next area, but a fresh look is needed first: its Schedule↔Activity and
+Activity↔Risk/RFI/Meeting relationships already existed before this roadmap even started (Gate 10)
+— so what Tier B genuinely still needs isn't yet identified. Per the roadmap's own gate discipline,
+inspect first, then propose one gate, get "yes, build it," then build only that.
 
 **Deliberately still open / explicitly deferred, don't assume these got done:**
 - Reconciling Documents' `category` / Vendor's `VENDOR_DOCUMENT_CATEGORIES` / the Gate 14 master
@@ -371,8 +394,8 @@ something else), get "yes, build it," then build only that.
   `actionCentre.js`) are both hardcoded, not user-configurable — noted as a possible follow-up.
 - Rate × usage from Resource Management feeding Cost Tracking/EVM (deferred at Gate 11).
 - Portfolio-level executive dashboard filtering by client/country/sector/PM/date range.
-- Every other gate in the PCC Evolution Roadmap beyond Gates 29-30 — ~25 gates, none started. See
-  the roadmap section above for the candidate raised for the actual next gate.
+- Every other gate in the PCC Evolution Roadmap beyond Gates 29-31 — ~24 gates, none started. See
+  the roadmap section above for where Tier B currently stands.
 
 ## Key technical conventions to carry forward
 
@@ -444,7 +467,7 @@ something else), get "yes, build it," then build only that.
   there fails `npm test` with a bare `MODULE_NOT_FOUND` even though every individual test file is
   fine (hit this exact thing shipping Gate 19; fixed by editing `tests/package.json` alongside the
   `git mv`).
-- Testing: `cd tests && npm test` must pass before anything ships (30 files, 664 checks as of
+- Testing: `cd tests && npm test` must pass before anything ships (31 files, 695 checks as of
   this handoff). Pure-logic tests eval the real source file directly. E2E tests load the actual
   bundled `index.html` via jsdom (+ `fake-indexeddb` for IndexedDB-touching code). Also do one
   real-Chromium pass per gate (`/opt/pw-browsers/chromium-1194/chrome-linux/chrome --no-sandbox`,
@@ -499,9 +522,9 @@ something else), get "yes, build it," then build only that.
 
 ## Repo/branch state
 
-`main` is fully up to date through **Gate 30** (`ab5b7c8`, a direct merge — no PR, per Aditya's
+`main` is fully up to date through **Gate 31** (`b70e9a9`, a direct merge — no PR, per Aditya's
 now-standing "always merge after completing a gate/phase" instruction, see above). This is the
-second gate of the new PCC Evolution Roadmap, built on top of the already-complete 14-gate
+third gate of the new PCC Evolution Roadmap, built on top of the already-complete 14-gate
 Document Control sub-spec. `schema_version` on `main` is **34**. `claude/gate-5-startup-1ubxfh`
 was reset to match this `main` immediately after the merge and carries no commits of its own on
 top — it's the correct starting point for whatever comes next, no restart needed before you
@@ -511,15 +534,16 @@ true by the time you read this.
 
 **Zip delivered this round:** `Project-Control-Center.zip` — `index.html` + `README.md` +
 `data/`/`files/` (existing `README.txt` placeholders), verified via a fresh extraction opened in
-real Chromium (title and `#page-outlet` render, Project Lookahead navigable, zero console errors;
-screenshots taken and sent per the standing instruction).
+real Chromium (title and `#page-outlet` render, Management Attention navigable, zero console
+errors; screenshots taken and sent per the standing instruction).
 
 **Next steps, in likely priority order:**
-1. **PCC Evolution Roadmap Gate 3 is not yet scoped — ask Aditya before building anything.** The
-   strongest candidate from this session's own inspection is surfacing Gate 9's existing
-   health-score/diagnostics engine as a Management Attention strip on the Dashboard. Do not start
-   without the explicit "yes, build X as scoped" confirmation this project has consistently
-   required.
+1. **PCC Evolution Roadmap Gate 4 is not yet scoped — ask Aditya before building anything.**
+   Tier A (Daily Planner Value) is now effectively complete. Tier B (Control Integration) is the
+   likely next area, but its headline items — Schedule↔Activity and Activity↔Risk/RFI/Meeting
+   relationships — already existed before this roadmap started (Gate 10), so a fresh inspection is
+   needed to find what Tier B genuinely still needs before proposing a gate. Do not start without
+   the explicit "yes, build X as scoped" confirmation this project has consistently required.
 2. Older still-open items, none blocking daily use: category-scheme reconciliation
    (Documents/Vendor/Document-Types), the Gantt-bar readiness flag, the two hardcoded reminder/
    lookahead windows (14-day Document Reminders, 30-day Action Centre Upcoming), Resource
