@@ -2225,6 +2225,57 @@ done, deliberately: Document Control gates 11-14 (reminders/notifications, dashb
 summary, portfolio compliance rollups) — this gate only surfaces readiness when you open an
 activity's own detail panel; there's no portfolio-wide rollup or Gantt-level visual flag yet.
 
+## Gate 25 — Document Control 11: Reminders/Notifications (2026-08-18)
+
+Eleventh gate of the 14-gate Document Control spec. Scoped and confirmed before building, same
+discipline as every gate in this sub-spec. This app is a single offline `file://` deliverable with
+no server and no channel for real push/email — "Reminders/Notifications" here means the in-app
+equivalent: a portfolio-wide surface on the Dashboard, the first thing seen on open, rather than
+requiring the user to dig into each project/vendor/activity to notice something is due.
+
+**What changed:**
+
+- `pages/dashboard.js`:
+  - New `computeReminders()` — every `project_document_requirements` row, across ALL active
+    (non-archived) projects, that's either already Overdue or Required with a due date inside the
+    next 14 days (`DUE_SOON_WINDOW_DAYS`). Available requirements and requirements with no due
+    date at all never surface — nothing to remind about. Same
+    Available/Overdue/Required status computation as `portfolio.js`/`vendors.js`/`schedule.js`'s
+    own copies, duplicated a fourth time now per this app's per-module-helpers convention. Sorted
+    with a single ascending date sort, which already puts every Overdue row (a past date) ahead of
+    every Due Soon row (today or later) with no separate grouping pass needed.
+  - New **"Document Reminders"** panel, right below the existing KPI grid: each row shows document
+    type, project name, due date, vendor (if assigned, Gate 20), a status badge, and a "View
+    Project" button. Empty state when nothing qualifies.
+  - Two new KPI cards, "Overdue Docs" and "Due Soon (14d)," added to the existing grid.
+- `pages/portfolio.js`: new tiny public API, `window.PCC.portfolio.viewProject(projectId)` — sets
+  `uiState.expandedId` so the Dashboard's "View Project" button can land on Portfolio with that
+  project's Details already expanded. Same "expose one small view hook" pattern
+  `executiveCenter.js`'s own `viewProject()` already established.
+
+**Tested before delivery (10 new e2e checks in a new file, full suite re-run clean, 544 checks
+total):**
+
+- **End-to-end against the actual bundled `index.html`** (new file,
+  `test_dashboard_reminders_e2e.js`, 10 checks): empty state and zero-value KPIs before any
+  requirement exists; seeding four requirements (overdue, due-soon, far-future, and
+  available-despite-a-past-due-date) surfaces exactly the two that qualify — confirming the
+  far-future one is correctly excluded and, critically, that an Available requirement never
+  appears even with a past due date; sort order verified (overdue row before due-soon row); KPI
+  counts verified; "View Project" confirmed to navigate into Portfolio with that project's Details
+  expanded; fulfilling the overdue requirement (attaching a matching document) drops it from the
+  panel and its KPI on the very next render, live, with no separate wiring; full route smoke
+  check.
+- **Real-browser verification** (Chromium via Playwright): seeded a project with one overdue
+  requirement directly via the store, opened Dashboard, confirmed the reminders panel and Overdue
+  badge rendered correctly, clicked "View Project," and confirmed it landed on Portfolio with that
+  project's Details expanded — zero console/page errors.
+
+**What I have not tested:** this on your actual device. Same standard as every prior gate. Not
+done, deliberately: Document Control gates 12-14 (dashboards, executive summary, portfolio
+compliance rollups) — this gate is a single reminders panel, not a full dashboards suite; the
+14-day due-soon window is currently hardcoded, not user-configurable.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
@@ -2252,7 +2303,7 @@ line items on the original locked Tier 2/3 list. Built in a separate parallel se
 Gates 8-11 and reconciled into `main` together with them (see each gate's own write-up above for
 the schema-numbering note on how the reconciliation renumbered them).
 
-**Document Control** (Gates 14-24 = Document Control gates 1-10 of a separate 14-gate sub-spec,
+**Document Control** (Gates 14-25 = Document Control gates 1-11 of a separate 14-gate sub-spec,
 done) — same footing as Executive Center/Activity Linking/Vendor Management above: a directly
 requested, explicitly incremental upgrade to Documents, not a Tier 1/2/3 line item. The Master
 Document Repository (the type taxonomy, Gate 14), Project-Specific Document Requirements (which
@@ -2273,8 +2324,10 @@ view of every requirement assigned to that vendor, across all their projects, so
 first. **Gate 24** added a "Document Readiness" section to the Schedule module's Activity Detail
 Panel — reads Gate 21's activity link in reverse, flagging an activity NOT READY the moment any
 one of its governing requirements isn't yet Available; purely informational, never enforced.
-Document Control gates 11-14 (reminders/notifications, dashboards, executive summary,
-portfolio/executive compliance rollups) are intentionally not started — see Gates 14-24's own
+**Gate 25** added a portfolio-wide "Document Reminders" panel and two KPI cards to the Dashboard —
+this app's in-app equivalent of push/email notifications, since it has no server or network
+channel for either. Document Control gates 12-14 (dashboards, executive summary,
+portfolio/executive compliance rollups) are intentionally not started — see Gates 14-25's own
 write-ups above.
 
 **Tier 3 (deferred until Tier 1 is in daily use):** AI Document Processing, Knowledge Base, AI Project
@@ -2285,16 +2338,17 @@ Assistant, Lessons Learned, final polish
 **Tier 2 is complete**, and Vendor Management / the in-app Excel editor / the Document Control
 foundation (repository + per-project requirements + classification/nomenclature + status/version
 control + manual due dates + vendor assignment + schedule linking + lead-time suggestions + vendor
-lookahead + readiness flagging) are all done alongside it. The most likely next piece of work is
-**Document Control gate 11 (Reminders/Notifications)** — surfacing upcoming/overdue requirements
-proactively rather than only when you open the relevant project/vendor/activity, per the
-sub-spec's own locked gate order, but confirm scope before starting it rather than assuming, same
-discipline as every gate before this one. Other open items, none blocking daily use: rate × usage
-from Resource Management feeding Cost Tracking/EVM (explicitly deferred, Gate 11); a
+lookahead + readiness flagging + portfolio-wide reminders) are all done alongside it. The most
+likely next piece of work is **Document Control gate 12 (Dashboards)** — a dedicated Document
+Control dashboard/report view beyond the Dashboard's single reminders panel, per the sub-spec's
+own locked gate order, but confirm scope before starting it rather than assuming, same discipline
+as every gate before this one. Other open items, none blocking daily use: rate × usage from
+Resource Management feeding Cost Tracking/EVM (explicitly deferred, Gate 11); a
 persisted/logo-customizable report-template system; portfolio-level executive dashboard filtering;
 10,000+ activity Gantt virtualization; per-activity linking extended to Resource Assignments' own
 sub-fields if that turns out to matter in practice; Vendor↔Cost/Schedule integration beyond the
-current Vendor↔Project/Meeting/RFI/Risk links, if that turns out to matter in practice;
+current Vendor↔Project/Meeting/RFI/Risk links, if that turns out to matter in practice; the
+Document Reminders panel's 14-day due-soon window is currently hardcoded, not user-configurable;
 reconciling Documents' `category` / Vendor
 Management's document categories / the Gate 14 master repository into one classification scheme,
 explicitly deferred twice now (Gates 14 and 16) — worth revisiting once real usage shows whether
