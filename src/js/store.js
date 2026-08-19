@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 38;
+  var SCHEMA_VERSION = 39;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -89,6 +89,9 @@
       // Gate 9 (Project Executive Center): editable overrides for the template-based
       // Executive Summary, one record per project. See newExecutiveSummary() header.
       executive_summaries: [],
+      // PCC Evolution Roadmap, Tier D: Weekly Project Review. See newWeeklyReview()
+      // below for why the snapshot inside each row is frozen, not live.
+      weekly_reviews: [],
       // Gate 11 (Resource Management): resources is a shared, portfolio-wide pool
       // (not project-scoped) — see the header comment above newResource() for why.
       resources: [],
@@ -784,6 +787,50 @@
       // field holding the user's edited override, empty string meaning "still showing
       // the auto-generated text."
       document_control_override: "",
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  function newWeeklyReviewId() {
+    return "wr_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  /** PCC Evolution Roadmap, Tier D: Weekly Project Review. A frozen checkpoint record —
+   * `snapshot` is captured once at creation from executiveCenter.js's own
+   * buildProjectContext()/computeHealthScore() and never recalculated, same "frozen
+   * record, not a live view" precedent Gate 4's Schedule Baselines already established
+   * (a review from a month ago should show what the numbers actually were then, not
+   * what they are now). Only the three notes fields stay editable after the fact. */
+  function newWeeklyReview(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newWeeklyReviewId(),
+      project_id: "",
+      review_date: now.slice(0, 10),
+      attendees: "",
+      reviewed_by: "",
+      progress_notes: "",
+      issues_notes: "",
+      actions_notes: "",
+      snapshot: {
+        health_score: null,
+        rag: "",
+        schedule_progress_pct: null,
+        physical_progress_pct: null,
+        cost_budget: null,
+        cost_actual: null,
+        cost_variance: null,
+        open_risks: 0,
+        high_risks: 0,
+        open_rfis: 0,
+        overdue_rfis: 0,
+        pending_change_orders: 0,
+        open_recovery_actions: 0,
+        overdue_recovery_actions: 0,
+        pending_decisions: 0,
+      },
+      created_at: now,
       updated_at: now,
     };
     return Object.assign(base, overrides || {});
@@ -1917,6 +1964,14 @@
       loaded.schema_version = 38;
     }
 
+    if (loaded.schema_version < 39) {
+      // PCC Evolution Roadmap, Tier D: Weekly Project Review. Brand new array, nothing
+      // to backfill on existing records — same as every prior gate that introduced a
+      // new register.
+      if (!loaded.weekly_reviews) loaded.weekly_reviews = [];
+      loaded.schema_version = 39;
+    }
+
     return loaded;
   }
 
@@ -2262,6 +2317,7 @@
     newCostActual: newCostActual,
     COST_CATEGORIES: COST_CATEGORIES,
     newExecutiveSummary: newExecutiveSummary,
+    newWeeklyReview: newWeeklyReview,
     newResource: newResource,
     newResourceAssignment: newResourceAssignment,
     RESOURCE_TYPES: RESOURCE_TYPES,

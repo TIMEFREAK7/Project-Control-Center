@@ -43,11 +43,18 @@
 
   var uiState = {
     projectId: "",
-    tab: "overview", // 'overview' | 'output'
+    tab: "overview", // 'overview' | 'output' | 'weeklyReviews'
     editingSummarySection: null, // 'status' | 'achievements' | 'challenges' | 'attention' | 'upcoming' | null
     editingWeights: false,
     upcomingRangeDays: 30,
     outputMode: "snapshot", // 'snapshot' | 'pack'
+    // PCC Evolution Roadmap, Tier D: Weekly Project Review. Review id being edited, or
+    // 'new', or null. A "new" review's snapshot is captured once when this is first set
+    // (see renderWeeklyReviewsTab) and never recalculated, even if the form stays open
+    // while live data changes underneath it.
+    editingReviewId: null,
+    pendingNewReviewSnapshot: null,
+    expandedReviewId: null,
     packSections: {
       cover: true, summary: true, snapshot: true, kpis: true, progress: true,
       schedule: true, milestones: true, cost: true, evm: true, risks: true,
@@ -313,6 +320,22 @@
     ctx.docControlAvailable = docControlAvailable;
     ctx.docControlOverdue = docControlOverdue;
     ctx.docControlOverdueTypeNames = docControlOverdueTypeNames;
+
+    // ---- Recovery Actions (PCC Evolution Roadmap, Tier C) — same open/overdue
+    // computation as pages/schedule.js's/delayRecoveryDashboard.js's own
+    // recoveryActionOverdue(), duplicated here per this app's per-module convention. ----
+    var projectRecoveryActions = data.recovery_actions.filter(function (r) { return r.project_id === projectId; });
+    var openRecoveryActions = projectRecoveryActions.filter(function (r) { return r.status === "open" || r.status === "in_progress"; });
+    var overdueRecoveryActions = openRecoveryActions.filter(function (r) { return r.target_recovery_date && r.target_recovery_date < todayIso; });
+    ctx.allRecoveryActions = projectRecoveryActions;
+    ctx.openRecoveryActions = openRecoveryActions;
+    ctx.overdueRecoveryActions = overdueRecoveryActions;
+
+    // ---- Decisions (PCC Evolution Roadmap, Tier C) ----
+    var projectDecisions = data.decisions.filter(function (d) { return d.project_id === projectId; });
+    var pendingDecisions = projectDecisions.filter(function (d) { return d.status === "pending"; });
+    ctx.allDecisions = projectDecisions;
+    ctx.pendingDecisions = pendingDecisions;
 
     return ctx;
   }
@@ -721,7 +744,11 @@
     spacer.className = "toolbar__spacer";
     toolbar.appendChild(spacer);
 
-    [{ key: "overview", label: "Overview" }, { key: "output", label: "Snapshot & Management Pack" }].forEach(function (t) {
+    [
+      { key: "overview", label: "Overview" },
+      { key: "weeklyReviews", label: "Weekly Reviews" },
+      { key: "output", label: "Snapshot & Management Pack" },
+    ].forEach(function (t) {
       var btn = document.createElement("button");
       btn.className = "btn " + (uiState.tab === t.key ? "btn--primary" : "btn--ghost");
       btn.textContent = t.label;
@@ -744,6 +771,8 @@
 
     if (uiState.tab === "overview") {
       renderOverviewTab(outlet, data, ctx, health, diagnostics, rerender);
+    } else if (uiState.tab === "weeklyReviews") {
+      renderWeeklyReviewsTab(outlet, data, ctx, health, rerender);
     } else {
       renderOutputTab(outlet, data, ctx, health, diagnostics, rerender);
     }
@@ -1880,6 +1909,297 @@
     }
 
     return doc;
+  }
+
+  // ---------------------------------------------------------------------------------
+  // Weekly Reviews tab (PCC Evolution Roadmap, Tier D: Weekly Project Review)
+  // ---------------------------------------------------------------------------------
+
+  /** The exact set of numbers a review freezes, read straight off the already-computed
+   * ctx/health for this render — never recomputed later. */
+  function captureSnapshot(ctx, health) {
+    return {
+      health_score: health.score,
+      rag: health.rag,
+      schedule_progress_pct: ctx.scheduleProgressPct,
+      physical_progress_pct: ctx.physicalProgressPct,
+      cost_budget: ctx.costSummary.budgeted,
+      cost_actual: ctx.costSummary.actual,
+      cost_variance: ctx.costSummary.variance,
+      open_risks: ctx.openRisks.length,
+      high_risks: ctx.highRisks.length,
+      open_rfis: ctx.openRfis.length,
+      overdue_rfis: ctx.overdueRfis.length,
+      pending_change_orders: ctx.pendingChangeOrders.length,
+      open_recovery_actions: ctx.openRecoveryActions.length,
+      overdue_recovery_actions: ctx.overdueRecoveryActions.length,
+      pending_decisions: ctx.pendingDecisions.length,
+    };
+  }
+
+  function snapshotRow(label, value) {
+    var div = document.createElement("div");
+    div.innerHTML = "<span class='detail-item__label'>" + esc(label) + "</span><div>" + esc(value) + "</div>";
+    return div;
+  }
+
+  /** A small +/-/= delta marker comparing a review's snapshot value against the
+   * previous (older) review's, for the metrics where "lower/higher is better" is
+   * unambiguous. Purely a convenience once the historical list already exists — no new
+   * computation beyond a simple subtraction. */
+  function deltaMarker(current, previous, higherIsBetter) {
+    if (previous === null || previous === undefined || current === null || current === undefined) return "";
+    var diff = current - previous;
+    if (diff === 0) return " (=)";
+    var improved = higherIsBetter ? diff > 0 : diff < 0;
+    return " (" + (diff > 0 ? "+" : "") + diff + (improved ? " ▲" : " ▼") + ")";
+  }
+
+  function renderReviewCard(review, previousReview, currency, onChanged) {
+    var card = document.createElement("div");
+    card.className = "project-card";
+
+    var s = review.snapshot;
+    var main = document.createElement("div");
+    main.className = "project-card__main";
+    main.innerHTML =
+      "<div class='project-card__name'>" + esc(review.review_date) + "</div>" +
+      "<div class='project-card__meta'>" +
+      (review.reviewed_by ? esc(review.reviewed_by) : "—") + (review.attendees ? " · Attendees: " + esc(review.attendees) : "") +
+      "</div>";
+
+    var badgeWrap = document.createElement("div");
+    badgeWrap.style.display = "flex";
+    badgeWrap.style.gap = "6px";
+    badgeWrap.appendChild(ragBadge(s.rag));
+
+    var actions = document.createElement("div");
+    actions.className = "project-card__actions";
+    var detailsBtn = document.createElement("button");
+    detailsBtn.className = "btn btn--ghost";
+    detailsBtn.textContent = uiState.expandedReviewId === review.id ? "Hide" : "Details";
+    detailsBtn.onclick = function () {
+      uiState.expandedReviewId = uiState.expandedReviewId === review.id ? null : review.id;
+      onChanged();
+    };
+    var editBtn = document.createElement("button");
+    editBtn.className = "btn btn--ghost";
+    editBtn.textContent = "Edit Notes";
+    editBtn.onclick = function () {
+      uiState.editingReviewId = review.id;
+      onChanged();
+    };
+    var deleteBtn = document.createElement("button");
+    deleteBtn.className = "btn btn--ghost";
+    deleteBtn.textContent = "Delete";
+    deleteBtn.onclick = function () {
+      if (!window.confirm("Delete this weekly review? This can't be undone.")) return;
+      window.PCC.store.update(function (d) {
+        d.weekly_reviews = d.weekly_reviews.filter(function (r) { return r.id !== review.id; });
+      });
+      window.PCC.notify("Weekly review deleted.", "info");
+      onChanged();
+    };
+    actions.appendChild(detailsBtn);
+    actions.appendChild(editBtn);
+    actions.appendChild(deleteBtn);
+
+    card.appendChild(main);
+    card.appendChild(badgeWrap);
+    card.appendChild(actions);
+
+    var entry = document.createElement("div");
+    entry.className = "project-entry";
+    entry.appendChild(card);
+
+    if (uiState.expandedReviewId === review.id) {
+      var details = document.createElement("div");
+      details.className = "project-details";
+      var grid = document.createElement("div");
+      grid.className = "detail-grid";
+      var prev = previousReview ? previousReview.snapshot : null;
+      grid.appendChild(snapshotRow("Health Score", (s.health_score == null ? "—" : s.health_score) + (prev ? deltaMarker(s.health_score, prev.health_score, true) : "")));
+      grid.appendChild(snapshotRow("Schedule Progress", fmtPct(s.schedule_progress_pct) + (prev ? deltaMarker(Math.round(s.schedule_progress_pct || 0), Math.round(prev.schedule_progress_pct || 0), true) : "")));
+      grid.appendChild(snapshotRow("Physical Progress", fmtPct(s.physical_progress_pct) + (prev ? deltaMarker(Math.round(s.physical_progress_pct || 0), Math.round(prev.physical_progress_pct || 0), true) : "")));
+      grid.appendChild(snapshotRow("Cost Variance", fmtMoney(s.cost_variance, currency)));
+      grid.appendChild(snapshotRow("Open Risks (high-severity)", s.open_risks + " (" + s.high_risks + ")"));
+      grid.appendChild(snapshotRow("Open RFIs (overdue)", s.open_rfis + " (" + s.overdue_rfis + ")"));
+      grid.appendChild(snapshotRow("Pending Change Orders", s.pending_change_orders));
+      grid.appendChild(snapshotRow("Open Recovery Actions (overdue)", s.open_recovery_actions + " (" + s.overdue_recovery_actions + ")"));
+      grid.appendChild(snapshotRow("Pending Decisions", s.pending_decisions));
+      details.appendChild(grid);
+
+      [
+        { label: "Progress This Week", value: review.progress_notes },
+        { label: "Issues / Blockers", value: review.issues_notes },
+        { label: "Actions for Next Week", value: review.actions_notes },
+      ].forEach(function (f) {
+        if (!f.value) return;
+        var p = document.createElement("p");
+        p.style.marginTop = "10px";
+        p.style.fontSize = "13px";
+        p.innerHTML = "<strong>" + esc(f.label) + ":</strong> " + esc(f.value);
+        details.appendChild(p);
+      });
+
+      entry.appendChild(details);
+    }
+
+    return entry;
+  }
+
+  function renderWeeklyReviewsTab(outlet, data, ctx, health, rerender) {
+    var reviews = data.weekly_reviews
+      .filter(function (r) { return r.project_id === ctx.project.id; })
+      .sort(function (a, b) { return b.review_date.localeCompare(a.review_date) || b.created_at.localeCompare(a.created_at); });
+
+    var intro = document.createElement("p");
+    intro.className = "text-secondary";
+    intro.style.fontSize = "12px";
+    intro.style.marginBottom = "12px";
+    intro.textContent = "Each review freezes this project's key numbers at that moment — a review from a month ago shows what was true then, not today's live figures.";
+    outlet.appendChild(intro);
+
+    var newBtn = document.createElement("button");
+    newBtn.className = "btn btn--primary no-print";
+    newBtn.style.marginBottom = "12px";
+    newBtn.textContent = "+ New Weekly Review";
+    newBtn.onclick = function () {
+      uiState.pendingNewReviewSnapshot = captureSnapshot(ctx, health);
+      uiState.editingReviewId = "new";
+      rerender();
+    };
+    outlet.appendChild(newBtn);
+
+    if (uiState.editingReviewId) {
+      var isNew = uiState.editingReviewId === "new";
+      var review = isNew
+        ? window.PCC.store.newWeeklyReview({ project_id: ctx.project.id, snapshot: uiState.pendingNewReviewSnapshot })
+        : reviews.find(function (r) { return r.id === uiState.editingReviewId; });
+
+      if (review) {
+        var panel = document.createElement("div");
+        panel.className = "panel no-print";
+        panel.style.marginBottom = "16px";
+        var heading = document.createElement("h3");
+        heading.style.marginBottom = "12px";
+        heading.textContent = isNew ? "New Weekly Review" : "Edit Weekly Review";
+        panel.appendChild(heading);
+
+        if (isNew) {
+          var snapNote = document.createElement("p");
+          snapNote.className = "text-secondary";
+          snapNote.style.fontSize = "12px";
+          snapNote.style.marginTop = "-6px";
+          snapNote.style.marginBottom = "12px";
+          snapNote.textContent = "Snapshot captured just now — Health " + (review.snapshot.rag ? RAG_LABELS[review.snapshot.rag] : "—") + " (" + (review.snapshot.health_score == null ? "—" : review.snapshot.health_score) + "), Schedule " + fmtPct(review.snapshot.schedule_progress_pct) + ", Physical " + fmtPct(review.snapshot.physical_progress_pct) + ".";
+          panel.appendChild(snapNote);
+        }
+
+        var form = document.createElement("form");
+        var grid = document.createElement("div");
+        grid.className = "form-grid";
+
+        function field(label, id, value, type) {
+          var f = document.createElement("div");
+          f.className = "field";
+          f.innerHTML = "<label>" + esc(label) + "</label>";
+          var input = document.createElement("input");
+          input.type = type || "text";
+          input.id = id;
+          input.value = value || "";
+          f.appendChild(input);
+          return f;
+        }
+        grid.appendChild(field("Review Date", "wrfield-review_date", review.review_date, "date"));
+        grid.appendChild(field("Reviewed By", "wrfield-reviewed_by", review.reviewed_by));
+        grid.appendChild(field("Attendees", "wrfield-attendees", review.attendees));
+        form.appendChild(grid);
+
+        function textareaField(label, id, value) {
+          var f = document.createElement("div");
+          f.className = "field";
+          f.style.marginTop = "10px";
+          f.innerHTML = "<label>" + esc(label) + "</label>";
+          var ta = document.createElement("textarea");
+          ta.id = id;
+          ta.rows = 2;
+          ta.value = value || "";
+          f.appendChild(ta);
+          form.appendChild(f);
+        }
+        textareaField("Progress This Week", "wrfield-progress_notes", review.progress_notes);
+        textareaField("Issues / Blockers", "wrfield-issues_notes", review.issues_notes);
+        textareaField("Actions for Next Week", "wrfield-actions_notes", review.actions_notes);
+
+        var actionsRow = document.createElement("div");
+        actionsRow.style.display = "flex";
+        actionsRow.style.gap = "10px";
+        actionsRow.style.marginTop = "12px";
+        var saveBtn = document.createElement("button");
+        saveBtn.type = "submit";
+        saveBtn.className = "btn btn--primary";
+        saveBtn.textContent = isNew ? "Save Review" : "Save Changes";
+        var cancelBtn = document.createElement("button");
+        cancelBtn.type = "button";
+        cancelBtn.className = "btn btn--ghost";
+        cancelBtn.textContent = "Cancel";
+        cancelBtn.onclick = function () {
+          uiState.editingReviewId = null;
+          uiState.pendingNewReviewSnapshot = null;
+          rerender();
+        };
+        actionsRow.appendChild(saveBtn);
+        actionsRow.appendChild(cancelBtn);
+        form.appendChild(actionsRow);
+
+        form.onsubmit = function (e) {
+          e.preventDefault();
+          var values = {
+            review_date: form.querySelector("#wrfield-review_date").value || today(),
+            reviewed_by: form.querySelector("#wrfield-reviewed_by").value,
+            attendees: form.querySelector("#wrfield-attendees").value,
+            progress_notes: form.querySelector("#wrfield-progress_notes").value,
+            issues_notes: form.querySelector("#wrfield-issues_notes").value,
+            actions_notes: form.querySelector("#wrfield-actions_notes").value,
+          };
+          window.PCC.store.update(function (d) {
+            if (isNew) {
+              d.weekly_reviews.push(window.PCC.store.newWeeklyReview(Object.assign({ project_id: ctx.project.id, snapshot: review.snapshot }, values)));
+            } else {
+              var existing = d.weekly_reviews.find(function (r) { return r.id === review.id; });
+              if (existing) {
+                Object.assign(existing, values);
+                existing.updated_at = new Date().toISOString();
+              }
+            }
+          });
+          window.PCC.notify(isNew ? "Weekly review saved." : "Weekly review updated.", "success");
+          uiState.editingReviewId = null;
+          uiState.pendingNewReviewSnapshot = null;
+          rerender();
+        };
+
+        panel.appendChild(form);
+        outlet.appendChild(panel);
+      }
+    }
+
+    if (reviews.length === 0) {
+      var empty = document.createElement("div");
+      empty.className = "panel empty-state";
+      empty.textContent = "No weekly reviews logged yet for this project. Click “+ New Weekly Review” to capture the first one.";
+      outlet.appendChild(empty);
+      return;
+    }
+
+    var list = document.createElement("div");
+    list.className = "project-list";
+    reviews.forEach(function (r, idx) {
+      var previous = idx + 1 < reviews.length ? reviews[idx + 1] : null;
+      list.appendChild(renderReviewCard(r, previous, ctx.project.currency, rerender));
+    });
+    outlet.appendChild(list);
   }
 
   var ACTIVITY_STATUS_LABEL_MAP = { not_started: "Not Started", in_progress: "In Progress", complete: "Complete", on_hold: "On Hold" };
