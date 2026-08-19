@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 34;
+  var SCHEMA_VERSION = 35;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -859,6 +859,13 @@
       constraint_type: "",
       constraint_date: "",
       notes: "",
+      // Gate 32 (PCC Evolution Roadmap, Tier B: Activity → Vendor). Optional link into
+      // the Vendor Management module (Gate 13) — which vendor is responsible for this
+      // activity. Distinct from `contractor` above (free text, pre-existing): this is a
+      // real link, same "reuse the existing Vendor Management module, don't invent a
+      // second vendor list" precedent every Document Control gate touching vendors
+      // (6, 9, 20, 23) already followed.
+      vendor_id: "",
       // Gate 2: the Activity ID from the source spreadsheet, preserved for traceability
       // and so a future re-import of a revised file can be matched against what's
       // already here. Null for activities created by hand in Gate 1's CRUD form.
@@ -1776,6 +1783,18 @@
         if (s.document_control_override === undefined) s.document_control_override = "";
       });
       loaded.schema_version = 34;
+    }
+
+    if (loaded.schema_version < 35) {
+      // Gate 32 (PCC Evolution Roadmap, Tier B: Activity → Vendor). Adds an optional
+      // vendor_id to every existing Schedule activity — "" (unassigned), same treatment
+      // every other optional link field on this app has gotten since Gate 10. Distinct
+      // from the pre-existing free-text `contractor` field: this is a real link into the
+      // Vendor Management module (Gate 13), not a label.
+      (loaded.activities || []).forEach(function (a) {
+        if (a.vendor_id === undefined) a.vendor_id = "";
+      });
+      loaded.schema_version = 35;
     }
 
     return loaded;

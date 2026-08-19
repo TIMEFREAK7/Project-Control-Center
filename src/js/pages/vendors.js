@@ -959,6 +959,7 @@
       { key: "performance", label: "Performance" },
       { key: "notes", label: "Notes" },
       { key: "lookahead", label: "Document Lookahead" },
+      { key: "activities", label: "Activities" },
     ].forEach(function (t) {
       var btn = document.createElement("button");
       btn.className = "tab-btn" + (uiState.profileTab === t.key ? " tab-btn--active" : "");
@@ -2465,6 +2466,101 @@
       });
   }
 
+  // Gate 32 (PCC Evolution Roadmap, Tier B: Activity → Vendor). Read-only, portfolio-wide:
+  // every Schedule activity across ALL of this vendor's projects with a matching
+  // `vendor_id` — answers "what exactly is this vendor responsible for?" at the
+  // activity level, distinct from the Projects tab's project-level scope_of_work text.
+  // Same Critical/Near-Critical/On Track badge convention as projectLookahead.js's own
+  // copy, duplicated here per this app's per-module-helpers convention.
+  function renderActivitiesTab(container, vendor, data) {
+    var schedulesById = {};
+    data.schedules.forEach(function (s) {
+      schedulesById[s.id] = s;
+    });
+
+    var rows = data.activities.filter(function (a) {
+      return a.vendor_id === vendor.id;
+    });
+
+    if (rows.length === 0) {
+      var empty = document.createElement("div");
+      empty.className = "panel empty-state";
+      empty.textContent =
+        "No Schedule activities are currently assigned to this vendor. Assign this vendor from an activity's Edit form on the Schedule page.";
+      container.appendChild(empty);
+      return;
+    }
+
+    var summary = document.createElement("div");
+    summary.className = "panel";
+    summary.style.marginBottom = "12px";
+    summary.innerHTML =
+      "<p class='text-secondary' style='font-size:11px;margin-bottom:4px'>ASSIGNED ACTIVITIES</p>" +
+      "<p style='font-size:13px;margin:0'>" +
+      rows.length +
+      " activit" + (rows.length === 1 ? "y" : "ies") +
+      " assigned across " +
+      new Set(rows.map(function (a) { return a.project_id; })).size +
+      " project(s)</p>";
+    container.appendChild(summary);
+
+    rows
+      .slice()
+      .sort(function (a, b) {
+        var da = a.early_start || a.planned_start || "9999-99-99";
+        var db = b.early_start || b.planned_start || "9999-99-99";
+        return da.localeCompare(db);
+      })
+      .forEach(function (a) {
+        var schedule = schedulesById[a.schedule_id];
+        var thresholdDays = (schedule && schedule.near_critical_threshold_days) || 5;
+        var floatVal = a.total_float;
+        var critical = floatVal != null && floatVal <= 0;
+        var nearCritical = floatVal != null && floatVal > 0 && floatVal <= thresholdDays;
+        var badgeClass = critical ? "critical" : nearCritical ? "at_risk" : "on_track";
+        var badgeLabel = critical ? "Critical" : nearCritical ? "Near-Critical" : "On Track";
+
+        var card = document.createElement("div");
+        card.className = "project-card";
+
+        var top = document.createElement("div");
+        top.style.display = "flex";
+        top.style.justifyContent = "space-between";
+        top.style.alignItems = "center";
+        top.innerHTML =
+          "<strong>" + (a.name || "(unnamed activity)") + "</strong> <span class='status-badge status-badge--" + badgeClass + "'>" + badgeLabel + "</span>";
+        card.appendChild(top);
+
+        var meta = document.createElement("p");
+        meta.className = "text-secondary";
+        meta.style.fontSize = "12px";
+        meta.style.margin = "4px 0 0";
+        var date = a.early_start || a.planned_start;
+        meta.textContent =
+          "Project: " + projectName(data.projects, a.project_id) +
+          (schedule ? " · " + schedule.name : "") +
+          (date ? " · Starts " + date : " · No date set yet");
+        card.appendChild(meta);
+
+        if (window.PCC.schedule) {
+          var viewBtn = document.createElement("button");
+          viewBtn.className = "btn btn--ghost";
+          viewBtn.style.marginTop = "6px";
+          viewBtn.textContent = "View in Schedule";
+          viewBtn.onclick = (function (projectId, scheduleId, activityId) {
+            return function () {
+              window.PCC.schedule.viewActivity(projectId, scheduleId, activityId);
+              window.PCC.router.go("schedule");
+              window.PCC.router.render();
+            };
+          })(a.project_id, a.schedule_id, a.id);
+          card.appendChild(viewBtn);
+        }
+
+        container.appendChild(card);
+      });
+  }
+
   function renderProfile(container, data, rerender) {
     var vendor = data.vendors.find(function (v) {
       return v.id === uiState.profileVendorId;
@@ -2529,6 +2625,7 @@
     else if (uiState.profileTab === "performance") renderPerformanceTab(tabContent, vendor, data, rerender);
     else if (uiState.profileTab === "notes") renderNotesTab(tabContent, vendor, data, rerender);
     else if (uiState.profileTab === "lookahead") renderLookaheadTab(tabContent, vendor, data);
+    else if (uiState.profileTab === "activities") renderActivitiesTab(tabContent, vendor, data);
   }
 
   // ---------------------------------------------------------------------------------
