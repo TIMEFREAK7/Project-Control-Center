@@ -19,6 +19,10 @@
   var RELATIONSHIP_TYPE_LABELS = { FS: "Finish-to-Start", SS: "Start-to-Start", FF: "Finish-to-Finish", SF: "Start-to-Finish" };
   var PRIORITY_LABELS = { low: "Low", medium: "Medium", high: "High" };
   var RECOVERY_ACTION_STATUS_LABELS = { open: "Open", in_progress: "In Progress", completed: "Completed", cancelled: "Cancelled" };
+  function fmtMoney(amount) {
+    if (amount === null || amount === undefined || amount === "" || isNaN(Number(amount))) return null;
+    return Number(amount).toLocaleString(undefined, { maximumFractionDigits: 2 });
+  }
   var DELAY_CAUSE_LABELS = {
     owner_caused: "Owner-Caused",
     contractor_caused: "Contractor-Caused",
@@ -42,6 +46,13 @@
     // Gate 23: delay record id currently being added/edited in the Activity Detail
     // Panel, or "new", or null.
     editingDelayRecordId: null,
+    // Gate 24: What-If Sandbox tab state. Purely in-memory and never persisted — see
+    // renderWhatIfTab()'s own header comment for why this is a standalone exploration
+    // tool rather than tied to any one Recovery Action.
+    whatIfActivityId: "",
+    whatIfReduceDays: "",
+    whatIfResult: null,
+    whatIfError: null,
     // Gate 4: baseline capture/compare. Baseline list is scoped to the selected
     // *project* (not the selected schedule) since comparing a baseline against a
     // later re-imported revision is the point \u2014 see scheduleBaselineEngine.js header.
@@ -3223,6 +3234,29 @@
         statusField.appendChild(statusSelect);
         grid.appendChild(statusField);
 
+        // Gate 24: quantifying the recovery option, not just tracking it as a to-do.
+        // Explore the impact with the What-If tab first if you want a CPM-backed
+        // estimate rather than a guess.
+        var recDaysField = document.createElement("div");
+        recDaysField.className = "field";
+        recDaysField.innerHTML = "<label>Estimated Recovery (days)</label>";
+        var recDaysInput = document.createElement("input");
+        recDaysInput.type = "number";
+        recDaysInput.id = "recactionfield-estimated_recovery_days";
+        recDaysInput.value = editing.estimated_recovery_days == null ? "" : editing.estimated_recovery_days;
+        recDaysField.appendChild(recDaysInput);
+        grid.appendChild(recDaysField);
+
+        var costField = document.createElement("div");
+        costField.className = "field";
+        costField.innerHTML = "<label>Estimated Cost</label>";
+        var costInput = document.createElement("input");
+        costInput.type = "number";
+        costInput.id = "recactionfield-estimated_cost";
+        costInput.value = editing.estimated_cost == null ? "" : editing.estimated_cost;
+        costField.appendChild(costInput);
+        grid.appendChild(costField);
+
         form.appendChild(grid);
 
         var errorMsg = document.createElement("p");
@@ -3264,6 +3298,8 @@
             responsible_person: respInput.value,
             target_recovery_date: dateInput.value,
             status: statusSelect.value,
+            estimated_recovery_days: recDaysInput.value === "" ? null : Number(recDaysInput.value),
+            estimated_cost: costInput.value === "" ? null : Number(costInput.value),
             updated_at: new Date().toISOString(),
           };
           window.PCC.store.update(function (d) {
@@ -3309,6 +3345,8 @@
         "<p class='text-secondary' style='font-size:12px;margin:4px 0 0'>" +
         (r.responsible_person ? r.responsible_person + " · " : "") +
         (r.target_recovery_date ? "target " + r.target_recovery_date : "no target date") +
+        (r.estimated_recovery_days != null ? " · est. " + r.estimated_recovery_days + "d recovery" : "") +
+        (fmtMoney(r.estimated_cost) != null ? " · est. cost " + fmtMoney(r.estimated_cost) : "") +
         "</p>";
       rowEl.appendChild(left);
 
@@ -4531,6 +4569,255 @@
     container.appendChild(list);
   }
 
+  /** PCC Evolution Roadmap, Tier F: Recovery & Mitigation Planning (Gate 24). A
+   * standalone exploration tool, deliberately NOT tied to any one Recovery Action
+   * (Aditya's own call via AskUserQuestion) — pick any activity in the current
+   * schedule, propose reducing its duration/remaining duration by N days (crashing/
+   * fast-tracking), and see the CPM-calculated impact on project finish and the
+   * critical path BEFORE committing to anything. Nothing here is persisted:
+   * scheduleCpmEngine.calculateSchedule() is a pure function that already only takes
+   * plain arrays (no store/DOM access), so this just clones the current activities,
+   * perturbs one, and reruns it. The "before" figure is a fresh live calculation
+   * against the current, unmodified activities — the same numbers "Calculate
+   * Schedule" would produce right now — so what's shown here is always comparable to
+   * what's actually on the activities, not a stale prior run. */
+  function renderWhatIfTab(container, data, rerender) {
+    var schedule = data.schedules.find(function (s) { return s.id === uiState.scheduleId; });
+    var scheduleActivities = data.activities.filter(function (a) { return a.schedule_id === uiState.scheduleId; });
+    var scheduleRelationships = data.relationships.filter(function (r) { return r.schedule_id === uiState.scheduleId; });
+
+    var intro = document.createElement("p");
+    intro.className = "text-secondary";
+    intro.style.fontSize = "12px";
+    intro.style.marginBottom = "10px";
+    intro.textContent =
+      "Explore “what if we recover N days on this activity” without changing anything — nothing here is saved. Decide on a number, then log it against a Recovery Action from the Activity Detail Panel.";
+    container.appendChild(intro);
+
+    if (scheduleActivities.length === 0) {
+      var empty = document.createElement("div");
+      empty.className = "panel empty-state";
+      empty.textContent = "Add some activities before exploring a what-if scenario.";
+      container.appendChild(empty);
+      return;
+    }
+
+    var formPanel = document.createElement("div");
+    formPanel.className = "panel";
+    var grid = document.createElement("div");
+    grid.className = "form-grid";
+
+    var activityField = document.createElement("div");
+    activityField.className = "field";
+    activityField.innerHTML = "<label>Activity</label>";
+    var activitySelect = document.createElement("select");
+    activitySelect.id = "whatiffield-activity";
+    var blankOpt = document.createElement("option");
+    blankOpt.value = "";
+    blankOpt.textContent = "Select an activity…";
+    activitySelect.appendChild(blankOpt);
+    scheduleActivities.forEach(function (a) {
+      var opt = document.createElement("option");
+      opt.value = a.id;
+      opt.textContent = a.name || "(unnamed activity)";
+      activitySelect.appendChild(opt);
+    });
+    activitySelect.value = uiState.whatIfActivityId || "";
+    activityField.appendChild(activitySelect);
+    grid.appendChild(activityField);
+
+    var daysField = document.createElement("div");
+    daysField.className = "field";
+    daysField.innerHTML = "<label>Reduce Duration By (days)</label>";
+    var daysInput = document.createElement("input");
+    daysInput.type = "number";
+    daysInput.id = "whatiffield-days";
+    daysInput.min = "0";
+    daysInput.value = uiState.whatIfReduceDays;
+    daysField.appendChild(daysInput);
+    grid.appendChild(daysField);
+
+    formPanel.appendChild(grid);
+
+    // Gate 24 note: the error must live in uiState, not a local DOM element mutated
+    // inline — rerender() rebuilds this whole tab from scratch on every click, so a
+    // locally-set errorMsg.style.display would be discarded before it's ever seen
+    // (caught by this gate's own test suite before shipping).
+    if (uiState.whatIfError) {
+      var errorMsg = document.createElement("p");
+      errorMsg.style.color = "var(--status-critical)";
+      errorMsg.style.fontSize = "12px";
+      errorMsg.textContent = uiState.whatIfError;
+      formPanel.appendChild(errorMsg);
+    }
+
+    var actions = document.createElement("div");
+    actions.style.display = "flex";
+    actions.style.gap = "10px";
+    actions.style.marginTop = "10px";
+
+    var runBtn = document.createElement("button");
+    runBtn.type = "button";
+    runBtn.className = "btn btn--primary";
+    runBtn.textContent = "Run What-If";
+    runBtn.onclick = function () {
+      var activityId = activitySelect.value;
+      var reduceDays = Number(daysInput.value);
+      uiState.whatIfActivityId = activityId;
+      uiState.whatIfReduceDays = daysInput.value;
+
+      if (!activityId) {
+        uiState.whatIfError = "Select an activity first.";
+        uiState.whatIfResult = null;
+        rerender();
+        return;
+      }
+      var activity = scheduleActivities.find(function (a) { return a.id === activityId; });
+      if (activity.status === "complete") {
+        uiState.whatIfError = "Completed activities can't be accelerated — their dates are historical.";
+        uiState.whatIfResult = null;
+        rerender();
+        return;
+      }
+      if (!daysInput.value || isNaN(reduceDays) || reduceDays <= 0) {
+        uiState.whatIfError = "Enter a positive number of days to reduce.";
+        uiState.whatIfResult = null;
+        rerender();
+        return;
+      }
+      uiState.whatIfError = null;
+
+      var fieldToReduce = activity.status === "in_progress" ? "remaining_duration" : "duration";
+      var currentValue = activity[fieldToReduce] || 0;
+      var newValue = Math.max(0, currentValue - reduceDays);
+
+      var cpmOptions = {
+        dataDate: schedule.data_date,
+        nearCriticalThresholdDays: schedule.near_critical_threshold_days,
+        calculationMode: schedule.calculation_mode,
+      };
+      var before = window.PCC.scheduleCpmEngine.calculateSchedule(scheduleActivities, scheduleRelationships, cpmOptions);
+
+      var modifiedActivities = scheduleActivities.map(function (a) {
+        if (a.id !== activityId) return a;
+        var clone = Object.assign({}, a);
+        clone[fieldToReduce] = newValue;
+        return clone;
+      });
+      var after = window.PCC.scheduleCpmEngine.calculateSchedule(modifiedActivities, scheduleRelationships, cpmOptions);
+
+      var wasCritical = before.results[activityId] && before.results[activityId].is_critical;
+      var beforeCriticalIds = before.criticalActivityIds.slice();
+      var afterCriticalIds = after.criticalActivityIds.slice();
+      var newlyNonCritical = beforeCriticalIds.filter(function (id) { return afterCriticalIds.indexOf(id) === -1; });
+      var newlyCritical = afterCriticalIds.filter(function (id) { return beforeCriticalIds.indexOf(id) === -1; });
+      function namesFor(ids) {
+        return ids.map(function (id) {
+          var a = scheduleActivities.find(function (x) { return x.id === id; });
+          return a ? a.name || "(unnamed activity)" : id;
+        });
+      }
+
+      uiState.whatIfResult = {
+        activityName: activity.name,
+        fieldToReduce: fieldToReduce,
+        requestedReduction: reduceDays,
+        actualReduction: currentValue - newValue,
+        wasCritical: !!wasCritical,
+        beforeFinish: before.projectFinish,
+        afterFinish: after.projectFinish,
+        varianceDays:
+          before.projectFinish && after.projectFinish
+            ? window.PCC.scheduleGanttLayout.diffDays(before.projectFinish, after.projectFinish)
+            : null,
+        beforeCriticalCount: beforeCriticalIds.length,
+        afterCriticalCount: afterCriticalIds.length,
+        newlyNonCritical: namesFor(newlyNonCritical),
+        newlyCritical: namesFor(newlyCritical),
+      };
+      rerender();
+    };
+    actions.appendChild(runBtn);
+
+    if (uiState.whatIfResult) {
+      var resetBtn = document.createElement("button");
+      resetBtn.type = "button";
+      resetBtn.className = "btn btn--ghost";
+      resetBtn.textContent = "Reset";
+      resetBtn.onclick = function () {
+        uiState.whatIfActivityId = "";
+        uiState.whatIfReduceDays = "";
+        uiState.whatIfResult = null;
+        uiState.whatIfError = null;
+        rerender();
+      };
+      actions.appendChild(resetBtn);
+    }
+
+    formPanel.appendChild(actions);
+    container.appendChild(formPanel);
+
+    if (uiState.whatIfResult) {
+      var r = uiState.whatIfResult;
+      var resultPanel = document.createElement("div");
+      resultPanel.className = "panel";
+      resultPanel.style.marginTop = "10px";
+
+      var heading = document.createElement("h4");
+      heading.style.marginBottom = "10px";
+      heading.textContent = "What-If Result — " + (r.activityName || "(unnamed activity)");
+      resultPanel.appendChild(heading);
+
+      if (r.actualReduction < r.requestedReduction) {
+        var clampNote = document.createElement("p");
+        clampNote.className = "text-secondary";
+        clampNote.style.fontSize = "12px";
+        clampNote.style.marginBottom = "8px";
+        clampNote.textContent =
+          "Requested " + r.requestedReduction + "d, but this activity only had " + r.actualReduction + "d of " +
+          (r.fieldToReduce === "remaining_duration" ? "remaining duration" : "duration") + " to give — clamped at 0.";
+        resultPanel.appendChild(clampNote);
+      }
+
+      if (!r.wasCritical) {
+        var floatNote = document.createElement("p");
+        floatNote.style.fontSize = "13px";
+        floatNote.style.marginBottom = "8px";
+        floatNote.style.color = "var(--status-at-risk)";
+        floatNote.textContent =
+          "This activity was NOT on the critical path before this change — reducing its duration may not move the project finish at all.";
+        resultPanel.appendChild(floatNote);
+      }
+
+      var summary = document.createElement("p");
+      summary.style.fontSize = "13px";
+      summary.innerHTML =
+        "<strong>Project Finish:</strong> " + (r.beforeFinish || "—") + " → " + (r.afterFinish || "—") +
+        (r.varianceDays != null
+          ? " (" + (r.varianceDays < 0 ? r.varianceDays + "d earlier" : r.varianceDays > 0 ? "+" + r.varianceDays + "d later" : "no change") + ")"
+          : "") +
+        "<br/><strong>Critical Activities:</strong> " + r.beforeCriticalCount + " → " + r.afterCriticalCount;
+      resultPanel.appendChild(summary);
+
+      if (r.newlyNonCritical.length > 0) {
+        var offCritical = document.createElement("p");
+        offCritical.style.fontSize = "13px";
+        offCritical.style.marginTop = "8px";
+        offCritical.textContent = "No longer critical: " + r.newlyNonCritical.join(", ");
+        resultPanel.appendChild(offCritical);
+      }
+      if (r.newlyCritical.length > 0) {
+        var onCritical = document.createElement("p");
+        onCritical.style.fontSize = "13px";
+        onCritical.style.marginTop = "4px";
+        onCritical.textContent = "Newly critical: " + r.newlyCritical.join(", ");
+        resultPanel.appendChild(onCritical);
+      }
+
+      container.appendChild(resultPanel);
+    }
+  }
+
   // ---------------------------------------------------------------------------------
   // Top-level render
   // ---------------------------------------------------------------------------------
@@ -4597,6 +4884,7 @@
       { key: "wbs", label: "WBS" },
       { key: "relationships", label: "Relationships" },
       { key: "baselines", label: "Baselines" },
+      { key: "whatif", label: "What-If" },
     ].forEach(function (t) {
       var btn = document.createElement("button");
       btn.className = "tab-btn" + (uiState.tab === t.key ? " tab-btn--active" : "");
@@ -4621,6 +4909,7 @@
     else if (uiState.tab === "wbs") renderWbsTab(tabContent, data, rerender);
     else if (uiState.tab === "relationships") renderRelationshipsTab(tabContent, data, rerender);
     else if (uiState.tab === "baselines") renderBaselinesTab(tabContent, data, rerender);
+    else if (uiState.tab === "whatif") renderWhatIfTab(tabContent, data, rerender);
   }
 
   window.PCC.pages.schedule = render;
