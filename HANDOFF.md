@@ -63,12 +63,12 @@ that override default behavior).
 
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) now underway
 
-`main` is fully up to date through **Tier 3, "final polish," Gate 1** (configurable reminder
-windows + Gantt readiness flag), `schema_version` **50**. Note this is a DIFFERENT roadmap than the
-"PCC Evolution Roadmap" Tiers A-F above it, which finished with Gate 26 — Tier 3 is a numbered tier
-from the ORIGINAL, much older locked build order (`Tier 1`/`Tier 2`/`Tier 3`, see README.md's
-"Locked build order" section), deferred since day one. Both Tiers A-F and Tiers 1-2 are now
-complete; Tier 3 is the last remaining named scope anywhere in the project's history.
+`main` is fully up to date through **Tier 3, "final polish," Gate 2** (Report Template System),
+`schema_version` **51**. Note this is a DIFFERENT roadmap than the "PCC Evolution Roadmap" Tiers A-F
+above it, which finished with Gate 26 — Tier 3 is a numbered tier from the ORIGINAL, much older
+locked build order (`Tier 1`/`Tier 2`/`Tier 3`, see README.md's "Locked build order" section),
+deferred since day one. Both Tiers A-F and Tiers 1-2 are now complete; Tier 3 is the last remaining
+named scope anywhere in the project's history.
 
 **Tier 3 is five items, confirmed via `AskUserQuestion`**: AI Document Processing, Knowledge Base,
 AI Project Assistant, Lessons Learned, final polish. **AI Document Processing and AI Project
@@ -82,15 +82,17 @@ feature builds wearing a "polish" label, not touch-ups, so Aditya is picking the
 `AskUserQuestion` rather than building all of them in one gate:
 - **Already resolved, dropped from the list**: Resource Assignments in the activity-linking system
   — the old backlog note was stale, this was actually done back at Gate 11.
-- **Gate 1 (built, this round)**: configurable reminder/lookahead windows + a Gantt-bar readiness
-  flag — see the write-up below.
-- **Confirmed by Aditya, not yet built**: Report template system (persisted, logo-customizable),
-  Dashboard-level filtering (client/country/sector/PM/date-range — Dashboard specifically, Portfolio
-  already has this from Gate 16), Vendor↔Cost integration (vendor_id on cost items + a Cost tab on
-  Vendor Profile), Commitments→EVM wiring (commitment_id already exists on cost_actuals, but
-  costEvmEngine.js's EAC/CPI/SPI math doesn't use it yet), category-scheme reconciliation
-  (Documents/Vendor Document/Document Types categories — deferred twice already at Gates 14 and 16,
-  building it now on the third ask), Gantt virtualization for 10,000+ activities.
+- **Final polish Gate 1 (built)**: configurable reminder/lookahead windows + a Gantt-bar readiness
+  flag.
+- **Final polish Gate 2 (built, this round)**: Report Template System (named/saved section
+  templates + a company logo on every printable report) — see the write-up below.
+- **Confirmed by Aditya, not yet built**: Dashboard-level filtering (client/country/sector/PM/
+  date-range — Dashboard specifically, Portfolio already has this from Gate 16), Vendor↔Cost
+  integration (vendor_id on cost items + a Cost tab on Vendor Profile), Commitments→EVM wiring
+  (commitment_id already exists on cost_actuals, but costEvmEngine.js's EAC/CPI/SPI math doesn't use
+  it yet), category-scheme reconciliation (Documents/Vendor Document/Document Types categories —
+  deferred twice already at Gates 14 and 16, building it now on the third ask), Gantt virtualization
+  for 10,000+ activities.
 - **Explicitly NOT picked**: Resource rate × usage feeding Cost Tracking/EVM.
 
 Each of the confirmed-not-yet-built items needs its OWN scoping round before starting — inspect
@@ -221,16 +223,62 @@ doesn't show up reliably in a full-page screenshot — same "verify the small th
 renders" discipline the Gate 25 S-Curve marker needed) confirmed everything renders correctly —
 zero console errors.
 
+**Tier 3 "final polish" Gate 2 — Report Template System** (merge pending — see commit log). Three
+forks, all resolved as the fuller option via `AskUserQuestion`:
+- **Multiple named, saved templates** (not just one persisted default) — new `report_templates`
+  register (`schema_version` 50 -> 51): `report_type` (`project`/`portfolio`/`management_pack`),
+  `name`, `sections` (a plain `{key: boolean}` map whose key set differs per `report_type` — each
+  report builder owns its own list, the factory doesn't hardcode one). Portfolio-wide, not
+  project-scoped — a template is a reusable report shape, not a record of something that happened
+  on one project.
+- **A company logo, shown on EVERY printable report** — not just reports.js's own two reports.
+  Uploaded once in a new "Company logo" field in Settings (blob in `blobStore`/IndexedDB under the
+  fixed key `"company_logo"`, only `settings.company_logo_filename`/`company_logo_mime_type` live in
+  the main store — same "binary bytes never live in the main JSON store" rule every other file this
+  app stores already follows). Appears in reports.js's Project Status and Portfolio Summary reports
+  AND Executive Center's Project Snapshot and Management Pack — four header locations, one shared
+  `renderLogoImg(data)` helper duplicated per-module (same placeholder-then-async-resolve pattern
+  `dailyLog.js`'s photo thumbnails already established).
+- **Management Pack's own pre-existing section checkboxes** (built at Gate 9, never persisted —
+  reset every session) **get the identical named-template treatment** rather than staying
+  half-fixed while Lessons Learned/Knowledge Base's own patterns got this exact persistence
+  elsewhere in the tier.
+- `reports.js`'s `buildProjectReport()`/`buildPortfolioReport()` now take a `sections` param gating
+  each of their existing sections (9 for Project Status, 8 for Portfolio Summary) — "all true"
+  reproduces the pre-existing always-on behavior exactly, so an install with no saved template sees
+  no change at all.
+
+**Bug caught and fixed before writing tests** (self-caught, no user involvement): the first draft
+cleared the selected template the instant any checkbox was toggled — which hid the "Save Changes"
+button exactly when it was needed, since editing a loaded template's selection made it impossible
+to actually save that edit back to the template without first losing which template was even
+selected. Fixed by keeping a loaded template selected THROUGH edits; "Save Changes" now always
+commits whatever the checkboxes currently read, and "Save as New…" is the deliberate way to branch
+into a separate template instead. **General lesson for future "apply a saved preset, then edit it"
+UI in this app**: don't deselect the active preset on every field edit — that only makes sense if
+there's a separate "diverged from preset" indicator; without one, it just breaks the update flow.
+
+Tests: `test_store_schema_v50_migration.js` renamed to `test_store_schema_v51_migration.js` with
+new v50->v51 backfill checks. New `tests/test_report_template_system_e2e.js` (41 checks, including
+a 26-route smoke test) — file-upload UI is deliberately NOT driven through jsdom (no test in this
+suite does that; see `test_knowledge_base_e2e.js`'s own comment), so the logo scenario seeds the
+blob directly via `blobStore.putBlob()` and mirrors the resulting settings write. Covers section
+toggling actually reshaping report OUTPUT (not just the checkbox state), per-report-type template
+isolation (a Project template never appears while viewing Portfolio), save/apply/overwrite/delete
+across both `reports.js` and Management Pack, and the logo rendering in all four report headers.
+Full suite: **57 files**, clean, zero regressions to any pre-existing reports/executive-center test.
+Real-Chromium pass (3 screenshots) confirmed everything renders correctly — zero console errors.
+
 **Next step for a fresh session: scope the next "final polish" item with Aditya.** Confirmed but
-not yet built, no fixed order — ask which one's next: Report template system, Dashboard-level
-filtering, Vendor↔Cost integration, Commitments→EVM wiring, category-scheme reconciliation, Gantt
-virtualization (10,000+ activities). Each needs its own inspection-first scoping round, same
-discipline as every gate so far — some of these backlog notes have already turned out to be stale
-once (Resource Assignments), so don't assume any of the rest are exactly as described without
-checking. AI Document Processing/AI Project Assistant stay skipped per the standing decision above
-unless Aditya explicitly revisits it; Resource rate × usage → EVM was explicitly NOT picked and
-stays deferred. Once the confirmed items are done (or explicitly deferred again), Tier 3 — and with
-it, every named tier in this project's entire history — will be complete.
+not yet built, no fixed order — ask which one's next: Dashboard-level filtering, Vendor↔Cost
+integration, Commitments→EVM wiring, category-scheme reconciliation, Gantt virtualization
+(10,000+ activities). Each needs its own inspection-first scoping round, same discipline as every
+gate so far — some of these backlog notes have already turned out to be stale once (Resource
+Assignments), so don't assume any of the rest are exactly as described without checking. AI
+Document Processing/AI Project Assistant stay skipped per the standing decision above unless
+Aditya explicitly revisits it; Resource rate × usage → EVM was explicitly NOT picked and stays
+deferred. Once the confirmed items are done (or explicitly deferred again), Tier 3 — and with it,
+every named tier in this project's entire history — will be complete.
 
 **Gate 26 — Integrated Project Controls** (merge pending — see commit log). Inspection found
 Gates 23 (Advanced Delay Analysis) and 24 (Recovery & Mitigation Planning) each shipped real
