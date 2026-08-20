@@ -63,14 +63,62 @@ that override default behavior).
 
 ## Where things stand — Tiers A-E are COMPLETE; Tier F (Advanced Planning/Controls) is underway
 
-`main` is fully up to date through **Gate 22: Baseline & Schedule Revision Control** (PCC Evolution
-Roadmap, Tier F's fifth gate), merge commit `d14f9ef`, **`schema_version` bumped to 44** (second
-consecutive gate needing a real schema change — `is_official`/`baseline_project_finish` on
-`schedule_baselines`). The 9-gate tier: 18 Resource Management, 19 Commitment Management, 20
-Status-Date Control, 21 Status-Date Reforecasting, 22 Baseline & Schedule Revision Control, 23
-Advanced Delay Analysis, 24 Recovery & Mitigation Planning, 25 Advanced Schedule Performance, 26
-Integrated Project Controls. See the "PCC Evolution Roadmap" section below for the complete
-gate-by-gate history — this section covers only the current tier's state.
+`main` is fully up to date through **Gate 23: Advanced Delay Analysis** (PCC Evolution Roadmap,
+Tier F's sixth gate), merge commit `1050733`, **`schema_version` bumped to 45** (third consecutive
+gate needing a real schema change — the new `delay_records` register). The 9-gate tier: 18 Resource
+Management, 19 Commitment Management, 20 Status-Date Control, 21 Status-Date Reforecasting, 22
+Baseline & Schedule Revision Control, 23 Advanced Delay Analysis, 24 Recovery & Mitigation Planning,
+25 Advanced Schedule Performance, 26 Integrated Project Controls. See the "PCC Evolution Roadmap"
+section below for the complete gate-by-gate history — this section covers only the current tier's
+state.
+
+**Gate 23 — Advanced Delay Analysis** (merge `1050733`). Inspection found the existing Delay &
+Recovery Dashboard was a recovery-actions rollup only — no delay causation/classification anywhere
+in the app — and `scheduleBaselineEngine.js`'s `compareBaselineToCurrent()` already carried
+baseline/current `total_float` per matched activity but never derived float erosion from it. Two
+real forks were put to Aditya via `AskUserQuestion`; **he chose the fuller register option, but the
+simpler taxonomy option**:
+- **New Delay Records register** (`schema_version` 45): `activity_id`, `delay_cause`
+  (`owner_caused`/`contractor_caused`/`weather_force_majeure`/`design_rfi_driven`/`other` — the
+  practical/simple taxonomy Aditya picked over a formal excusable-compensable/non-compensable/
+  concurrent claims taxonomy), `is_excusable`, `responsible_party`, `delay_days`, `identified_date`,
+  `description`. Deliberately a SEPARATE register from Recovery Actions, not a shared shape — a
+  Delay Record answers "what happened and why" (often needed for a contractual claim), a Recovery
+  Action answers "what are we doing about it" (corrective workflow); an activity can accumulate
+  several of each over time (e.g. concurrent causes). Full CRUD embedded in the Activity Detail
+  Panel (`renderDelayRecordsSection()` in `schedule.js`), mirroring
+  `renderRecoveryActionsSection()`'s established inline-CRUD pattern exactly, right down to reusing
+  its `+ Add X` / inline form / Edit / Remove structure.
+- **Float Erosion**, added to the Baselines tab's "Compare to Current" result:
+  `baseline.total_float - current.total_float` per matched activity, ranked descending, flagging
+  activities that have gone critical since baseline. This data was always present in
+  `compareBaselineToCurrent()`'s own return shape but never derived or surfaced — purely additive,
+  no engine change needed. **Verified to cascade backward through predecessor logic correctly**: in
+  testing, extending one activity's duration until it became critical also eroded its *predecessor's*
+  float to zero (since delaying the predecessor now delays the newly-critical chain it feeds) — the
+  test suite explicitly asserts on both activities appearing, not just the one directly edited.
+- **Delay Analysis rollup** added to `delayRecoveryDashboard.js`: KPI cards (delay records, total
+  delay days, excusable/non-excusable split), cause and severity breakdowns (fixed practical
+  buckets — Minor &lt;5d, Moderate 5-15d, Severe &gt;15d — not user-configurable, since this is a
+  display grouping, not a calculation input), and a worst-first delay records list with "View in
+  Schedule". This page's own header previously said it deliberately does NOT roll up
+  delay/baseline stats portfolio-wide because which baseline to compare against was ambiguous —
+  Delay Records aren't baseline-derived at all, so that ambiguity never applies to them; Float
+  Erosion correctly stays in the Baselines tab, not duplicated here, since it's only meaningful
+  relative to a specific comparison a user chose to run (even now that Gate 22's Official Baseline
+  has resolved the original ambiguity for finish-variance purposes specifically).
+
+Tests: `test_store_schema_v44_migration.js` renamed to `test_store_schema_v45_migration.js` (this
+project's "one canonical full-chain migration test targeting latest" convention) with new v44→v45
+backfill checks. New `tests/test_advanced_delay_analysis_e2e.js` (35 checks, including a 24-route
+smoke test) against the real bundled `index.html` — Delay Record CRUD (add/edit-to-excusable/
+remove) with badge verification, Float Erosion including the cascading-criticality scenario, the
+dashboard's KPI/cause/severity rollup, "View in Schedule" navigation, and the combined-vs-per-
+register empty-state distinction (both registers empty → one combined empty state; only one empty
+→ that register's own sub-empty-state). Full suite: **52 files, 1304 checks**, clean, zero
+regressions. Real-Chromium pass (3 screenshots: the Activity Detail Panel's Delay Records section,
+the Baselines tab's Float Erosion list showing both activities in the eroded chain, and the
+Dashboard's Delay Analysis rollup) confirmed everything renders correctly — zero console errors.
 
 **Gate 22 — Baseline & Schedule Revision Control** (merge `d14f9ef`). Inspection found the core
 baseline machinery already fully built (`scheduleBaselineEngine.js`/`scheduleBaselineStore.js`/the
@@ -1219,11 +1267,11 @@ breakdown from Aditya directly, the same way Tier D's came, rather than guessing
 
 ## Repo/branch state
 
-`main` is fully up to date through **Gate 22: Baseline & Schedule Revision Control**
-(`d14f9ef`, a direct merge — no PR, per Aditya's now-standing "always merge after completing a
+`main` is fully up to date through **Gate 23: Advanced Delay Analysis**
+(`1050733`, a direct merge — no PR, per Aditya's now-standing "always merge after completing a
 gate/phase" instruction, see above) — **Tiers A-E are all fully complete; Tier F (Advanced Project
-Planning & Project Controls) is now underway, five of its nine named gates done plus one
-follow-on round closing a gap in the second.** Fourteen rounds have landed on `main` this session,
+Planning & Project Controls) is now underway, six of its nine named gates done plus one
+follow-on round closing a gap in the second.** Fifteen rounds have landed on `main` this session,
 all via the same designated remote-session branch, `claude/tier-c-code-inspection-jysweb` (name is
 stale now — it's carried Tier C, D, E, and F gates alike), restarted from the new `main` between
 each per the standing "restart before the next gate" instruction: the Tier C inspection +
@@ -1235,41 +1283,44 @@ Personal Workbench (merge `332b505`), then Gate 18 Resource Management (merge `e
 Gate 19 Commitment Management (merge `a0a9e5b`), then the Gate 19 Schedule↔Commitment follow-on
 (merge `4690a58`), then Gate 20 Status-Date Control (merge `33a3551`), then Gate 21 Status-Date
 Reforecasting (merge `bd825a0`), then Gate 22 Baseline & Schedule Revision Control (merge
-`d14f9ef`). Aditya confirmed via `AskUserQuestion` to proceed with each merge given the branch's
-own "never push elsewhere without permission" constraint; see the git log for the exact sequence
-if that matters later. This builds on top of **Tier B (Control Integration)**, complete as of Gate
-33, and the already-complete 14-gate Document Control sub-spec. `schema_version` on `main` is now
-**44** — Gate 22 needed a real schema change, the second in a row (see the "Where things stand"
-section above for full detail). `claude/tier-c-code-inspection-jysweb` carries the same history as
-`main` as of this merge (nothing unmerged on it) — restart it from the new `main` before starting
-the next gate, and verify with `git log origin/main..HEAD` and `git status` before assuming this
-is still true by the time you read this.
+`d14f9ef`), then Gate 23 Advanced Delay Analysis (merge `1050733`). Aditya confirmed via
+`AskUserQuestion` to proceed with each merge given the branch's own "never push elsewhere without
+permission" constraint; see the git log for the exact sequence if that matters later. This builds
+on top of **Tier B (Control Integration)**, complete as of Gate 33, and the already-complete
+14-gate Document Control sub-spec. `schema_version` on `main` is now **45** — Gate 23 needed a
+real schema change, the third in a row (see the "Where things stand" section above for full
+detail). `claude/tier-c-code-inspection-jysweb` carries the same history as `main` as of this
+merge (nothing unmerged on it) — restart it from the new `main` before starting the next gate, and
+verify with `git log origin/main..HEAD` and `git status` before assuming this is still true by the
+time you read this.
 
 **Zip delivered this round:** `Project-Control-Center.zip` — `index.html` + `README.md` +
 `data/`/`files/` (existing `README.txt` placeholders), verified via a fresh extraction
-(`/tmp/pcc_zip_verify9/`, not the dev working copy) opened in real Chromium — zero console errors;
+(`/tmp/pcc_zip_verify10/`, not the dev working copy) opened in real Chromium — zero console errors;
 screenshots taken and sent per the standing instruction.
 
 **Next steps, in likely priority order:**
-1. **Tier F has 4 more named gates, none started — get scope confirmation from Aditya before
-   building the next one.** Gate 23 Advanced Delay Analysis is next in the spec's own order, but
-   nothing says gates must be built strictly in order — ask before assuming. Full spec text for
-   all 9 Tier F gates was handed over conversationally this session and is preserved in this
-   conversation's history but was never saved as a file in this repo — don't assume a future
+1. **Tier F has 3 more named gates, none started — get scope confirmation from Aditya before
+   building the next one.** Gate 24 Recovery & Mitigation Planning is next in the spec's own
+   order, but nothing says gates must be built strictly in order — ask before assuming. Full spec
+   text for all 9 Tier F gates was handed over conversationally this session and is preserved in
+   this conversation's history but was never saved as a file in this repo — don't assume a future
    session can find it; get it re-confirmed from Aditya if it's not still in context. Inspect each
    gate against the real code before proposing anything, same discipline as every gate so far —
-   Gates 18 through 22 all turned out to have substantial real prior art or overlap (Gate 11 for
+   Gates 18 through 23 all turned out to have substantial real prior art or overlap (Gate 11 for
    Resources, the Gate 9/16 "not tracked yet"/"future Commercial module" notes for Commitments,
    Gate 20's own spec turning out to be *almost entirely* pre-built under other names, Gate 21
-   finding the CPM engine already did most of status-date reforecasting, and Gate 22 finding the
-   full baseline capture/compare machinery already built — only lifecycle controls
-   (rename/official/lock/auto-supersede) were genuine gaps), so don't assume any of Gates 23-26 are
-   starting from zero either. **Gate 23 (Advanced Delay Analysis) is flagged as a likely overlap**
-   with the existing Delay & Recovery Management module (`delayRecoveryDashboard.js`, an earlier
-   Tier C gate) and with `scheduleBaselineEngine.js`'s own delay/variance summary fields
-   (`delayed_count`, `max_delay_days`) — inspect what's already computed there before assuming a
-   gap (e.g. a formal delay-classification taxonomy like concurrent/critical-path/excusable delay
-   might be the real gap, not delay detection itself, which already exists in multiple places).
+   finding the CPM engine already did most of status-date reforecasting, Gate 22 finding the full
+   baseline capture/compare machinery already built, and Gate 23 finding the existing Delay &
+   Recovery Dashboard was recovery-actions-only with no delay causation anywhere), so don't assume
+   any of Gates 24-26 are starting from zero either. **Gate 24 (Recovery & Mitigation Planning) is
+   flagged as a likely-substantial overlap** with the Recovery Actions register itself
+   (`recovery_actions`, an earlier Tier C gate — corrective-action tracking already exists in full,
+   embedded in the Activity Detail Panel and rolled up in `delayRecoveryDashboard.js`) — inspect
+   what "Recovery & Mitigation Planning" would add beyond logging/tracking corrective actions
+   before assuming a gap (e.g. a formal recovery-schedule/what-if comparison, mitigation-vs-cost
+   tradeoff analysis, or acceleration-option modeling might be the real gap, not recovery-action
+   tracking itself, which already exists).
 2. **Watch for the exact notify()-reads-a-mutated-object-after-store.update() bug pattern flagged
    in the Gate 22 section above** when touching any other click handler that reads a store-object
    field for a message/label after its own `store.update()` call — it's an easy one to reintroduce
