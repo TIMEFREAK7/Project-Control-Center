@@ -63,21 +63,40 @@ that override default behavior).
 
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) now underway
 
-`main` is fully up to date through **Tier 3 Gate 2: Knowledge Base**, `schema_version` **49**.
-Note this is a DIFFERENT roadmap than the "PCC Evolution Roadmap" Tiers A-F above it, which
-finished with Gate 26 — Tier 3 is a numbered tier from the ORIGINAL, much older locked build order
-(`Tier 1`/`Tier 2`/`Tier 3`, see README.md's "Locked build order" section), deferred since day one.
-Both Tiers A-F and Tiers 1-2 are now complete; Tier 3 is the last remaining named scope anywhere in
-the project's history, and is only now being picked up.
+`main` is fully up to date through **Tier 3, "final polish," Gate 1** (configurable reminder
+windows + Gantt readiness flag), `schema_version` **50**. Note this is a DIFFERENT roadmap than the
+"PCC Evolution Roadmap" Tiers A-F above it, which finished with Gate 26 — Tier 3 is a numbered tier
+from the ORIGINAL, much older locked build order (`Tier 1`/`Tier 2`/`Tier 3`, see README.md's
+"Locked build order" section), deferred since day one. Both Tiers A-F and Tiers 1-2 are now
+complete; Tier 3 is the last remaining named scope anywhere in the project's history.
 
 **Tier 3 is five items, confirmed via `AskUserQuestion`**: AI Document Processing, Knowledge Base,
 AI Project Assistant, Lessons Learned, final polish. **AI Document Processing and AI Project
 Assistant are SKIPPED entirely, standing decision** — both need either a cloud LLM call or a
 bundled local model, either of which breaks this app's zero-npm-dependency/offline-first/`file://`
 architecture, and the original spec itself explicitly excluded AI ("Tier 2... do not implement AI,
-OCR, document parsing"). Lessons Learned and Knowledge Base are both now built (Gates 1-2 of this
-tier); only "final polish" (the accumulated backlog of deferred items — see the "Other open items"
-list near the end of README.md and the numbered list further down this file) remains unscoped.
+OCR, document parsing"). Lessons Learned and Knowledge Base are both built (Gates 1-2). **"Final
+polish" turned out to be big enough to need its own multi-gate breakdown** — inspecting the full
+10-item deferred backlog (README.md/HANDOFF.md's "Other open items") found most of them are real
+feature builds wearing a "polish" label, not touch-ups, so Aditya is picking them one at a time via
+`AskUserQuestion` rather than building all of them in one gate:
+- **Already resolved, dropped from the list**: Resource Assignments in the activity-linking system
+  — the old backlog note was stale, this was actually done back at Gate 11.
+- **Gate 1 (built, this round)**: configurable reminder/lookahead windows + a Gantt-bar readiness
+  flag — see the write-up below.
+- **Confirmed by Aditya, not yet built**: Report template system (persisted, logo-customizable),
+  Dashboard-level filtering (client/country/sector/PM/date-range — Dashboard specifically, Portfolio
+  already has this from Gate 16), Vendor↔Cost integration (vendor_id on cost items + a Cost tab on
+  Vendor Profile), Commitments→EVM wiring (commitment_id already exists on cost_actuals, but
+  costEvmEngine.js's EAC/CPI/SPI math doesn't use it yet), category-scheme reconciliation
+  (Documents/Vendor Document/Document Types categories — deferred twice already at Gates 14 and 16,
+  building it now on the third ask), Gantt virtualization for 10,000+ activities.
+- **Explicitly NOT picked**: Resource rate × usage feeding Cost Tracking/EVM.
+
+Each of the confirmed-not-yet-built items needs its OWN scoping round before starting — inspect
+current state first (some backlog notes have already turned out to be stale), propose scope, wait
+for confirmation, same discipline as every other gate. Don't assume the order listed above is the
+build order; ask which one's next.
 
 **General lesson learned this tier, worth repeating for whatever gate comes next**: a
 `schema_version` assertion hardcoded with `assert.strictEqual` in an already-shipped gate's own
@@ -166,12 +185,52 @@ Real-Chromium pass (4 screenshots: empty state, the populated list with a portfo
 project-tagged article, the File Attached badge, and the Details panel with its Open File action)
 confirmed everything renders correctly — zero console errors.
 
-**Next step for a fresh session: scope Tier 3's last item with Aditya — "final polish"** (clearing
-the accumulated backlog of deferred items scattered across README.md's "Other open items" list and
-this file's own numbered lists further down). AI Document Processing/AI Project Assistant stay
-skipped per the standing decision above unless Aditya explicitly revisits it. Once final polish is
-done (or explicitly deferred again), Tier 3 — and with it, every named tier in this project's
-entire history — will be complete.
+**Tier 3 "final polish" Gate 1 — configurable reminder windows + Gantt readiness flag** (merge
+pending — see commit log). Inspected the full 10-item deferred backlog against the real code
+first (see the "Where things stand" section above for the full breakdown of what's still open vs.
+already resolved). Aditya picked these two small items to build now, via `AskUserQuestion`, out of
+three grouped questions covering all 10:
+- **Configurable windows** (`schema_version` 49 -> 50): Dashboard's "Due Soon" panel and Action
+  Centre's "Upcoming" bucket used to read hardcoded module constants
+  (`DUE_SOON_WINDOW_DAYS = 14` in `dashboard.js`, `UPCOMING_WINDOW_DAYS = 30` in `actionCentre.js`)
+  — now `settings.document_reminder_due_soon_days` / `settings.action_centre_upcoming_days`, edited
+  on a new "Reminder & Lookahead Windows" panel in Settings. Both default to their old hardcoded
+  values, so no existing install's behavior changes on upgrade, only becomes editable going
+  forward. `actionCentre.js`'s `BUCKETS` had to become a `buildBuckets(windowDays)` function
+  instead of a module-level constant, since its "Upcoming (8–N Days)" label embeds the number and
+  must be rebuilt from the current setting on every render.
+- **Gantt-bar readiness flag**: a small red circle at a bar's top-right corner when its activity
+  has a not-yet-available governing document requirement (Gate 21's `activity_id` link on
+  `project_document_requirements`) — the exact same "Not Ready" rule the Activity Detail Panel's
+  own Document Readiness section (Gate 24) already computed, just never reached the bar itself
+  until now (explicitly considered and deferred back at Gate 24). Factored into a shared
+  `activityNotReady(activity, data)` helper in `schedule.js` so the bar and the Detail Panel can
+  never disagree. `pointer-events:none` so it never interferes with drag/resize hit-testing. New
+  legend entry explains it.
+
+Tests: `test_store_schema_v49_migration.js` renamed to `test_store_schema_v50_migration.js` with
+new v49->v50 backfill checks (including one proving an already-explicitly-set value survives the
+migration untouched, not just the default-backfill case). New
+`tests/test_configurable_reminders_and_gantt_readiness_e2e.js` (36 checks, including a 26-route
+smoke test) — Settings field edits actually reshaping Dashboard/Action Centre output (not just
+persisting to the store), the marker appearing/disappearing as document availability changes, and
+confirming an activity with zero linked requirements never shows one. Full suite: **56 files**,
+clean, zero regressions to any pre-existing dashboard/action-centre/readiness test. Real-Chromium
+pass (3 screenshots, including a tightly-cropped zoom on the marker itself since a 5px circle
+doesn't show up reliably in a full-page screenshot — same "verify the small thing actually
+renders" discipline the Gate 25 S-Curve marker needed) confirmed everything renders correctly —
+zero console errors.
+
+**Next step for a fresh session: scope the next "final polish" item with Aditya.** Confirmed but
+not yet built, no fixed order — ask which one's next: Report template system, Dashboard-level
+filtering, Vendor↔Cost integration, Commitments→EVM wiring, category-scheme reconciliation, Gantt
+virtualization (10,000+ activities). Each needs its own inspection-first scoping round, same
+discipline as every gate so far — some of these backlog notes have already turned out to be stale
+once (Resource Assignments), so don't assume any of the rest are exactly as described without
+checking. AI Document Processing/AI Project Assistant stay skipped per the standing decision above
+unless Aditya explicitly revisits it; Resource rate × usage → EVM was explicitly NOT picked and
+stays deferred. Once the confirmed items are done (or explicitly deferred again), Tier 3 — and with
+it, every named tier in this project's entire history — will be complete.
 
 **Gate 26 — Integrated Project Controls** (merge pending — see commit log). Inspection found
 Gates 23 (Advanced Delay Analysis) and 24 (Recovery & Mitigation Planning) each shipped real
