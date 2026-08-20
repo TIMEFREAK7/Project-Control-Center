@@ -40,6 +40,98 @@
     };
     companyField.appendChild(companyInput);
     generalPanel.appendChild(companyField);
+
+    // PCC Evolution Roadmap, Tier 3 ("final polish"): Report Template System — the
+    // company logo half. One logo, portfolio-wide, reused in every printable report's
+    // header (reports.js's two reports, Executive Center's Snapshot and Management
+    // Pack). Bytes live in blobStore (IndexedDB) under the fixed key "company_logo",
+    // same "binary bytes never live in the main JSON store" rule every other file this
+    // app stores already follows — only the filename/mime_type live in settings.
+    var logoField = document.createElement("div");
+    logoField.className = "field";
+    logoField.style.marginTop = "12px";
+    logoField.innerHTML = "<label>Company logo (used on printed reports)</label>";
+
+    if (data.settings.company_logo_filename) {
+      var logoPreviewRow = document.createElement("div");
+      logoPreviewRow.style.display = "flex";
+      logoPreviewRow.style.alignItems = "center";
+      logoPreviewRow.style.gap = "10px";
+      logoPreviewRow.style.marginBottom = "8px";
+
+      var logoImg = document.createElement("img");
+      logoImg.style.height = "36px";
+      logoImg.style.maxWidth = "120px";
+      logoImg.style.objectFit = "contain";
+      logoImg.style.background = "var(--surface-2, #2a2a2a)";
+      logoImg.style.borderRadius = "4px";
+      logoImg.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1' height='1'%3E%3C/svg%3E";
+      window.PCC.blobStore
+        .getBlob("company_logo")
+        .then(function (fileData) {
+          if (fileData) logoImg.src = fileData;
+        })
+        .catch(function () {
+          /* leave placeholder — preview just won't load, not fatal */
+        });
+      logoPreviewRow.appendChild(logoImg);
+
+      var logoName = document.createElement("span");
+      logoName.className = "text-secondary";
+      logoName.style.fontSize = "12px";
+      logoName.textContent = data.settings.company_logo_filename;
+      logoPreviewRow.appendChild(logoName);
+
+      var removeLogoBtn = document.createElement("button");
+      removeLogoBtn.type = "button";
+      removeLogoBtn.className = "btn btn--ghost";
+      removeLogoBtn.textContent = "Remove Logo";
+      removeLogoBtn.onclick = function () {
+        window.PCC.blobStore.deleteBlob("company_logo").finally(function () {
+          store.update(function (d) {
+            d.settings.company_logo_filename = "";
+            d.settings.company_logo_mime_type = "";
+          });
+          rerenderSettings();
+        });
+      };
+      logoPreviewRow.appendChild(removeLogoBtn);
+
+      logoField.appendChild(logoPreviewRow);
+    }
+
+    var logoInput = document.createElement("input");
+    logoInput.type = "file";
+    logoInput.accept = "image/*";
+    logoInput.onchange = function () {
+      var file = logoInput.files && logoInput.files[0];
+      if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function () {
+        // Blob written FIRST, metadata only committed once that succeeds — same "never
+        // orphan a reference" rule dailyLog.js's photo upload already established.
+        window.PCC.blobStore
+          .putBlob("company_logo", reader.result)
+          .then(function () {
+            store.update(function (d) {
+              d.settings.company_logo_filename = file.name;
+              d.settings.company_logo_mime_type = file.type || "";
+            });
+            window.PCC.notify("Logo saved.", "success");
+            rerenderSettings();
+          })
+          .catch(function (e) {
+            window.PCC.notify("Could not save the logo: " + e.message, "error");
+          });
+      };
+      reader.onerror = function () {
+        window.PCC.notify("Could not read that file.", "error");
+      };
+      reader.readAsDataURL(file);
+    };
+    logoField.appendChild(logoInput);
+    generalPanel.appendChild(logoField);
+
     wrap.appendChild(generalPanel);
 
     // --- Reminder & Lookahead Windows (PCC Evolution Roadmap, Tier 3 "final polish") ---
