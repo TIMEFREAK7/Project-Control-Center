@@ -63,14 +63,64 @@ that override default behavior).
 
 ## Where things stand — Tiers A-E are COMPLETE; Tier F (Advanced Planning/Controls) is underway
 
-`main` is fully up to date through **Gate 24: Recovery & Mitigation Planning** (PCC Evolution
-Roadmap, Tier F's seventh gate), merge commit `e3ef313`, **`schema_version` bumped to 46** (fourth
-consecutive gate needing a real schema change — `estimated_recovery_days`/`estimated_cost` on
-`recovery_actions`). The 9-gate tier: 18 Resource Management, 19 Commitment Management, 20
-Status-Date Control, 21 Status-Date Reforecasting, 22 Baseline & Schedule Revision Control, 23
-Advanced Delay Analysis, 24 Recovery & Mitigation Planning, 25 Advanced Schedule Performance, 26
-Integrated Project Controls. See the "PCC Evolution Roadmap" section below for the complete
-gate-by-gate history — this section covers only the current tier's state.
+`main` is fully up to date through **Gate 25: Advanced Schedule Performance** (PCC Evolution
+Roadmap, Tier F's eighth gate — only Gate 26 remains), merge commit `8f2eab8`, **`schema_version`
+bumped to 47** (fifth consecutive gate needing a real schema change — the new
+`schedule_performance_snapshots` register). The 9-gate tier: 18 Resource Management, 19
+Commitment Management, 20 Status-Date Control, 21 Status-Date Reforecasting, 22 Baseline &
+Schedule Revision Control, 23 Advanced Delay Analysis, 24 Recovery & Mitigation Planning, 25
+Advanced Schedule Performance, 26 Integrated Project Controls. See the "PCC Evolution Roadmap"
+section below for the complete gate-by-gate history — this section covers only the current tier's
+state.
+
+**Gate 25 — Advanced Schedule Performance** (merge `8f2eab8`). Inspection found classic SPI
+(`costEvmEngine.js`, `EV/PV`) was the only schedule-performance figure anywhere, with its
+well-documented flaw: it converges toward 1.0 as a project nears completion regardless of how late
+it actually finishes, since PV stops growing once every activity's planned span has elapsed. Two
+real forks were put to Aditya via `AskUserQuestion`; **he chose the fuller option both times**:
+- **`computeEarnedSchedule()`** (new function in `costEvmEngine.js`): rebuilds the same per-item
+  linear PV(t) ramps `itemPlannedValue()` already computes into a full day-by-day curve, walks it
+  forward to find where today's EV would sit on the PLANNED timeline (Earned Schedule, in days),
+  and derives SPI(t) = ES/AT — the standard fix for classic SPI's flaw. A plain forward linear
+  scan, not a closed-form inversion, matching this app's existing style (`scheduleCpmEngine.js`'s
+  forward/backward passes). **Verified against a hand-checked near-completion scenario proving the
+  actual divergence**: two budget items, one 5-day span fully complete, one 20-day span 90%
+  complete, data date AT the planned finish — classic SPI reads 0.95 (looks almost on-track) while
+  SPI(t) correctly reads 0.90 / 2 days behind. This exact scenario is verified three times over
+  (pure-engine test, dedicated engine's own test, and the real bundled UI end-to-end) to make sure
+  the divergence isn't an artifact of one test's assumptions.
+- **New `schedulePerformanceEngine.js`**: a dedicated 0-100 Schedule Performance Score from
+  SPI/SPI(t)/Earned-Schedule-variance/critical-path ratio, **distinct from the existing Project
+  Health Score's own "Schedule" factor** (Gate 9) — Aditya's own explicit choice, made aware the
+  overlap existed. Fixed weights (not configurable via Settings like Project Health's) — a smaller,
+  single-purpose score, not a second full configurable scoring system. Same "available/score/why"
+  breakdown shape as `projectHealthEngine.js`'s own factor table, for UI consistency.
+- **New `schedule_performance_snapshots` register** (`schema_version` 47): a point-in-time capture
+  of SPI/SPI(t)/score/`schedule_progress_pct`, via a new "Capture Performance Snapshot" button in
+  Executive Center's new SCHEDULE PERFORMANCE panel — **deliberately a SEPARATE mechanism from
+  Weekly Reviews' own snapshot** (Aditya's other explicit choice), so trend granularity isn't
+  capped by how often those get written. This is the only place any of Gate 25's figures persist
+  over time, since both engines are pure/recomputed fresh on every render.
+- **Progress S-Curve actual overlay**: `schedule_progress_pct` is carried on every snapshot
+  specifically so `sCurveChart()` — whose own header comment previously said there was no stored
+  "actual progress on date X" history anywhere in PCC, so it could only plot a planned curve — can
+  finally draw a real actual-vs-planned line. Verified via direct SVG-coordinate inspection (not
+  just visual screenshot, since the marker is a small 3px dot) that it lands at the mathematically
+  correct position.
+
+Tests: `test_cost_evm_engine.js` extended with 7 new Earned Schedule checks (added to the
+*existing* dedicated engine test file, not a new one — `computeEarnedSchedule()` extends
+`costEvmEngine.js`, so its tests belong where that module's other tests already live). New
+`tests/test_schedule_performance_engine.js` (8 checks: scoring boundaries, missing-data
+re-normalization matching `projectHealthEngine.js`'s own convention, RAG thresholds).
+`test_store_schema_v46_migration.js` renamed to `test_store_schema_v47_migration.js` (this
+project's "one canonical full-chain migration test targeting latest" convention) with new
+v46→v47 backfill checks. New `tests/test_advanced_schedule_performance_e2e.js` (32 checks,
+including a 24-route smoke test) against the real bundled `index.html`, reusing the exact
+hand-verified divergence scenario end-to-end. Full suite: **55 files, 1389 checks**, clean, zero
+regressions. Real-Chromium pass (2 screenshots plus direct SVG-coordinate inspection of the
+S-Curve overlay, since a 3px marker doesn't show up reliably in a full-page screenshot) confirmed
+everything renders correctly — zero console errors.
 
 **Gate 24 — Recovery & Mitigation Planning** (merge `e3ef313`). Inspection found Recovery Actions
 was a plain to-do (description/responsible person/target date/status) with zero schedule-impact
@@ -1315,28 +1365,29 @@ breakdown from Aditya directly, the same way Tier D's came, rather than guessing
 
 ## Repo/branch state
 
-`main` is fully up to date through **Gate 24: Recovery & Mitigation Planning**
-(`e3ef313`, a direct merge — no PR, per Aditya's now-standing "always merge after completing a
+`main` is fully up to date through **Gate 25: Advanced Schedule Performance**
+(`8f2eab8`, a direct merge — no PR, per Aditya's now-standing "always merge after completing a
 gate/phase" instruction, see above) — **Tiers A-E are all fully complete; Tier F (Advanced Project
-Planning & Project Controls) is now underway, seven of its nine named gates done plus one
-follow-on round closing a gap in the second.** Sixteen rounds have landed on `main` this session,
-all via the same designated remote-session branch, `claude/tier-c-code-inspection-jysweb` (name is
-stale now — it's carried Tier C, D, E, and F gates alike), restarted from the new `main` between
-each per the standing "restart before the next gate" instruction: the Tier C inspection +
-`physical_progress` fix first (merge `fba3d42`), then Vendor Performance Centre (merge `0801b10`),
-then Delay & Recovery Management (merge `4882f79`), then Decision Register (merge `d57a056`), then
-Weekly Project Review (merge `c3af1d9`), then the Recovery Actions/Decisions reporting-wiring
-follow-on (merge `fef89f6`), then Gate 16 Portfolio Performance (merge `c4959e2`), then Gate 17
-Personal Workbench (merge `332b505`), then Gate 18 Resource Management (merge `ec8c638`), then
-Gate 19 Commitment Management (merge `a0a9e5b`), then the Gate 19 Schedule↔Commitment follow-on
-(merge `4690a58`), then Gate 20 Status-Date Control (merge `33a3551`), then Gate 21 Status-Date
-Reforecasting (merge `bd825a0`), then Gate 22 Baseline & Schedule Revision Control (merge
-`d14f9ef`), then Gate 23 Advanced Delay Analysis (merge `1050733`), then Gate 24 Recovery &
-Mitigation Planning (merge `e3ef313`). Aditya confirmed via `AskUserQuestion` to proceed with each
-merge given the branch's own "never push elsewhere without permission" constraint; see the git log
-for the exact sequence if that matters later. This builds on top of **Tier B (Control
+Planning & Project Controls) is now underway, eight of its nine named gates done plus one
+follow-on round closing a gap in the second — only Gate 26 remains.** Seventeen rounds have landed
+on `main` this session, all via the same designated remote-session branch,
+`claude/tier-c-code-inspection-jysweb` (name is stale now — it's carried Tier C, D, E, and F gates
+alike), restarted from the new `main` between each per the standing "restart before the next gate"
+instruction: the Tier C inspection + `physical_progress` fix first (merge `fba3d42`), then Vendor
+Performance Centre (merge `0801b10`), then Delay & Recovery Management (merge `4882f79`), then
+Decision Register (merge `d57a056`), then Weekly Project Review (merge `c3af1d9`), then the
+Recovery Actions/Decisions reporting-wiring follow-on (merge `fef89f6`), then Gate 16 Portfolio
+Performance (merge `c4959e2`), then Gate 17 Personal Workbench (merge `332b505`), then Gate 18
+Resource Management (merge `ec8c638`), then Gate 19 Commitment Management (merge `a0a9e5b`), then
+the Gate 19 Schedule↔Commitment follow-on (merge `4690a58`), then Gate 20 Status-Date Control
+(merge `33a3551`), then Gate 21 Status-Date Reforecasting (merge `bd825a0`), then Gate 22 Baseline
+& Schedule Revision Control (merge `d14f9ef`), then Gate 23 Advanced Delay Analysis (merge
+`1050733`), then Gate 24 Recovery & Mitigation Planning (merge `e3ef313`), then Gate 25 Advanced
+Schedule Performance (merge `8f2eab8`). Aditya confirmed via `AskUserQuestion` to proceed with
+each merge given the branch's own "never push elsewhere without permission" constraint; see the
+git log for the exact sequence if that matters later. This builds on top of **Tier B (Control
 Integration)**, complete as of Gate 33, and the already-complete 14-gate Document Control sub-spec.
-`schema_version` on `main` is now **46** — Gate 24 needed a real schema change, the fourth in a row
+`schema_version` on `main` is now **47** — Gate 25 needed a real schema change, the fifth in a row
 (see the "Where things stand" section above for full detail). `claude/tier-c-code-inspection-jysweb`
 carries the same history as `main` as of this merge (nothing unmerged on it) — restart it from the
 new `main` before starting the next gate, and verify with `git log origin/main..HEAD` and
@@ -1344,32 +1395,28 @@ new `main` before starting the next gate, and verify with `git log origin/main..
 
 **Zip delivered this round:** `Project-Control-Center.zip` — `index.html` + `README.md` +
 `data/`/`files/` (existing `README.txt` placeholders), verified via a fresh extraction
-(`/tmp/pcc_zip_verify11/`, not the dev working copy) opened in real Chromium — zero console errors;
+(`/tmp/pcc_zip_verify12/`, not the dev working copy) opened in real Chromium — zero console errors;
 screenshots taken and sent per the standing instruction.
 
 **Next steps, in likely priority order:**
-1. **Tier F has 2 more named gates, none started — get scope confirmation from Aditya before
-   building the next one.** Gate 25 Advanced Schedule Performance is next in the spec's own
-   order, but nothing says gates must be built strictly in order — ask before assuming. Full spec
-   text for all 9 Tier F gates was handed over conversationally this session and is preserved in
-   this conversation's history but was never saved as a file in this repo — don't assume a future
-   session can find it; get it re-confirmed from Aditya if it's not still in context. Inspect each
-   gate against the real code before proposing anything, same discipline as every gate so far —
-   Gates 18 through 24 all turned out to have substantial real prior art or overlap (Gate 11 for
-   Resources, the Gate 9/16 "not tracked yet"/"future Commercial module" notes for Commitments,
-   Gate 20's own spec turning out to be *almost entirely* pre-built under other names, Gate 21
-   finding the CPM engine already did most of status-date reforecasting, Gate 22 finding the full
-   baseline capture/compare machinery already built, Gate 23 finding the existing Delay & Recovery
-   Dashboard was recovery-actions-only with no delay causation anywhere, and Gate 24 finding
-   Recovery Actions was a plain to-do with zero schedule-impact quantification), so don't assume
-   any of Gates 25-26 are starting from zero either. **Gate 25 (Advanced Schedule Performance) is
-   flagged as a likely overlap** with `scheduleGanttLayout.js`/Executive Center's existing
-   Schedule Progress/Physical Progress KPIs and `costEvmEngine.js`'s SPI (Schedule Performance
-   Index, already computed there since Gate 5b) — inspect what "Advanced Schedule Performance"
-   would add beyond the SPI/progress metrics that already exist before assuming a gap (e.g. a
-   formal Schedule Performance Index trend over time, a dedicated schedule-health scorecard
-   distinct from the existing Project Health Score, or earned-schedule-technique metrics like
-   Earned Schedule/SPI(t) might be the real gap).
+1. **Tier F has exactly 1 named gate left — Gate 26, Integrated Project Controls — get scope
+   confirmation from Aditya before building it. This is the LAST gate in the whole Tier F
+   spec.** Full spec text for all 9 Tier F gates was handed over conversationally this session
+   and is preserved in this conversation's history but was never saved as a file in this repo —
+   don't assume a future session can find it; get it re-confirmed from Aditya if it's not still in
+   context. Inspect each gate against the real code before proposing anything, same discipline as
+   every gate so far — Gates 18 through 25 all turned out to have substantial real prior art or
+   overlap, so don't assume Gate 26 is starting from zero either. **Gate 26 ("Integrated Project
+   Controls") is flagged as likely to be an INTEGRATION/rollup gate by its own name** — i.e. it
+   may not introduce much genuinely new calculation the way Gates 20-25 each did, but instead pull
+   together Schedule + Cost + Delay + Recovery + Schedule Performance (all now built) into one
+   unified control-centre view or report. Inspect Executive Center, the Snapshot & Management
+   Pack, and reports.js carefully first — this gate may turn out to be mostly about surfacing
+   connections between already-built pieces (e.g. does the new Schedule Performance Score feed
+   Project Health? does Delay Analysis cross-reference Recovery Actions and What-If explicitly
+   anywhere yet?) rather than a new engine or register. After Gate 26 ships, Tier F is COMPLETE —
+   check with Aditya on what's next (Tier 3 per the roadmap's own numbering, or a new phase
+   entirely).
 2. **Watch for the exact "local DOM element mutated for validation display, then discarded by the
    very next rerender()" bug pattern flagged in the Gate 24 section above** (a second instance of
    the same root problem as the Gate 22 notify()-reads-a-mutated-object bug) when writing any new
