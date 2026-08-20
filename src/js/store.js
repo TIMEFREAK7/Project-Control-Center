@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 47;
+  var SCHEMA_VERSION = 48;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -87,6 +87,10 @@
       // performance score) — see newSchedulePerformanceSnapshot() below for why this is
       // its own capture mechanism rather than piggybacking on Weekly Reviews.
       schedule_performance_snapshots: [],
+      // PCC Evolution Roadmap, Tier 3 (deferred since the original locked build order,
+      // now taken up): Lessons Learned. Project-scoped register, same shape family as
+      // Risk/RFI/Decisions above — see newLessonLearned() below for the field design.
+      lessons_learned: [],
       // Gate 5b (Tier 2 Cost Tracking): budget line items and the actual-cost log
       // against them. Deliberately two separate arrays, not one shape distinguished by
       // a type field \u2014 unlike Risk/Issue/Opportunity or RFI/TQ, a budget line item and
@@ -1354,6 +1358,44 @@
     return Object.assign(base, overrides || {});
   }
 
+  function newLessonLearnedId() {
+    return "lsn_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  var LESSON_LEARNED_CATEGORIES = ["schedule", "cost", "quality", "safety", "procurement_vendor", "design_technical", "communication", "other"];
+  var LESSON_LEARNED_IMPACT_TYPES = ["positive", "negative"];
+
+  /** PCC Evolution Roadmap, Tier 3 (Lessons Learned — the first of the tier's deferred
+   * items to be built; AI Document Processing/AI Project Assistant stay deferred per
+   * Aditya's own call, and Knowledge Base is a later gate). Same project-scoped
+   * register shape as Risk/RFI/Decisions (`newDecision()` above) — full CRUD, optional
+   * `source_meeting_id`/`activity_id` links, same pattern. Deliberately captures BOTH
+   * directions via `impact_type` (`positive`/`negative`) — "what worked, keep doing it"
+   * is just as valuable as "what went wrong, avoid it next time," and a register that
+   * only captured complaints would be a smaller, less useful thing than what the name
+   * "Lessons Learned" actually means in project-controls practice. No `status` field —
+   * this is a captured log, not a workflow with states, same "log only" precedent
+   * Change Management already established. */
+  function newLessonLearned(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newLessonLearnedId(),
+      project_id: "",
+      title: "",
+      category: "other", // schedule | cost | quality | safety | procurement_vendor | design_technical | communication | other
+      impact_type: "negative", // positive | negative
+      description: "",
+      recommendation: "",
+      identified_by: "",
+      date_identified: "",
+      source_meeting_id: "",
+      activity_id: "",
+      created_at: now,
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
   // ============================================================
   // GATE 9 — Vendor Management. Vendor Master is portfolio-wide (like Projects
   // themselves), not scoped to one project the way Documents/Risk/RFI are — every
@@ -2392,6 +2434,14 @@
       loaded.schema_version = 47;
     }
 
+    if (loaded.schema_version < 48) {
+      // PCC Evolution Roadmap, Tier 3: Lessons Learned. Brand new register, nothing to
+      // backfill on existing records — same pattern every other brand-new register in
+      // this migration chain follows.
+      if (!loaded.lessons_learned) loaded.lessons_learned = [];
+      loaded.schema_version = 48;
+    }
+
     return loaded;
   }
 
@@ -2733,6 +2783,9 @@
     newDelayRecord: newDelayRecord,
     DELAY_RECORD_CAUSES: DELAY_RECORD_CAUSES,
     newSchedulePerformanceSnapshot: newSchedulePerformanceSnapshot,
+    newLessonLearned: newLessonLearned,
+    LESSON_LEARNED_CATEGORIES: LESSON_LEARNED_CATEGORIES,
+    LESSON_LEARNED_IMPACT_TYPES: LESSON_LEARNED_IMPACT_TYPES,
     SCHEDULE_STATUSES: SCHEDULE_STATUSES,
     ACTIVITY_TYPES: ACTIVITY_TYPES,
     ACTIVITY_STATUSES: ACTIVITY_STATUSES,

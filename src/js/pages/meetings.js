@@ -964,10 +964,22 @@
       window.PCC.router.go("decisionRegister");
     };
 
+    // PCC Evolution Roadmap, Tier 3 (Lessons Learned) — same quick-action pattern as
+    // Risk/RFI/Change Order/Decision above; a retrospective/lessons discussion is a very
+    // common reason a meeting exists in the first place.
+    var addLessonBtn = document.createElement("button");
+    addLessonBtn.className = "btn btn--ghost";
+    addLessonBtn.textContent = "+ Add Lesson Learned";
+    addLessonBtn.onclick = function () {
+      if (window.PCC.lessonsLearned) window.PCC.lessonsLearned.createFromMeeting(m.project_id, m.id);
+      window.PCC.router.go("lessonsLearned");
+    };
+
     quickActions.appendChild(attachDocBtn);
     quickActions.appendChild(addRfiBtn);
     quickActions.appendChild(addChangeOrderBtn);
     quickActions.appendChild(addDecisionBtn);
+    quickActions.appendChild(addLessonBtn);
     wrap.appendChild(quickActions);
 
     return wrap;
