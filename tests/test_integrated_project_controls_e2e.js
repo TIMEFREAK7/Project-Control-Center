@@ -282,7 +282,14 @@ function findButtonByText(dom, text) {
 
   await check("no schema_version bump this gate — Gate 26 is pure computation over already-stored data", () => {
     var data = win.PCC.store.get();
-    assert.strictEqual(data.schema_version, 47, "Gate 26 should NOT have bumped schema_version — it computes purely from delay_records/recovery_actions/schedule_performance_snapshots, all of which already existed");
+    // Gate 26 itself added no new fields/registers (delay_records/recovery_actions/
+    // schedule_performance_snapshots all already existed) and shipped at schema_version
+    // 47 unchanged. A later gate (Lessons Learned, Tier 3) has since bumped it further —
+    // this assertion only needs schema_version to be AT LEAST 47, not exactly 47, so this
+    // test keeps passing against whatever the current bundled index.html's latest schema
+    // actually is, rather than hardcoding a number that goes stale the next time any
+    // future gate bumps it.
+    assert.ok(data.schema_version >= 47, "Gate 26 should not have bumped schema_version below 47 — it computes purely from delay_records/recovery_actions/schedule_performance_snapshots, all of which already existed");
   });
 
   // ---- Route smoke test across every page ----

@@ -23,6 +23,7 @@
     router.register("rfis", window.PCC.pages.rfis);
     router.register("changeOrders", window.PCC.pages.changeOrders);
     router.register("decisionRegister", window.PCC.pages.decisionRegister);
+    router.register("lessonsLearned", window.PCC.pages.lessonsLearned);
     router.register("cost", window.PCC.pages.cost);
     router.register("commitments", window.PCC.pages.commitments);
     router.register("resources", window.PCC.pages.resources);

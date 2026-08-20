@@ -32,6 +32,7 @@
         { key: "rfis", label: "RFI / TQ", code: "RQ" },
         { key: "changeOrders", label: "Change Mgmt", code: "CM" },
         { key: "decisionRegister", label: "Decision Register", code: "DE" },
+        { key: "lessonsLearned", label: "Lessons Learned", code: "LL" },
       ],
     },
     {
@@ -71,6 +72,7 @@
     rfis: "RFI / Technical Query",
     changeOrders: "Change Management",
     decisionRegister: "Decision Register",
+    lessonsLearned: "Lessons Learned",
     cost: "Cost Tracking",
     commitments: "Commitment Management",
     resources: "Resource Management",
