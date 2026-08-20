@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 50;
+  var SCHEMA_VERSION = 51;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -34,6 +34,14 @@
         // exactly, so no existing install's behavior changes on upgrade.
         document_reminder_due_soon_days: 14,
         action_centre_upcoming_days: 30,
+        // PCC Evolution Roadmap, Tier 3 ("final polish"): Report Template System.
+        // Metadata only — the actual logo bytes live in blobStore (IndexedDB) under the
+        // fixed key "company_logo", same "binary bytes never live in the main JSON
+        // store" rule every other file this app stores already follows. One company,
+        // one logo, reused across every printable report (reports.js's two reports,
+        // Executive Center's Project Snapshot and Management Pack) — not per-report.
+        company_logo_filename: "",
+        company_logo_mime_type: "",
         // Gate 9 (Project Executive Center): weights for the configurable health score,
         // one set applied to every project rather than per-project config — the spec
         // asks for the weighting logic to be configurable and visible, not for each
@@ -101,6 +109,10 @@
       // PCC Evolution Roadmap, Tier 3: Knowledge Base. Portfolio-wide, optional
       // project_id — see newKnowledgeBaseArticle() below for the field design.
       knowledge_base_articles: [],
+      // PCC Evolution Roadmap, Tier 3 ("final polish"): Report Template System. Named,
+      // saved section-selections for reports.js's two reports and Executive Center's
+      // Management Pack — see newReportTemplate() below for the field design.
+      report_templates: [],
       // Gate 5b (Tier 2 Cost Tracking): budget line items and the actual-cost log
       // against them. Deliberately two separate arrays, not one shape distinguished by
       // a type field \u2014 unlike Risk/Issue/Opportunity or RFI/TQ, a budget line item and
@@ -1447,6 +1459,35 @@
     return Object.assign(base, overrides || {});
   }
 
+  function newReportTemplateId() {
+    return "rpt_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  var REPORT_TEMPLATE_TYPES = ["project", "portfolio", "management_pack"];
+
+  /** PCC Evolution Roadmap, Tier 3 ("final polish") — Report Template System. A named,
+   * saved section-selection for one of the three report builders that support toggling
+   * sections (reports.js's Project Status and Portfolio Summary reports, and Executive
+   * Center's Management Pack — the Project Snapshot stays deliberately fixed-content
+   * per its own existing header comment, so it never gets templates). `sections` is a
+   * plain `{ sectionKey: boolean }` map — its exact key set differs by `report_type`
+   * (each report builder owns its own section-key list), so this factory doesn't
+   * hardcode one; callers populate it from their own current checkbox state. Portfolio-
+   * wide, not project-scoped — a template is a reusable report shape, not a record of
+   * something that happened on one project. */
+  function newReportTemplate(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newReportTemplateId(),
+      report_type: "project", // project | portfolio | management_pack
+      name: "",
+      sections: {},
+      created_at: now,
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
   // ============================================================
   // GATE 9 — Vendor Management. Vendor Master is portfolio-wide (like Projects
   // themselves), not scoped to one project the way Documents/Risk/RFI are — every
@@ -2509,6 +2550,17 @@
       loaded.schema_version = 50;
     }
 
+    if (loaded.schema_version < 51) {
+      // PCC Evolution Roadmap, Tier 3 ("final polish"): Report Template System. Brand
+      // new register and two new settings metadata fields, nothing to backfill on
+      // existing records — no install has ever had a logo or a saved report template
+      // before this gate.
+      if (!loaded.report_templates) loaded.report_templates = [];
+      if (loaded.settings.company_logo_filename == null) loaded.settings.company_logo_filename = "";
+      if (loaded.settings.company_logo_mime_type == null) loaded.settings.company_logo_mime_type = "";
+      loaded.schema_version = 51;
+    }
+
     return loaded;
   }
 
@@ -2855,6 +2907,8 @@
     LESSON_LEARNED_IMPACT_TYPES: LESSON_LEARNED_IMPACT_TYPES,
     newKnowledgeBaseArticle: newKnowledgeBaseArticle,
     KNOWLEDGE_BASE_CATEGORIES: KNOWLEDGE_BASE_CATEGORIES,
+    newReportTemplate: newReportTemplate,
+    REPORT_TEMPLATE_TYPES: REPORT_TEMPLATE_TYPES,
     SCHEDULE_STATUSES: SCHEDULE_STATUSES,
     ACTIVITY_TYPES: ACTIVITY_TYPES,
     ACTIVITY_STATUSES: ACTIVITY_STATUSES,

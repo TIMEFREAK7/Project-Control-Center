@@ -61,6 +61,13 @@
       milestones: true, cost: true, evm: true, risks: true,
       issues: true, rfis: true, changes: true, dailylog: true, meetings: true,
     },
+    // PCC Evolution Roadmap, Tier 3 ("final polish"): Report Template System — same
+    // named/saved-template mechanism as reports.js's own two reports, applied here so
+    // Management Pack's section checkboxes (previously reset every session) can now be
+    // saved and reapplied too.
+    selectedPackTemplateId: "",
+    savingPackTemplateAsNew: false,
+    newPackTemplateName: "",
   };
 
   function esc(s) {
@@ -2285,6 +2292,29 @@
     return p;
   }
 
+  /** PCC Evolution Roadmap, Tier 3 ("final polish"): Report Template System — same
+   * placeholder-then-async-resolve pattern dailyLog.js's photo thumbnails and
+   * documents.js's stored-file preview already establish. The logo is a single blob
+   * (blobStore key "company_logo", uploaded once in Settings), reused here and in
+   * reports.js's own two reports rather than a second logo-upload path. */
+  function renderLogoImg(data) {
+    if (!data.settings.company_logo_filename) return null;
+    var img = document.createElement("img");
+    img.style.maxHeight = "48px";
+    img.style.maxWidth = "160px";
+    img.style.objectFit = "contain";
+    img.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1' height='1'%3E%3C/svg%3E";
+    window.PCC.blobStore
+      .getBlob("company_logo")
+      .then(function (fileData) {
+        if (fileData) img.src = fileData;
+      })
+      .catch(function () {
+        /* leave placeholder — logo just won't load, not fatal */
+      });
+    return img;
+  }
+
   /** One-page executive Project Snapshot, A4 landscape (see the `.snapshot-doc`/
    * `page: snapshot-page` rule in styles.css). Fixed content per the spec — not
    * configurable like the Management Pack below, since the point is a single
@@ -2296,12 +2326,26 @@
     var header = document.createElement("div");
     header.style.display = "flex";
     header.style.justifyContent = "space-between";
+    header.style.alignItems = "flex-start";
+    header.style.gap = "12px";
     header.style.marginBottom = "10px";
-    header.innerHTML =
-      "<div><h2 style='margin-bottom:2px'>" + esc(ctx.project.name || "(unnamed project)") + "</h2>" +
-      "<p class='text-secondary' style='font-size:11px;margin:0'>Project Snapshot · " + esc(ctx.project.client || "") + " · Data Date " + esc(ctx.schedule ? ctx.schedule.data_date : "—") + " · Generated " + today() + "</p></div>" +
-      "<div style='text-align:right;'><span class='status-badge status-badge--" + (health.rag === "on_track" ? "on_track" : health.rag === "at_risk" ? "at_risk" : health.rag === "critical" ? "critical" : "info") + "'>" + RAG_LABELS[health.rag] + "</span>" +
-      "<div style='font-size:22px;font-weight:700;margin-top:4px;' class='mono'>" + (health.score == null ? "—" : health.score) + "</div></div>";
+    var headerLeft = document.createElement("div");
+    headerLeft.innerHTML =
+      "<h2 style='margin-bottom:2px'>" + esc(ctx.project.name || "(unnamed project)") + "</h2>" +
+      "<p class='text-secondary' style='font-size:11px;margin:0'>Project Snapshot · " + esc(ctx.project.client || "") + " · Data Date " + esc(ctx.schedule ? ctx.schedule.data_date : "—") + " · Generated " + today() + "</p>";
+    header.appendChild(headerLeft);
+    // PCC Evolution Roadmap, Tier 3 ("final polish"): Report Template System — same
+    // blobStore-backed company logo reports.js's own two reports now show, reused here
+    // rather than a second logo-upload path.
+    var logoImg = renderLogoImg(data);
+    if (logoImg) header.appendChild(logoImg);
+    var headerRight = document.createElement("div");
+    headerRight.style.textAlign = "right";
+    headerRight.style.flexShrink = "0";
+    headerRight.innerHTML =
+      "<span class='status-badge status-badge--" + (health.rag === "on_track" ? "on_track" : health.rag === "at_risk" ? "at_risk" : health.rag === "critical" ? "critical" : "info") + "'>" + RAG_LABELS[health.rag] + "</span>" +
+      "<div style='font-size:22px;font-weight:700;margin-top:4px;' class='mono'>" + (health.score == null ? "—" : health.score) + "</div>";
+    header.appendChild(headerRight);
     doc.appendChild(header);
 
     var grid3 = document.createElement("div");
@@ -2372,10 +2416,18 @@
       cover.style.marginBottom = "24px";
       cover.style.textAlign = "center";
       cover.style.paddingTop = "60px";
-      cover.innerHTML =
+      var coverLogo = renderLogoImg(data);
+      if (coverLogo) {
+        coverLogo.style.display = "block";
+        coverLogo.style.margin = "0 auto 12px";
+        cover.appendChild(coverLogo);
+      }
+      var coverText = document.createElement("div");
+      coverText.innerHTML =
         "<h1 style='margin-bottom:6px;'>" + esc(ctx.project.name || "(unnamed project)") + "</h1>" +
         "<p class='text-secondary'>Management Pack</p>" +
         "<p class='text-secondary' style='font-size:12px;'>" + esc(data.settings.company_name || "") + " · Generated " + today() + " · Data Date " + esc(ctx.schedule ? ctx.schedule.data_date : "—") + "</p>";
+      cover.appendChild(coverText);
       doc.appendChild(cover);
     }
 
@@ -2940,6 +2992,145 @@
         cost: "Cost Summary", evm: "EVM Summary", risks: "Risk Summary", issues: "Issue Summary",
         rfis: "RFI Summary", changes: "Change Summary", dailylog: "Daily Site Log Summary", meetings: "Meeting Action Summary",
       };
+
+      // PCC Evolution Roadmap, Tier 3 ("final polish"): Report Template System — same
+      // named/saved-template CRUD as reports.js's own two reports, applied here so
+      // these checkboxes (previously reset every session) can be saved and reapplied.
+      var packTemplates = data.report_templates.filter(function (t) { return t.report_type === "management_pack"; });
+      var templateRow = document.createElement("div");
+      templateRow.style.display = "flex";
+      templateRow.style.alignItems = "center";
+      templateRow.style.gap = "8px";
+      templateRow.style.flexWrap = "wrap";
+      templateRow.style.marginBottom = "10px";
+
+      var templateLabel = document.createElement("span");
+      templateLabel.style.fontSize = "13px";
+      templateLabel.textContent = "Template:";
+      templateRow.appendChild(templateLabel);
+
+      var templateSelect = document.createElement("select");
+      var customOpt = document.createElement("option");
+      customOpt.value = "";
+      customOpt.textContent = "— Custom selection —";
+      templateSelect.appendChild(customOpt);
+      packTemplates.forEach(function (t) {
+        var opt = document.createElement("option");
+        opt.value = t.id;
+        opt.textContent = t.name;
+        templateSelect.appendChild(opt);
+      });
+      templateSelect.value = uiState.selectedPackTemplateId;
+      templateSelect.onchange = function () {
+        var chosen = packTemplates.find(function (t) { return t.id === templateSelect.value; });
+        if (chosen) {
+          var applied = {};
+          Object.keys(sectionLabels).forEach(function (k) { applied[k] = chosen.sections[k] !== false; });
+          uiState.packSections = applied;
+          uiState.selectedPackTemplateId = chosen.id;
+        } else {
+          uiState.selectedPackTemplateId = "";
+        }
+        rerender();
+      };
+      templateRow.appendChild(templateSelect);
+
+      var currentPackTemplate = packTemplates.find(function (t) { return t.id === uiState.selectedPackTemplateId; });
+      if (currentPackTemplate) {
+        var saveChangesBtn = document.createElement("button");
+        saveChangesBtn.className = "btn btn--ghost";
+        saveChangesBtn.textContent = "Save Changes";
+        saveChangesBtn.onclick = function () {
+          window.PCC.store.update(function (d) {
+            var t = d.report_templates.find(function (x) { return x.id === currentPackTemplate.id; });
+            if (t) {
+              t.sections = Object.assign({}, uiState.packSections);
+              t.updated_at = new Date().toISOString();
+            }
+          });
+          window.PCC.notify("Template updated.", "success");
+          rerender();
+        };
+        templateRow.appendChild(saveChangesBtn);
+
+        var deleteTemplateBtn = document.createElement("button");
+        deleteTemplateBtn.className = "btn btn--ghost";
+        deleteTemplateBtn.textContent = "Delete Template";
+        deleteTemplateBtn.onclick = function () {
+          if (!window.confirm("Delete the template “" + currentPackTemplate.name + "”? This can't be undone.")) return;
+          window.PCC.store.update(function (d) {
+            d.report_templates = d.report_templates.filter(function (t) { return t.id !== currentPackTemplate.id; });
+          });
+          uiState.selectedPackTemplateId = "";
+          window.PCC.notify("Template deleted.", "info");
+          rerender();
+        };
+        templateRow.appendChild(deleteTemplateBtn);
+      }
+
+      var saveNewBtn = document.createElement("button");
+      saveNewBtn.className = "btn btn--ghost";
+      saveNewBtn.textContent = "Save as New…";
+      saveNewBtn.onclick = function () {
+        uiState.savingPackTemplateAsNew = true;
+        uiState.newPackTemplateName = "";
+        rerender();
+      };
+      templateRow.appendChild(saveNewBtn);
+      checkboxPanel.appendChild(templateRow);
+
+      if (uiState.savingPackTemplateAsNew) {
+        var saveNewRow = document.createElement("div");
+        saveNewRow.style.display = "flex";
+        saveNewRow.style.alignItems = "center";
+        saveNewRow.style.gap = "8px";
+        saveNewRow.style.marginBottom = "10px";
+
+        var nameInput = document.createElement("input");
+        nameInput.type = "text";
+        nameInput.placeholder = "Template name, e.g. “Client Report”";
+        nameInput.value = uiState.newPackTemplateName;
+        nameInput.oninput = function () {
+          uiState.newPackTemplateName = nameInput.value;
+        };
+        saveNewRow.appendChild(nameInput);
+
+        var confirmSaveBtn = document.createElement("button");
+        confirmSaveBtn.className = "btn btn--primary";
+        confirmSaveBtn.textContent = "Save";
+        confirmSaveBtn.onclick = function () {
+          var name = nameInput.value.trim();
+          if (!name) {
+            window.PCC.notify("Enter a template name.", "warning");
+            return;
+          }
+          var newTemplate = window.PCC.store.newReportTemplate({
+            report_type: "management_pack",
+            name: name,
+            sections: Object.assign({}, uiState.packSections),
+          });
+          window.PCC.store.update(function (d) {
+            d.report_templates.push(newTemplate);
+          });
+          uiState.selectedPackTemplateId = newTemplate.id;
+          uiState.savingPackTemplateAsNew = false;
+          window.PCC.notify("Template saved.", "success");
+          rerender();
+        };
+        saveNewRow.appendChild(confirmSaveBtn);
+
+        var cancelSaveBtn = document.createElement("button");
+        cancelSaveBtn.className = "btn btn--ghost";
+        cancelSaveBtn.textContent = "Cancel";
+        cancelSaveBtn.onclick = function () {
+          uiState.savingPackTemplateAsNew = false;
+          rerender();
+        };
+        saveNewRow.appendChild(cancelSaveBtn);
+
+        checkboxPanel.appendChild(saveNewRow);
+      }
+
       Object.keys(sectionLabels).forEach(function (key) {
         var label = document.createElement("label");
         label.style.display = "flex";
@@ -2951,6 +3142,10 @@
         cb.checked = uiState.packSections[key];
         cb.onchange = function () {
           uiState.packSections[key] = cb.checked;
+          // The loaded template (if any) STAYS selected through edits — same reasoning
+          // as reports.js's own template picker: "Save Changes" always commits whatever
+          // the checkboxes currently read, so it stays available right when it's
+          // needed, rather than disappearing the moment you tweak a checkbox.
           rerender();
         };
         label.appendChild(cb);
