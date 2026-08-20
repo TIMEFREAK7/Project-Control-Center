@@ -4,8 +4,9 @@
 
   // Grouped for findability now that there are a dozen+ items — purely a sidebar
   // presentation grouping, not a new concept elsewhere (routing/PAGE_TITLES below are
-  // still a flat map). Collapses to one continuous horizontal strip on mobile, same as
-  // before grouping existed (see the max-width: 780px rule hiding .sidebar__group-label).
+  // still a flat map). Rendered by buildNavList() into both the fixed sidebar (desktop/
+  // laptop/tablet) and the mobile nav drawer (<768px, UI/UX Overhaul Gate 2) — same
+  // groups/items either way, just a different container.
   var NAV_GROUPS = [
     {
       label: "OVERVIEW",
@@ -107,19 +108,26 @@
     });
     var titleValue = document.getElementById("title-block-sheet");
     if (titleValue) titleValue.textContent = PAGE_TITLES[routeName] || routeName;
+    // Every route change closes the mobile drawer if it's open — covers navigation
+    // triggered by something other than clicking a link inside it (e.g. a button
+    // elsewhere in the page calling router.go() directly).
+    closeMobileNav();
   }
 
-  function buildSidebar() {
-    var sidebar = document.createElement("aside");
-    sidebar.className = "sidebar";
-
-    var label = document.createElement("div");
-    label.className = "sidebar__label";
-    label.textContent = "SHEET INDEX";
-    sidebar.appendChild(label);
-
+  /** Builds one fresh `<ul class="sidebar__nav">` from NAV_GROUPS. Shared by the fixed
+   * sidebar (buildSidebar) and the mobile nav drawer (openMobileNav) — same items, same
+   * `.sidebar__link`/`data-route` shape, so `setActiveNav()`'s plain
+   * `querySelectorAll(".sidebar__link")` highlights whichever copy(ies) are currently in
+   * the DOM without needing to know which. That sweep only runs when the ROUTE changes,
+   * though — the drawer is built fresh on every open, well after the most recent route
+   * change already happened, so its links need their own "active" class set correctly
+   * at build time here too, not just left for the next route change to fix. `onLinkClick`,
+   * when given, fires on every link click in addition to the normal hash navigation —
+   * the drawer uses it to close itself; the fixed sidebar doesn't pass one. */
+  function buildNavList(onLinkClick) {
     var nav = document.createElement("ul");
     nav.className = "sidebar__nav";
+    var currentRoute = window.PCC.router.currentRouteName();
 
     NAV_GROUPS.forEach(function (group) {
       var groupLabel = document.createElement("li");
@@ -130,18 +138,108 @@
       group.items.forEach(function (item) {
         var li = document.createElement("li");
         var a = document.createElement("a");
-        a.className = "sidebar__link";
+        a.className = "sidebar__link" + (item.key === currentRoute ? " active" : "");
         a.href = "#/" + item.key;
         a.setAttribute("data-route", item.key);
         a.innerHTML =
           '<span class="sidebar__icon mono">' + item.code + "</span><span>" + item.label + "</span>";
+        if (onLinkClick) a.addEventListener("click", onLinkClick);
         li.appendChild(a);
         nav.appendChild(li);
       });
     });
 
-    sidebar.appendChild(nav);
+    return nav;
+  }
+
+  function buildSidebar() {
+    var sidebar = document.createElement("aside");
+    sidebar.className = "sidebar";
+    if (window.PCC.store.get().settings.sidebar_collapsed) {
+      sidebar.classList.add("sidebar--collapsed");
+    }
+
+    var headerRow = document.createElement("div");
+    headerRow.className = "sidebar__header-row";
+
+    var label = document.createElement("div");
+    label.className = "sidebar__label";
+    label.textContent = "SHEET INDEX";
+    headerRow.appendChild(label);
+
+    var collapseBtn = document.createElement("button");
+    collapseBtn.className = "icon-btn sidebar__collapse-btn";
+    setCollapseBtnState(collapseBtn, sidebar.classList.contains("sidebar--collapsed"));
+    collapseBtn.onclick = function () {
+      var collapsed = !window.PCC.store.get().settings.sidebar_collapsed;
+      window.PCC.store.update(function (d) {
+        d.settings.sidebar_collapsed = collapsed;
+      });
+      sidebar.classList.toggle("sidebar--collapsed", collapsed);
+      setCollapseBtnState(collapseBtn, collapsed);
+    };
+    headerRow.appendChild(collapseBtn);
+
+    sidebar.appendChild(headerRow);
+    sidebar.appendChild(buildNavList());
     return sidebar;
+  }
+
+  function setCollapseBtnState(btn, collapsed) {
+    btn.textContent = collapsed ? "»" : "«";
+    btn.title = collapsed ? "Expand sidebar" : "Collapse sidebar";
+  }
+
+  var mobileNavKeydownHandler = null;
+
+  function closeMobileNav() {
+    var overlay = document.getElementById("mobile-nav-overlay");
+    if (overlay) overlay.remove();
+    if (mobileNavKeydownHandler) {
+      document.removeEventListener("keydown", mobileNavKeydownHandler);
+      mobileNavKeydownHandler = null;
+    }
+  }
+
+  function openMobileNav() {
+    closeMobileNav();
+
+    var overlay = document.createElement("div");
+    overlay.id = "mobile-nav-overlay";
+    overlay.className = "drawer-overlay";
+    overlay.addEventListener("click", function (e) {
+      if (e.target === overlay) closeMobileNav();
+    });
+
+    var drawer = document.createElement("div");
+    drawer.className = "drawer";
+
+    var header = document.createElement("div");
+    header.className = "drawer__header";
+    var title = document.createElement("span");
+    title.className = "drawer__title";
+    title.textContent = "Menu";
+    var closeBtn = document.createElement("button");
+    closeBtn.className = "icon-btn";
+    closeBtn.title = "Close menu";
+    closeBtn.textContent = "✕";
+    closeBtn.onclick = closeMobileNav;
+    header.appendChild(title);
+    header.appendChild(closeBtn);
+
+    var body = document.createElement("div");
+    body.className = "drawer__body";
+    body.appendChild(buildNavList(closeMobileNav));
+
+    drawer.appendChild(header);
+    drawer.appendChild(body);
+    overlay.appendChild(drawer);
+    document.body.appendChild(overlay);
+
+    mobileNavKeydownHandler = function (e) {
+      if (e.key === "Escape") closeMobileNav();
+    };
+    document.addEventListener("keydown", mobileNavKeydownHandler);
   }
 
   function cell(label, value, opts) {
@@ -163,6 +261,16 @@
   function buildTitleBlock() {
     var header = document.createElement("header");
     header.className = "title-block";
+
+    // Mobile-only (<768px, see styles.css) — the fixed sidebar is hidden entirely at
+    // that width and this is the only way to reach navigation. Hidden via CSS, not JS,
+    // so it's always in the DOM regardless of viewport at the moment the shell mounts.
+    var menuBtn = document.createElement("button");
+    menuBtn.className = "icon-btn icon-btn--menu";
+    menuBtn.title = "Open navigation menu";
+    menuBtn.textContent = "☰";
+    menuBtn.onclick = openMobileNav;
+    header.appendChild(menuBtn);
 
     header.appendChild(cell("SHEET", "Dashboard", { grow: true, id: "title-block-sheet" }));
 
