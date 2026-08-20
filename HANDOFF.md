@@ -61,17 +61,80 @@ that override default behavior).
   populated state, and again on the zip-verification pass) and send the PNGs via `SendUserFile`
   before or alongside the written report. Applies to every gate from here on, not just this one.
 
-## Where things stand — Tiers A-E are COMPLETE; Tier F (Advanced Planning/Controls) is underway
+## Where things stand — Tiers A-F are ALL COMPLETE as of Gate 26
 
-`main` is fully up to date through **Gate 25: Advanced Schedule Performance** (PCC Evolution
-Roadmap, Tier F's eighth gate — only Gate 26 remains), merge commit `8f2eab8`, **`schema_version`
-bumped to 47** (fifth consecutive gate needing a real schema change — the new
-`schedule_performance_snapshots` register). The 9-gate tier: 18 Resource Management, 19
-Commitment Management, 20 Status-Date Control, 21 Status-Date Reforecasting, 22 Baseline &
-Schedule Revision Control, 23 Advanced Delay Analysis, 24 Recovery & Mitigation Planning, 25
-Advanced Schedule Performance, 26 Integrated Project Controls. See the "PCC Evolution Roadmap"
-section below for the complete gate-by-gate history — this section covers only the current tier's
-state.
+`main` is fully up to date through **Gate 26: Integrated Project Controls** (PCC Evolution
+Roadmap, Tier F's ninth and FINAL gate — Tier F is now complete). **No `schema_version` bump this
+gate — it stays at 47.** This is the first gate since the Gate 19 follow-on to ship without a
+schema change: everything Gate 26 computes derives purely from `delay_records`/
+`recovery_actions`/`schedule_performance_snapshots`, all of which already existed from Gates
+23-25. The completed 9-gate tier: 18 Resource Management, 19 Commitment Management, 20
+Status-Date Control, 21 Status-Date Reforecasting, 22 Baseline & Schedule Revision Control, 23
+Advanced Delay Analysis, 24 Recovery & Mitigation Planning, 25 Advanced Schedule Performance, 26
+Integrated Project Controls. See the "PCC Evolution Roadmap" section below for the complete
+gate-by-gate history.
+
+**Next step for a fresh session: ask Aditya what comes after Tier F** — the roadmap document
+handed over 2026-08-19 covered Tiers A-F only. There is no Tier G/Gate 27 scoped yet; do not
+assume one exists or invent further gates without a fresh conversation confirming scope, per this
+project's own standing "inspect and confirm before building" discipline.
+
+**Gate 26 — Integrated Project Controls** (merge pending — see commit log). Inspection found
+Gates 23 (Advanced Delay Analysis) and 24 (Recovery & Mitigation Planning) each shipped real
+capability but had ZERO computed connection to each other, despite being the roadmap's own
+natural pair ("why is this late" / "what are we doing about it"); Gate 25's Schedule Performance
+Score also had no portfolio-wide rollup and no presence in the Management Pack report. Two real
+forks were put to Aditya via `AskUserQuestion`:
+- **Whether to fold Schedule Performance into Health Score** — Aditya chose **"No — keep them
+  separate,"** matching Gate 25's own precedent (the Schedule Performance Score was already a
+  deliberate, separate, fixed-weight score, not folded into the configurable Health Score).
+  `projectHealthEngine.js` is untouched by this gate — verified explicitly in the new test suite
+  (`getHealthSummary()` has no Schedule Performance/SPI(t) fields).
+- **Whether Portfolio Performance gets a Tier F rollup** — Aditya chose **"Yes."**
+
+What shipped:
+- **Delay ↔ Recovery gap**, computed in `buildProjectContext()` (`executiveCenter.js`):
+  delay days minus OPEN recovery days, PER ACTIVITY (not a flat project-wide total — deliberately,
+  so recovery estimated on one activity can never appear to "cancel out" delay logged on an
+  unrelated one), floored at 0. Only open/in-progress recovery actions count (a completed/
+  cancelled action's estimate is historical, matching Gate 24's own dashboard convention).
+  Hand-verified with a two-activity scenario in the new test: Activity A (15d delay, 6d open
+  recovery, plus a 100d COMPLETED recovery action that must NOT count) → 9d unaddressed; Activity
+  B (4d delay, 10d open recovery) → gap floors at 0, excluded from the "unaddressed" list even
+  though it has real delay logged. A flat project-wide subtraction (19 total delay − 16 total open
+  recovery = 3) would give a completely different, wrong number than the correct per-activity
+  total of 9 — this is exactly the scenario the test proves.
+- **Executive Center Overview** gets a new DELAY & RECOVERY KPI panel (Delay Records / Total Delay
+  Days / Open Recovery Actions / Unaddressed Delay Days) plus a worst-gap-first detail list with
+  "View in Gantt" links (`renderDelayRecoveryGapDetail()`).
+- **`schedule.js`'s Activity Detail Panel** gets a small per-activity gap note between the
+  existing Recovery Actions and Delay Records sections (`renderDelayRecoveryGapNote()`).
+- **`delayRecoveryDashboard.js`** gets a portfolio-wide "UNADDRESSED DELAY (DAYS)" KPI and a
+  ranked "Activities With Unaddressed Delay (worst first)" list — independently re-derived rather
+  than calling into `executiveCenter.js`, per this app's established per-module-duplication
+  convention (same as `recoveryActionOverdue()` already being duplicated there).
+- **`portfolio.js`** gets the same portfolio-wide rollup added to its KPI strip, plus a new
+  "Sched. Perf." column in the Compare table — via a new
+  `window.PCC.executiveCenter.getSchedulePerformanceSummary(projectId)` export, mirroring the
+  established `getHealthSummary()` "export one composed function rather than duplicate
+  `buildProjectContext()`" pattern.
+- **Management Pack** (`buildManagementPackDoc()`) gains three new toggleable sections: Status
+  Date & Baseline Summary, Delay & Recovery Summary (including the per-activity gap table),
+  Schedule Performance Summary — added to `uiState.packSections` defaults (all `true`) and the
+  `sectionLabels` checkbox UI alongside the 15 pre-existing sections.
+
+Tests: new `tests/test_integrated_project_controls_e2e.js` (39 checks, including a 24-route smoke
+test) against the real bundled `index.html` — the hand-verified per-activity gap math (proving the
+per-activity/open-only/floor-at-zero rules against what a flat subtraction would wrongly give),
+the Executive Center KPI panel and detail list, the Activity Detail Panel gap notes on both
+activities, the three new Management Pack sections with real figures, the portfolio-wide rollup in
+both `delayRecoveryDashboard.js` and `portfolio.js` (KPI strip + Compare table column), and the
+explicit "Health Score untouched" regression check. Full suite: **53 files** (was 52 at Gate 25 —
+schema migration test file NOT renamed this round since there was no schema bump), clean, zero
+regressions. Real-Chromium pass (4 screenshots: Executive Center's DELAY & RECOVERY panel, the
+Management Pack showing all three new sections with real figures, the Delay & Recovery Dashboard's
+portfolio rollup, Portfolio Performance's KPI strip + Compare table with the new Sched. Perf.
+column) confirmed everything renders correctly — zero console errors.
 
 **Gate 25 — Advanced Schedule Performance** (merge `8f2eab8`). Inspection found classic SPI
 (`costEvmEngine.js`, `EV/PV`) was the only schedule-performance figure anywhere, with its
