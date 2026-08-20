@@ -220,8 +220,26 @@
     // per-module-helpers convention. Independent of the EVM numbers above; this gate
     // doesn't feed Commitments into costEvmEngine.js's own math (see commitments.js's
     // header comment for why).
+    // Procurement lead-time risk (Gate 19 follow-on, Schedule integration): same rule
+    // as schedule.js's own "commitments" LINKED_RECORD_SOURCES badge and
+    // commitments.js's own commitmentIsAtRisk() — duplicated here per this app's
+    // per-module-helpers convention. Looks up the linked activity across the WHOLE
+    // project (data.activities), not just the primary schedule's own `activities`
+    // variable above, since a commitment can point at an activity on any revision.
+    var COMMITMENT_RISK_WINDOW_DAYS = 7;
+    function commitmentAtRisk(c) {
+      if (!c.activity_id || c.status === "approved" || c.status === "closed" || c.status === "cancelled") return false;
+      var act = data.activities.find(function (a) { return a.id === c.activity_id; });
+      if (!act || act.activity_type === "milestone") return false;
+      var start = act.early_start || act.planned_start || null;
+      if (!start) return false;
+      var cutoff = new Date(todayIso + "T00:00:00Z");
+      cutoff.setUTCDate(cutoff.getUTCDate() + COMMITMENT_RISK_WINDOW_DAYS);
+      return start <= cutoff.toISOString().slice(0, 10);
+    }
+
     var projectCommitments = data.commitments.filter(function (c) { return c.project_id === projectId; });
-    var commitmentTotals = { committed: 0, approved: 0, actual: 0, remaining: 0 };
+    var commitmentTotals = { committed: 0, approved: 0, actual: 0, remaining: 0, atRisk: 0 };
     projectCommitments.forEach(function (c) {
       var actual = data.cost_actuals
         .filter(function (a) { return a.commitment_id === c.id; })
@@ -230,6 +248,7 @@
       commitmentTotals.approved += Number(c.approved_value) || 0;
       commitmentTotals.actual += actual;
       if (c.committed_value != null) commitmentTotals.remaining += Number(c.committed_value) - actual;
+      if (commitmentAtRisk(c)) commitmentTotals.atRisk++;
     });
     ctx.commitmentSummary = Object.assign({ count: projectCommitments.length }, commitmentTotals);
 
@@ -915,6 +934,7 @@
         { label: "Approved", value: fmtMoney(ctx.commitmentSummary.approved, p.currency) },
         { label: "Actual", value: fmtMoney(ctx.commitmentSummary.actual, p.currency) },
         { label: "Remaining", value: fmtMoney(ctx.commitmentSummary.remaining, p.currency), colorVar: ctx.commitmentSummary.remaining < 0 ? "--status-critical" : null },
+        { label: "At Risk", value: ctx.commitmentSummary.atRisk, colorVar: ctx.commitmentSummary.atRisk > 0 ? "--status-critical" : null },
       ]);
     } else {
       renderKpiEmptySection(outlet, "COMMITMENTS", "No commitments logged for this project yet — see the Commitments page.");
