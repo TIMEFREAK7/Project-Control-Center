@@ -28,6 +28,23 @@
  *   pick one and say so" approach scheduleCpmEngine.js already takes for Free Float).
  *   It assumes the project's current cost efficiency (CPI) holds for the remaining
  *   work; ETC = EAC - AC, VAC = BAC - EAC follow from it.
+ *
+ * EARNED SCHEDULE (Gate 25, PCC Evolution Roadmap Tier F: Advanced Schedule
+ * Performance): classic SPI (spi = ev/pv, above) has a well-documented flaw — it
+ * mathematically converges to 1.0 as a project nears completion regardless of how late
+ * it actually finishes, since PV stops growing once every activity's planned span has
+ * elapsed while EV can still catch up to it. Earned Schedule (Lipke) is the standard
+ * fix: instead of comparing dollars, it asks "at what point on the PLANNED time curve
+ * would today's EV have been earned?" (ES, in days) and compares that to how much time
+ * has actually elapsed (AT). SPI(t) = ES/AT doesn't have classic SPI's end-of-project
+ * convergence problem. computeEarnedSchedule() rebuilds the same per-item linear PV(t)
+ * ramps itemPlannedValue() already computes (one call per item at a single date) into a
+ * full day-by-day PV(t) CURVE, then walks it forward from EV=0 to find the day ES
+ * crosses today's actual EV, interpolating within that day for a smooth (non-stepped)
+ * value. A plain forward linear scan, not a closed-form inversion or binary search —
+ * this app avoids algorithmic cleverness where a simple, obviously-correct loop suffices
+ * (same style scheduleCpmEngine.js's forward/backward passes already use), and a
+ * project's day count here is small enough that the scan cost is irrelevant.
  */
 (function () {
   "use strict";
@@ -38,6 +55,10 @@
   function toDayNumber(isoDateStr) {
     var d = new Date(isoDateStr + "T00:00:00Z");
     return Math.round(d.getTime() / DAY_MS);
+  }
+
+  function toIsoDate(dayNumber) {
+    return new Date(dayNumber * DAY_MS).toISOString().slice(0, 10);
   }
 
   function diffDays(fromIso, toIso) {
@@ -180,9 +201,95 @@
     };
   }
 
+  /** Earned Schedule — see the file header for why this exists alongside classic SPI.
+   * Rebuilds the linked items' [bac, start, finish] spans independently of computeEvm()
+   * (this can be called on its own, e.g. from a captured snapshot's own recomputation)
+   * and walks a day-by-day PV(t) curve to find where EV would sit on the PLANNED
+   * timeline. `options.ev`/`options.dataDate` are required — pass the EV computeEvm()
+   * already produced rather than recomputing it here, so there's one source of truth
+   * for "what EV means" across both figures. Returns insufficientData:true (never a
+   * guessed number) when there's no usable dated/linked item to build a curve from. */
+  function computeEarnedSchedule(budgetItems, activities, options) {
+    options = options || {};
+    var ev = options.ev;
+    var dataDate = options.dataDate;
+    var insufficient = { earnedScheduleDays: null, actualTimeDays: null, spiT: null, scheduleVarianceDays: null, projectStart: null, projectFinish: null, insufficientData: true };
+    if (ev == null || !dataDate) return insufficient;
+
+    var spans = [];
+    budgetItems.forEach(function (item) {
+      if (!item.activity_id) return;
+      var activity = activities.find(function (a) { return a.id === item.activity_id; });
+      if (!activity) return;
+      var dates = effectiveDates(activity);
+      if (dates.source === "none") return;
+      spans.push({ bac: Number(item.planned_amount) || 0, start: dates.start, finish: dates.finish });
+    });
+    if (spans.length === 0) return insufficient;
+
+    var projectStart = spans.reduce(function (min, s) { return s.start < min ? s.start : min; }, spans[0].start);
+    var projectFinish = spans.reduce(function (max, s) { return s.finish > max ? s.finish : max; }, spans[0].finish);
+
+    function pvAt(dateIso) {
+      var total = 0;
+      spans.forEach(function (s) {
+        var durationDays = diffDays(s.start, s.finish);
+        var fraction;
+        if (durationDays <= 0) {
+          fraction = dateIso >= s.start ? 1 : 0;
+        } else {
+          var elapsed = diffDays(s.start, dateIso);
+          fraction = Math.max(0, Math.min(1, elapsed / durationDays));
+        }
+        total += s.bac * fraction;
+      });
+      return total;
+    }
+
+    var totalDays = diffDays(projectStart, projectFinish);
+    var pvAtFinish = pvAt(projectFinish);
+
+    var earnedScheduleDays;
+    if (ev <= 0) {
+      earnedScheduleDays = 0;
+    } else if (ev >= pvAtFinish) {
+      // Ahead of (or exactly at) the full planned curve — extrapolate past
+      // projectFinish using the curve's own average rate rather than capping, so
+      // SPI(t) can legitimately read above 1.0 for a project running ahead.
+      var rate = totalDays > 0 ? pvAtFinish / totalDays : 0;
+      earnedScheduleDays = rate > 0 ? totalDays + (ev - pvAtFinish) / rate : totalDays;
+    } else {
+      earnedScheduleDays = totalDays; // overwritten by the loop below once it finds the crossing day
+      var prevPv = 0;
+      for (var d = 1; d <= totalDays; d++) {
+        var curDate = toIsoDate(toDayNumber(projectStart) + d);
+        var curPv = pvAt(curDate);
+        if (curPv >= ev) {
+          earnedScheduleDays = curPv === prevPv ? d : d - 1 + (ev - prevPv) / (curPv - prevPv);
+          break;
+        }
+        prevPv = curPv;
+      }
+    }
+
+    var actualTimeDays = diffDays(projectStart, dataDate);
+    var spiT = actualTimeDays > 0 ? earnedScheduleDays / actualTimeDays : null;
+
+    return {
+      projectStart: projectStart,
+      projectFinish: projectFinish,
+      earnedScheduleDays: Math.round(earnedScheduleDays * 10) / 10,
+      actualTimeDays: actualTimeDays,
+      spiT: spiT,
+      scheduleVarianceDays: Math.round((earnedScheduleDays - actualTimeDays) * 10) / 10,
+      insufficientData: false,
+    };
+  }
+
   window.PCC.costEvmEngine = {
     computeEvm: computeEvm,
     effectiveDates: effectiveDates,
     diffDays: diffDays,
+    computeEarnedSchedule: computeEarnedSchedule,
   };
 })();

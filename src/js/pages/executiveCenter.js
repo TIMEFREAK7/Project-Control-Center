@@ -287,6 +287,36 @@
           })
         : null;
 
+    // PCC Evolution Roadmap, Tier F (Gate 25, Advanced Schedule Performance). Earned
+    // Schedule (SPI(t)) doesn't have classic SPI's well-known flaw of converging to 1.0
+    // near project completion — see costEvmEngine.js's own header for the full
+    // rationale. Computed from the same budgetItems/activities/ev/dataDate ctx.evm just
+    // used, so there's one source of truth for what "EV" means across both figures.
+    var dataDateForEvm = (schedule && schedule.data_date) || null;
+    ctx.earnedSchedule =
+      ctx.evm && ctx.evm.ev != null
+        ? window.PCC.costEvmEngine.computeEarnedSchedule(budgetItems, activities, { ev: ctx.evm.ev, dataDate: dataDateForEvm })
+        : null;
+    // A dedicated Schedule Performance Score, distinct from the overall Project Health
+    // Score's own "Schedule" factor — see schedulePerformanceEngine.js's own header for
+    // why this is a separate, smaller, fixed-weight score rather than folded into that
+    // configurable one.
+    ctx.schedulePerformance = window.PCC.schedulePerformanceEngine.computeSchedulePerformanceScore({
+      spi: ctx.evm ? ctx.evm.spi : null,
+      spiT: ctx.earnedSchedule && !ctx.earnedSchedule.insufficientData ? ctx.earnedSchedule.spiT : null,
+      scheduleVarianceDays: ctx.earnedSchedule && !ctx.earnedSchedule.insufficientData ? ctx.earnedSchedule.scheduleVarianceDays : null,
+      plannedDurationDays: ctx.plannedDurationDays,
+      criticalCount: ctx.criticalActivities.length,
+      totalActivityCount: ctx.totalActivityCount,
+    });
+    // Captured performance history for this project, newest first — the source for
+    // both renderSchedulePerformanceDetail()'s list and sCurveChart()'s new actual-
+    // progress overlay. Carried on ctx (not threaded as a separate function param)
+    // since every other per-project derived collection already lives here.
+    ctx.schedulePerformanceSnapshots = data.schedule_performance_snapshots
+      .filter(function (s) { return s.project_id === projectId; })
+      .sort(function (a, b) { return new Date(b.captured_at) - new Date(a.captured_at); });
+
     // PCC Evolution Roadmap, Tier F (Gate 19, Commitment Management). Actual is a live
     // sum of cost_actuals tagged to each commitment — same computation
     // commitments.js's own actualValueFor() does, duplicated here per this app's
@@ -706,10 +736,14 @@
   }
 
   /** Planned progress S-curve, from real activity dates — a full cumulative-% curve
-   * over time. There is no stored "actual progress on date X" history anywhere in PCC
-   * (only current percent_complete), so "Actual" can only be plotted as a single point
-   * at today/data-date — drawn distinctly and labeled, not a fabricated actual curve. */
-  function sCurveChart(card, activities, referenceDate, todayIso) {
+   * over time. As of Gate 25 (Advanced Schedule Performance), `snapshots` — captured
+   * Schedule Performance snapshots (store.js's schedule_performance_snapshots,
+   * newest-first) — supplies the first real "actual progress on date X" history PCC
+   * has ever stored, so an actual overlay can finally be drawn as a real curve instead
+   * of a single today-only point. Snapshots outside the planned curve's own date range
+   * are skipped rather than distorting the shared x-axis; with zero snapshots the chart
+   * falls back to planned-only, same as before this gate. */
+  function sCurveChart(card, activities, referenceDate, todayIso, snapshots) {
     var dated = activities.filter(function (a) { return a.planned_start && a.planned_finish; });
     if (dated.length === 0) return noDataNote(card, "No activities with planned dates yet.");
     var diffDays = window.PCC.scheduleGanttLayout.diffDays;
@@ -762,13 +796,32 @@
       svg.appendChild(svgEl("line", { x1: refX, y1: 10, x2: refX, y2: 10 + plotH, stroke: "var(--signal-amber)", "stroke-width": 1.5, "stroke-dasharray": "3,3" }));
     }
 
+    // Gate 25: actual-progress overlay from captured Schedule Performance snapshots —
+    // the only "actual progress on date X" history this app has ever stored.
+    var actualPoints = (snapshots || [])
+      .filter(function (sn) { return sn.schedule_progress_pct != null && sn.captured_at.slice(0, 10) >= rangeStart && sn.captured_at.slice(0, 10) <= rangeEnd; })
+      .map(function (sn) { return { day: sn.captured_at.slice(0, 10), pct: sn.schedule_progress_pct }; })
+      .sort(function (a, b) { return a.day < b.day ? -1 : a.day > b.day ? 1 : 0; });
+
+    if (actualPoints.length > 0) {
+      var actualPathD = actualPoints.map(function (ap, i) { return (i === 0 ? "M " : "L ") + xFor(ap.day) + " " + yFor(ap.pct); }).join(" ");
+      svg.appendChild(svgEl("path", { d: actualPathD, fill: "none", stroke: "var(--status-on-track)", "stroke-width": 2 }));
+      actualPoints.forEach(function (ap) {
+        svg.appendChild(svgEl("circle", { cx: xFor(ap.day), cy: yFor(ap.pct), r: 3, fill: "var(--status-on-track)" }));
+      });
+    }
+
     card.appendChild(svg);
     var legend = document.createElement("p");
     legend.className = "text-secondary";
     legend.style.fontSize = "11px";
     legend.style.marginTop = "4px";
-    legend.textContent = "Planned cumulative progress, duration-weighted across " + dated.length + " dated activity(ies). Dashed line: data date. " +
-      "There's no stored day-by-day actual-progress history in PCC to plot a real actual curve — only the current % complete.";
+    legend.textContent =
+      actualPoints.length > 0
+        ? "Planned cumulative progress (blue), duration-weighted across " + dated.length + " dated activity(ies), vs. actual progress (green) from " +
+          actualPoints.length + " captured Schedule Performance snapshot(s). Dashed line: data date."
+        : "Planned cumulative progress, duration-weighted across " + dated.length + " dated activity(ies). Dashed line: data date. " +
+          "Capture a Schedule Performance snapshot (below) to start plotting actual progress here.";
     card.appendChild(legend);
   }
 
@@ -1039,6 +1092,33 @@
       ]);
     }
 
+    if (ctx.totalActivityCount > 0) {
+      renderKpiSection(outlet, "SCHEDULE PERFORMANCE", [
+        { label: "SPI", value: ctx.evm && ctx.evm.spi != null ? ctx.evm.spi.toFixed(2) : "—", colorVar: ctx.evm && ctx.evm.spi != null && ctx.evm.spi < 1 ? "--status-critical" : null },
+        {
+          label: "SPI(t)",
+          value: ctx.earnedSchedule && ctx.earnedSchedule.spiT != null ? ctx.earnedSchedule.spiT.toFixed(2) : "—",
+          colorVar: ctx.earnedSchedule && ctx.earnedSchedule.spiT != null && ctx.earnedSchedule.spiT < 1 ? "--status-critical" : null,
+        },
+        {
+          label: "Earned Schedule Variance",
+          value:
+            ctx.earnedSchedule && ctx.earnedSchedule.scheduleVarianceDays != null
+              ? (ctx.earnedSchedule.scheduleVarianceDays > 0 ? "+" : "") + ctx.earnedSchedule.scheduleVarianceDays + "d"
+              : "—",
+          colorVar: ctx.earnedSchedule && ctx.earnedSchedule.scheduleVarianceDays != null && ctx.earnedSchedule.scheduleVarianceDays < 0 ? "--status-critical" : null,
+        },
+        {
+          label: "Performance Score",
+          value: ctx.schedulePerformance.score == null ? "—" : ctx.schedulePerformance.score,
+          colorVar: ctx.schedulePerformance.rag === "critical" ? "--status-critical" : ctx.schedulePerformance.rag === "at_risk" ? "--status-at-risk" : null,
+        },
+      ]);
+      renderSchedulePerformanceDetail(outlet, ctx, p, rerender);
+    } else {
+      renderKpiEmptySection(outlet, "SCHEDULE PERFORMANCE", "No schedule with activities yet — see the Schedule page.");
+    }
+
     renderKpiSection(outlet, "RISKS", [
       { label: "Open Risks", value: ctx.openRisks.length },
       { label: "High Risks", value: ctx.highRisks.length, colorVar: ctx.highRisks.length ? "--status-critical" : null },
@@ -1141,6 +1221,135 @@
     panel.className = "panel empty-state";
     panel.textContent = message;
     wrap.appendChild(panel);
+    outlet.appendChild(wrap);
+  }
+
+  /** PCC Evolution Roadmap, Tier F (Gate 25, Advanced Schedule Performance) — the
+   * SCHEDULE PERFORMANCE section's factor breakdown (never hide the "why," same
+   * convention as Project Health Score's own table), the manual "Capture Performance
+   * Snapshot" action, and the resulting history list. This is the only place any of
+   * these figures persist over time — costEvmEngine.js's computeEarnedSchedule() and
+   * schedulePerformanceEngine.js are both pure, recomputed fresh on every render, never
+   * stored on their own. Deliberately a SEPARATE capture mechanism from Weekly
+   * Reviews' own snapshot (Aditya's own call via AskUserQuestion) — see
+   * newSchedulePerformanceSnapshot()'s header comment in store.js for why. */
+  function renderSchedulePerformanceDetail(outlet, ctx, p, rerender) {
+    var wrap = document.createElement("div");
+    wrap.className = "panel";
+    wrap.style.marginTop = "10px";
+
+    var heading = document.createElement("div");
+    heading.style.display = "flex";
+    heading.style.justifyContent = "space-between";
+    heading.style.alignItems = "center";
+    heading.style.marginBottom = "10px";
+    var headingTitle = document.createElement("h4");
+    headingTitle.textContent = "Schedule Performance Score";
+    heading.appendChild(headingTitle);
+    if (ctx.schedulePerformance.rag) heading.appendChild(ragBadge(ctx.schedulePerformance.rag));
+    wrap.appendChild(heading);
+
+    var table = document.createElement("table");
+    table.style.width = "100%";
+    table.style.fontSize = "12px";
+    table.style.borderCollapse = "collapse";
+    table.style.marginBottom = "10px";
+    var thead = document.createElement("tr");
+    ["Factor", "Weight", "Score", "Why"].forEach(function (h) {
+      var th = document.createElement("th");
+      th.textContent = h;
+      th.style.textAlign = "left";
+      th.style.borderBottom = "1px solid var(--divider)";
+      th.style.padding = "4px 6px";
+      thead.appendChild(th);
+    });
+    table.appendChild(thead);
+    Object.keys(ctx.schedulePerformance.factors).forEach(function (key) {
+      var f = ctx.schedulePerformance.factors[key];
+      var tr = document.createElement("tr");
+      function td(text) {
+        var cell = document.createElement("td");
+        cell.style.padding = "4px 6px";
+        cell.style.borderBottom = "1px solid var(--divider)";
+        cell.style.verticalAlign = "top";
+        cell.textContent = text;
+        return cell;
+      }
+      tr.appendChild(td(f.label));
+      tr.appendChild(td(f.weight + "%"));
+      tr.appendChild(td(f.available && f.score != null ? String(Math.round(f.score)) : "—"));
+      tr.appendChild(td(f.note));
+      table.appendChild(tr);
+    });
+    wrap.appendChild(table);
+
+    var snapshots = ctx.schedulePerformanceSnapshots;
+
+    var captureRow = document.createElement("div");
+    captureRow.style.display = "flex";
+    captureRow.style.justifyContent = "space-between";
+    captureRow.style.alignItems = "center";
+    captureRow.style.flexWrap = "wrap";
+    captureRow.style.gap = "8px";
+
+    var captureNote = document.createElement("span");
+    captureNote.style.fontSize = "13px";
+    captureNote.textContent =
+      snapshots.length > 0
+        ? snapshots.length + " performance snapshot" + (snapshots.length === 1 ? "" : "s") + " captured — last on " + snapshots[0].captured_at.slice(0, 10) + "."
+        : "No performance snapshots captured yet — capture one to start a trend and feed the Progress S-Curve's actual line.";
+    captureRow.appendChild(captureNote);
+
+    var captureBtn = document.createElement("button");
+    captureBtn.className = "btn btn--ghost";
+    captureBtn.textContent = "Capture Performance Snapshot";
+    captureBtn.onclick = function () {
+      window.PCC.store.update(function (d) {
+        d.schedule_performance_snapshots.push(
+          window.PCC.store.newSchedulePerformanceSnapshot({
+            project_id: p.id,
+            spi: ctx.evm ? ctx.evm.spi : null,
+            cpi: ctx.evm ? ctx.evm.cpi : null,
+            spi_t: ctx.earnedSchedule && !ctx.earnedSchedule.insufficientData ? ctx.earnedSchedule.spiT : null,
+            earned_schedule_days: ctx.earnedSchedule && !ctx.earnedSchedule.insufficientData ? ctx.earnedSchedule.earnedScheduleDays : null,
+            actual_time_days: ctx.earnedSchedule && !ctx.earnedSchedule.insufficientData ? ctx.earnedSchedule.actualTimeDays : null,
+            schedule_variance_days: ctx.earnedSchedule && !ctx.earnedSchedule.insufficientData ? ctx.earnedSchedule.scheduleVarianceDays : null,
+            schedule_performance_score: ctx.schedulePerformance.score,
+            schedule_performance_rag: ctx.schedulePerformance.rag,
+            schedule_progress_pct: ctx.scheduleProgressPct,
+          })
+        );
+      });
+      window.PCC.notify("Performance snapshot captured.", "success");
+      rerender();
+    };
+    captureRow.appendChild(captureBtn);
+    wrap.appendChild(captureRow);
+
+    if (snapshots.length > 0) {
+      var historyList = document.createElement("div");
+      historyList.style.marginTop = "10px";
+      snapshots.slice(0, 10).forEach(function (s) {
+        var row = document.createElement("p");
+        row.style.fontSize = "12px";
+        row.style.margin = "4px 0";
+        row.className = "text-secondary";
+        row.textContent =
+          s.captured_at.slice(0, 10) + " — SPI " + (s.spi == null ? "—" : s.spi.toFixed(2)) +
+          " · SPI(t) " + (s.spi_t == null ? "—" : s.spi_t.toFixed(2)) +
+          " · Score " + (s.schedule_performance_score == null ? "—" : s.schedule_performance_score);
+        historyList.appendChild(row);
+      });
+      if (snapshots.length > 10) {
+        var more = document.createElement("p");
+        more.className = "text-secondary";
+        more.style.fontSize = "12px";
+        more.textContent = "+" + (snapshots.length - 10) + " more not shown.";
+        historyList.appendChild(more);
+      }
+      wrap.appendChild(historyList);
+    }
+
     outlet.appendChild(wrap);
   }
 
@@ -1695,7 +1904,7 @@
     row1.style.flexWrap = "wrap";
 
     var sCurveCard = chartCard("Progress S-Curve");
-    sCurveChart(sCurveCard, ctx.activities, ctx.referenceDate, ctx.todayIso);
+    sCurveChart(sCurveCard, ctx.activities, ctx.referenceDate, ctx.todayIso, ctx.schedulePerformanceSnapshots);
     row1.appendChild(sCurveCard);
 
     var criticalCard = chartCard("Critical vs Non-Critical Activities");
@@ -2079,7 +2288,7 @@
 
     if (sections.progress) {
       var progressSection = reportSection("Progress Summary (S-Curve)");
-      sCurveChart(progressSection, ctx.activities, ctx.referenceDate, ctx.todayIso);
+      sCurveChart(progressSection, ctx.activities, ctx.referenceDate, ctx.todayIso, ctx.schedulePerformanceSnapshots);
       doc.appendChild(progressSection);
     }
 
