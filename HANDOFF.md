@@ -63,8 +63,9 @@ that override default behavior).
 
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) now underway
 
-`main` is fully up to date through **Tier 3, "final polish," Gate 3** (Dashboard-level filtering),
-`schema_version` **51** (unchanged from Gate 2 — Gate 3 needed no schema bump). Note this is a
+`main` is fully up to date through **Tier 3, "final polish," Gate 4** (Gantt virtualization for
+10,000+ activities), `schema_version` **51** (unchanged since Gate 2 — neither Gate 3 nor Gate 4
+needed a schema bump, both being pure rendering/UI work). Note this is a
 DIFFERENT roadmap than the "PCC Evolution Roadmap" Tiers A-F
 above it, which finished with Gate 26 — Tier 3 is a numbered tier from the ORIGINAL, much older
 locked build order (`Tier 1`/`Tier 2`/`Tier 3`, see README.md's "Locked build order" section),
@@ -87,13 +88,14 @@ feature builds wearing a "polish" label, not touch-ups, so Aditya is picking the
   flag.
 - **Final polish Gate 2 (built)**: Report Template System (named/saved section
   templates + a company logo on every printable report) — see the write-up below.
-- **Final polish Gate 3 (built, this round)**: Dashboard-level filtering — see the write-up below.
+- **Final polish Gate 3 (built)**: Dashboard-level filtering — see the write-up below.
+- **Final polish Gate 4 (built, this round)**: Gantt virtualization for 10,000+ activities — see
+  the write-up below.
 - **Confirmed by Aditya, not yet built**: Vendor↔Cost
   integration (vendor_id on cost items + a Cost tab on Vendor Profile), Commitments→EVM wiring
   (commitment_id already exists on cost_actuals, but costEvmEngine.js's EAC/CPI/SPI math doesn't use
   it yet), category-scheme reconciliation (Documents/Vendor Document/Document Types categories —
-  deferred twice already at Gates 14 and 16, building it now on the third ask), Gantt virtualization
-  for 10,000+ activities.
+  deferred twice already at Gates 14 and 16, building it now on the third ask).
 - **Explicitly NOT picked**: Resource rate × usage feeding Cost Tracking/EVM.
 
 Each of the confirmed-not-yet-built items needs its OWN scoping round before starting — inspect
@@ -309,16 +311,99 @@ Recent Projects/KPIs all correctly narrowed) confirmed everything renders correc
 errors. Zip verified separately post-merge (fresh extraction, real Chromium, one seeded project) —
 filter row renders correctly, zero console errors.
 
+**Tier 3 "final polish" Gate 4 — Gantt virtualization for 10,000+ activities** (merge `491e13e`).
+This was the one item on the "final polish" backlog explicitly flagged as out-of-scope back at
+Gate 8 itself ("current SVG rendering is fine for realistic project sizes but untested at [10,000+]
+scale") — Gate 8's own Gantt drew every activity row as real SVG DOM (bar/label/handles) plus 1-3
+pointer listeners per row, all up front regardless of scroll position, on top of a hidden `O(n²)`
+(`activities.find()` called per row inside the row loop instead of a lookup map).
+
+- **Row-axis (vertical) virtualization only** — scoped deliberately to the Gantt chart itself, not
+  the Activities-tab list or Excel import grid (separate, unaffected code paths; the backlog item
+  names the Gantt specifically). Horizontal (date-axis) virtualization was explicitly out of scope
+  too — chart width tracks date span, not activity count, and isn't the bottleneck at 10,000
+  activities.
+- **New pure `visibleRowRange(totalRows, scrollTop, viewportHeight, rowHeight, headerHeight,
+  bufferRows)`** in `scheduleGanttLayout.js` — same "calculation here, DOM there" split every
+  function in that module already keeps. Returns the `[start, end)` slice of rows that need real
+  DOM (15-row buffer each side). **Explicit fallback: when `viewportHeight` is falsy/0, every row
+  is returned** — this is jsdom's own permanent behavior (it does zero box-model layout, so
+  `clientHeight` always reads 0, same as a detached element in a real browser), and matches
+  exactly what every pre-existing Gantt test already assumed, so all of them (drag, resize,
+  milestone click, baseline overlay, readiness marker) kept passing completely unmodified.
+- **`schedule.js`'s `renderGanttTab`**: the header/gridlines/data-date/today-line/baseline-lookup
+  all build once, unaffected by row count (unchanged). The per-row drawing body became a
+  `renderRow(row, i)` function appending into a dedicated `<g>` rows layer instead of the bare
+  `<svg>`; a new `renderRowsLayer()` computes the current range via `visibleRowRange()`, clears and
+  rebuilds only that slice. A `scroll` listener on the chart's own scrollable panel
+  (`requestAnimationFrame`-throttled, matching a guard flag so a fast scroll doesn't queue multiple
+  rebuilds) calls `renderRowsLayer()` on every scroll. The SVG still reserves its full
+  `rows.length * rowHeight` height so the scrollbar and the existing Today/Project Start/Finish/
+  Data Date jump buttons keep working exactly as before. Also fixed the `O(n²)` lookup along the
+  way (`activityById` map built once).
+- **Real-Chromium verification with 10,000 seeded activities** (spread across a realistic 3-year
+  window, not one-per-calendar-day — the latter pathologically inflates chart WIDTH, which is a
+  separate, out-of-scope concern from row count): bars rendered stayed bounded (41 initial, 56
+  after a deep scroll) regardless of the 10,000-activity total; in-page `performance.now()`
+  timestamps isolated the Gantt tab's own virtualized render to ~124ms (the multi-second wall-clock
+  figures seen around it are dominated by the pre-existing, unvirtualized Activities-tab list
+  rendering all 10,000 rows as real DOM on first mount — a real, already-known limitation, out of
+  this gate's scope, noted below); dragging a bar within the scrolled-to window still correctly
+  updated its dates in the store.
+
+**Bug NOT found in the shipped code — a test-methodology trap worth documenting for future gates**:
+the first version of the new e2e test's scroll-driven-rebuild check failed, appearing to show the
+scroll listener not firing. Root cause was in the TEST, not the app: `router.go(name)` sets
+`window.location.hash`, which jsdom fires as an **async** `hashchange` on its own internal timer
+rather than synchronously — left pending, it fires router.js's own `hashchange` listener (a full
+page rerender) at an arbitrary later point in the SAME test, landing mid-scroll-test and silently
+replacing the very DOM being scrolled with a fresh, unscrolled one. Fixed by adding a `flush()`
+right after the initial `router.go()` + `router.render()` call so the pending hashchange fires and
+resolves immediately, before the test does anything that depends on DOM identity surviving. **General
+lesson for any future e2e test that calls `router.go()` and then later `await`s something**: flush
+once immediately after the initial navigation, or a queued hashchange can silently rebuild the page
+out from under a later assertion.
+
+**Noted but explicitly out of scope for this gate** (a related, adjacent finding, not something
+Aditya asked for): the Activities-tab list (`renderActivitiesTab` in `schedule.js`) and the Excel
+import grid are NOT virtualized — at 10,000 activities, mounting the Activities tab (the Schedule
+page's default landing tab) does real unvirtualized DOM layout for every row, which is the actual
+source of the multi-second delay observed in Playwright before switching to Gantt. The backlog item
+named the Gantt specifically, so this wasn't built now, but it's worth a future ask if someone
+regularly works with schedules at that scale.
+
+Tests: `test_schedule_gantt_layout.js` (pure, no DOM) gained 5 new `visibleRowRange` checks
+proving the returned window stays small (`< 60` rows) at true 10,000-row scale regardless of scroll
+position, including the top/bottom-clamp edge cases and the no-real-viewport fallback. New
+`tests/test_gantt_virtualization_e2e.js` (21 checks, including a 14-route smoke test — a lighter
+route set than the usual 24-26, since this test's store carries 3,000 activities and every route
+still has to render against it) against the real bundled `index.html`, stubbing
+`HTMLElement.prototype.clientHeight` to a realistic ~500px (the same "stub what jsdom doesn't
+implement" precedent this suite already uses for `FileReader.readAsDataURL`) so virtualization
+actually engages under jsdom rather than hitting the no-real-viewport fallback — proves the bar
+count stays bounded (`< 100`) both before and after a scroll, that the rendered window actually
+moves (not just stays capped at the same first N), and that a bar in the post-scroll window is
+still fully interactive (click opens the Activity Detail Panel). Full suite: **60 files**, clean,
+zero regressions to any pre-existing Gantt test (editing, e2e, layout, readiness marker, baseline
+revision control). Real-Chromium pass (3 screenshots: 10,000 activities loaded and rendering fast,
+the scrolled-to-deep-in-the-list view showing a different activity window, and the packaged zip's
+own post-merge verification with 500 activities) confirmed everything renders correctly and drag
+still works post-scroll — zero unexpected console errors (the one observed error, a localStorage
+`QuotaExceededError` from attempting to autosave 10,000 activities' JSON to `localStorage`, is a
+pre-existing, already-documented, already-handled limit — exactly why `blobStore.js` moved binary
+blobs to IndexedDB back in Phase 12 — unrelated to this gate and already caught/toasted rather than
+thrown uncaught).
+
 **Next step for a fresh session: scope the next "final polish" item with Aditya.** Confirmed but
 not yet built, no fixed order — ask which one's next: Vendor↔Cost
-integration, Commitments→EVM wiring, category-scheme reconciliation, Gantt virtualization
-(10,000+ activities). Each needs its own inspection-first scoping round, same discipline as every
-gate so far — some of these backlog notes have already turned out to be stale once (Resource
-Assignments), so don't assume any of the rest are exactly as described without checking. AI
-Document Processing/AI Project Assistant stay skipped per the standing decision above unless
-Aditya explicitly revisits it; Resource rate × usage → EVM was explicitly NOT picked and stays
-deferred. Once the confirmed items are done (or explicitly deferred again), Tier 3 — and with it,
-every named tier in this project's entire history — will be complete.
+integration, Commitments→EVM wiring, category-scheme reconciliation. Each needs its own
+inspection-first scoping round, same discipline as every gate so far — some of these backlog notes
+have already turned out to be stale once (Resource Assignments), so don't assume any of the rest
+are exactly as described without checking. AI Document Processing/AI Project Assistant stay skipped
+per the standing decision above unless Aditya explicitly revisits it; Resource rate × usage → EVM
+was explicitly NOT picked and stays deferred. Once the confirmed items are done (or explicitly
+deferred again), Tier 3 — and with it, every named tier in this project's entire history — will be
+complete.
 
 **Gate 26 — Integrated Project Controls** (merge pending — see commit log). Inspection found
 Gates 23 (Advanced Delay Analysis) and 24 (Recovery & Mitigation Planning) each shipped real
