@@ -10,6 +10,50 @@
     complete: "Complete",
   };
 
+  // PCC Evolution Roadmap, Tier 3 ("final polish"): Dashboard-level filtering. Same
+  // filter set as Portfolio's own (Gate 16) — Client/Country/Sector/PM/Planner/Type/
+  // Year — confirmed via AskUserQuestion, so switching between the two pages never
+  // drops a filter option a user just got used to. Persists per session (module-level
+  // state, like every other page's uiState), resets on reload.
+  var uiState = {
+    clientFilter: "",
+    countryFilter: "",
+    sectorFilter: "",
+    pmFilter: "",
+    plannerFilter: "",
+    typeFilter: "",
+    yearFilter: "", // filters by start_date's year
+  };
+
+  function projectMatchesFilters(p) {
+    if (uiState.clientFilter && p.client !== uiState.clientFilter) return false;
+    if (uiState.countryFilter && p.country !== uiState.countryFilter) return false;
+    if (uiState.sectorFilter && p.sector !== uiState.sectorFilter) return false;
+    if (uiState.pmFilter && p.project_manager !== uiState.pmFilter) return false;
+    if (uiState.plannerFilter && p.planner !== uiState.plannerFilter) return false;
+    if (uiState.typeFilter && p.project_type !== uiState.typeFilter) return false;
+    if (uiState.yearFilter && (p.start_date || "").slice(0, 4) !== uiState.yearFilter) return false;
+    return true;
+  }
+
+  // Duplicated from portfolio.js verbatim per this app's per-module-helpers
+  // convention — every option list is built from the FULL project set passed in, not
+  // whatever's currently filtered, so narrowing one filter never removes another
+  // filter's own options.
+  function distinctValues(projects, key) {
+    var seen = {};
+    var out = [];
+    projects.forEach(function (p) {
+      var v = p[key];
+      if (v && !seen[v]) {
+        seen[v] = true;
+        out.push(v);
+      }
+    });
+    out.sort();
+    return out;
+  }
+
   // Gate 11 (Document Control 11: Reminders/Notifications). This app is a single
   // offline file:// deliverable with no server and no channel for real push/email —
   // the Dashboard, as the first thing seen on open, is the in-app equivalent of a
@@ -291,10 +335,16 @@
   }
 
   function render(outlet) {
+    function rerender() {
+      outlet.innerHTML = "";
+      render(outlet);
+    }
+
     var data = window.PCC.store.get();
     var active = data.projects.filter(function (p) {
       return !p.archived;
     });
+    var filtered = active.filter(projectMatchesFilters);
 
     var wrap = document.createElement("div");
 
@@ -309,30 +359,98 @@
     sub.textContent =
       active.length === 0
         ? "No active projects yet \u2014 add one from the Portfolio page to populate this view."
-        : "Portfolio-wide health across " + active.length + " active project" + (active.length === 1 ? "" : "s") + ".";
+        : filtered.length === active.length
+        ? "Portfolio-wide health across " + active.length + " active project" + (active.length === 1 ? "" : "s") + "."
+        : "Portfolio-wide health across " + filtered.length + " of " + active.length + " active project" + (active.length === 1 ? "" : "s") + " matching these filters.";
+
+    wrap.appendChild(h1);
+    wrap.appendChild(sub);
+
+    // PCC Evolution Roadmap, Tier 3 ("final polish"): Dashboard-level filtering. Same
+    // filterSelect() pattern portfolio.js's own filter row already established \u2014 every
+    // option list built from `active` (not `filtered`), so narrowing one filter never
+    // removes another filter's own options. Built from `active`, not `data.projects`,
+    // since Dashboard never shows archived projects at all \u2014 offering a filter value
+    // that only exists on an archived project would just produce a silent, unexplained
+    // empty result.
+    if (active.length > 0) {
+      var filterToolbar = document.createElement("div");
+      filterToolbar.className = "toolbar";
+      filterToolbar.style.marginBottom = "16px";
+
+      function filterSelect(label, uiKey, projectField) {
+        var select = document.createElement("select");
+        var allOpt = document.createElement("option");
+        allOpt.value = "";
+        allOpt.textContent = "All " + label;
+        select.appendChild(allOpt);
+        distinctValues(active, projectField).forEach(function (v) {
+          var opt = document.createElement("option");
+          opt.value = v;
+          opt.textContent = v;
+          select.appendChild(opt);
+        });
+        select.value = uiState[uiKey];
+        select.onchange = function () {
+          uiState[uiKey] = select.value;
+          rerender();
+        };
+        return select;
+      }
+      filterToolbar.appendChild(filterSelect("clients", "clientFilter", "client"));
+      filterToolbar.appendChild(filterSelect("countries", "countryFilter", "country"));
+      filterToolbar.appendChild(filterSelect("sectors", "sectorFilter", "sector"));
+      filterToolbar.appendChild(filterSelect("PMs", "pmFilter", "project_manager"));
+      filterToolbar.appendChild(filterSelect("planners", "plannerFilter", "planner"));
+      filterToolbar.appendChild(filterSelect("types", "typeFilter", "project_type"));
+
+      var yearSelect = document.createElement("select");
+      var allYearsOpt = document.createElement("option");
+      allYearsOpt.value = "";
+      allYearsOpt.textContent = "All years";
+      yearSelect.appendChild(allYearsOpt);
+      var years = {};
+      active.forEach(function (p) {
+        if (p.start_date) years[p.start_date.slice(0, 4)] = true;
+      });
+      Object.keys(years).sort().forEach(function (y) {
+        var opt = document.createElement("option");
+        opt.value = y;
+        opt.textContent = y;
+        yearSelect.appendChild(opt);
+      });
+      yearSelect.value = uiState.yearFilter;
+      yearSelect.onchange = function () {
+        uiState.yearFilter = yearSelect.value;
+        rerender();
+      };
+      filterToolbar.appendChild(yearSelect);
+
+      wrap.appendChild(filterToolbar);
+    }
 
     var kpiGrid = document.createElement("div");
     kpiGrid.className = "kpi-grid";
 
     function countByStatus(status) {
-      return active.filter(function (p) {
+      return filtered.filter(function (p) {
         return p.status === status;
       }).length;
     }
 
-    var reminders = computeReminders(data, active);
+    var reminders = computeReminders(data, filtered);
     var overdueCount = reminders.filter(function (x) {
       return x.status === "overdue";
     }).length;
     var dueSoonCount = reminders.length - overdueCount;
 
     var kpis = [
-      { label: "ACTIVE PROJECTS", value: active.length, colorVar: null },
+      { label: "ACTIVE PROJECTS", value: filtered.length, colorVar: null },
       { label: "ON TRACK", value: countByStatus("on_track"), colorVar: "--status-on-track" },
       { label: "AT RISK", value: countByStatus("at_risk"), colorVar: "--status-at-risk" },
       { label: "CRITICAL", value: countByStatus("critical"), colorVar: "--status-critical" },
       { label: "OVERDUE DOCS", value: overdueCount, colorVar: overdueCount > 0 ? "--status-critical" : null },
-      { label: "DUE SOON (14D)", value: dueSoonCount, colorVar: dueSoonCount > 0 ? "--status-at-risk" : null },
+      { label: "DUE SOON (" + dueSoonWindowDays(data) + "D)", value: dueSoonCount, colorVar: dueSoonCount > 0 ? "--status-at-risk" : null },
     ];
 
     kpis.forEach(function (kpi) {
@@ -350,12 +468,10 @@
       kpiGrid.appendChild(card);
     });
 
-    wrap.appendChild(h1);
-    wrap.appendChild(sub);
     wrap.appendChild(kpiGrid);
 
     if (active.length > 0) {
-      var attentionGroups = computeManagementAttention(data, active);
+      var attentionGroups = computeManagementAttention(data, filtered);
       wrap.appendChild(renderManagementAttentionPanel(attentionGroups));
       wrap.appendChild(renderRemindersPanel(reminders, data));
     }
@@ -368,6 +484,10 @@
         "<h3 style='margin-bottom:8px;'>Get started</h3>" +
         "<p class='text-secondary' style='margin:0;'>Head to Portfolio and add your first project \u2014 it'll " +
         "show up here immediately.</p>";
+    } else if (filtered.length === 0) {
+      panel.innerHTML =
+        "<h3 style='margin-bottom:8px;'>Recent projects</h3>" +
+        "<p class='text-secondary' style='margin:0;'>No active projects match these filters.</p>";
     } else {
       var heading = document.createElement("h3");
       heading.style.marginBottom = "10px";
@@ -379,7 +499,7 @@
       list.style.flexDirection = "column";
       list.style.gap = "8px";
 
-      active
+      filtered
         .slice()
         .sort(function (a, b) {
           return new Date(b.updated_at) - new Date(a.updated_at);
