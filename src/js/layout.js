@@ -33,6 +33,7 @@
         { key: "changeOrders", label: "Change Mgmt", code: "CM" },
         { key: "decisionRegister", label: "Decision Register", code: "DE" },
         { key: "lessonsLearned", label: "Lessons Learned", code: "LL" },
+        { key: "knowledgeBase", label: "Knowledge Base", code: "KB" },
       ],
     },
     {
@@ -73,6 +74,7 @@
     changeOrders: "Change Management",
     decisionRegister: "Decision Register",
     lessonsLearned: "Lessons Learned",
+    knowledgeBase: "Knowledge Base",
     cost: "Cost Tracking",
     commitments: "Commitment Management",
     resources: "Resource Management",
