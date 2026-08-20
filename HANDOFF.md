@@ -63,8 +63,9 @@ that override default behavior).
 
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) now underway
 
-`main` is fully up to date through **Tier 3, "final polish," Gate 2** (Report Template System),
-`schema_version` **51**. Note this is a DIFFERENT roadmap than the "PCC Evolution Roadmap" Tiers A-F
+`main` is fully up to date through **Tier 3, "final polish," Gate 3** (Dashboard-level filtering),
+`schema_version` **51** (unchanged from Gate 2 — Gate 3 needed no schema bump). Note this is a
+DIFFERENT roadmap than the "PCC Evolution Roadmap" Tiers A-F
 above it, which finished with Gate 26 — Tier 3 is a numbered tier from the ORIGINAL, much older
 locked build order (`Tier 1`/`Tier 2`/`Tier 3`, see README.md's "Locked build order" section),
 deferred since day one. Both Tiers A-F and Tiers 1-2 are now complete; Tier 3 is the last remaining
@@ -84,10 +85,10 @@ feature builds wearing a "polish" label, not touch-ups, so Aditya is picking the
   — the old backlog note was stale, this was actually done back at Gate 11.
 - **Final polish Gate 1 (built)**: configurable reminder/lookahead windows + a Gantt-bar readiness
   flag.
-- **Final polish Gate 2 (built, this round)**: Report Template System (named/saved section
+- **Final polish Gate 2 (built)**: Report Template System (named/saved section
   templates + a company logo on every printable report) — see the write-up below.
-- **Confirmed by Aditya, not yet built**: Dashboard-level filtering (client/country/sector/PM/
-  date-range — Dashboard specifically, Portfolio already has this from Gate 16), Vendor↔Cost
+- **Final polish Gate 3 (built, this round)**: Dashboard-level filtering — see the write-up below.
+- **Confirmed by Aditya, not yet built**: Vendor↔Cost
   integration (vendor_id on cost items + a Cost tab on Vendor Profile), Commitments→EVM wiring
   (commitment_id already exists on cost_actuals, but costEvmEngine.js's EAC/CPI/SPI math doesn't use
   it yet), category-scheme reconciliation (Documents/Vendor Document/Document Types categories —
@@ -269,8 +270,47 @@ across both `reports.js` and Management Pack, and the logo rendering in all four
 Full suite: **57 files**, clean, zero regressions to any pre-existing reports/executive-center test.
 Real-Chromium pass (3 screenshots) confirmed everything renders correctly — zero console errors.
 
+**Tier 3 "final polish" Gate 3 — Dashboard-level filtering** (merge `7363305`). Confirmed via
+`AskUserQuestion` (single question, "Full match with Portfolio: all 7 (Recommended)") that Dashboard
+should get the IDENTICAL 7-filter toolbar Portfolio already has from Gate 16 — Client/Country/
+Sector/PM/Planner/Type/Year — rather than the narrower 4-field set the original backlog note
+mentioned, so switching between Dashboard and Portfolio never drops a filter option a user just got
+used to. No schema change — purely computed UI state, same as Portfolio's own filters.
+- `dashboard.js` gained `uiState` (7 filter fields), a `projectMatchesFilters(p)` predicate, and a
+  `distinctValues(projects, key)` helper — both duplicated verbatim from `portfolio.js`'s own Gate
+  16 implementation, per this app's "point at an existing pattern, don't invent a new one"
+  convention. `render(outlet)` gained a `rerender()` closure (new to this file), computes
+  `filtered = active.filter(projectMatchesFilters)`, and threads `filtered` (never `active`) into
+  the KPI strip's status counts, `computeReminders()`, `computeManagementAttention()`, and the
+  Recent Projects list. Filter option lists are built from `active` (not `data.projects`) so a
+  stale/inactive project's client never appears as a selectable filter value.
+- Three-way panel state for Recent Projects: zero active projects at all → the pre-existing "Get
+  started" empty state (unchanged); active projects exist but none match the current filters → new
+  "No active projects match these filters." message; otherwise → the normal list. The sub-heading
+  text also conditionally reads "...across N active projects." vs "...across N of M active projects
+  matching these filters." so it's clear at a glance whether a filter is narrowing the view.
+- Incidentally fixed a stale hardcoded `"DUE SOON (14D)"` KPI label (left over from before Final
+  Polish Gate 1 made the window configurable) to read the real `dueSoonWindowDays(data)` value —
+  noticed while touching this file for the filter work, not a separate ask.
+
+No bugs self-caught this gate — the new test file passed all 34 checks on the first standalone run,
+and both pre-existing dashboard-adjacent tests (`test_dashboard_reminders_e2e.js`,
+`test_management_attention_e2e.js`) passed with zero regressions on the first full-suite run too.
+
+Tests: new `tests/test_dashboard_filtering_e2e.js` (34 checks, including a 26-route smoke test) —
+filter row absent with zero active projects, distinct option values built correctly from two
+seeded projects, single-filter narrowing across every panel (KPI/Recent Projects/Management
+Attention), a combined-filter scenario producing zero matches hitting the new empty state, reset
+restoring the full view, the Year filter (derived from `start_date`), and a final "this gate writes
+nothing back" record-count sanity check. Full suite: **58 files**, clean, zero regressions. Real-
+Chromium pass (screenshots: unfiltered dashboard with two seeded projects showing all 7 selects
+matching Portfolio's exact styling, then Client-filtered down to 1 of 2 with Management Attention/
+Recent Projects/KPIs all correctly narrowed) confirmed everything renders correctly — zero console
+errors. Zip verified separately post-merge (fresh extraction, real Chromium, one seeded project) —
+filter row renders correctly, zero console errors.
+
 **Next step for a fresh session: scope the next "final polish" item with Aditya.** Confirmed but
-not yet built, no fixed order — ask which one's next: Dashboard-level filtering, Vendor↔Cost
+not yet built, no fixed order — ask which one's next: Vendor↔Cost
 integration, Commitments→EVM wiring, category-scheme reconciliation, Gantt virtualization
 (10,000+ activities). Each needs its own inspection-first scoping round, same discipline as every
 gate so far — some of these backlog notes have already turned out to be stale once (Resource
