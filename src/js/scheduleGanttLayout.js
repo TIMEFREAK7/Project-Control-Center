@@ -151,6 +151,30 @@
     return { start: startIso, finish: newFinish };
   }
 
+  /** Tier 3 "final polish" — Gantt virtualization. Given the full row count and the
+   * chart container's current scroll/viewport metrics, returns the [start, end) slice
+   * of `rows` that actually needs real DOM (plus `bufferRows` extra on each side, so a
+   * fast scroll doesn't show blank rows before the next repaint). Pure and DOM-free —
+   * `schedule.js` is the only place that turns this into actual SVG nodes, same
+   * "calculation here, rendering there" split every function in this module keeps.
+   *
+   * `viewportHeight` of 0/falsy means the caller has no real layout to measure from
+   * (this is jsdom's default for every element — it does no box-model layout at all,
+   * so `clientHeight` is always 0 there) — in that case every row is returned, which
+   * is exactly the pre-virtualization behavior every existing Gantt test already
+   * depends on. Real virtualization only engages where a real viewport height is
+   * available, i.e. an actual browser. */
+  function visibleRowRange(totalRows, scrollTop, viewportHeight, rowHeight, headerHeight, bufferRows) {
+    if (!viewportHeight) {
+      return { start: 0, end: totalRows };
+    }
+    var firstVisible = Math.floor(Math.max(0, scrollTop - headerHeight) / rowHeight);
+    var visibleCount = Math.ceil(viewportHeight / rowHeight) + 1;
+    var start = Math.max(0, firstVisible - bufferRows);
+    var end = Math.min(totalRows, firstVisible + visibleCount + bufferRows);
+    return { start: start, end: end };
+  }
+
   window.PCC.scheduleGanttLayout = {
     computeLayout: computeLayout,
     diffDays: diffDays,
@@ -158,5 +182,6 @@
     daysFromPixelDelta: daysFromPixelDelta,
     moveDates: moveDates,
     resizeFinish: resizeFinish,
+    visibleRowRange: visibleRowRange,
   };
 })();
