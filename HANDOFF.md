@@ -63,14 +63,62 @@ that override default behavior).
 
 ## Where things stand — Tiers A-E are COMPLETE; Tier F (Advanced Planning/Controls) is underway
 
-`main` is fully up to date through **Gate 23: Advanced Delay Analysis** (PCC Evolution Roadmap,
-Tier F's sixth gate), merge commit `1050733`, **`schema_version` bumped to 45** (third consecutive
-gate needing a real schema change — the new `delay_records` register). The 9-gate tier: 18 Resource
-Management, 19 Commitment Management, 20 Status-Date Control, 21 Status-Date Reforecasting, 22
-Baseline & Schedule Revision Control, 23 Advanced Delay Analysis, 24 Recovery & Mitigation Planning,
-25 Advanced Schedule Performance, 26 Integrated Project Controls. See the "PCC Evolution Roadmap"
-section below for the complete gate-by-gate history — this section covers only the current tier's
-state.
+`main` is fully up to date through **Gate 24: Recovery & Mitigation Planning** (PCC Evolution
+Roadmap, Tier F's seventh gate), merge commit `e3ef313`, **`schema_version` bumped to 46** (fourth
+consecutive gate needing a real schema change — `estimated_recovery_days`/`estimated_cost` on
+`recovery_actions`). The 9-gate tier: 18 Resource Management, 19 Commitment Management, 20
+Status-Date Control, 21 Status-Date Reforecasting, 22 Baseline & Schedule Revision Control, 23
+Advanced Delay Analysis, 24 Recovery & Mitigation Planning, 25 Advanced Schedule Performance, 26
+Integrated Project Controls. See the "PCC Evolution Roadmap" section below for the complete
+gate-by-gate history — this section covers only the current tier's state.
+
+**Gate 24 — Recovery & Mitigation Planning** (merge `e3ef313`). Inspection found Recovery Actions
+was a plain to-do (description/responsible person/target date/status) with zero schedule-impact
+quantification anywhere, and nowhere in the app could you ask "what if we recover N days on this
+activity" and see the effect. Two real forks were put to Aditya via `AskUserQuestion`; **he chose
+the fuller option both times**:
+- **What-If Sandbox**: a new "What-If" tab in `schedule.js`, deliberately a STANDALONE exploration
+  tool (Aditya's own call), not tied to any one Recovery Action. Pick any activity, propose
+  reducing its duration (or `remaining_duration` if in-progress) by N days, and see a before/after
+  CPM comparison — project finish, critical-activity count, which activities flip criticality.
+  Nothing persisted: `scheduleCpmEngine.calculateSchedule()` was already a pure function taking
+  plain arrays (confirmed by Gate 24's own inspection), so this just clones the current activities,
+  perturbs one, and reruns it; the "before" figure is a fresh live calculation, always comparable
+  to what's actually on the activities right now. Surfaces a genuinely correct project-controls
+  insight the app never had a way to show before: reducing a NON-critical activity's duration may
+  not move the project finish at all — verified explicitly (a 10-day-float activity reduced by 3
+  days correctly reports "no change"; the actual critical activity reduced by 5 days correctly
+  reports the finish pulling in by exactly 5 days).
+- **Recovery Actions gain `estimated_recovery_days` and `estimated_cost`** (`schema_version` 46,
+  the cost field being the "go further" fork Aditya picked), surfaced on the Activity Detail
+  Panel's own row and rolled up on the Delay & Recovery Dashboard — **open actions only**, since a
+  completed/cancelled action's estimate is historical, not a live commitment to weigh against the
+  portfolio (verified: the KPI row disappears entirely once the only estimate moves to Completed).
+
+**Bug caught and fixed during test-writing, before shipping** (a second instance of the SAME class
+of bug flagged in the Gate 22 section above — worth calling out as a recurring risk in this
+codebase's click-handler pattern): the What-If form's validation errors ("select an activity
+first," "enter a positive number of days") were set on a *local* DOM element's `style.display`,
+then immediately discarded when `rerender()` rebuilt the whole tab from scratch right after — the
+error text would never actually become visible to the user, even though the code "looked" like it
+displayed one. Fixed by moving the error into `uiState.whatIfError` (same pattern
+`uiState.baselineCompareError` already established for the Baselines tab) so it survives the
+rebuild; regression-tested explicitly with a comment naming the exact failure mode. **General
+lesson for future gates**: any inline form validation error in this codebase MUST be stored in
+`uiState` and re-read on the next build — never left as a local variable's `style.display`
+mutation — because essentially every button handler in this app ends with `rerender()`, which
+throws the entire local DOM subtree away.
+
+Tests: `test_store_schema_v45_migration.js` renamed to `test_store_schema_v46_migration.js` (this
+project's "one canonical full-chain migration test targeting latest" convention) with new v45→v46
+backfill checks. New `tests/test_recovery_mitigation_planning_e2e.js` (35 checks, including a
+24-route smoke test) against the real bundled `index.html` — the what-if sandbox's non-critical/
+critical/clamped-reduction scenarios plus the validation-error regression, Recovery Actions'
+estimated-days/cost persistence and display, and the dashboard's open-only rollup. Full suite:
+**53 files, 1341 checks**, clean, zero regressions. Real-Chromium pass (4 screenshots: the
+critical-path what-if pulling the finish in 5 days, the non-critical what-if reporting no change,
+the Recovery Action row with its estimate, and the dashboard's cost/days rollup) confirmed
+everything renders correctly — zero console errors.
 
 **Gate 23 — Advanced Delay Analysis** (merge `1050733`). Inspection found the existing Delay &
 Recovery Dashboard was a recovery-actions rollup only — no delay causation/classification anywhere
@@ -1267,11 +1315,11 @@ breakdown from Aditya directly, the same way Tier D's came, rather than guessing
 
 ## Repo/branch state
 
-`main` is fully up to date through **Gate 23: Advanced Delay Analysis**
-(`1050733`, a direct merge — no PR, per Aditya's now-standing "always merge after completing a
+`main` is fully up to date through **Gate 24: Recovery & Mitigation Planning**
+(`e3ef313`, a direct merge — no PR, per Aditya's now-standing "always merge after completing a
 gate/phase" instruction, see above) — **Tiers A-E are all fully complete; Tier F (Advanced Project
-Planning & Project Controls) is now underway, six of its nine named gates done plus one
-follow-on round closing a gap in the second.** Fifteen rounds have landed on `main` this session,
+Planning & Project Controls) is now underway, seven of its nine named gates done plus one
+follow-on round closing a gap in the second.** Sixteen rounds have landed on `main` this session,
 all via the same designated remote-session branch, `claude/tier-c-code-inspection-jysweb` (name is
 stale now — it's carried Tier C, D, E, and F gates alike), restarted from the new `main` between
 each per the standing "restart before the next gate" instruction: the Tier C inspection +
@@ -1283,48 +1331,51 @@ Personal Workbench (merge `332b505`), then Gate 18 Resource Management (merge `e
 Gate 19 Commitment Management (merge `a0a9e5b`), then the Gate 19 Schedule↔Commitment follow-on
 (merge `4690a58`), then Gate 20 Status-Date Control (merge `33a3551`), then Gate 21 Status-Date
 Reforecasting (merge `bd825a0`), then Gate 22 Baseline & Schedule Revision Control (merge
-`d14f9ef`), then Gate 23 Advanced Delay Analysis (merge `1050733`). Aditya confirmed via
-`AskUserQuestion` to proceed with each merge given the branch's own "never push elsewhere without
-permission" constraint; see the git log for the exact sequence if that matters later. This builds
-on top of **Tier B (Control Integration)**, complete as of Gate 33, and the already-complete
-14-gate Document Control sub-spec. `schema_version` on `main` is now **45** — Gate 23 needed a
-real schema change, the third in a row (see the "Where things stand" section above for full
-detail). `claude/tier-c-code-inspection-jysweb` carries the same history as `main` as of this
-merge (nothing unmerged on it) — restart it from the new `main` before starting the next gate, and
-verify with `git log origin/main..HEAD` and `git status` before assuming this is still true by the
-time you read this.
+`d14f9ef`), then Gate 23 Advanced Delay Analysis (merge `1050733`), then Gate 24 Recovery &
+Mitigation Planning (merge `e3ef313`). Aditya confirmed via `AskUserQuestion` to proceed with each
+merge given the branch's own "never push elsewhere without permission" constraint; see the git log
+for the exact sequence if that matters later. This builds on top of **Tier B (Control
+Integration)**, complete as of Gate 33, and the already-complete 14-gate Document Control sub-spec.
+`schema_version` on `main` is now **46** — Gate 24 needed a real schema change, the fourth in a row
+(see the "Where things stand" section above for full detail). `claude/tier-c-code-inspection-jysweb`
+carries the same history as `main` as of this merge (nothing unmerged on it) — restart it from the
+new `main` before starting the next gate, and verify with `git log origin/main..HEAD` and
+`git status` before assuming this is still true by the time you read this.
 
 **Zip delivered this round:** `Project-Control-Center.zip` — `index.html` + `README.md` +
 `data/`/`files/` (existing `README.txt` placeholders), verified via a fresh extraction
-(`/tmp/pcc_zip_verify10/`, not the dev working copy) opened in real Chromium — zero console errors;
+(`/tmp/pcc_zip_verify11/`, not the dev working copy) opened in real Chromium — zero console errors;
 screenshots taken and sent per the standing instruction.
 
 **Next steps, in likely priority order:**
-1. **Tier F has 3 more named gates, none started — get scope confirmation from Aditya before
-   building the next one.** Gate 24 Recovery & Mitigation Planning is next in the spec's own
+1. **Tier F has 2 more named gates, none started — get scope confirmation from Aditya before
+   building the next one.** Gate 25 Advanced Schedule Performance is next in the spec's own
    order, but nothing says gates must be built strictly in order — ask before assuming. Full spec
    text for all 9 Tier F gates was handed over conversationally this session and is preserved in
    this conversation's history but was never saved as a file in this repo — don't assume a future
    session can find it; get it re-confirmed from Aditya if it's not still in context. Inspect each
    gate against the real code before proposing anything, same discipline as every gate so far —
-   Gates 18 through 23 all turned out to have substantial real prior art or overlap (Gate 11 for
+   Gates 18 through 24 all turned out to have substantial real prior art or overlap (Gate 11 for
    Resources, the Gate 9/16 "not tracked yet"/"future Commercial module" notes for Commitments,
    Gate 20's own spec turning out to be *almost entirely* pre-built under other names, Gate 21
    finding the CPM engine already did most of status-date reforecasting, Gate 22 finding the full
-   baseline capture/compare machinery already built, and Gate 23 finding the existing Delay &
-   Recovery Dashboard was recovery-actions-only with no delay causation anywhere), so don't assume
-   any of Gates 24-26 are starting from zero either. **Gate 24 (Recovery & Mitigation Planning) is
-   flagged as a likely-substantial overlap** with the Recovery Actions register itself
-   (`recovery_actions`, an earlier Tier C gate — corrective-action tracking already exists in full,
-   embedded in the Activity Detail Panel and rolled up in `delayRecoveryDashboard.js`) — inspect
-   what "Recovery & Mitigation Planning" would add beyond logging/tracking corrective actions
-   before assuming a gap (e.g. a formal recovery-schedule/what-if comparison, mitigation-vs-cost
-   tradeoff analysis, or acceleration-option modeling might be the real gap, not recovery-action
-   tracking itself, which already exists).
-2. **Watch for the exact notify()-reads-a-mutated-object-after-store.update() bug pattern flagged
-   in the Gate 22 section above** when touching any other click handler that reads a store-object
-   field for a message/label after its own `store.update()` call — it's an easy one to reintroduce
-   since the bug is invisible in the underlying data (only the displayed message is wrong).
+   baseline capture/compare machinery already built, Gate 23 finding the existing Delay & Recovery
+   Dashboard was recovery-actions-only with no delay causation anywhere, and Gate 24 finding
+   Recovery Actions was a plain to-do with zero schedule-impact quantification), so don't assume
+   any of Gates 25-26 are starting from zero either. **Gate 25 (Advanced Schedule Performance) is
+   flagged as a likely overlap** with `scheduleGanttLayout.js`/Executive Center's existing
+   Schedule Progress/Physical Progress KPIs and `costEvmEngine.js`'s SPI (Schedule Performance
+   Index, already computed there since Gate 5b) — inspect what "Advanced Schedule Performance"
+   would add beyond the SPI/progress metrics that already exist before assuming a gap (e.g. a
+   formal Schedule Performance Index trend over time, a dedicated schedule-health scorecard
+   distinct from the existing Project Health Score, or earned-schedule-technique metrics like
+   Earned Schedule/SPI(t) might be the real gap).
+2. **Watch for the exact "local DOM element mutated for validation display, then discarded by the
+   very next rerender()" bug pattern flagged in the Gate 24 section above** (a second instance of
+   the same root problem as the Gate 22 notify()-reads-a-mutated-object bug) when writing any new
+   inline form validation in this codebase — the error text MUST live in `uiState` and be re-read
+   on the next build, never left as a local variable's `style.display` mutation, since nearly
+   every button handler here ends with `rerender()`.
 3. Older still-open items, none blocking daily use: category-scheme reconciliation
    (Documents/Vendor/Document-Types), the Gantt-bar readiness flag, the two hardcoded reminder/
    lookahead windows (14-day Document Reminders, 30-day Action Centre Upcoming), Resource
