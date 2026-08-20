@@ -283,6 +283,81 @@
           delayListPanel.appendChild(row);
         });
       wrap.appendChild(delayListPanel);
+      // ---- Delay <-> Recovery Gap (Gate 26, Integrated Project Controls) — portfolio-
+      // wide version of the same per-activity computation in executiveCenter.js's
+      // buildProjectContext() (see that file's own comment for the full reasoning:
+      // per-activity, not flat, so recovery estimated on one activity can't appear to
+      // "cancel out" delay logged on an unrelated one; open recovery actions only;
+      // floored at 0). Independently re-derived here rather than calling into
+      // executiveCenter.js, per this app's established per-module-duplication
+      // convention (recoveryActionOverdue() above is the same pattern). ----
+      var openActionsForGap = actions.filter(function (r) { return r.status === "open" || r.status === "in_progress"; });
+      var gapDelayByActivity = {};
+      delayRecords.forEach(function (r) {
+        gapDelayByActivity[r.activity_id] = (gapDelayByActivity[r.activity_id] || 0) + (r.delay_days || 0);
+      });
+      var gapRecoveryByActivity = {};
+      openActionsForGap.forEach(function (r) {
+        gapRecoveryByActivity[r.activity_id] = (gapRecoveryByActivity[r.activity_id] || 0) + (r.estimated_recovery_days || 0);
+      });
+      var gapActivities = [];
+      var totalUnaddressedGapDays = 0;
+      Object.keys(gapDelayByActivity).forEach(function (activityId) {
+        var gapDelayDays = gapDelayByActivity[activityId];
+        var gapRecoveryDays = gapRecoveryByActivity[activityId] || 0;
+        var gapDays = Math.max(0, gapDelayDays - gapRecoveryDays);
+        totalUnaddressedGapDays += gapDays;
+        if (gapDays > 0) {
+          var gapActivity = activitiesById[activityId];
+          var gapProject = gapActivity ? projectsById[gapActivity.project_id] : null;
+          gapActivities.push({ activity: gapActivity, project: gapProject, delayDays: gapDelayDays, recoveryDays: gapRecoveryDays, gapDays: gapDays });
+        }
+      });
+      gapActivities.sort(function (a, b) { return b.gapDays - a.gapDays; });
+
+      var gapKpiGrid = document.createElement("div");
+      gapKpiGrid.className = "kpi-grid";
+      gapKpiGrid.style.marginTop = "10px";
+      gapKpiGrid.appendChild(kpiCard("UNADDRESSED DELAY (DAYS)", totalUnaddressedGapDays, totalUnaddressedGapDays > 0 ? "--status-critical" : null));
+      wrap.appendChild(gapKpiGrid);
+
+      if (gapActivities.length > 0) {
+        var gapPanel = document.createElement("div");
+        gapPanel.className = "panel";
+        gapPanel.style.marginTop = "16px";
+        var gapHeading = document.createElement("h3");
+        gapHeading.style.marginBottom = "8px";
+        gapHeading.textContent = "Activities With Unaddressed Delay (worst first)";
+        gapPanel.appendChild(gapHeading);
+        gapActivities.forEach(function (g) {
+          var row = document.createElement("div");
+          row.style.display = "flex";
+          row.style.justifyContent = "space-between";
+          row.style.alignItems = "flex-start";
+          row.style.gap = "8px";
+          row.style.padding = "8px 0";
+          row.style.borderBottom = "1px solid var(--divider)";
+          row.style.fontSize = "13px";
+          var left = document.createElement("div");
+          left.innerHTML =
+            "<strong>" + (g.activity ? g.activity.name : "(deleted activity)") + "</strong>" +
+            "<p class='text-secondary' style='font-size:12px;margin:4px 0 0'>" +
+            (g.project ? g.project.name || "(unnamed project)" : "(deleted project)") +
+            "</p>" +
+            "<p class='text-secondary' style='font-size:12px;margin:4px 0 0'>" +
+            g.delayDays + "d delay, " + g.recoveryDays + "d recovery estimated (" + g.gapDays + "d unaddressed)" +
+            "</p>";
+          row.appendChild(left);
+          if (g.activity) {
+            var right = document.createElement("div");
+            right.style.flexShrink = "0";
+            right.appendChild(viewInScheduleBtn(g.activity));
+            row.appendChild(right);
+          }
+          gapPanel.appendChild(row);
+        });
+        wrap.appendChild(gapPanel);
+      }
     } else {
       var noDelay = document.createElement("div");
       noDelay.className = "panel empty-state";

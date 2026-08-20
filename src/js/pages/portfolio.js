@@ -450,10 +450,18 @@
     var nonArchived = data.projects.filter(function (p) { return !p.archived; });
     var delayedCount = 0;
     var upcomingCount = 0;
+    var totalUnaddressedDelayDays = 0;
     nonArchived.forEach(function (p) {
       var summary = window.PCC.executiveCenter.getHealthSummary(p.id);
       if (summary.delayedActivityCount > 0) delayedCount++;
       if (projectIsUpcoming(p, data)) upcomingCount++;
+      // PCC Evolution Roadmap, Tier F (Gate 26, Integrated Project Controls) — the
+      // portfolio-wide rollup of Gate 26's own per-project Delay <-> Recovery gap
+      // (see executiveCenter.js's buildProjectContext() for the full reasoning).
+      // Reuses getSchedulePerformanceSummary() rather than re-deriving the gap here,
+      // since it's already a per-project total, not something that needs per-activity
+      // detail at this level.
+      totalUnaddressedDelayDays += window.PCC.executiveCenter.getSchedulePerformanceSummary(p.id).unaddressedDelayDays;
     });
     return {
       total: data.projects.length,
@@ -462,6 +470,7 @@
       atRisk: nonArchived.filter(function (p) { return p.status === "at_risk"; }).length,
       delayed: delayedCount,
       upcoming: upcomingCount,
+      unaddressedDelayDays: totalUnaddressedDelayDays,
     };
   }
 
@@ -476,6 +485,7 @@
       { label: "AT RISK", value: kpis.atRisk, colorVar: kpis.atRisk > 0 ? "--status-at-risk" : null },
       { label: "DELAYED", value: kpis.delayed, colorVar: kpis.delayed > 0 ? "--status-critical" : null },
       { label: "UPCOMING", value: kpis.upcoming, colorVar: null },
+      { label: "UNADDRESSED DELAY (DAYS)", value: kpis.unaddressedDelayDays, colorVar: kpis.unaddressedDelayDays > 0 ? "--status-critical" : null },
     ].forEach(function (kpi) {
       var card = document.createElement("div");
       card.className = "kpi-card";
@@ -518,12 +528,18 @@
     var table = document.createElement("table");
     table.className = "data-table";
     var thead = document.createElement("thead");
-    thead.innerHTML = "<tr><th>Project</th><th>Progress</th><th>Schedule</th><th>Risk</th><th>Health</th></tr>";
+    thead.innerHTML = "<tr><th>Project</th><th>Progress</th><th>Schedule</th><th>Risk</th><th>Health</th><th>Sched. Perf.</th></tr>";
     table.appendChild(thead);
 
     var tbody = document.createElement("tbody");
     projects.forEach(function (p) {
       var summary = window.PCC.executiveCenter.getHealthSummary(p.id);
+      // PCC Evolution Roadmap, Tier F (Gate 26, Integrated Project Controls) — same
+      // "export one composed function rather than duplicate buildProjectContext()"
+      // reasoning as getHealthSummary() above; kept deliberately separate from Health
+      // per that gate's own decision (see executiveCenter.js's own comment on
+      // getSchedulePerformanceSummary()).
+      var schedPerf = window.PCC.executiveCenter.getSchedulePerformanceSummary(p.id);
       var row = document.createElement("tr");
 
       var nameCell = document.createElement("td");
@@ -561,6 +577,18 @@
         healthCell.appendChild(scoreSpan);
       }
       row.appendChild(healthCell);
+
+      var schedPerfCell = document.createElement("td");
+      schedPerfCell.appendChild(ragCell(schedPerf.rag));
+      if (schedPerf.score != null) {
+        var schedPerfScoreSpan = document.createElement("span");
+        schedPerfScoreSpan.className = "text-secondary";
+        schedPerfScoreSpan.style.fontSize = "11px";
+        schedPerfScoreSpan.style.marginLeft = "6px";
+        schedPerfScoreSpan.textContent = schedPerf.score;
+        schedPerfCell.appendChild(schedPerfScoreSpan);
+      }
+      row.appendChild(schedPerfCell);
 
       tbody.appendChild(row);
     });
