@@ -73,7 +73,10 @@ function findButtonByText(dom, text) {
   await check("app boots on the bundled index.html without throwing, schema_version is 48", () => {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
     assert.ok(win.PCC.pages.lessonsLearned, "lessonsLearned page module must be bundled");
-    assert.strictEqual(win.PCC.store.get().schema_version, 48);
+    // >= not === : this gate itself shipped at 48, but a later gate (Knowledge Base)
+    // has since bumped it further — same lesson learned (no pun intended) from the
+    // Gate 26 test's own stale-assertion fix, so this doesn't go stale again either.
+    assert.ok(win.PCC.store.get().schema_version >= 48);
   });
 
   await check("the sidebar links to Lessons Learned, and the empty state shows before any project exists", () => {

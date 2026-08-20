@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 48;
+  var SCHEMA_VERSION = 49;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -91,6 +91,9 @@
       // now taken up): Lessons Learned. Project-scoped register, same shape family as
       // Risk/RFI/Decisions above — see newLessonLearned() below for the field design.
       lessons_learned: [],
+      // PCC Evolution Roadmap, Tier 3: Knowledge Base. Portfolio-wide, optional
+      // project_id — see newKnowledgeBaseArticle() below for the field design.
+      knowledge_base_articles: [],
       // Gate 5b (Tier 2 Cost Tracking): budget line items and the actual-cost log
       // against them. Deliberately two separate arrays, not one shape distinguished by
       // a type field \u2014 unlike Risk/Issue/Opportunity or RFI/TQ, a budget line item and
@@ -1396,6 +1399,47 @@
     return Object.assign(base, overrides || {});
   }
 
+  function newKnowledgeBaseArticleId() {
+    return "kb_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  var KNOWLEDGE_BASE_CATEGORIES = ["standard_procedure", "checklist_template", "reference_material", "how_to_guide", "policy", "other"];
+
+  /** PCC Evolution Roadmap, Tier 3 (Knowledge Base — the tier's second gate, after
+   * Lessons Learned). `project_id` is OPTIONAL — same disclosed exception
+   * `newVendorDocument()` above already established — a standard procedure or checklist
+   * isn't "for" any one project, but an article can still be tagged to one project for
+   * context when that's genuinely what it's about. Confirmed via `AskUserQuestion`:
+   * unlike Lessons Learned/Decisions/Risk (mandatory project_id, a log of something that
+   * happened on THIS project), a knowledge base is reusable reference material, much
+   * closer to Vendors/Resources/Document Types (portfolio-wide) than to a per-project
+   * log. Also confirmed: articles carry their OWN file attachment (not just a link to an
+   * existing Document) — same "blob lives in blobStore keyed by this record's own id,
+   * no inline `file_data` field" pattern `newVendorDocument()` uses, since this register
+   * postdates the Phase 12 blobs-only migration and never needs the dual-path inline
+   * fallback older registers carry for backward compatibility. One file per article, no
+   * revision history — re-attaching a file overwrites the previous blob under the same
+   * id, deliberately simpler than Documents/Vendor Documents' full version-control
+   * machinery, which this gate has no stated need for. */
+  function newKnowledgeBaseArticle(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newKnowledgeBaseArticleId(),
+      project_id: "",
+      title: "",
+      category: "other", // standard_procedure | checklist_template | reference_material | how_to_guide | policy | other
+      body: "",
+      tags: "",
+      filename: "",
+      file_size: 0,
+      mime_type: "",
+      created_by: "",
+      created_at: now,
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
   // ============================================================
   // GATE 9 — Vendor Management. Vendor Master is portfolio-wide (like Projects
   // themselves), not scoped to one project the way Documents/Risk/RFI are — every
@@ -2442,6 +2486,13 @@
       loaded.schema_version = 48;
     }
 
+    if (loaded.schema_version < 49) {
+      // PCC Evolution Roadmap, Tier 3: Knowledge Base. Brand new register, nothing to
+      // backfill on existing records.
+      if (!loaded.knowledge_base_articles) loaded.knowledge_base_articles = [];
+      loaded.schema_version = 49;
+    }
+
     return loaded;
   }
 
@@ -2786,6 +2837,8 @@
     newLessonLearned: newLessonLearned,
     LESSON_LEARNED_CATEGORIES: LESSON_LEARNED_CATEGORIES,
     LESSON_LEARNED_IMPACT_TYPES: LESSON_LEARNED_IMPACT_TYPES,
+    newKnowledgeBaseArticle: newKnowledgeBaseArticle,
+    KNOWLEDGE_BASE_CATEGORIES: KNOWLEDGE_BASE_CATEGORIES,
     SCHEDULE_STATUSES: SCHEDULE_STATUSES,
     ACTIVITY_TYPES: ACTIVITY_TYPES,
     ACTIVITY_STATUSES: ACTIVITY_STATUSES,
