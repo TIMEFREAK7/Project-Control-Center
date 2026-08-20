@@ -61,6 +61,118 @@ that override default behavior).
   populated state, and again on the zip-verification pass) and send the PNGs via `SendUserFile`
   before or alongside the written report. Applies to every gate from here on, not just this one.
 
+## NEW INITIATIVE: UI/UX Overhaul (started 2026-08-20) — a THIRD, separate roadmap
+
+With Tiers A-F, Tiers 1-2, and Tier 3 all complete/closed out (see below), Aditya started an
+entirely new, large initiative right after: a **complete UI/UX overhaul** — desktop, laptop,
+tablet, mobile — turning PCC's look into a "professional Project Controls / PMO application"
+while explicitly preserving all existing business logic, data, schema, and module behavior. This
+is UI/UX ONLY — no new architecture (still vanilla JS, no React/Vue/backend/server/AI), no schema
+changes unless a UI requirement genuinely needs one (and if so, STOP and explain the migration
+before touching it — Aditya's own explicit instruction).
+
+Aditya handed over a very detailed brief (full design direction, responsive tier definitions,
+per-module redesign notes, and his own **recommended 8-gate breakdown** — Gate 1 Design System,
+Gate 2 Global Navigation, Gate 3 Portfolio, Gate 4 Project Workspace, Gate 5 Executive Center,
+Gate 6 Existing Modules (one at a time), Gate 7 Desktop/Laptop Productivity, Gate 8 Tablet/Mobile
+Optimization) — not saved as a file in this repo, preserved in conversation history only; get it
+re-confirmed from Aditya if a future session doesn't have it in context. Standing instruction from
+the brief itself, worth repeating: **inspect real code before each gate, propose scope, wait for
+explicit approval, implement exactly that gate, verify, stop** — same discipline as every other
+initiative in this project, and explicitly do NOT chain gates automatically.
+
+**Inspection findings before Gate 1 (still true, useful for any future gate's own inspection
+step)**:
+- Schema is **v51**, not v17 as the brief assumed — noted to Aditya, no functional impact.
+- `src/js/layout.js` is the entire app shell (sidebar, title-block header, footer) — one `mount()`
+  call, built once. `src/js/router.js` is a bare 24-line hash router, **flat namespace only** — no
+  nested routes, no `#/project/:id/...` concept exists.
+- **There is no "Project Workspace" page today.** Portfolio's "Details" button expands an inline
+  accordion in place (`renderProjectDetails` in `portfolio.js`) — it doesn't navigate anywhere.
+  Every module page (Schedule, Documents, Risks, Cost, ...) keeps its **own independent**
+  `uiState.projectId` and its own project dropdown. Cross-page navigation is stitched together by
+  an existing hand-off convention — e.g. Portfolio's "Executive Center" button calls
+  `window.PCC.executiveCenter.viewProject(id)` then routes; Executive Center's own action buttons
+  call e.g. `window.PCC.cost.filterByProject(id)` before routing elsewhere. **Any future "Project
+  Workspace" shell (Gate 4) must route through this convention, not replace it** — it's how every
+  module already agrees on "which project" across page boundaries.
+- `src/js/pages/executiveCenter.js` (160KB, the largest file in the app) already IS the
+  "management briefing" concept the brief describes for Gate 5 — `buildProjectContext()`, KPI
+  panels, a Management Attention list, print-ready Snapshot/Management Pack builders shared with
+  `reports.js`. Gate 5 is a redesign of something substantial, not a from-scratch build.
+- **Exactly one responsive breakpoint existed pre-Gate-1**: `max-width: 780px` (plus two small
+  phone-only sub-tweaks at 480px/420px). No laptop or tablet tier at all — confirms the brief's
+  core complaint. Gate 2 (nav) and Gate 8 (tablet/mobile) own actually introducing tiered
+  behavior; Gate 1 deliberately only added the token/documentation groundwork, not new breakpoint
+  behavior (see below).
+- Reusable as-is: color tokens/theme system (`[data-theme]`), local `.woff2` font loading, `.btn`/
+  `.field`/`.status-badge`/`.kpi-card`/`.data-table`/`.panel` primitives, the print stylesheet
+  (`.report-doc`, already theme-independent/ink-safe), `router.js` unchanged, the store's
+  `onChange` autosave-status wiring, the toast system, the `filterByProject`/`viewProject`
+  hand-off convention above.
+
+**UI/UX Overhaul Gate 1 — Design System** (merge `6b6849e`). Pure CSS, `src/css/styles.css` only —
+**zero `.js` files touched, zero schema change, zero navigation/breakpoint restructuring**
+(deliberately left to Gate 2/8, which own that per Aditya's own gate plan). Scope, confirmed via
+inspection first, no `AskUserQuestion` needed (mechanical, non-ambiguous once the brief's own Gate
+1 definition was matched against real code):
+- **New tokens**: typography scale (`--text-xs` through `--text-2xl`, additive — existing pages
+  keep their own hardcoded px sizes for now, ready for gradual adoption as pages get touched in
+  later gates, not a forced rename), extended spacing (`--space-7`/`--space-8`), `--shadow-lg`, and
+  **`--status-warning` (orange)** — a genuinely new semantic color completing the brief's
+  Green/Blue/Amber/Orange/Red five-step scale (previously only 4 status colors existed: on_track/
+  at_risk/critical/info — no distinct "Warning" step between Amber-Attention and Red-Critical).
+  Breakpoint tiers documented as a comment (Large Desktop ≥1600 / Desktop 1280-1599 / Laptop
+  1024-1279 / Tablet 768-1023 / Mobile <768) for Gate 2/8 to implement — CSS custom properties
+  can't be read inside `@media` conditions, so these are plain literals kept consistent with the
+  comment, not variables.
+- **Subtler grid background** — reduced `--grid-line` alpha in both themes (dark 0.07→0.045, light
+  0.05→0.035), per the brief's "make it subtle, don't compete with tables/cards/text." Panels
+  already mask it with an opaque `--bg-paper` fill, so this only affects the visible gaps between
+  panels — no structural change needed to achieve this.
+- **Refined existing primitives**: `.btn--sm`/`.btn--danger` size/semantic variants,
+  `.status-badge--warning`, `.progress-fill--on_track/--at_risk/--warning/--critical/--info` status-
+  color variants (previously every progress bar was hardcoded amber regardless of health),
+  `.data-table--sticky-header` (opt-in modifier, inert until a page wraps a table in a
+  scrollable-height container).
+- **New primitives, all inert this gate — no page references any of them yet**:
+  `.progress-bar`/`.progress-bar__*` (a labeled progress-bar-with-percentage block, for project
+  health cards/Executive Center panels), `.attention-list`/`.attention-item` (a consistent
+  Management Attention row pattern — `dashboard.js` and `executiveCenter.js` currently each
+  hand-build their own Management Attention markup independently; this gives future gates one
+  shared pattern instead of a third bespoke one), `.modal-overlay`/`.modal`/`.modal__*` and
+  `.drawer-overlay`/`.drawer`/`.drawer__*` (PCC has **no modal/drawer system at all today** —
+  every form opens inline in place — so this is new UI vocabulary, not a refinement of something
+  existing; no JS controller was written for these since nothing calls them yet, keeping the
+  bundle lean per the brief's performance requirement), `.sidebar--collapsed` (icon-rail-only CSS
+  variant — Gate 2 owns adding the actual collapse toggle button and applying this class),
+  `[data-density="compact"]` (root-level spacing-token override — Gate 7 owns adding the actual
+  density switcher).
+
+Verification: `node build.js` (4272.1 KB, +8.5KB over the pre-Gate-1 build — CSS additions only),
+full existing **60-file test suite passes unchanged** (expected — no JS behavior touched, this
+is entirely a CSS-file change), real-Chromium check across all of the brief's own requested
+viewport sizes (1920×1080, 1600×900, 1440×900, 1366×768, 1280×800, 820×1024 tablet, 390×844
+mobile) confirmed zero console/page errors and that existing Portfolio/Dashboard data (two seeded
+projects, Critical/On Track badges, progress bars, budget/finish figures) still renders correctly
+and identically to before — this gate is invisible in effect except for the subtler grid and new
+`--status-warning` token, exactly as intended for a "tokens + inert primitives" gate. Zip verified
+separately post-merge (fresh extraction, real Chromium) — clean.
+
+**Next step for a fresh session: propose UI/UX Overhaul Gate 2 (Global Navigation) to Aditya and
+wait for approval before building.** Per the brief's own plan: collapsible desktop sidebar (using
+the new `.sidebar--collapsed` CSS from Gate 1 — needs a toggle button + `layout.js` changes to add/
+remove the class, ideally persisted to `settings` so the choice survives a reload, which IS a
+`store.js` touch — small, additive field, not a schema-breaking change, but flag it explicitly per
+Aditya's "STOP and explain" rule for any data-layer touch), laptop-tier behavior (the brief:
+"Desktop: Sidebar + Main Workspace + Insights Panel" collapsing to "Laptop: Sidebar + Main
+Workspace" with secondary info becoming collapsible/tabs/drawer — there is no "Insights Panel"
+concept in the current app to collapse, so this needs inspecting what, if anything, plays that
+role per-page before assuming), mobile navigation, and a proper page-header component distinct
+from the current `.title-block` (which currently conflates "app chrome" and "page title" in one
+element). Inspect `layout.js` and each page's own header-rendering pattern first, same discipline
+as every gate — don't assume the brief's structure maps 1:1 onto what exists.
+
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
 `main` is fully up to date through **Tier 3, "final polish," Gate 4** (Gantt virtualization for
