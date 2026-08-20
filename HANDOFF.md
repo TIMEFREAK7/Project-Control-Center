@@ -63,14 +63,62 @@ that override default behavior).
 
 ## Where things stand — Tiers A-E are COMPLETE; Tier F (Advanced Planning/Controls) is underway
 
-`main` is fully up to date through **Gate 20: Status-Date Control** (PCC Evolution Roadmap, Tier
-F's third gate), merge commit `33a3551`, `schema_version` still **42** (no schema change — Gate 20
-is purely computed signals from data that already existed, same as the Gate 19 follow-on before
-it). The 9-gate tier: 18 Resource Management, 19 Commitment Management, 20 Status-Date Control, 21
-Status-Date Reforecasting, 22 Baseline & Schedule Revision Control, 23 Advanced Delay Analysis, 24
-Recovery & Mitigation Planning, 25 Advanced Schedule Performance, 26 Integrated Project Controls.
-See the "PCC Evolution Roadmap" section below for the complete gate-by-gate history — this section
-covers only the current tier's state.
+`main` is fully up to date through **Gate 21: Status-Date Reforecasting** (PCC Evolution Roadmap,
+Tier F's fourth gate), merge commit `bd825a0`, **`schema_version` bumped to 43** (the first schema
+change since Gate 19 — Gates 20 and the Gate 19 follow-on before it were both purely computed
+signals with no new stored fields; Gate 21 needed two: `calculation_mode` on schedules,
+`is_out_of_sequence` on activities). The 9-gate tier: 18 Resource Management, 19 Commitment
+Management, 20 Status-Date Control, 21 Status-Date Reforecasting, 22 Baseline & Schedule Revision
+Control, 23 Advanced Delay Analysis, 24 Recovery & Mitigation Planning, 25 Advanced Schedule
+Performance, 26 Integrated Project Controls. See the "PCC Evolution Roadmap" section below for the
+complete gate-by-gate history — this section covers only the current tier's state.
+
+**Gate 21 — Status-Date Reforecasting** (merge `bd825a0`). Inspection found `scheduleCpmEngine.js`
+already did most of status-date reforecasting (actuals-anchored ES/EF, completed dates held fixed
+— see Gate 20's own inspection). Two genuine gaps remained, and this time the scope fork WAS put to
+Aditya via `AskUserQuestion` (unlike Gate 20): whether to build out-of-sequence detection as a
+flag-only signal, or go further and add a real second calculation mode. **Aditya chose the fuller
+option.**
+- **Out-of-sequence (OOS) detection** (`scheduleCpmEngine.js`): an activity is flagged when it has
+  an actual anchor (completed or in_progress) but its predecessors' own calculated dates — by the
+  time it's reached in the engine's topological order — would only have permitted a LATER start
+  than when it actually started. Detected purely from predecessor-derived constraints, never
+  floored at `dataDate` (starting before the status date is normal on its own, not a sequencing
+  problem — only a genuine predecessor-logic conflict counts). Reported via a new
+  `is_out_of_sequence` flag on every activity result plus a warning, in BOTH calculation modes —
+  it's a data-quality signal about what happened, independent of how the forecast treats it.
+- **`calculation_mode`** (new per-schedule field, `CALCULATION_MODES = ["progress_override",
+  "retained_logic"]`, mirrors `near_critical_threshold_days`'s per-schedule precedent):
+  `"progress_override"` (default — the ONLY behavior that existed before this gate, so every
+  pre-existing schedule keeps calculating exactly as it always did) lets actual dates win outright.
+  `"retained_logic"` pushes an in-progress OOS activity's forecast ES (and downstream propagation)
+  to the predecessor-derived constraint instead — the schedule still respects the logic tie going
+  forward even though the actual start already happened early. **A completed OOS activity's own
+  dates are never moved in either mode** — finished work is history, not subject to a "mode";
+  verified explicitly in tests.
+- UI (`schedule.js`): new "Out-of-Sequence Calculation Mode" dropdown on the schedule edit form;
+  "Calculate Schedule" passes the schedule's mode into the engine and persists
+  `is_out_of_sequence`; the calculation notify toast now mentions the OOS count; an "Out of
+  Sequence" badge on the Activities list; a detail row on the Activity Detail Panel.
+- Executive Center: new "Out of Sequence" KPI added to Gate 20's STATUS DATE panel, plus a detail
+  list naming each OOS activity under the schedule's current mode. Computed via a LIVE `cpm`
+  recalculation inside `buildProjectContext()` (same pattern `totalFloat`/`earlyFinish` already
+  used there) — so switching a schedule's mode updates this panel immediately, without requiring
+  the user to click "Calculate Schedule" again first. Verified live in the real-Chromium pass:
+  toggling the mode alone shifted the reported forecast finish and critical-activity count.
+
+Tests: new `tests/test_schedule_cpm_engine.js` (9 checks, pure-engine, no DOM — mirrors
+`test_schedule_baseline_engine.js`'s pattern) covering OOS edge cases and both modes directly
+against `calculateSchedule()`. `test_store_schema_v42_migration.js` renamed to
+`test_store_schema_v43_migration.js` (this project's "one canonical full-chain migration test
+targeting latest" convention — renamed and extended each schema bump rather than left as a stack
+of one-off files) with new v42→v43 backfill checks added. New
+`tests/test_status_date_reforecasting_e2e.js` (33 checks, including a 24-route smoke test) against
+the real bundled `index.html`, covering the `schedule.js` UI and Executive Center surfacing
+end-to-end, including a live-recompute-on-mode-change check. Full suite: **50 files, 1230 checks**,
+clean, zero regressions. Real-Chromium pass (3 screenshots: OOS badge + Activity Detail Panel,
+Executive Center in Progress Override mode, Executive Center in Retained Logic mode showing the
+live forecast/critical-path shift) confirmed everything renders correctly — zero console errors.
 
 **Gate 20 — Status-Date Control** (merge `33a3551`, triggered by Aditya's terse "Start the next
 gate" — no `AskUserQuestion` rounds this time, unlike Gates 18/19; the remaining scope after
@@ -1112,11 +1160,11 @@ breakdown from Aditya directly, the same way Tier D's came, rather than guessing
 
 ## Repo/branch state
 
-`main` is fully up to date through **Gate 20: Status-Date Control**
-(`33a3551`, a direct merge — no PR, per Aditya's now-standing "always merge after completing a
+`main` is fully up to date through **Gate 21: Status-Date Reforecasting**
+(`bd825a0`, a direct merge — no PR, per Aditya's now-standing "always merge after completing a
 gate/phase" instruction, see above) — **Tiers A-E are all fully complete; Tier F (Advanced Project
-Planning & Project Controls) is now underway, three of its nine named gates done plus one
-follow-on round closing a gap in the second.** Twelve rounds have landed on `main` this session,
+Planning & Project Controls) is now underway, four of its nine named gates done plus one
+follow-on round closing a gap in the second.** Thirteen rounds have landed on `main` this session,
 all via the same designated remote-session branch, `claude/tier-c-code-inspection-jysweb` (name is
 stale now — it's carried Tier C, D, E, and F gates alike), restarted from the new `main` between
 each per the standing "restart before the next gate" instruction: the Tier C inspection +
@@ -1126,38 +1174,42 @@ Weekly Project Review (merge `c3af1d9`), then the Recovery Actions/Decisions rep
 follow-on (merge `fef89f6`), then Gate 16 Portfolio Performance (merge `c4959e2`), then Gate 17
 Personal Workbench (merge `332b505`), then Gate 18 Resource Management (merge `ec8c638`), then
 Gate 19 Commitment Management (merge `a0a9e5b`), then the Gate 19 Schedule↔Commitment follow-on
-(merge `4690a58`), then Gate 20 Status-Date Control (merge `33a3551`). Aditya confirmed via
-`AskUserQuestion` to proceed with each merge given the branch's own "never push elsewhere without
-permission" constraint (though Gate 20 itself had no `AskUserQuestion` rounds — see above); see the
-git log for the exact sequence if that matters later. This builds on top of **Tier B (Control
-Integration)**, complete as of Gate 33, and the already-complete 14-gate Document Control sub-spec.
-`schema_version` on `main` is still **42** — Gate 20 needed no schema change (see the "Where things
-stand" section above for full detail). `claude/tier-c-code-inspection-jysweb` carries the same
-history as `main` as of this merge (nothing unmerged on it) — restart it from the new `main` before
-starting the next gate, and verify with `git log origin/main..HEAD` and `git status` before
-assuming this is still true by the time you read this.
+(merge `4690a58`), then Gate 20 Status-Date Control (merge `33a3551`), then Gate 21 Status-Date
+Reforecasting (merge `bd825a0`). Aditya confirmed via `AskUserQuestion` to proceed with each merge
+given the branch's own "never push elsewhere without permission" constraint; see the git log for
+the exact sequence if that matters later. This builds on top of **Tier B (Control Integration)**,
+complete as of Gate 33, and the already-complete 14-gate Document Control sub-spec.
+`schema_version` on `main` is now **43** — Gate 21 needed a real schema change (see the "Where
+things stand" section above for full detail; the first bump since Gate 19).
+`claude/tier-c-code-inspection-jysweb` carries the same history as `main` as of this merge
+(nothing unmerged on it) — restart it from the new `main` before starting the next gate, and
+verify with `git log origin/main..HEAD` and `git status` before assuming this is still true by the
+time you read this.
 
 **Zip delivered this round:** `Project-Control-Center.zip` — `index.html` + `README.md` +
 `data/`/`files/` (existing `README.txt` placeholders), verified via a fresh extraction
-(`/tmp/pcc_zip_verify7/`, not the dev working copy) opened in real Chromium — zero console errors;
+(`/tmp/pcc_zip_verify8/`, not the dev working copy) opened in real Chromium — zero console errors;
 screenshots taken and sent per the standing instruction.
 
 **Next steps, in likely priority order:**
-1. **Tier F has 6 more named gates, none started — get scope confirmation from Aditya before
-   building the next one.** Gate 21 Status-Date Reforecasting is next in the spec's own order, but
-   nothing says gates must be built strictly in order — ask before assuming. Full spec text for
-   all 9 Tier F gates was handed over conversationally this session and is preserved in this
-   conversation's history but was never saved as a file in this repo — don't assume a future
+1. **Tier F has 5 more named gates, none started — get scope confirmation from Aditya before
+   building the next one.** Gate 22 Baseline & Schedule Revision Control is next in the spec's own
+   order, but nothing says gates must be built strictly in order — ask before assuming. Full spec
+   text for all 9 Tier F gates was handed over conversationally this session and is preserved in
+   this conversation's history but was never saved as a file in this repo — don't assume a future
    session can find it; get it re-confirmed from Aditya if it's not still in context. Inspect each
    gate against the real code before proposing anything, same discipline as every gate so far —
-   Gates 18, 19, and 20 all turned out to have substantial real prior art (Gate 11 for Resources,
-   the Gate 9/16 "not tracked yet"/"future Commercial module" notes for Commitments, and Gate 20's
-   own spec turned out to be *almost entirely* pre-built under other names — data_date, CPM
-   reforecasting, Schedule Baselines from Gate 4/5, and Executive Center's existing
-   Critical/Near-Critical/Overdue), so don't assume any of Gates 21-26 are starting from zero
-   either. **Gate 21 (Status-Date Reforecasting) is flagged as an especially likely near-total
-   overlap** with `scheduleCpmEngine.js`'s already-built status-date-anchored reforecasting (see
-   that file's header comment) — inspect very carefully before assuming any gap exists at all.
+   Gates 18, 19, 20, and 21 all turned out to have substantial real prior art or overlap (Gate 11
+   for Resources, the Gate 9/16 "not tracked yet"/"future Commercial module" notes for
+   Commitments, Gate 20's own spec turning out to be *almost entirely* pre-built under other names,
+   and Gate 21 finding the CPM engine already did most of status-date reforecasting — only
+   out-of-sequence detection and a real second calculation mode were genuine gaps), so don't assume
+   any of Gates 22-26 are starting from zero either. **Gate 22 (Baseline & Schedule Revision
+   Control) is flagged as a likely-substantial overlap** with the already-complete
+   `scheduleBaselineEngine.js`/`scheduleBaselineStore.js` (Gate 4/5) and the Baselines tab in
+   `schedule.js` — inspect what "revision control" would add beyond baseline capture/compare
+   before assuming a gap (e.g. locking/superseding old baselines, a revision history view,
+   something else) rather than re-scoping baselines from scratch.
 2. Older still-open items, none blocking daily use: category-scheme reconciliation
    (Documents/Vendor/Document-Types), the Gantt-bar readiness flag, the two hardcoded reminder/
    lookahead windows (14-day Document Reminders, 30-day Action Centre Upcoming), Resource
