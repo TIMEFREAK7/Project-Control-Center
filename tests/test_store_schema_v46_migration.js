@@ -77,7 +77,7 @@ check("a v20 dataset gets Gate 9 + Gate 10 + Gate 11 + Gate 13 + Gate 14 + Gate 
   const store = loadStoreWith(JSON.stringify(v20));
   const data = store.get();
 
-  assert.strictEqual(data.schema_version, 45);
+  assert.strictEqual(data.schema_version, 46);
   assert.strictEqual(data.projects[0].name, "Existing Project", "existing project fields must survive untouched");
   assert.strictEqual(data.projects[0].project_type, "");
   assert.ok(data.settings.health_score_weights, "health_score_weights must be defaulted");
@@ -175,7 +175,7 @@ check("a v19 dataset gets activity_id backfilled onto existing budget items and 
   const store = loadStoreWith(JSON.stringify(v19));
   const data = store.get();
 
-  assert.strictEqual(data.schema_version, 45);
+  assert.strictEqual(data.schema_version, 46);
   assert.strictEqual(data.cost_budget_items.length, 1, "no budget items should be fabricated or dropped");
   assert.strictEqual(data.cost_budget_items[0].activity_id, "", "pre-Gate-7 budget items get an empty (unlinked) activity_id, not undefined");
   assert.strictEqual(data.cost_budget_items[0].name, "Rebar", "existing fields must survive untouched");
@@ -193,7 +193,7 @@ check("a minimal legacy dataset (no schema_version at all) migrates all the way 
   };
   const store = loadStoreWith(JSON.stringify(legacy));
   const data = store.get();
-  assert.strictEqual(data.schema_version, 45);
+  assert.strictEqual(data.schema_version, 46);
   assert.ok(Array.isArray(data.schedule_baselines));
   assert.ok(Array.isArray(data.cost_budget_items));
   assert.ok(Array.isArray(data.cost_actuals));
@@ -219,7 +219,7 @@ check("a minimal legacy dataset (no schema_version at all) migrates all the way 
 check("a brand-new install with no stored data starts with executive_summaries: [] and default health weights", () => {
   const store = loadStoreWith(null);
   const data = store.get();
-  assert.strictEqual(data.schema_version, 45);
+  assert.strictEqual(data.schema_version, 46);
   assert.deepStrictEqual(data.executive_summaries, []);
   assert.deepStrictEqual(data.settings.health_score_weights, {
     schedule: 25, cost: 20, risk: 20, issue: 10, rfi: 15, change: 10,
@@ -550,7 +550,7 @@ check("migrating a v28 dataset that already has a manually-added 'Project Charte
   };
   const store = loadStoreWith(JSON.stringify(v28));
   const data = store.get();
-  assert.strictEqual(data.schema_version, 45);
+  assert.strictEqual(data.schema_version, 46);
   const charters = data.document_types.filter((t) => t.name === "Project Charter");
   assert.strictEqual(charters.length, 1, "an existing hand-added type with a matching name must not be duplicated by the migration");
   assert.strictEqual(charters[0].id, "dtp_custom_1", "the user's own record must survive untouched, not be replaced by the seeded one");
@@ -579,7 +579,7 @@ check("migrating a v29 dataset backfills planned_submission_date: null onto exis
   };
   const store = loadStoreWith(JSON.stringify(v29));
   const data = store.get();
-  assert.strictEqual(data.schema_version, 45);
+  assert.strictEqual(data.schema_version, 46);
   assert.strictEqual(data.project_document_requirements.length, 2, "no requirement should be fabricated or dropped");
   const r1 = data.project_document_requirements.find((r) => r.id === "pdr_1");
   const r2 = data.project_document_requirements.find((r) => r.id === "pdr_2");
@@ -610,7 +610,7 @@ check("migrating a v30 dataset backfills vendor_id: '' onto existing requirement
   };
   const store = loadStoreWith(JSON.stringify(v30));
   const data = store.get();
-  assert.strictEqual(data.schema_version, 45);
+  assert.strictEqual(data.schema_version, 46);
   assert.strictEqual(data.project_document_requirements.length, 2, "no requirement should be fabricated or dropped");
   const r1 = data.project_document_requirements.find((r) => r.id === "pdr_1");
   const r2 = data.project_document_requirements.find((r) => r.id === "pdr_2");
@@ -643,7 +643,7 @@ check("migrating a v31 dataset backfills activity_id: '' onto existing requireme
   };
   const store = loadStoreWith(JSON.stringify(v31));
   const data = store.get();
-  assert.strictEqual(data.schema_version, 45);
+  assert.strictEqual(data.schema_version, 46);
   assert.strictEqual(data.project_document_requirements.length, 2, "no requirement should be fabricated or dropped");
   const r1 = data.project_document_requirements.find((r) => r.id === "pdr_1");
   const r2 = data.project_document_requirements.find((r) => r.id === "pdr_2");
@@ -676,7 +676,7 @@ check("migrating a v32 dataset backfills lead_time_days: null onto existing requ
   };
   const store = loadStoreWith(JSON.stringify(v32));
   const data = store.get();
-  assert.strictEqual(data.schema_version, 45);
+  assert.strictEqual(data.schema_version, 46);
   assert.strictEqual(data.project_document_requirements.length, 2, "no requirement should be fabricated or dropped");
   const r1 = data.project_document_requirements.find((r) => r.id === "pdr_1");
   const r2 = data.project_document_requirements.find((r) => r.id === "pdr_2");
@@ -706,7 +706,7 @@ check("migrating a v33 dataset backfills document_control_override: '' onto exis
   };
   const store = loadStoreWith(JSON.stringify(v33));
   const data = store.get();
-  assert.strictEqual(data.schema_version, 45);
+  assert.strictEqual(data.schema_version, 46);
   assert.strictEqual(data.executive_summaries.length, 2, "no summary row should be fabricated or dropped");
   const s1 = data.executive_summaries.find((s) => s.id === "es_1");
   const s2 = data.executive_summaries.find((s) => s.id === "es_2");
@@ -739,7 +739,7 @@ check("migrating a v34 dataset backfills vendor_id: '' onto existing activities 
   };
   const store = loadStoreWith(JSON.stringify(v34));
   const data = store.get();
-  assert.strictEqual(data.schema_version, 45);
+  assert.strictEqual(data.schema_version, 46);
   assert.strictEqual(data.activities.length, 2, "no activity should be fabricated or dropped");
   const a1 = data.activities.find((a) => a.id === "act_1");
   const a2 = data.activities.find((a) => a.id === "act_2");
@@ -778,7 +778,7 @@ check("migrating a v35 dataset backfills vendor_id/activity_id/rfi_id/risk_id: '
   };
   const store = loadStoreWith(JSON.stringify(v35));
   const data = store.get();
-  assert.strictEqual(data.schema_version, 45);
+  assert.strictEqual(data.schema_version, 46);
   const actions = data.meetings[0].actions;
   assert.strictEqual(actions.length, 2, "no action should be fabricated or dropped");
   const a1 = actions.find((a) => a.id === "a_1");
@@ -815,7 +815,7 @@ check("migrating a v36 dataset backfills recovery_actions: [] — a brand new re
   };
   const store = loadStoreWith(JSON.stringify(v36));
   const data = store.get();
-  assert.strictEqual(data.schema_version, 45);
+  assert.strictEqual(data.schema_version, 46);
   assert.ok(Array.isArray(data.recovery_actions), "recovery_actions must be backfilled as an array");
   assert.strictEqual(data.recovery_actions.length, 0, "nothing to backfill — a brand new register starts empty");
   assert.strictEqual(data.activities.length, 1, "no activity should be fabricated or dropped");
@@ -843,7 +843,7 @@ check("migrating a v37 dataset backfills decisions: [] — a brand new register,
   };
   const store = loadStoreWith(JSON.stringify(v37));
   const data = store.get();
-  assert.strictEqual(data.schema_version, 45);
+  assert.strictEqual(data.schema_version, 46);
   assert.ok(Array.isArray(data.decisions), "decisions must be backfilled as an array");
   assert.strictEqual(data.decisions.length, 0, "nothing to backfill — a brand new register starts empty");
   assert.strictEqual(data.activities.length, 1, "no activity should be fabricated or dropped");
@@ -871,7 +871,7 @@ check("migrating a v38 dataset backfills weekly_reviews: [] — a brand new regi
   };
   const store = loadStoreWith(JSON.stringify(v38));
   const data = store.get();
-  assert.strictEqual(data.schema_version, 45);
+  assert.strictEqual(data.schema_version, 46);
   assert.ok(Array.isArray(data.weekly_reviews), "weekly_reviews must be backfilled as an array");
   assert.strictEqual(data.weekly_reviews.length, 0, "nothing to backfill — a brand new register starts empty");
   assert.strictEqual(data.activities.length, 1, "no activity should be fabricated or dropped");
@@ -912,7 +912,7 @@ check("migrating a v39 dataset backfills waiting_on_party onto RFI/TQ, Change Or
   };
   const store = loadStoreWith(JSON.stringify(v39));
   const data = store.get();
-  assert.strictEqual(data.schema_version, 45);
+  assert.strictEqual(data.schema_version, 46);
 
   const rf1 = data.rfis.find((r) => r.id === "rf_1");
   const rf2 = data.rfis.find((r) => r.id === "rf_2");
@@ -961,7 +961,7 @@ check("migrating a v40 dataset backfills actual_quantity/planned_hours_per_day/o
   };
   const store = loadStoreWith(JSON.stringify(v40));
   const data = store.get();
-  assert.strictEqual(data.schema_version, 45);
+  assert.strictEqual(data.schema_version, 46);
 
   const asg1 = data.resource_assignments.find((a) => a.id === "asg_1");
   assert.strictEqual(asg1.actual_quantity, null, "unset actual_quantity backfills to null, never invented from planned quantity");
@@ -1026,7 +1026,7 @@ check("migrating a v41 dataset backfills commitment_id onto cost_actuals, packag
   };
   const store = loadStoreWith(JSON.stringify(v41));
   const data = store.get();
-  assert.strictEqual(data.schema_version, 45);
+  assert.strictEqual(data.schema_version, 46);
 
   const doc1 = data.documents.find((d) => d.id === "doc_1");
   const doc2 = data.documents.find((d) => d.id === "doc_2");
@@ -1100,7 +1100,7 @@ check("migrating a v42 dataset backfills calculation_mode='progress_override' on
   };
   const store = loadStoreWith(JSON.stringify(v42));
   const data = store.get();
-  assert.strictEqual(data.schema_version, 45);
+  assert.strictEqual(data.schema_version, 46);
 
   const sch1 = data.schedules.find((s) => s.id === "sch_1");
   const sch2 = data.schedules.find((s) => s.id === "sch_2");
@@ -1152,7 +1152,7 @@ check("migrating a v43 dataset backfills is_official=false and baseline_project_
   };
   const store = loadStoreWith(JSON.stringify(v43));
   const data = store.get();
-  assert.strictEqual(data.schema_version, 45);
+  assert.strictEqual(data.schema_version, 46);
 
   const bl1 = data.schedule_baselines.find((b) => b.id === "bl_1");
   const bl2 = data.schedule_baselines.find((b) => b.id === "bl_2");
@@ -1190,7 +1190,7 @@ check("migrating a v44 dataset backfills delay_records: [] — a brand new regis
   };
   const store = loadStoreWith(JSON.stringify(v44));
   const data = store.get();
-  assert.strictEqual(data.schema_version, 45);
+  assert.strictEqual(data.schema_version, 46);
   assert.ok(Array.isArray(data.delay_records));
   assert.strictEqual(data.delay_records.length, 0);
 });
@@ -1213,6 +1213,46 @@ check("newDelayRecord() produces a well-formed record defaulting to cause 'other
   assert.ok(store.DELAY_RECORD_CAUSES.indexOf("weather_force_majeure") !== -1);
   assert.ok(store.DELAY_RECORD_CAUSES.indexOf("design_rfi_driven") !== -1);
   assert.ok(store.DELAY_RECORD_CAUSES.indexOf("other") !== -1);
+});
+
+check("migrating a v45 dataset backfills estimated_recovery_days=null and estimated_cost=null onto existing recovery_actions rows, leaving already-set values untouched", () => {
+  const v45 = {
+    schema_version: 45,
+    meta: { app_name: "x", created_at: "2026-01-01T00:00:00.000Z", last_saved_at: null, last_exported_at: null },
+    settings: { theme: "dark", company_name: "", backup_reminder_days: 7, backup_nudge_dismissed_at: null },
+    projects: [{ id: "proj_1", name: "Existing Project", archived: false, status: "on_track", progress: 0, attachments: [] }],
+    documents: [], risks: [], daily_logs: [], meetings: [], rfis: [], change_orders: [], decisions: [],
+    schedules: [], wbs_items: [], activities: [], relationships: [], schedule_baselines: [],
+    recovery_actions: [
+      { id: "rec_1", activity_id: "act_1", project_id: "proj_1", description: "No estimate set" },
+      { id: "rec_2", activity_id: "act_1", project_id: "proj_1", description: "Already estimated", estimated_recovery_days: 5, estimated_cost: 2500 },
+    ],
+    delay_records: [],
+    cost_budget_items: [], cost_actuals: [],
+    resources: [], resource_assignments: [], resource_unavailability: [],
+    vendors: [], vendor_contacts: [], vendor_project_links: [], vendor_documents: [],
+    vendor_meeting_links: [], vendor_rfi_links: [], vendor_risk_links: [], vendor_performance: [], vendor_notes: [],
+    document_types: [], project_document_requirements: [],
+    executive_summaries: [], weekly_reviews: [],
+    packages: [], commitments: [],
+  };
+  const store = loadStoreWith(JSON.stringify(v45));
+  const data = store.get();
+  assert.strictEqual(data.schema_version, 46);
+
+  const rec1 = data.recovery_actions.find((r) => r.id === "rec_1");
+  const rec2 = data.recovery_actions.find((r) => r.id === "rec_2");
+  assert.strictEqual(rec1.estimated_recovery_days, null);
+  assert.strictEqual(rec1.estimated_cost, null);
+  assert.strictEqual(rec2.estimated_recovery_days, 5, "already-set recovery action is left untouched");
+  assert.strictEqual(rec2.estimated_cost, 2500);
+});
+
+check("newRecoveryAction() defaults estimated_recovery_days and estimated_cost to null", () => {
+  const store = loadStoreWith(null);
+  const r = store.newRecoveryAction({ activity_id: "act_1", project_id: "proj_1", description: "Test" });
+  assert.strictEqual(r.estimated_recovery_days, null);
+  assert.strictEqual(r.estimated_cost, null);
 });
 
 console.log("\n" + passed + " passed, " + failed + " failed");

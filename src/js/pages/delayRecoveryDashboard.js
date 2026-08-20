@@ -1,5 +1,6 @@
 /* Delay & Recovery Dashboard (PCC Evolution Roadmap, Tier C: Project Performance;
- * extended Tier F Gate 23: Advanced Delay Analysis).
+ * extended Tier F Gate 23: Advanced Delay Analysis; extended Tier F Gate 24: Recovery
+ * & Mitigation Planning).
  *
  * Portfolio-wide rollup of recovery actions AND (as of Gate 23) delay records — distinct
  * from the Schedule module's own baseline-compare view (Gate 4/5 finish-variance/delayed
@@ -15,6 +16,15 @@
  * Detail Panel (renderRecoveryActionsSection() / renderDelayRecordsSection() in
  * pages/schedule.js) — this page stays read-only, same "entry lives on the record,
  * dashboard is a separate rollup" split as the Vendor Performance Centre.
+ *
+ * Gate 24 adds two things: a quantified rollup of open recovery actions' own
+ * estimated_recovery_days/estimated_cost fields (open only — a completed/cancelled
+ * action's estimate is historical, not a live commitment), and nothing else — the
+ * actual "what if we recover N days" exploration tool (the What-If Sandbox, a new tab
+ * in schedule.js) is deliberately NOT duplicated here for the same "entry/exploration
+ * lives on its own page, dashboard only rolls up decided numbers" split as everything
+ * else on this page. A what-if run is never persisted, so there's nothing to roll up
+ * even if this page wanted to.
  */
 (function () {
   "use strict";
@@ -51,6 +61,11 @@
     if (action.status === "completed" || action.status === "cancelled") return false;
     if (!action.target_recovery_date) return false;
     return action.target_recovery_date < todayIso();
+  }
+
+  function fmtMoney(amount) {
+    if (amount === null || amount === undefined || amount === "" || isNaN(Number(amount))) return null;
+    return Number(amount).toLocaleString(undefined, { maximumFractionDigits: 2 });
   }
 
   function kpiCard(label, value, colorVar) {
@@ -94,6 +109,8 @@
       "<p class='text-secondary' style='font-size:12px;margin:4px 0 0'>" +
       (r.responsible_person ? r.responsible_person + " · " : "") +
       (r.target_recovery_date ? "target " + r.target_recovery_date : "no target date") +
+      (r.estimated_recovery_days != null ? " · est. " + r.estimated_recovery_days + "d recovery" : "") +
+      (fmtMoney(r.estimated_cost) != null ? " · est. cost " + fmtMoney(r.estimated_cost) : "") +
       "</p>";
     row.appendChild(left);
 
@@ -304,6 +321,20 @@
     kpiGrid.appendChild(kpiCard("OVERDUE", overdueCount, overdueCount > 0 ? "--status-critical" : null));
     kpiGrid.appendChild(kpiCard("COMPLETED", actions.filter(function (r) { return r.status === "completed"; }).length, null));
     wrap.appendChild(kpiGrid);
+
+    // Gate 24 (PCC Evolution Roadmap, Tier F: Recovery & Mitigation Planning):
+    // quantified rollup across OPEN actions only — a completed/cancelled action's
+    // estimate is historical, not a live commitment to weigh against the portfolio.
+    var estDaysTotal = open.reduce(function (sum, r) { return sum + (r.estimated_recovery_days || 0); }, 0);
+    var estCostTotal = open.reduce(function (sum, r) { return sum + (r.estimated_cost || 0); }, 0);
+    if (estDaysTotal > 0 || estCostTotal > 0) {
+      var estGrid = document.createElement("div");
+      estGrid.className = "kpi-grid";
+      estGrid.style.marginTop = "10px";
+      estGrid.appendChild(kpiCard("EST. RECOVERY DAYS (OPEN)", estDaysTotal, null));
+      estGrid.appendChild(kpiCard("EST. RECOVERY COST (OPEN)", fmtMoney(estCostTotal) || "0", null));
+      wrap.appendChild(estGrid);
+    }
 
     var openPanel = document.createElement("div");
     openPanel.className = "panel";

@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 45;
+  var SCHEMA_VERSION = 46;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -1259,6 +1259,16 @@
       responsible_person: "",
       target_recovery_date: "",
       status: "open", // open | in_progress | completed | cancelled
+      // Gate 24 (PCC Evolution Roadmap, Tier F: Recovery & Mitigation Planning). How
+      // many schedule days this action is expected to recover, and what it costs to
+      // execute — quantifying a recovery option rather than leaving it as a bare
+      // to-do. Never auto-derived from the What-If Sandbox (schedule.js's own new
+      // "What-If" tab) — that tool is deliberately a standalone exploration aid, not
+      // wired to write back into any one Recovery Action; a PM types in the number
+      // they've decided on after exploring, same "record the decision, not the
+      // exploration" split Baselines already draws between the Gantt and Baselines tab.
+      estimated_recovery_days: null,
+      estimated_cost: null,
       created_at: now,
       updated_at: now,
     };
@@ -2317,6 +2327,18 @@
       // recovery_actions/decisions/weekly_reviews before it.
       if (!loaded.delay_records) loaded.delay_records = [];
       loaded.schema_version = 45;
+    }
+
+    if (loaded.schema_version < 46) {
+      // PCC Evolution Roadmap, Tier F: Recovery & Mitigation Planning (Gate 24).
+      // Backfill existing recovery_actions with the two new quantification fields as
+      // null (never guessed) — same "unknown until entered" convention as every other
+      // optional numeric field backfilled elsewhere in this chain.
+      (loaded.recovery_actions || []).forEach(function (r) {
+        if (r.estimated_recovery_days === undefined) r.estimated_recovery_days = null;
+        if (r.estimated_cost === undefined) r.estimated_cost = null;
+      });
+      loaded.schema_version = 46;
     }
 
     return loaded;
