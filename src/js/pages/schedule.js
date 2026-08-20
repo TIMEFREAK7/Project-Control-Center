@@ -3635,6 +3635,35 @@
     return wrap;
   }
 
+  /** PCC Evolution Roadmap, Tier F (Gate 26, Integrated Project Controls) — a small note
+   * between the two sections above: the same per-activity Delay <-> Recovery gap
+   * computation as executiveCenter.js's buildProjectContext() and
+   * delayRecoveryDashboard.js's portfolio-wide rollup (see either's own comment for the
+   * full reasoning: only open recovery actions count, floored at 0), scoped to just
+   * this one activity. Independently re-derived here rather than calling into either of
+   * those pages, per this app's established per-module-duplication convention
+   * (recoveryActionOverdue() above is the same pattern). Returns null when the activity
+   * has no delay logged, so the caller can skip appending anything. */
+  function renderDelayRecoveryGapNote(activity, data) {
+    var delayDays = data.delay_records
+      .filter(function (r) { return r.activity_id === activity.id; })
+      .reduce(function (sum, r) { return sum + (r.delay_days || 0); }, 0);
+    if (delayDays === 0) return null;
+    var recoveryDays = data.recovery_actions
+      .filter(function (r) { return r.activity_id === activity.id && (r.status === "open" || r.status === "in_progress"); })
+      .reduce(function (sum, r) { return sum + (r.estimated_recovery_days || 0); }, 0);
+    var gapDays = Math.max(0, delayDays - recoveryDays);
+    var note = document.createElement("p");
+    note.className = "text-secondary";
+    note.style.fontSize = "12px";
+    note.style.margin = "10px 0 0";
+    note.textContent =
+      gapDays > 0
+        ? delayDays + "d delay logged, " + recoveryDays + "d recovery estimated — " + gapDays + "d unaddressed."
+        : delayDays + "d delay logged, " + recoveryDays + "d recovery estimated — fully addressed.";
+    return note;
+  }
+
   function renderActivityDetailPanel(container, activity, data, wbsItems, scheduleActivities, relationships, rerender) {
     var panel = document.createElement("div");
     panel.className = "panel";
@@ -3739,6 +3768,8 @@
     panel.appendChild(renderDocumentReadinessSection(activity, data));
     panel.appendChild(renderRecoveryActionsSection(activity, data, rerender));
     panel.appendChild(renderDelayRecordsSection(activity, data, rerender));
+    var gapNote = renderDelayRecoveryGapNote(activity, data);
+    if (gapNote) panel.appendChild(gapNote);
 
     var actions = document.createElement("div");
     actions.style.display = "flex";

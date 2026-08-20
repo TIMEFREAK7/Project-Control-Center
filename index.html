@@ -9661,10 +9661,18 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var nonArchived = data.projects.filter(function (p) { return !p.archived; });
     var delayedCount = 0;
     var upcomingCount = 0;
+    var totalUnaddressedDelayDays = 0;
     nonArchived.forEach(function (p) {
       var summary = window.PCC.executiveCenter.getHealthSummary(p.id);
       if (summary.delayedActivityCount > 0) delayedCount++;
       if (projectIsUpcoming(p, data)) upcomingCount++;
+      // PCC Evolution Roadmap, Tier F (Gate 26, Integrated Project Controls) — the
+      // portfolio-wide rollup of Gate 26's own per-project Delay <-> Recovery gap
+      // (see executiveCenter.js's buildProjectContext() for the full reasoning).
+      // Reuses getSchedulePerformanceSummary() rather than re-deriving the gap here,
+      // since it's already a per-project total, not something that needs per-activity
+      // detail at this level.
+      totalUnaddressedDelayDays += window.PCC.executiveCenter.getSchedulePerformanceSummary(p.id).unaddressedDelayDays;
     });
     return {
       total: data.projects.length,
@@ -9673,6 +9681,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       atRisk: nonArchived.filter(function (p) { return p.status === "at_risk"; }).length,
       delayed: delayedCount,
       upcoming: upcomingCount,
+      unaddressedDelayDays: totalUnaddressedDelayDays,
     };
   }
 
@@ -9687,6 +9696,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       { label: "AT RISK", value: kpis.atRisk, colorVar: kpis.atRisk > 0 ? "--status-at-risk" : null },
       { label: "DELAYED", value: kpis.delayed, colorVar: kpis.delayed > 0 ? "--status-critical" : null },
       { label: "UPCOMING", value: kpis.upcoming, colorVar: null },
+      { label: "UNADDRESSED DELAY (DAYS)", value: kpis.unaddressedDelayDays, colorVar: kpis.unaddressedDelayDays > 0 ? "--status-critical" : null },
     ].forEach(function (kpi) {
       var card = document.createElement("div");
       card.className = "kpi-card";
@@ -9729,12 +9739,18 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var table = document.createElement("table");
     table.className = "data-table";
     var thead = document.createElement("thead");
-    thead.innerHTML = "<tr><th>Project</th><th>Progress</th><th>Schedule</th><th>Risk</th><th>Health</th></tr>";
+    thead.innerHTML = "<tr><th>Project</th><th>Progress</th><th>Schedule</th><th>Risk</th><th>Health</th><th>Sched. Perf.</th></tr>";
     table.appendChild(thead);
 
     var tbody = document.createElement("tbody");
     projects.forEach(function (p) {
       var summary = window.PCC.executiveCenter.getHealthSummary(p.id);
+      // PCC Evolution Roadmap, Tier F (Gate 26, Integrated Project Controls) — same
+      // "export one composed function rather than duplicate buildProjectContext()"
+      // reasoning as getHealthSummary() above; kept deliberately separate from Health
+      // per that gate's own decision (see executiveCenter.js's own comment on
+      // getSchedulePerformanceSummary()).
+      var schedPerf = window.PCC.executiveCenter.getSchedulePerformanceSummary(p.id);
       var row = document.createElement("tr");
 
       var nameCell = document.createElement("td");
@@ -9772,6 +9788,18 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         healthCell.appendChild(scoreSpan);
       }
       row.appendChild(healthCell);
+
+      var schedPerfCell = document.createElement("td");
+      schedPerfCell.appendChild(ragCell(schedPerf.rag));
+      if (schedPerf.score != null) {
+        var schedPerfScoreSpan = document.createElement("span");
+        schedPerfScoreSpan.className = "text-secondary";
+        schedPerfScoreSpan.style.fontSize = "11px";
+        schedPerfScoreSpan.style.marginLeft = "6px";
+        schedPerfScoreSpan.textContent = schedPerf.score;
+        schedPerfCell.appendChild(schedPerfScoreSpan);
+      }
+      row.appendChild(schedPerfCell);
 
       tbody.appendChild(row);
     });
@@ -11544,7 +11572,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     expandedReviewId: null,
     packSections: {
       cover: true, summary: true, snapshot: true, kpis: true, progress: true,
-      schedule: true, milestones: true, cost: true, evm: true, risks: true,
+      schedule: true, statusDate: true, delayRecovery: true, schedulePerformance: true,
+      milestones: true, cost: true, evm: true, risks: true,
       issues: true, rfis: true, changes: true, dailylog: true, meetings: true,
     },
   };
@@ -11959,6 +11988,51 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     ctx.openRecoveryActions = openRecoveryActions;
     ctx.overdueRecoveryActions = overdueRecoveryActions;
 
+    // ---- Delay Records (PCC Evolution Roadmap, Tier F: Advanced Delay Analysis,
+    // Gate 23), and the Delay <-> Recovery gap (Gate 26, Integrated Project Controls) —
+    // the first computed connection between the two: Gate 23 and Gate 24 each shipped
+    // real capability but had ZERO cross-reference to each other, despite being the
+    // roadmap's own natural pair ("why is this late" / "what are we doing about it").
+    // Computed PER ACTIVITY (not a flat project-wide total) since a Recovery Action's
+    // estimated days are only meaningful against the delay on the SAME activity —
+    // letting recovery on one activity silently "cancel out" delay on an unrelated one
+    // would misreport progress that isn't real. Only OPEN/in-progress recovery actions
+    // count toward the gap (completed/cancelled ones are historical, same convention
+    // Gate 24's own dashboard rollup uses), and a negative gap (more recovery estimated
+    // than delay logged) floors at 0 rather than reporting a misleading "surplus." ----
+    var projectDelayRecords = data.delay_records.filter(function (r) { return r.project_id === projectId; });
+    ctx.allDelayRecords = projectDelayRecords;
+    var delayDaysByActivity = {};
+    projectDelayRecords.forEach(function (r) {
+      delayDaysByActivity[r.activity_id] = (delayDaysByActivity[r.activity_id] || 0) + (r.delay_days || 0);
+    });
+    var recoveryDaysByActivity = {};
+    openRecoveryActions.forEach(function (r) {
+      recoveryDaysByActivity[r.activity_id] = (recoveryDaysByActivity[r.activity_id] || 0) + (r.estimated_recovery_days || 0);
+    });
+    var unaddressedDelayActivities = [];
+    var totalDelayDays = 0;
+    var totalUnaddressedDelayDays = 0;
+    Object.keys(delayDaysByActivity).forEach(function (activityId) {
+      var delayDays = delayDaysByActivity[activityId];
+      var recoveryDays = recoveryDaysByActivity[activityId] || 0;
+      var gapDays = Math.max(0, delayDays - recoveryDays);
+      totalDelayDays += delayDays;
+      totalUnaddressedDelayDays += gapDays;
+      if (gapDays > 0) {
+        // Looked up against ALL of the project's activities (data.activities), not just
+        // the currently-selected schedule's — a delay record can be logged against an
+        // activity on a superseded revision, and that's still a real, resolvable name,
+        // not a "deleted activity."
+        var gapActivity = data.activities.find(function (a) { return a.id === activityId; });
+        unaddressedDelayActivities.push({ id: activityId, scheduleId: gapActivity ? gapActivity.schedule_id : null, name: gapActivity ? gapActivity.name : "(deleted activity)", delayDays: delayDays, recoveryDays: recoveryDays, gapDays: gapDays });
+      }
+    });
+    unaddressedDelayActivities.sort(function (a, b) { return b.gapDays - a.gapDays; });
+    ctx.totalDelayDays = totalDelayDays;
+    ctx.totalUnaddressedDelayDays = totalUnaddressedDelayDays;
+    ctx.unaddressedDelayActivities = unaddressedDelayActivities;
+
     // ---- Decisions (PCC Evolution Roadmap, Tier C) ----
     var projectDecisions = data.decisions.filter(function (d) { return d.project_id === projectId; });
     var pendingDecisions = projectDecisions.filter(function (d) { return d.status === "pending"; });
@@ -12369,6 +12443,24 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         delayedActivityCount: ctx.delayedActivities.length,
       };
     },
+    /** PCC Evolution Roadmap, Tier F (Gate 26, Integrated Project Controls) — same "export
+     * one composed function rather than duplicate buildProjectContext()" reasoning as
+     * getHealthSummary() above. Portfolio Performance's new "Sched. Perf." column needs
+     * Gate 25's Schedule Performance Score (deliberately kept separate from the Health
+     * Score per the roadmap's own Gate 26 decision — see projectHealthEngine.js, which
+     * this function does NOT touch) plus Gate 26's own Delay<->Recovery gap, so both can
+     * never disagree with what this page's own panels show for the same project. */
+    getSchedulePerformanceSummary: function (projectId) {
+      var data = window.PCC.store.get();
+      var ctx = buildProjectContext(data, projectId);
+      return {
+        score: ctx.schedulePerformance.score,
+        rag: ctx.schedulePerformance.rag || "unknown",
+        spi: ctx.evm ? ctx.evm.spi : null,
+        spiT: ctx.earnedSchedule && !ctx.earnedSchedule.insufficientData ? ctx.earnedSchedule.spiT : null,
+        unaddressedDelayDays: ctx.totalUnaddressedDelayDays,
+      };
+    },
   };
 
   function renderPage(outlet) {
@@ -12604,6 +12696,23 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       renderSchedulePerformanceDetail(outlet, ctx, p, rerender);
     } else {
       renderKpiEmptySection(outlet, "SCHEDULE PERFORMANCE", "No schedule with activities yet — see the Schedule page.");
+    }
+
+    // PCC Evolution Roadmap, Tier F (Gate 26, Integrated Project Controls): the first
+    // Executive Center panel for Delay Records/Recovery Actions at all — Gates 23/24
+    // each shipped real capability but neither ever got a project-level rollup here,
+    // and neither had any computed connection to the other (see buildProjectContext()'s
+    // own comment on the Delay<->Recovery gap for why).
+    if (ctx.allDelayRecords.length > 0 || ctx.allRecoveryActions.length > 0) {
+      renderKpiSection(outlet, "DELAY & RECOVERY", [
+        { label: "Delay Records", value: ctx.allDelayRecords.length },
+        { label: "Total Delay Days", value: ctx.totalDelayDays, colorVar: ctx.totalDelayDays > 0 ? "--status-critical" : null },
+        { label: "Open Recovery Actions", value: ctx.openRecoveryActions.length },
+        { label: "Unaddressed Delay Days", value: ctx.totalUnaddressedDelayDays, colorVar: ctx.totalUnaddressedDelayDays > 0 ? "--status-critical" : null },
+      ]);
+      renderDelayRecoveryGapDetail(outlet, ctx, p);
+    } else {
+      renderKpiEmptySection(outlet, "DELAY & RECOVERY", "No delay records or recovery actions logged for this project yet — see an activity's own Detail Panel in the Schedule module.");
     }
 
     renderKpiSection(outlet, "RISKS", [
@@ -12949,6 +13058,57 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       baselineWrap.appendChild(viewBaselinesBtn);
     }
     outlet.appendChild(baselineWrap);
+  }
+
+  /** PCC Evolution Roadmap, Tier F (Gate 26, Integrated Project Controls) — the detail
+   * list behind the DELAY & RECOVERY KPI panel's "Unaddressed Delay Days" figure: which
+   * specific activities it's made up of, worst gap first (ctx.unaddressedDelayActivities
+   * is already sorted by buildProjectContext()). Each row gets a "View in Gantt" button
+   * following the same cross-module link convention as every other register's activity
+   * link (decisionRegister.js, documents.js) — land exactly on that activity's own Detail
+   * Panel rather than just naming it. */
+  function renderDelayRecoveryGapDetail(outlet, ctx, p) {
+    if (ctx.unaddressedDelayActivities.length === 0) return;
+    var wrap = document.createElement("div");
+    wrap.className = "panel";
+    wrap.style.marginTop = "10px";
+    var heading = document.createElement("h4");
+    heading.style.marginBottom = "8px";
+    heading.textContent = "Activities With Unaddressed Delay (" + ctx.unaddressedDelayActivities.length + ")";
+    wrap.appendChild(heading);
+    ctx.unaddressedDelayActivities.slice(0, 20).forEach(function (a) {
+      var row = document.createElement("div");
+      row.style.display = "flex";
+      row.style.justifyContent = "space-between";
+      row.style.alignItems = "center";
+      row.style.flexWrap = "wrap";
+      row.style.gap = "8px";
+      row.style.margin = "4px 0";
+      var label = document.createElement("span");
+      label.style.fontSize = "13px";
+      label.textContent =
+        esc(a.name) + " — " + a.delayDays + "d delay, " + a.recoveryDays + "d recovery estimated (" + a.gapDays + "d unaddressed)";
+      row.appendChild(label);
+      if (a.scheduleId) {
+        var viewBtn = document.createElement("button");
+        viewBtn.className = "btn btn--ghost";
+        viewBtn.textContent = "View in Gantt";
+        viewBtn.onclick = function () {
+          if (window.PCC.schedule) window.PCC.schedule.viewActivity(p.id, a.scheduleId, a.id);
+          window.PCC.router.go("schedule");
+        };
+        row.appendChild(viewBtn);
+      }
+      wrap.appendChild(row);
+    });
+    if (ctx.unaddressedDelayActivities.length > 20) {
+      var more = document.createElement("p");
+      more.className = "text-secondary";
+      more.style.fontSize = "12px";
+      more.textContent = "+" + (ctx.unaddressedDelayActivities.length - 20) + " more not shown.";
+      wrap.appendChild(more);
+    }
+    outlet.appendChild(wrap);
   }
 
   // ---------------------------------------------------------------------------------
@@ -13799,6 +13959,60 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       doc.appendChild(scheduleSection);
     }
 
+    // PCC Evolution Roadmap, Tier F (Gate 26, Integrated Project Controls) — three new
+    // report sections pulling together Gates 20/21 (Status Date), 23/24 (Delay &
+    // Recovery, now with Gate 26's own cross-reference gap), and 25 (Schedule
+    // Performance Score) into the Management Pack for the first time. All computed
+    // fields already exist on ctx from buildProjectContext() — no new computation here.
+    if (sections.statusDate) {
+      var statusDateSection = reportSection("Status Date & Baseline Summary");
+      if (!ctx.schedule) {
+        statusDateSection.appendChild(reportEmptyNote("No schedule for this project."));
+      } else {
+        statusDateSection.appendChild(reportTable(["Metric", "Value"], [
+          ["Status Date", ctx.schedule.data_date || "—"],
+          ["Out of Sequence Activities", String(ctx.outOfSequenceActivities.length)],
+          ["Forecast to Finish Late", String(ctx.forecastLateActivities.length)],
+          ["Captured Baselines", String(ctx.baselineCount)],
+          ["Official Baseline", ctx.officialBaseline ? ctx.officialBaseline.name : "None set"],
+        ]));
+      }
+      doc.appendChild(statusDateSection);
+    }
+
+    if (sections.delayRecovery) {
+      var delayRecoverySection = reportSection("Delay & Recovery Summary");
+      if (ctx.allDelayRecords.length === 0 && ctx.allRecoveryActions.length === 0) {
+        delayRecoverySection.appendChild(reportEmptyNote("No delay records or recovery actions logged for this project."));
+      } else {
+        delayRecoverySection.appendChild(reportTable(["Metric", "Value"], [
+          ["Delay Records", String(ctx.allDelayRecords.length)],
+          ["Total Delay Days", String(ctx.totalDelayDays)],
+          ["Open Recovery Actions", String(ctx.openRecoveryActions.length)],
+          ["Unaddressed Delay Days", String(ctx.totalUnaddressedDelayDays)],
+        ]));
+        if (ctx.unaddressedDelayActivities.length > 0) {
+          delayRecoverySection.appendChild(
+            reportTable(
+              ["Activity", "Delay Days", "Recovery Days", "Unaddressed Days"],
+              ctx.unaddressedDelayActivities.slice(0, 20).map(function (a) { return [a.name, String(a.delayDays), String(a.recoveryDays), String(a.gapDays)]; })
+            )
+          );
+        }
+      }
+      doc.appendChild(delayRecoverySection);
+    }
+
+    if (sections.schedulePerformance) {
+      var schedPerfSection = reportSection("Schedule Performance Summary");
+      schedPerfSection.appendChild(reportTable(["Metric", "Value"], [
+        ["Schedule Performance Score", ctx.schedulePerformance.score == null ? "—" : String(ctx.schedulePerformance.score) + " (" + RAG_LABELS[ctx.schedulePerformance.rag] + ")"],
+        ["SPI", ctx.evm && ctx.evm.spi != null ? ctx.evm.spi.toFixed(2) : "—"],
+        ["SPI(t)", ctx.earnedSchedule && !ctx.earnedSchedule.insufficientData ? ctx.earnedSchedule.spiT.toFixed(2) : "—"],
+      ]));
+      doc.appendChild(schedPerfSection);
+    }
+
     if (sections.milestones) {
       var msSection = reportSection("Milestone Status");
       var allMilestones = ctx.activities.filter(function (a) { return a.activity_type === "milestone"; });
@@ -14235,7 +14449,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       cbGrid.style.gap = "6px";
       var sectionLabels = {
         cover: "Cover Page", summary: "Executive Summary", snapshot: "Project Snapshot", kpis: "KPI Dashboard",
-        progress: "Progress Summary (S-Curve)", schedule: "Schedule Summary", milestones: "Milestone Status",
+        progress: "Progress Summary (S-Curve)", schedule: "Schedule Summary",
+        statusDate: "Status Date & Baseline Summary", delayRecovery: "Delay & Recovery Summary", schedulePerformance: "Schedule Performance Summary",
+        milestones: "Milestone Status",
         cost: "Cost Summary", evm: "EVM Summary", risks: "Risk Summary", issues: "Issue Summary",
         rfis: "RFI Summary", changes: "Change Summary", dailylog: "Daily Site Log Summary", meetings: "Meeting Action Summary",
       };
@@ -23848,6 +24064,35 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     return wrap;
   }
 
+  /** PCC Evolution Roadmap, Tier F (Gate 26, Integrated Project Controls) — a small note
+   * between the two sections above: the same per-activity Delay <-> Recovery gap
+   * computation as executiveCenter.js's buildProjectContext() and
+   * delayRecoveryDashboard.js's portfolio-wide rollup (see either's own comment for the
+   * full reasoning: only open recovery actions count, floored at 0), scoped to just
+   * this one activity. Independently re-derived here rather than calling into either of
+   * those pages, per this app's established per-module-duplication convention
+   * (recoveryActionOverdue() above is the same pattern). Returns null when the activity
+   * has no delay logged, so the caller can skip appending anything. */
+  function renderDelayRecoveryGapNote(activity, data) {
+    var delayDays = data.delay_records
+      .filter(function (r) { return r.activity_id === activity.id; })
+      .reduce(function (sum, r) { return sum + (r.delay_days || 0); }, 0);
+    if (delayDays === 0) return null;
+    var recoveryDays = data.recovery_actions
+      .filter(function (r) { return r.activity_id === activity.id && (r.status === "open" || r.status === "in_progress"); })
+      .reduce(function (sum, r) { return sum + (r.estimated_recovery_days || 0); }, 0);
+    var gapDays = Math.max(0, delayDays - recoveryDays);
+    var note = document.createElement("p");
+    note.className = "text-secondary";
+    note.style.fontSize = "12px";
+    note.style.margin = "10px 0 0";
+    note.textContent =
+      gapDays > 0
+        ? delayDays + "d delay logged, " + recoveryDays + "d recovery estimated — " + gapDays + "d unaddressed."
+        : delayDays + "d delay logged, " + recoveryDays + "d recovery estimated — fully addressed.";
+    return note;
+  }
+
   function renderActivityDetailPanel(container, activity, data, wbsItems, scheduleActivities, relationships, rerender) {
     var panel = document.createElement("div");
     panel.className = "panel";
@@ -23952,6 +24197,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     panel.appendChild(renderDocumentReadinessSection(activity, data));
     panel.appendChild(renderRecoveryActionsSection(activity, data, rerender));
     panel.appendChild(renderDelayRecordsSection(activity, data, rerender));
+    var gapNote = renderDelayRecoveryGapNote(activity, data);
+    if (gapNote) panel.appendChild(gapNote);
 
     var actions = document.createElement("div");
     actions.style.display = "flex";
@@ -25438,6 +25685,81 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           delayListPanel.appendChild(row);
         });
       wrap.appendChild(delayListPanel);
+      // ---- Delay <-> Recovery Gap (Gate 26, Integrated Project Controls) — portfolio-
+      // wide version of the same per-activity computation in executiveCenter.js's
+      // buildProjectContext() (see that file's own comment for the full reasoning:
+      // per-activity, not flat, so recovery estimated on one activity can't appear to
+      // "cancel out" delay logged on an unrelated one; open recovery actions only;
+      // floored at 0). Independently re-derived here rather than calling into
+      // executiveCenter.js, per this app's established per-module-duplication
+      // convention (recoveryActionOverdue() above is the same pattern). ----
+      var openActionsForGap = actions.filter(function (r) { return r.status === "open" || r.status === "in_progress"; });
+      var gapDelayByActivity = {};
+      delayRecords.forEach(function (r) {
+        gapDelayByActivity[r.activity_id] = (gapDelayByActivity[r.activity_id] || 0) + (r.delay_days || 0);
+      });
+      var gapRecoveryByActivity = {};
+      openActionsForGap.forEach(function (r) {
+        gapRecoveryByActivity[r.activity_id] = (gapRecoveryByActivity[r.activity_id] || 0) + (r.estimated_recovery_days || 0);
+      });
+      var gapActivities = [];
+      var totalUnaddressedGapDays = 0;
+      Object.keys(gapDelayByActivity).forEach(function (activityId) {
+        var gapDelayDays = gapDelayByActivity[activityId];
+        var gapRecoveryDays = gapRecoveryByActivity[activityId] || 0;
+        var gapDays = Math.max(0, gapDelayDays - gapRecoveryDays);
+        totalUnaddressedGapDays += gapDays;
+        if (gapDays > 0) {
+          var gapActivity = activitiesById[activityId];
+          var gapProject = gapActivity ? projectsById[gapActivity.project_id] : null;
+          gapActivities.push({ activity: gapActivity, project: gapProject, delayDays: gapDelayDays, recoveryDays: gapRecoveryDays, gapDays: gapDays });
+        }
+      });
+      gapActivities.sort(function (a, b) { return b.gapDays - a.gapDays; });
+
+      var gapKpiGrid = document.createElement("div");
+      gapKpiGrid.className = "kpi-grid";
+      gapKpiGrid.style.marginTop = "10px";
+      gapKpiGrid.appendChild(kpiCard("UNADDRESSED DELAY (DAYS)", totalUnaddressedGapDays, totalUnaddressedGapDays > 0 ? "--status-critical" : null));
+      wrap.appendChild(gapKpiGrid);
+
+      if (gapActivities.length > 0) {
+        var gapPanel = document.createElement("div");
+        gapPanel.className = "panel";
+        gapPanel.style.marginTop = "16px";
+        var gapHeading = document.createElement("h3");
+        gapHeading.style.marginBottom = "8px";
+        gapHeading.textContent = "Activities With Unaddressed Delay (worst first)";
+        gapPanel.appendChild(gapHeading);
+        gapActivities.forEach(function (g) {
+          var row = document.createElement("div");
+          row.style.display = "flex";
+          row.style.justifyContent = "space-between";
+          row.style.alignItems = "flex-start";
+          row.style.gap = "8px";
+          row.style.padding = "8px 0";
+          row.style.borderBottom = "1px solid var(--divider)";
+          row.style.fontSize = "13px";
+          var left = document.createElement("div");
+          left.innerHTML =
+            "<strong>" + (g.activity ? g.activity.name : "(deleted activity)") + "</strong>" +
+            "<p class='text-secondary' style='font-size:12px;margin:4px 0 0'>" +
+            (g.project ? g.project.name || "(unnamed project)" : "(deleted project)") +
+            "</p>" +
+            "<p class='text-secondary' style='font-size:12px;margin:4px 0 0'>" +
+            g.delayDays + "d delay, " + g.recoveryDays + "d recovery estimated (" + g.gapDays + "d unaddressed)" +
+            "</p>";
+          row.appendChild(left);
+          if (g.activity) {
+            var right = document.createElement("div");
+            right.style.flexShrink = "0";
+            right.appendChild(viewInScheduleBtn(g.activity));
+            row.appendChild(right);
+          }
+          gapPanel.appendChild(row);
+        });
+        wrap.appendChild(gapPanel);
+      }
     } else {
       var noDelay = document.createElement("div");
       noDelay.className = "panel empty-state";
