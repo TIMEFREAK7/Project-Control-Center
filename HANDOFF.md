@@ -63,7 +63,8 @@ that override default behavior).
 
 ## NEW INITIATIVE: UI/UX Overhaul (started 2026-08-20) — a THIRD, separate roadmap
 
-With Tiers A-F, Tiers 1-2, and Tier 3 all complete/closed out (see below), Aditya started an
+`main` is up to date through **UI/UX Overhaul Gate 2** (Global Navigation), `schema_version`
+**52**. With Tiers A-F, Tiers 1-2, and Tier 3 all complete/closed out (see below), Aditya started an
 entirely new, large initiative right after: a **complete UI/UX overhaul** — desktop, laptop,
 tablet, mobile — turning PCC's look into a "professional Project Controls / PMO application"
 while explicitly preserving all existing business logic, data, schema, and module behavior. This
@@ -159,19 +160,102 @@ and identically to before — this gate is invisible in effect except for the su
 `--status-warning` token, exactly as intended for a "tokens + inert primitives" gate. Zip verified
 separately post-merge (fresh extraction, real Chromium) — clean.
 
-**Next step for a fresh session: propose UI/UX Overhaul Gate 2 (Global Navigation) to Aditya and
-wait for approval before building.** Per the brief's own plan: collapsible desktop sidebar (using
-the new `.sidebar--collapsed` CSS from Gate 1 — needs a toggle button + `layout.js` changes to add/
-remove the class, ideally persisted to `settings` so the choice survives a reload, which IS a
-`store.js` touch — small, additive field, not a schema-breaking change, but flag it explicitly per
-Aditya's "STOP and explain" rule for any data-layer touch), laptop-tier behavior (the brief:
-"Desktop: Sidebar + Main Workspace + Insights Panel" collapsing to "Laptop: Sidebar + Main
-Workspace" with secondary info becoming collapsible/tabs/drawer — there is no "Insights Panel"
-concept in the current app to collapse, so this needs inspecting what, if anything, plays that
-role per-page before assuming), mobile navigation, and a proper page-header component distinct
-from the current `.title-block` (which currently conflates "app chrome" and "page title" in one
-element). Inspect `layout.js` and each page's own header-rendering pattern first, same discipline
-as every gate — don't assume the brief's structure maps 1:1 onto what exists.
+**UI/UX Overhaul Gate 2 — Global Navigation** (merge `f98de7b`). Two genuine forks in the brief
+were put to Aditya via `AskUserQuestion` before building:
+- **Sidebar collapse: manual toggle, persisted (chosen over per-tier auto-collapse)** — one
+  collapse button, same behavior from Large Desktop down through Tablet, remembered across
+  reloads rather than the width itself deciding a default state.
+- **Mobile nav: hamburger + slide-in drawer (chosen over a bottom tab bar)** — avoids having to
+  pick which ~4 of 23 nav items "win" a permanent slot.
+
+**This is the one data-layer touch Gate 2 needed, flagged and confirmed before building it, per
+Aditya's "STOP and explain" rule**: new `settings.sidebar_collapsed` (boolean, default `false`),
+`schema_version` **51 → 52**, one migration block backfilling every existing install to `false` —
+the same expanded-by-default behavior every install already had, just now an explicit, editable
+setting instead of the only option. `test_store_schema_v51_migration.js` renamed to
+`test_store_schema_v52_migration.js` (this project's "one canonical full-chain migration test
+targeting latest" convention) with new backfill checks.
+
+What shipped, `layout.js` + `styles.css` only (no page files touched):
+- **`buildNavList()`** factored out of the old `buildSidebar()` — one function building a fresh
+  `<ul class="sidebar__nav">` from `NAV_GROUPS`, now shared by the fixed sidebar AND the new
+  mobile drawer. Both copies use the same `.sidebar__link`/`data-route` shape, so
+  `setActiveNav()`'s existing plain `querySelectorAll(".sidebar__link")` highlights whichever
+  copy(ies) happen to be in the DOM without needing to know which.
+- **Collapse toggle**: a `.sidebar__collapse-btn` in a new `.sidebar__header-row` (wrapping the
+  existing "SHEET INDEX" label). Click handler flips `settings.sidebar_collapsed`, toggles
+  `.sidebar--collapsed` (Gate 1's inert icon-rail CSS, now with its first real caller) on the
+  actual `.sidebar` element, and updates the button's own glyph/title (« collapse / » expand).
+- **Mobile drawer**: `openMobileNav()`/`closeMobileNav()` build/tear down a `.drawer-overlay` +
+  `.drawer` (Gate 1's inert primitives, also now wired up) containing a fresh `buildNavList()`
+  call. Closes on backdrop click, Escape, clicking a nav link inside it, or — via a new call
+  inside `setActiveNav()` itself — ANY route change at all, even one triggered by something other
+  than a drawer link. A hamburger button (`.icon-btn--menu`) lives in the title block, always in
+  the DOM but CSS-hidden above 780px.
+- **The fixed `.sidebar` is now hidden entirely below 780px** (`display: none`), not turned into
+  the old horizontal scroll strip of all ~23 links — that strip was exactly the "desktop nav
+  squeezed into mobile" anti-pattern the redesign brief calls out by name. The drawer replaces it.
+- **Laptop tier (≤1279px)**: `main.page` padding reduced (24px → 20px) — the brief's "reduce
+  unnecessary padding... prioritize the main workspace" for laptop specifically. No sidebar
+  width/auto-collapse logic at this tier — that's what the manual toggle is for, per Aditya's
+  choice above.
+
+**Bug caught and fixed before shipping** (self-caught, via the new test suite, not user-reported):
+the drawer's nav list is built fresh every time it opens — well after the most recent route
+change already ran `setActiveNav()` — so its links started with no `active` class at all, even
+when a route was clearly selected on the (still-correctly-highlighted) fixed sidebar. Fixed by
+having `buildNavList()` set the `active` class at build time from
+`window.PCC.router.currentRouteName()`, not relying on the next route change to fix it retroactively.
+
+**Test-writing note, same trap as Gate 4's Gantt virtualization test, now confirmed to also apply
+to real anchor-href hash navigation (not just `router.go()`)**: clicking a real `<a href="#/...">`
+element in this jsdom version resolves the resulting hash change and `hashchange`-driven rerender
+**asynchronously** once the full app's timers/listeners are involved — even though a minimal
+isolated repro shows it resolving synchronously. Any jsdom e2e test that clicks a nav link (drawer
+or otherwise) and immediately asserts on `router.currentRouteName()` needs an `await flush()` in
+between, exactly like the `router.go()` case already documented in
+`test_gantt_virtualization_e2e.js`. Not a real bug — real Chromium navigates synchronously, as
+confirmed in this gate's own Playwright pass.
+
+Tests: new `tests/test_uiux_gate2_navigation_e2e.js` (39 checks, including a 26-route smoke test)
+— collapse toggle adds/removes the class and persists to the store; a persisted `true` preference
+is honored when the shell is rebuilt (simulating a reload, via re-invoking `layout.mount()` rather
+than spinning up a second JSDOM instance sharing localStorage); the hamburger opens a drawer with
+the full grouped nav (all four group labels present); backdrop click, Escape, and drawer-link-click
+all close it; navigating any other way also closes it; both the fixed sidebar's and the drawer's
+copy of a link get highlighted correctly for the active route. Full suite: **61 files**, clean,
+zero regressions. Real-Chromium pass (5 screenshots: desktop expanded, desktop collapsed with
+content reflowing into the reclaimed width, the SAME collapsed state confirmed to survive an
+actual `page.reload()` — not just in-memory — mobile closed showing just the hamburger, and the
+mobile drawer open with "Dashboard" correctly highlighted) confirmed everything renders and
+persists correctly — zero console errors. Zip verified separately post-merge (fresh extraction,
+real Chromium, collapse toggle exercised) — clean.
+
+**Process note for future sessions, not a code issue**: partway through staging this gate's
+changes, a `git add -A -- <explicit file list>` call included one already-renamed path in its
+list, which failed the whole invocation's pathspec resolution and silently left the other listed
+files (`index.html`, `styles.css`, `layout.js`, `store.js`, `package.json`) unstaged — the first
+commit only captured the test rename and the brand-new test file, not the actual implementation.
+Caught immediately via `git status` right after committing (routine practice, not a special
+check), fixed with an honest follow-up commit rather than amending. Worth remembering: after any
+`git add` invocation that touches a rename/move alongside plain edits, check `git status` before
+trusting the commit is complete, not just after.
+
+**Next step for a fresh session: propose UI/UX Overhaul Gate 3 (Portfolio) to Aditya and wait for
+approval before building.** Per the brief's own plan and this session's own earlier Portfolio
+inspection (see the "Inspection findings before Gate 1" notes above, still accurate): redesign
+`portfolio.js`'s `renderProjectCard()` toward the brief's health-focused example (Progress bar,
+Finish date, Schedule status, Documents %, Open Risks/RFIs counts) instead of the current flat
+name/client/company/country + budget/finish + Executive Center/Details/Edit/Archive button row —
+move Edit/Archive into a contextual menu, keep Executive Center and a Details/Open action as the
+primary actions. Gate 1's new `.progress-bar`/`.attention-list` primitives and `--status-warning`
+token are natural fits here — first real adoption of either. Inspect what health-relevant figures
+`renderProjectCard()` can actually compute from real data before designing the card (open risks
+count, open RFI count, and document submission % all likely already exist somewhere in the store —
+verify per-field rather than assuming the brief's mockup maps 1:1 onto available data, same
+discipline as every gate). Search/filter toolbar and the Cards/Compare view toggle are Gate 16
+work already shipped — don't rebuild them, just fit the new card design into that existing
+structure.
 
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
