@@ -121,6 +121,22 @@
     return predKey + ">" + succKey + ":" + rel.type + ":" + rel.lag;
   }
 
+  /** The overall finish across a list of activities (snapshot or current/live), each
+   * judged on its own effective date (calculated if available, else planned) — same
+   * "own effective date" convention as effectiveDates() above. Hoisted to module scope
+   * (Gate 22, PCC Evolution Roadmap Tier F: Baseline & Schedule Revision Control) so
+   * schedule.js's captureBaseline() can call it directly at capture time to store a
+   * baseline's own project finish synchronously (see store.js's newScheduleBaseline()
+   * comment on baseline_project_finish for why), not just internally within
+   * compareBaselineToCurrent() below. */
+  function overallFinish(activityList) {
+    var finishes = activityList
+      .map(function (a) { return effectiveDates(a).finish; })
+      .filter(function (f) { return f !== null; });
+    if (finishes.length === 0) return null;
+    return finishes.reduce(function (max, f) { return f > max ? f : max; });
+  }
+
   /** Compare a stored baseline snapshot against a current WBS/Activity/Relationship set.
    * `currentActivities`/`currentRelationships`/`currentWbsItems` need not belong to the
    * same schedule_id the snapshot was captured from \u2014 comparing a baseline against a
@@ -210,13 +226,6 @@
     // using its own effective (calculated-if-available, else planned) date \u2014 mirrors
     // the same planned-vs-forecast convention scheduleCpmEngine.js already uses within
     // a single schedule, applied here across the baseline/current boundary instead.
-    function overallFinish(activityList) {
-      var finishes = activityList
-        .map(function (a) { return effectiveDates(a).finish; })
-        .filter(function (f) { return f !== null; });
-      if (finishes.length === 0) return null;
-      return finishes.reduce(function (max, f) { return f > max ? f : max; });
-    }
     var baselineOverallFinish = overallFinish(snapshot.activities);
     var currentOverallFinish = overallFinish(currentActivities);
     var projectFinishVarianceDays = daysBetween(baselineOverallFinish, currentOverallFinish);
@@ -256,5 +265,6 @@
     buildSnapshot: buildSnapshot,
     compareBaselineToCurrent: compareBaselineToCurrent,
     matchKey: matchKey,
+    overallFinish: overallFinish,
   };
 })();

@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 43;
+  var SCHEMA_VERSION = 44;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -1054,7 +1054,6 @@
       status: "draft",
       import_date: null, // set by the importer in Gate 2; null for schedules built by hand
       data_date: now.slice(0, 10),
-      is_baseline: false,
       source_file_name: null,
       // Gate 2: lets checkForDuplicateImport() detect "this exact file was already
       // imported" using the same duplicateService fingerprinting Documents uses \u2014
@@ -1214,6 +1213,20 @@
       activity_count: 0,
       relationship_count: 0,
       notes: "",
+      // Gate 22 (PCC Evolution Roadmap, Tier F: Baseline & Schedule Revision Control).
+      // At most one baseline per project may be official — enforced by the caller
+      // (schedule.js), not this factory. Marking one official locks it against
+      // deletion and, in Executive Center, replaces the plain planned_finish-based
+      // Schedule Variance with variance against this baseline's own captured finish.
+      is_official: false,
+      // The baseline's own overall project finish (max effective finish across its
+      // snapshot activities), computed once at capture time via
+      // scheduleBaselineEngine.overallFinish() and stored here — synchronously,
+      // unlike the full snapshot payload in IndexedDB — specifically so Executive
+      // Center's fully-synchronous buildProjectContext() can use it without an async
+      // IndexedDB read (same "metadata stays synchronous, payload is async" precedent
+      // scheduleBaselineStore.js's own header comment establishes).
+      baseline_project_finish: null,
       created_at: now,
     };
     return Object.assign(base, overrides || {});
@@ -2241,6 +2254,23 @@
         if (a.is_out_of_sequence === undefined) a.is_out_of_sequence = false;
       });
       loaded.schema_version = 43;
+    }
+
+    if (loaded.schema_version < 44) {
+      // PCC Evolution Roadmap, Tier F: Baseline & Schedule Revision Control (Gate 22).
+      // Existing baselines backfill as not-official with no known project finish
+      // (never guessed — it's only ever computed at capture time going forward; an
+      // old baseline captured before this gate just won't drive Schedule Variance
+      // until re-captured or explicitly marked official by the user). schedules.
+      // is_baseline is dropped from the newSchedule() factory as of this gate (dead,
+      // disconnected UI decoration — see Gate 22's own commit message) but existing
+      // stored values are left untouched here rather than invented a removal
+      // migration for a field this app never actually read anywhere else.
+      (loaded.schedule_baselines || []).forEach(function (b) {
+        if (b.is_official === undefined) b.is_official = false;
+        if (b.baseline_project_finish === undefined) b.baseline_project_finish = null;
+      });
+      loaded.schema_version = 44;
     }
 
     return loaded;

@@ -235,6 +235,22 @@
     ctx.forecastFinish = cpm && cpm.projectFinish ? cpm.projectFinish : (project.forecast_finish_date || null);
     ctx.forecastFinishSource = cpm && cpm.projectFinish ? "calculated" : (project.forecast_finish_date ? "manual" : "none");
     ctx.forecastVarianceDays = cpm ? cpm.forecastVarianceDays : null;
+    // Gate 22 (PCC Evolution Roadmap, Tier F: Baseline & Schedule Revision Control): when
+    // a project has an Official Baseline (schedule.js's Baselines tab, at most one per
+    // project), Schedule Variance measures against ITS captured finish instead of the
+    // plain max-of-activities' planned_finish above — a real, committed baseline is a
+    // more meaningful reference than whatever planned dates happen to be on activities
+    // right now. baseline_project_finish is computed once at capture time and stored
+    // synchronously on the schedule_baselines index row (see store.js's
+    // newScheduleBaseline() comment) specifically so this stays usable here without
+    // making buildProjectContext() async to read the full snapshot from IndexedDB.
+    ctx.officialBaseline = data.schedule_baselines.find(function (b) { return b.project_id === projectId && b.is_official; }) || null;
+    if (ctx.officialBaseline && ctx.officialBaseline.baseline_project_finish && cpm && cpm.projectFinish) {
+      ctx.forecastVarianceDays = window.PCC.scheduleGanttLayout.diffDays(ctx.officialBaseline.baseline_project_finish, cpm.projectFinish);
+      ctx.scheduleVarianceSource = "official_baseline";
+    } else {
+      ctx.scheduleVarianceSource = "planned_finish";
+    }
 
     // Milestones
     var milestoneActivities = activities.filter(function (a) { return a.activity_type === "milestone"; });
@@ -974,7 +990,7 @@
           value: ctx.forecastVarianceDays == null ? "—" : (ctx.forecastVarianceDays > 0 ? "+" : "") + ctx.forecastVarianceDays + "d",
           colorVar: ctx.forecastVarianceDays > 0 ? "--status-critical" : null,
         },
-      ]);
+      ], ctx.scheduleVarianceSource === "official_baseline" ? "Schedule Variance measured against the Official Baseline (\"" + ctx.officialBaseline.name + "\")." : null);
     } else {
       renderKpiEmptySection(outlet, "SCHEDULE", "No schedule with activities yet — see the Schedule page.");
     }
