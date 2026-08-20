@@ -166,5 +166,42 @@ check("addDays round-trips with diffDays", () => {
   assert.strictEqual(layoutEngine.diffDays("2026-01-01", layoutEngine.addDays("2026-01-01", 30)), 30);
 });
 
+// ---------------------------------------------------------------------------
+// visibleRowRange — Tier 3 "final polish", Gantt virtualization for 10,000+
+// activities. Pure range math; the caller (schedule.js) is the only place
+// that turns this into real DOM.
+// ---------------------------------------------------------------------------
+check("with no real viewport height (jsdom's permanent 0), every row is returned unvirtualized", () => {
+  const range = layoutEngine.visibleRowRange(10000, 0, 0, 26, 28, 15);
+  assert.strictEqual(range.start, 0);
+  assert.strictEqual(range.end, 10000);
+});
+
+check("with a real viewport, the returned window stays small regardless of a 10,000-row total", () => {
+  // A realistic chart panel: ~500px tall viewport, 26px rows, scrolled near the top.
+  const range = layoutEngine.visibleRowRange(10000, 0, 500, 26, 28, 15);
+  assert.ok(range.end - range.start < 60, "expected a bounded window, got " + (range.end - range.start) + " rows");
+  assert.strictEqual(range.start, 0, "can't scroll above the buffer at the very top");
+});
+
+check("scrolling deep into a 10,000-row chart still returns a small window centered on the scroll position", () => {
+  const range = layoutEngine.visibleRowRange(10000, 5000 * 26, 500, 26, 28, 15);
+  assert.ok(range.end - range.start < 60, "expected a bounded window, got " + (range.end - range.start) + " rows");
+  assert.ok(range.start > 4900 && range.start < 5100, "expected the window to track the scroll position, got start=" + range.start);
+  assert.ok(range.end <= 10000);
+});
+
+check("scrolling to the very bottom clamps the window's end to the total row count", () => {
+  const range = layoutEngine.visibleRowRange(10000, 10000 * 26, 500, 26, 28, 15);
+  assert.strictEqual(range.end, 10000);
+  assert.ok(range.start < 10000);
+});
+
+check("a total row count smaller than one viewport returns the full (already-small) set", () => {
+  const range = layoutEngine.visibleRowRange(8, 0, 500, 26, 28, 15);
+  assert.strictEqual(range.start, 0);
+  assert.strictEqual(range.end, 8);
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

@@ -3968,16 +3968,22 @@
       });
     }
 
-    layout.rows.forEach(function (row, i) {
+    var activityById = {};
+    activities.forEach(function (a) { activityById[a.id] = a; });
+
+    var rowsLayer = svgEl("g", {});
+    svg.appendChild(rowsLayer);
+
+    function renderRow(row, i) {
       var y = headerHeight + i * rowHeight;
       var rowCenter = y + rowHeight / 2;
-      var activity = activities.find(function (a) { return a.id === row.id; });
+      var activity = activityById[row.id];
 
       var divider = svgEl("line", {
         x1: 0, y1: y + rowHeight, x2: chartWidth, y2: y + rowHeight,
         stroke: "var(--divider)", "stroke-width": 1,
       });
-      svg.appendChild(divider);
+      rowsLayer.appendChild(divider);
 
       var labelText = svgEl("text", { x: 6, y: rowCenter + 4, "font-size": 11, fill: "var(--text-primary)", style: "cursor:pointer;" });
       labelText.textContent = truncateLabel(row.name, 26);
@@ -3988,7 +3994,7 @@
         uiState.ganttDetailActivityId = row.id;
         rerender();
       });
-      svg.appendChild(labelText);
+      rowsLayer.appendChild(labelText);
 
       // Baseline ghost, if this row has a matched baseline activity — drawn as a thin
       // outline directly above/behind the current bar's row, before the current bar so
@@ -3997,7 +4003,7 @@
       if (baselineRow && !baselineRow.isMilestone && !row.isMilestone) {
         var blBarX = xForDate(baselineRow.start);
         var blBarW = Math.max((baselineRow.durationDays || 0) * pxPerDay, 3);
-        svg.appendChild(
+        rowsLayer.appendChild(
           svgEl("rect", {
             x: blBarX, y: y + rowHeight - 7, width: blBarW, height: 4, rx: 2,
             fill: "none", stroke: "var(--text-secondary)", "stroke-width": 1.5, "stroke-dasharray": "2,2",
@@ -4008,7 +4014,7 @@
       if (row.dateSource === "none") {
         var noneText = svgEl("text", { x: labelWidth + 4, y: rowCenter + 4, "font-size": 11, fill: "var(--text-secondary)", "font-style": "italic" });
         noneText.textContent = "No dates set";
-        svg.appendChild(noneText);
+        rowsLayer.appendChild(noneText);
         return;
       }
 
@@ -4030,7 +4036,7 @@
           "data-activity-id": row.id,
           style: "cursor:grab;",
         });
-        svg.appendChild(diamond);
+        rowsLayer.appendChild(diamond);
         if (activity) attachGanttDrag(diamond, null, activity, "move", pxPerDay, rerender);
         return;
       }
@@ -4049,13 +4055,13 @@
         "data-base-width": barW,
         style: "cursor:grab;",
       });
-      svg.appendChild(barRect);
+      rowsLayer.appendChild(barRect);
 
       var progressRect = null;
       if (row.percentComplete > 0) {
         var progressW = Math.max(barW * Math.min(row.percentComplete, 100) / 100, row.percentComplete > 0 ? 2 : 0);
         progressRect = svgEl("rect", { x: barX, y: barY, width: progressW, height: barH, rx: 3, fill: baseColor, style: "pointer-events:none;" });
-        svg.appendChild(progressRect);
+        rowsLayer.appendChild(progressRect);
       }
 
       // PCC Evolution Roadmap, Tier 3 ("final polish") — a small marker at the bar's
@@ -4072,7 +4078,7 @@
         var readinessTitle = svgEl("title");
         readinessTitle.textContent = "Not Ready — one or more governing documents are not yet Available";
         readinessMarker.appendChild(readinessTitle);
-        svg.appendChild(readinessMarker);
+        rowsLayer.appendChild(readinessMarker);
       }
 
       if (activity) attachGanttDrag(barRect, progressRect, activity, "move", pxPerDay, rerender);
@@ -4087,13 +4093,47 @@
           fill: "transparent", style: "cursor:ew-resize;",
           "data-resize-handle-for": activity.id,
         });
-        svg.appendChild(handle);
+        rowsLayer.appendChild(handle);
         attachGanttDrag(barRect, progressRect, activity, "resize", pxPerDay, rerender, handle);
       }
-    });
+    }
+
+    // Tier 3 "final polish" — Gantt virtualization. Only the rows inside the current
+    // scroll viewport (plus a small buffer) get real DOM; `visibleRowRange()` (pure,
+    // in scheduleGanttLayout.js) decides the slice from `wrap`'s own scroll metrics.
+    // `wrap` must already be attached to `container` before this runs, since a detached
+    // element's `clientHeight` reads 0 same as jsdom's permanent 0 — the fallback in
+    // `visibleRowRange()` for that case is "render every row," which is exactly the
+    // pre-virtualization behavior every pre-existing Gantt test already depends on.
+    var GANTT_ROW_BUFFER = 15;
+    var renderedRange = { start: -1, end: -1 };
+
+    function renderRowsLayer() {
+      var range = window.PCC.scheduleGanttLayout.visibleRowRange(
+        layout.rows.length, wrap.scrollTop, wrap.clientHeight, rowHeight, headerHeight, GANTT_ROW_BUFFER
+      );
+      if (range.start === renderedRange.start && range.end === renderedRange.end) return;
+      renderedRange = range;
+      while (rowsLayer.firstChild) rowsLayer.removeChild(rowsLayer.firstChild);
+      for (var i = range.start; i < range.end; i++) {
+        renderRow(layout.rows[i], i);
+      }
+    }
 
     wrap.appendChild(svg);
     container.appendChild(wrap);
+
+    renderRowsLayer();
+    var ganttScrollRafPending = false;
+    var scheduleNextFrame = window.requestAnimationFrame ? window.requestAnimationFrame.bind(window) : function (cb) { cb(); };
+    wrap.addEventListener("scroll", function () {
+      if (ganttScrollRafPending) return;
+      ganttScrollRafPending = true;
+      scheduleNextFrame(function () {
+        ganttScrollRafPending = false;
+        renderRowsLayer();
+      });
+    });
 
     // Jump controls — scroll the chart's own container to a meaningful date. Built
     // after the chart so xForDate/wrap are already in scope; appended to the toolbar
