@@ -63,15 +63,74 @@ that override default behavior).
 
 ## Where things stand — Tiers A-E are COMPLETE; Tier F (Advanced Planning/Controls) is underway
 
-`main` is fully up to date through **Gate 21: Status-Date Reforecasting** (PCC Evolution Roadmap,
-Tier F's fourth gate), merge commit `bd825a0`, **`schema_version` bumped to 43** (the first schema
-change since Gate 19 — Gates 20 and the Gate 19 follow-on before it were both purely computed
-signals with no new stored fields; Gate 21 needed two: `calculation_mode` on schedules,
-`is_out_of_sequence` on activities). The 9-gate tier: 18 Resource Management, 19 Commitment
-Management, 20 Status-Date Control, 21 Status-Date Reforecasting, 22 Baseline & Schedule Revision
-Control, 23 Advanced Delay Analysis, 24 Recovery & Mitigation Planning, 25 Advanced Schedule
-Performance, 26 Integrated Project Controls. See the "PCC Evolution Roadmap" section below for the
-complete gate-by-gate history — this section covers only the current tier's state.
+`main` is fully up to date through **Gate 22: Baseline & Schedule Revision Control** (PCC Evolution
+Roadmap, Tier F's fifth gate), merge commit `d14f9ef`, **`schema_version` bumped to 44** (second
+consecutive gate needing a real schema change — `is_official`/`baseline_project_finish` on
+`schedule_baselines`). The 9-gate tier: 18 Resource Management, 19 Commitment Management, 20
+Status-Date Control, 21 Status-Date Reforecasting, 22 Baseline & Schedule Revision Control, 23
+Advanced Delay Analysis, 24 Recovery & Mitigation Planning, 25 Advanced Schedule Performance, 26
+Integrated Project Controls. See the "PCC Evolution Roadmap" section below for the complete
+gate-by-gate history — this section covers only the current tier's state.
+
+**Gate 22 — Baseline & Schedule Revision Control** (merge `d14f9ef`). Inspection found the core
+baseline machinery already fully built (`scheduleBaselineEngine.js`/`scheduleBaselineStore.js`/the
+Baselines tab, Gate 4/5) — unlimited baselines per project, delete, cross-revision compare via
+`compareBaselineToCurrent()`. Two real forks were put to Aditya via `AskUserQuestion`; **he chose
+the fuller option both times**:
+- **Baseline rename** (inline edit in the Baselines tab) and an **"Official Baseline" designation**
+  — at most one per project, marking one locks it against deletion and implicitly unmarks whichever
+  else was official. Baseline names are now escaped against HTML injection (`escHtml()`, new local
+  helper in `schedule.js`) since rename makes them arbitrary user text for the first time —
+  previously baseline names were only ever auto-generated from `schedule.name` + a date.
+- **Official Baseline drives Executive Center's Schedule Variance** (the "go further" fork):
+  `baseline_project_finish` is computed once at capture time via
+  `scheduleBaselineEngine.overallFinish()` — hoisted out of `compareBaselineToCurrent()` to module
+  scope specifically so `captureBaseline()` could call it directly — and stored *synchronously* on
+  the `schedule_baselines` index row. Same "metadata stays synchronous, payload is async" precedent
+  as everywhere else baselines touch `buildProjectContext()` (see Gate 20's own `ctx.baselineCount`
+  comment): Executive Center's variance KPI can read a real captured baseline without the whole
+  function needing to become async. Falls back to the pre-existing planned_finish-based figure when
+  no Official Baseline exists; a KPI-section footnote names which baseline is driving it when one
+  is.
+- **Auto-supersede on reimport** (the other "fuller option" fork): `commitImport()` now marks a
+  project's prior `"active"` schedule(s) `"superseded"` when a new revision is imported, instead of
+  leaving every past revision `"active"` forever waiting on a manual edit nobody remembers to make.
+  Scoped to import only — draft/archived revisions are never auto-touched, and the manual "New
+  Schedule" path is untouched (creating one by hand isn't "replacing" anything).
+- **Retired `schedule.is_baseline`**: inspection found it was dead, disconnected decoration (only
+  ever appended ", Baseline" to a dropdown label — zero connection to the real snapshot machinery).
+  Dropped from `newSchedule()` and the edit form; existing stored values on old schedules are left
+  untouched rather than inventing a field-removal migration for something this app never actually
+  read anywhere else.
+
+**Bug caught and fixed during the real-Chromium verification pass, before shipping** (worth
+flagging as a pattern to watch for elsewhere in this codebase): the "Mark/Unmark Official"
+`notify()` call read `b.is_official` *after* `store.update()` had already mutated that same object
+in place (its `forEach` finds the matching row by id and mutates it directly — same object
+reference as the `b` the click handler closed over), so the toast reported the **opposite** of what
+had just happened (e.g. "unmarked" immediately after marking). Fixed by capturing
+`var wasOfficial = b.is_official` *before* the `store.update()` call. Regression-tested explicitly
+— the test asserts the actual toast text on both the mark and unmark direction, not just the
+underlying data, specifically because the data was already correct; only the message was wrong.
+**Any future click handler in this codebase that reads a store-object field for display/messaging
+after its own `store.update()` call should capture that field's value first** — this bug is easy to
+reintroduce anywhere the same pattern appears.
+
+Tests: `test_store_schema_v43_migration.js` renamed to `test_store_schema_v44_migration.js` (this
+project's "one canonical full-chain migration test targeting latest" convention) with new v43→v44
+backfill checks. New `tests/test_baseline_revision_control_e2e.js` (35 checks, including a 24-route
+smoke test) against the real bundled `index.html` — rename + HTML-escape proof, Official
+mark/unmark/mutual-exclusivity/delete-lock (plus the notify-message regression), Executive Center's
+variance switching from planned_finish to the Official Baseline's captured finish (proven via a
+scenario deliberately built so the two possible sources disagree, +21d vs +12d, ruling out
+coincidence), and auto-supersede — mirroring `commitImport()`'s write rather than driving a real
+file upload through jsdom, the same established precedent `test_schedule_excel_editor_e2e.js` set
+for file-upload-adjacent tests (confirmed via grep: no test in this suite drives a real binary
+`.xlsx` through jsdom; every import-adjacent test mirrors the resulting store write instead). Full
+suite: **51 files, 1267 checks**, clean, zero regressions. Real-Chromium pass (3 screenshots: the
+Baselines tab after rename, the Official baseline with the corrected toast text, Executive Center's
++21d variance with the Official Baseline footnote) confirmed everything renders correctly — zero
+console errors.
 
 **Gate 21 — Status-Date Reforecasting** (merge `bd825a0`). Inspection found `scheduleCpmEngine.js`
 already did most of status-date reforecasting (actuals-anchored ES/EF, completed dates held fixed
@@ -1160,11 +1219,11 @@ breakdown from Aditya directly, the same way Tier D's came, rather than guessing
 
 ## Repo/branch state
 
-`main` is fully up to date through **Gate 21: Status-Date Reforecasting**
-(`bd825a0`, a direct merge — no PR, per Aditya's now-standing "always merge after completing a
+`main` is fully up to date through **Gate 22: Baseline & Schedule Revision Control**
+(`d14f9ef`, a direct merge — no PR, per Aditya's now-standing "always merge after completing a
 gate/phase" instruction, see above) — **Tiers A-E are all fully complete; Tier F (Advanced Project
-Planning & Project Controls) is now underway, four of its nine named gates done plus one
-follow-on round closing a gap in the second.** Thirteen rounds have landed on `main` this session,
+Planning & Project Controls) is now underway, five of its nine named gates done plus one
+follow-on round closing a gap in the second.** Fourteen rounds have landed on `main` this session,
 all via the same designated remote-session branch, `claude/tier-c-code-inspection-jysweb` (name is
 stale now — it's carried Tier C, D, E, and F gates alike), restarted from the new `main` between
 each per the standing "restart before the next gate" instruction: the Tier C inspection +
@@ -1175,48 +1234,53 @@ follow-on (merge `fef89f6`), then Gate 16 Portfolio Performance (merge `c4959e2`
 Personal Workbench (merge `332b505`), then Gate 18 Resource Management (merge `ec8c638`), then
 Gate 19 Commitment Management (merge `a0a9e5b`), then the Gate 19 Schedule↔Commitment follow-on
 (merge `4690a58`), then Gate 20 Status-Date Control (merge `33a3551`), then Gate 21 Status-Date
-Reforecasting (merge `bd825a0`). Aditya confirmed via `AskUserQuestion` to proceed with each merge
-given the branch's own "never push elsewhere without permission" constraint; see the git log for
-the exact sequence if that matters later. This builds on top of **Tier B (Control Integration)**,
-complete as of Gate 33, and the already-complete 14-gate Document Control sub-spec.
-`schema_version` on `main` is now **43** — Gate 21 needed a real schema change (see the "Where
-things stand" section above for full detail; the first bump since Gate 19).
-`claude/tier-c-code-inspection-jysweb` carries the same history as `main` as of this merge
-(nothing unmerged on it) — restart it from the new `main` before starting the next gate, and
-verify with `git log origin/main..HEAD` and `git status` before assuming this is still true by the
-time you read this.
+Reforecasting (merge `bd825a0`), then Gate 22 Baseline & Schedule Revision Control (merge
+`d14f9ef`). Aditya confirmed via `AskUserQuestion` to proceed with each merge given the branch's
+own "never push elsewhere without permission" constraint; see the git log for the exact sequence
+if that matters later. This builds on top of **Tier B (Control Integration)**, complete as of Gate
+33, and the already-complete 14-gate Document Control sub-spec. `schema_version` on `main` is now
+**44** — Gate 22 needed a real schema change, the second in a row (see the "Where things stand"
+section above for full detail). `claude/tier-c-code-inspection-jysweb` carries the same history as
+`main` as of this merge (nothing unmerged on it) — restart it from the new `main` before starting
+the next gate, and verify with `git log origin/main..HEAD` and `git status` before assuming this
+is still true by the time you read this.
 
 **Zip delivered this round:** `Project-Control-Center.zip` — `index.html` + `README.md` +
 `data/`/`files/` (existing `README.txt` placeholders), verified via a fresh extraction
-(`/tmp/pcc_zip_verify8/`, not the dev working copy) opened in real Chromium — zero console errors;
+(`/tmp/pcc_zip_verify9/`, not the dev working copy) opened in real Chromium — zero console errors;
 screenshots taken and sent per the standing instruction.
 
 **Next steps, in likely priority order:**
-1. **Tier F has 5 more named gates, none started — get scope confirmation from Aditya before
-   building the next one.** Gate 22 Baseline & Schedule Revision Control is next in the spec's own
-   order, but nothing says gates must be built strictly in order — ask before assuming. Full spec
-   text for all 9 Tier F gates was handed over conversationally this session and is preserved in
-   this conversation's history but was never saved as a file in this repo — don't assume a future
+1. **Tier F has 4 more named gates, none started — get scope confirmation from Aditya before
+   building the next one.** Gate 23 Advanced Delay Analysis is next in the spec's own order, but
+   nothing says gates must be built strictly in order — ask before assuming. Full spec text for
+   all 9 Tier F gates was handed over conversationally this session and is preserved in this
+   conversation's history but was never saved as a file in this repo — don't assume a future
    session can find it; get it re-confirmed from Aditya if it's not still in context. Inspect each
    gate against the real code before proposing anything, same discipline as every gate so far —
-   Gates 18, 19, 20, and 21 all turned out to have substantial real prior art or overlap (Gate 11
-   for Resources, the Gate 9/16 "not tracked yet"/"future Commercial module" notes for
-   Commitments, Gate 20's own spec turning out to be *almost entirely* pre-built under other names,
-   and Gate 21 finding the CPM engine already did most of status-date reforecasting — only
-   out-of-sequence detection and a real second calculation mode were genuine gaps), so don't assume
-   any of Gates 22-26 are starting from zero either. **Gate 22 (Baseline & Schedule Revision
-   Control) is flagged as a likely-substantial overlap** with the already-complete
-   `scheduleBaselineEngine.js`/`scheduleBaselineStore.js` (Gate 4/5) and the Baselines tab in
-   `schedule.js` — inspect what "revision control" would add beyond baseline capture/compare
-   before assuming a gap (e.g. locking/superseding old baselines, a revision history view,
-   something else) rather than re-scoping baselines from scratch.
-2. Older still-open items, none blocking daily use: category-scheme reconciliation
+   Gates 18 through 22 all turned out to have substantial real prior art or overlap (Gate 11 for
+   Resources, the Gate 9/16 "not tracked yet"/"future Commercial module" notes for Commitments,
+   Gate 20's own spec turning out to be *almost entirely* pre-built under other names, Gate 21
+   finding the CPM engine already did most of status-date reforecasting, and Gate 22 finding the
+   full baseline capture/compare machinery already built — only lifecycle controls
+   (rename/official/lock/auto-supersede) were genuine gaps), so don't assume any of Gates 23-26 are
+   starting from zero either. **Gate 23 (Advanced Delay Analysis) is flagged as a likely overlap**
+   with the existing Delay & Recovery Management module (`delayRecoveryDashboard.js`, an earlier
+   Tier C gate) and with `scheduleBaselineEngine.js`'s own delay/variance summary fields
+   (`delayed_count`, `max_delay_days`) — inspect what's already computed there before assuming a
+   gap (e.g. a formal delay-classification taxonomy like concurrent/critical-path/excusable delay
+   might be the real gap, not delay detection itself, which already exists in multiple places).
+2. **Watch for the exact notify()-reads-a-mutated-object-after-store.update() bug pattern flagged
+   in the Gate 22 section above** when touching any other click handler that reads a store-object
+   field for a message/label after its own `store.update()` call — it's an easy one to reintroduce
+   since the bug is invisible in the underlying data (only the displayed message is wrong).
+3. Older still-open items, none blocking daily use: category-scheme reconciliation
    (Documents/Vendor/Document-Types), the Gantt-bar readiness flag, the two hardcoded reminder/
    lookahead windows (14-day Document Reminders, 30-day Action Centre Upcoming), Resource
    Management rate × usage into Cost/EVM (still explicitly deferred), Commitments' own Budget →
    Commitments → Actual → Forecast wiring into `costEvmEngine.js`'s EAC/CPI/SPI math (explicitly
    "eventually" per Gate 19's own spec — not started), portfolio dashboard filtering.
-3. Optional cleanup: these branches on `origin` are all fully merged into `main` and safe to
+4. Optional cleanup: these branches on `origin` are all fully merged into `main` and safe to
    delete (not urgent) — `integration/gates-8-13`, `claude/phase-11c-planning-executive-frty7j`,
    `claude/excel-schedule-pcc-editing-dgyy9m`, `claude/doc-control-gate14-master-repo`,
    `claude/doc-control-gate15-project-requirements`,
@@ -1224,5 +1288,5 @@ screenshots taken and sent per the standing instruction.
    `claude/doc-control-gate17-status-version-control`. `claude/project-setup-tooling-gcwsu3`
    also still exists on origin — verify it's merged before deleting it, since this handoff round
    didn't touch it.
-4. Tier 3 (AI Document Processing, Knowledge Base, AI Project Assistant, Lessons Learned, final
+5. Tier 3 (AI Document Processing, Knowledge Base, AI Project Assistant, Lessons Learned, final
    polish) remains deferred until Tier 1/2 are in daily use.
