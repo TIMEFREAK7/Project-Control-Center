@@ -164,6 +164,22 @@
     grid.appendChild(textField("Data Date", "data_date", schedule.data_date, "date"));
     grid.appendChild(textField("Near-Critical Threshold (days)", "near_critical_threshold_days", schedule.near_critical_threshold_days, "number"));
 
+    var calcModeField = document.createElement("div");
+    calcModeField.className = "field";
+    calcModeField.innerHTML = "<label>Out-of-Sequence Calculation Mode</label>";
+    var calcModeSelect = document.createElement("select");
+    calcModeSelect.id = "schedfield-calculation_mode";
+    var CALC_MODE_LABELS = { progress_override: "Progress Override (actual dates win)", retained_logic: "Retained Logic (respect predecessor tie)" };
+    window.PCC.store.CALCULATION_MODES.forEach(function (m) {
+      var opt = document.createElement("option");
+      opt.value = m;
+      opt.textContent = CALC_MODE_LABELS[m] || m;
+      calcModeSelect.appendChild(opt);
+    });
+    calcModeSelect.value = schedule.calculation_mode || "progress_override";
+    calcModeField.appendChild(calcModeSelect);
+    grid.appendChild(calcModeField);
+
     var statusField = document.createElement("div");
     statusField.className = "field";
     statusField.innerHTML = "<label>Status</label>";
@@ -252,6 +268,7 @@
         version: form.querySelector("#schedfield-version").value,
         data_date: form.querySelector("#schedfield-data_date").value,
         near_critical_threshold_days: Number(form.querySelector("#schedfield-near_critical_threshold_days").value) || 0,
+        calculation_mode: form.querySelector("#schedfield-calculation_mode").value,
         status: form.querySelector("#schedfield-status").value,
         is_baseline: form.querySelector("#schedfield-is_baseline").checked,
         description: form.querySelector("#schedfield-description").value,
@@ -1478,6 +1495,7 @@
     var result = window.PCC.scheduleCpmEngine.calculateSchedule(scheduleActivities, scheduleRelationships, {
       dataDate: schedule.data_date,
       nearCriticalThresholdDays: schedule.near_critical_threshold_days,
+      calculationMode: schedule.calculation_mode,
     });
 
     window.PCC.store.update(function (d) {
@@ -1496,6 +1514,7 @@
         a.late_finish = r.late_finish;
         a.total_float = r.total_float;
         a.free_float = r.free_float;
+        a.is_out_of_sequence = r.is_out_of_sequence;
         a.updated_at = new Date().toISOString();
       });
     });
@@ -1519,9 +1538,10 @@
             : ", forecast on plan"
           : "";
       var insufficientMsg = insufficientCount > 0 ? " (" + insufficientCount + " activity(ies) have insufficient data to forecast reliably)" : "";
+      var oosMsg = result.outOfSequenceActivityIds.length > 0 ? " " + result.outOfSequenceActivityIds.length + " activity(ies) out of sequence." : "";
       window.PCC.notify(
         "Calculated \u2014 project finish " + result.projectFinish + varianceMsg + ", " +
-          result.criticalActivityIds.length + " critical activity(ies)." + insufficientMsg,
+          result.criticalActivityIds.length + " critical activity(ies)." + insufficientMsg + oosMsg,
         insufficientCount > 0 ? "error" : "success"
       );
     }
@@ -1866,6 +1886,15 @@
             floatBadge.textContent = a.total_float + "d float";
           }
           card.appendChild(floatBadge);
+        }
+
+        if (a.is_out_of_sequence) {
+          var oosBadge = document.createElement("span");
+          oosBadge.className = "status-badge status-badge--at_risk";
+          oosBadge.style.marginLeft = "6px";
+          oosBadge.textContent = "Out of Sequence";
+          oosBadge.title = "This activity had actual progress recorded before its predecessor logic would have allowed it to start.";
+          card.appendChild(oosBadge);
         }
 
         var actions = document.createElement("div");
@@ -3359,6 +3388,7 @@
         ? "Critical (0 float)"
         : activity.total_float + " day(s) total, " + (activity.free_float == null ? "—" : activity.free_float) + " free"
     );
+    item("Out of Sequence", activity.is_out_of_sequence ? "Yes — actual progress preceded predecessor logic" : "No");
     item("% Complete", (activity.percent_complete || 0) + "%");
     item("Physical Progress", (activity.physical_progress || 0) + "%");
     item("Discipline", activity.discipline);
