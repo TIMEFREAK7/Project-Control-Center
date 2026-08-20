@@ -61,23 +61,72 @@ that override default behavior).
   populated state, and again on the zip-verification pass) and send the PNGs via `SendUserFile`
   before or alongside the written report. Applies to every gate from here on, not just this one.
 
-## Where things stand — Tiers A-F are ALL COMPLETE as of Gate 26
+## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) now underway
 
-`main` is fully up to date through **Gate 26: Integrated Project Controls** (PCC Evolution
-Roadmap, Tier F's ninth and FINAL gate — Tier F is now complete). **No `schema_version` bump this
-gate — it stays at 47.** This is the first gate since the Gate 19 follow-on to ship without a
-schema change: everything Gate 26 computes derives purely from `delay_records`/
-`recovery_actions`/`schedule_performance_snapshots`, all of which already existed from Gates
-23-25. The completed 9-gate tier: 18 Resource Management, 19 Commitment Management, 20
-Status-Date Control, 21 Status-Date Reforecasting, 22 Baseline & Schedule Revision Control, 23
-Advanced Delay Analysis, 24 Recovery & Mitigation Planning, 25 Advanced Schedule Performance, 26
-Integrated Project Controls. See the "PCC Evolution Roadmap" section below for the complete
-gate-by-gate history.
+`main` is fully up to date through **Tier 3 Gate 1: Lessons Learned**, `schema_version` **48**.
+Note this is a DIFFERENT roadmap than the "PCC Evolution Roadmap" Tiers A-F above it, which
+finished with Gate 26 — Tier 3 is a numbered tier from the ORIGINAL, much older locked build order
+(`Tier 1`/`Tier 2`/`Tier 3`, see README.md's "Locked build order" section), deferred since day one.
+Both Tiers A-F and Tiers 1-2 are now complete; Tier 3 is the last remaining named scope anywhere in
+the project's history, and is only now being picked up.
 
-**Next step for a fresh session: ask Aditya what comes after Tier F** — the roadmap document
-handed over 2026-08-19 covered Tiers A-F only. There is no Tier G/Gate 27 scoped yet; do not
-assume one exists or invent further gates without a fresh conversation confirming scope, per this
-project's own standing "inspect and confirm before building" discipline.
+**Tier 3 is five items, confirmed via `AskUserQuestion`**: AI Document Processing, Knowledge Base,
+AI Project Assistant, Lessons Learned, final polish. **AI Document Processing and AI Project
+Assistant are SKIPPED entirely, standing decision** — both need either a cloud LLM call or a
+bundled local model, either of which breaks this app's zero-npm-dependency/offline-first/`file://`
+architecture, and the original spec itself explicitly excluded AI ("Tier 2... do not implement AI,
+OCR, document parsing"). Knowledge Base (not yet built) will be a **plain searchable register, not
+AI-backed**, when its own turn comes. Lessons Learned was built first (recommended, least
+ambiguous); final polish (the accumulated backlog of deferred items — see the "Other open items"
+list near the end of README.md and the numbered list further down this file) remains unscoped.
+
+**Gate 26 — Integrated Project Controls** (merge `9a305b1`) closed out Tier F (PCC Evolution
+Roadmap) as its ninth and final gate — see that gate's own write-up further down for detail. No
+schema bump for Gate 26 itself (schema stayed at 47 through that merge).
+
+**Tier 3 Gate 1 — Lessons Learned** (merge pending — see commit log). New project-scoped register
+(`schema_version` 47 -> 48), same shape family as Risk/RFI/Decisions —
+`decisionRegister.js`/`test_decision_register_e2e.js` were the direct templates for both the page
+and its test. Fields: `project_id` (mandatory), `title`, `category` (schedule/cost/quality/safety/
+procurement & vendor/design & technical/communication/other), `impact_type`
+(positive/negative — deliberately captures BOTH directions, not just a complaints log — "what
+worked, keep doing it" is just as valuable as "what went wrong, avoid it next time"),
+`description`, `recommendation`, `identified_by`, `date_identified`, optional
+`source_meeting_id`/`activity_id` links (same optional-link pattern Risk/RFI/Decision already
+use). **No `status` field** — this is a captured log, not a workflow with states, same "log only"
+precedent Change Management already established. New page `lessonsLearned.js`, own top-level
+sidebar entry under REGISTERS (code `LL`) — a single portfolio-wide filterable list already gives
+the cross-project trend view a Lessons Learned register is actually for ("we keep seeing
+procurement delays"), so no separate rollup dashboard was built on top of it, matching Decision
+Register's own precedent. `meetings.js` gained a "+ Add Lesson Learned" quick action alongside the
+existing Risk/RFI/Change Order/Decision ones.
+
+**Bug caught while running the full suite, before shipping**: `test_integrated_project_controls_e2e.js`
+(Gate 26's own test) had a hardcoded `assert.strictEqual(data.schema_version, 47, ...)` — correct
+when written (Gate 26 truly added no schema fields), but it started failing the moment THIS gate's
+schema bump landed, since a fresh store now starts at 48. Fixed by loosening to
+`assert.ok(data.schema_version >= 47, ...)` — the real invariant Gate 26 wanted to prove is that
+IT specifically didn't bump the version, not that no version bump ever happens again after it.
+**General lesson for future gates**: a schema-version assertion in an already-shipped gate's own
+test file will go stale the next time schema_version bumps again — hardcode `>=` against that
+gate's own known-good floor, not `===` against whatever happened to be current when it was written,
+unless the test is specifically about the exact migration step itself (the dedicated
+`test_store_schema_v*_migration.js` file is where exact-version assertions belong).
+
+Tests: `test_store_schema_v47_migration.js` renamed to `test_store_schema_v48_migration.js` (this
+project's "one canonical full-chain migration test targeting latest" convention) with new
+v47->v48 backfill checks. New `tests/test_lessons_learned_e2e.js` (39 checks, including a 25-route
+smoke test) against the real bundled `index.html` — add/edit/delete, category/impact/project
+filters, the activity link and its "View in Gantt" navigation, and the full round trip through a
+Meeting's "+ Add Lesson Learned" button. Full suite: **54 files**, clean, zero regressions (after
+the schema-version assertion fix above). Real-Chromium pass (3 screenshots: empty state, the
+populated list with both a Positive and Negative badge, and the Details panel with its Linked
+Activity) confirmed everything renders correctly — zero console errors.
+
+**Next step for a fresh session: scope Tier 3's next item with Aditya** — Knowledge Base (plain
+searchable register, confirmed) or "final polish" (clearing the accumulated backlog) are the two
+remaining named items; AI Document Processing/AI Project Assistant stay skipped per the standing
+decision above unless Aditya explicitly revisits it.
 
 **Gate 26 — Integrated Project Controls** (merge pending — see commit log). Inspection found
 Gates 23 (Advanced Delay Analysis) and 24 (Recovery & Mitigation Planning) each shipped real
