@@ -63,7 +63,7 @@ that override default behavior).
 
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) now underway
 
-`main` is fully up to date through **Tier 3 Gate 1: Lessons Learned**, `schema_version` **48**.
+`main` is fully up to date through **Tier 3 Gate 2: Knowledge Base**, `schema_version` **49**.
 Note this is a DIFFERENT roadmap than the "PCC Evolution Roadmap" Tiers A-F above it, which
 finished with Gate 26 — Tier 3 is a numbered tier from the ORIGINAL, much older locked build order
 (`Tier 1`/`Tier 2`/`Tier 3`, see README.md's "Locked build order" section), deferred since day one.
@@ -75,10 +75,17 @@ AI Project Assistant, Lessons Learned, final polish. **AI Document Processing an
 Assistant are SKIPPED entirely, standing decision** — both need either a cloud LLM call or a
 bundled local model, either of which breaks this app's zero-npm-dependency/offline-first/`file://`
 architecture, and the original spec itself explicitly excluded AI ("Tier 2... do not implement AI,
-OCR, document parsing"). Knowledge Base (not yet built) will be a **plain searchable register, not
-AI-backed**, when its own turn comes. Lessons Learned was built first (recommended, least
-ambiguous); final polish (the accumulated backlog of deferred items — see the "Other open items"
+OCR, document parsing"). Lessons Learned and Knowledge Base are both now built (Gates 1-2 of this
+tier); only "final polish" (the accumulated backlog of deferred items — see the "Other open items"
 list near the end of README.md and the numbered list further down this file) remains unscoped.
+
+**General lesson learned this tier, worth repeating for whatever gate comes next**: a
+`schema_version` assertion hardcoded with `assert.strictEqual` in an already-shipped gate's own
+e2e test will break the moment ANY later gate bumps the schema again — this happened TWICE in a
+row (Gate 26's own test, then Lessons Learned's own test), both fixed by loosening to
+`assert.ok(... >= N)`. Any new schema-version boot-check assertion should be written as `>=` from
+the start; exact-version assertions only belong in the dedicated
+`test_store_schema_v*_migration.js` file, which is specifically about the migration step itself.
 
 **Gate 26 — Integrated Project Controls** (merge `9a305b1`) closed out Tier F (PCC Evolution
 Roadmap) as its ninth and final gate — see that gate's own write-up further down for detail. No
@@ -123,10 +130,48 @@ the schema-version assertion fix above). Real-Chromium pass (3 screenshots: empt
 populated list with both a Positive and Negative badge, and the Details panel with its Linked
 Activity) confirmed everything renders correctly — zero console errors.
 
-**Next step for a fresh session: scope Tier 3's next item with Aditya** — Knowledge Base (plain
-searchable register, confirmed) or "final polish" (clearing the accumulated backlog) are the two
-remaining named items; AI Document Processing/AI Project Assistant stay skipped per the standing
-decision above unless Aditya explicitly revisits it.
+**Tier 3 Gate 2 — Knowledge Base** (merge pending — see commit log). New register
+(`schema_version` 48 -> 49), confirmed via `AskUserQuestion` to be **portfolio-wide with optional
+`project_id`** (not mandatory-project like every other register — a standard procedure/checklist
+isn't "for" any one project, same disclosed exception `newVendorDocument()` already established),
+and to carry **its own file attachment** (not just a link to an existing Document). Fields:
+`project_id` (optional), `title`, `category` (standard_procedure/checklist_template/
+reference_material/how_to_guide/policy/other), `body`, `tags`, `filename`/`file_size`/`mime_type`
+(the actual bytes live in `blobStore`/IndexedDB, keyed by the article's own id — no dual-path
+inline `file_data` fallback needed, since this register postdates the Phase 12 blobs-only
+migration entirely). One file per article, no revision history — re-attaching overwrites the
+previous blob under the same id. New page `knowledgeBase.js`, own top-level sidebar entry under
+REGISTERS (code `KB`) — full CRUD, search across title/body/tags, category/project filters
+including a synthetic "General (no project)" filter value. **"+ Add Article" is never gated on a
+project existing**, the one register in this app where that's true.
+
+**Bug caught and fixed before writing tests** (self-caught, no user involvement): the first draft
+of the save handler generated a new article's id TWICE for the file-attach path — once via a
+throwaway `newKnowledgeBaseArticle({}).id` call just to get an id for `blobStore.putBlob()`, and
+again via a second `newKnowledgeBaseArticle(values)` call inside `commit()` to build the actual
+record pushed to the store — so the blob would have landed under a different id than the record
+referencing it, silently orphaning every new article's file. Fixed by building the full record
+ONCE up front and reusing its `.id` for both the blob write and the store push. Caught via
+re-reading the code before running any test, same "verify before shipping" discipline as every
+prior gate's self-caught bugs this session.
+
+Tests: `test_store_schema_v48_migration.js` renamed to `test_store_schema_v49_migration.js` with
+new v48->v49 backfill checks. New `tests/test_knowledge_base_e2e.js` (40 checks, including a
+26-route smoke test) — file-upload UI is deliberately NOT driven through jsdom (no test in this
+suite does that; see `test_vendors_e2e.js`/`test_baseline_revision_control_e2e.js`'s own "bypassing
+FileReader" precedent), so the attached-file scenario seeds a blob directly via
+`blobStore.putBlob()` and mirrors the resulting store write instead. Full suite: **55 files**,
+clean, zero regressions (after fixing the two stale schema-version assertions described above).
+Real-Chromium pass (4 screenshots: empty state, the populated list with a portfolio-wide and a
+project-tagged article, the File Attached badge, and the Details panel with its Open File action)
+confirmed everything renders correctly — zero console errors.
+
+**Next step for a fresh session: scope Tier 3's last item with Aditya — "final polish"** (clearing
+the accumulated backlog of deferred items scattered across README.md's "Other open items" list and
+this file's own numbered lists further down). AI Document Processing/AI Project Assistant stay
+skipped per the standing decision above unless Aditya explicitly revisits it. Once final polish is
+done (or explicitly deferred again), Tier 3 — and with it, every named tier in this project's
+entire history — will be complete.
 
 **Gate 26 — Integrated Project Controls** (merge pending — see commit log). Inspection found
 Gates 23 (Advanced Delay Analysis) and 24 (Recovery & Mitigation Planning) each shipped real
