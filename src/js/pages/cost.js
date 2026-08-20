@@ -440,6 +440,27 @@
     select.value = selectedBudgetItemId || "";
   }
 
+  // PCC Evolution Roadmap, Tier F (Gate 19, Commitment Management). Same
+  // project-scoped, "(none)"-first option convention as budgetItemOptionsFor() above.
+  function commitmentOptionsFor(select, commitments, projectId, selectedCommitmentId) {
+    select.innerHTML = "";
+    var noneOpt = document.createElement("option");
+    noneOpt.value = "";
+    noneOpt.textContent = "(none)";
+    select.appendChild(noneOpt);
+    commitments
+      .filter(function (c) {
+        return c.project_id === projectId;
+      })
+      .forEach(function (c) {
+        var opt = document.createElement("option");
+        opt.value = c.id;
+        opt.textContent = (c.po_contract_number || "(no PO/Contract #)") + (c.status ? " — " + c.status : "");
+        select.appendChild(opt);
+      });
+    select.value = selectedCommitmentId || "";
+  }
+
   function renderActualForm(container, entry, data, rerender) {
     var isNew = uiState.editingActualId === "new";
     var panel = document.createElement("div");
@@ -465,8 +486,18 @@
     budgetField.appendChild(budgetSelect);
     form.appendChild(budgetField);
 
+    var commitmentField = document.createElement("div");
+    commitmentField.className = "field";
+    commitmentField.innerHTML = "<label>Against Commitment</label>";
+    var commitmentSelect = document.createElement("select");
+    commitmentSelect.id = "costactualfield-commitment_id";
+    commitmentOptionsFor(commitmentSelect, data.commitments, proj.select.value, entry.commitment_id);
+    commitmentField.appendChild(commitmentSelect);
+    form.appendChild(commitmentField);
+
     proj.select.onchange = function () {
       budgetItemOptionsFor(budgetSelect, data.cost_budget_items, proj.select.value, "");
+      commitmentOptionsFor(commitmentSelect, data.commitments, proj.select.value, "");
     };
 
     var grid = document.createElement("div");
@@ -582,6 +613,7 @@
       var values = {
         project_id: proj.select.value,
         budget_item_id: budgetSelect.value,
+        commitment_id: commitmentSelect.value,
         category: cat.select.value,
         description: description,
         amount: amount,
@@ -678,6 +710,9 @@
       var linkedBudget = data.cost_budget_items.find(function (b) {
         return b.id === a.budget_item_id;
       });
+      var linkedCommitment = data.commitments.find(function (c) {
+        return c.id === a.commitment_id;
+      });
 
       var row = document.createElement("div");
       row.className = "project-entry";
@@ -697,6 +732,7 @@
         " · " + a.date + " · " + formatMoney(a.amount) +
         (a.vendor ? " · " + a.vendor : "") +
         (linkedBudget ? " · against “" + linkedBudget.name + "”" : "") +
+        (linkedCommitment ? " · commitment " + (linkedCommitment.po_contract_number || "(no PO/Contract #)") : "") +
         "</span>";
       card.appendChild(main);
 

@@ -214,6 +214,25 @@
           })
         : null;
 
+    // PCC Evolution Roadmap, Tier F (Gate 19, Commitment Management). Actual is a live
+    // sum of cost_actuals tagged to each commitment — same computation
+    // commitments.js's own actualValueFor() does, duplicated here per this app's
+    // per-module-helpers convention. Independent of the EVM numbers above; this gate
+    // doesn't feed Commitments into costEvmEngine.js's own math (see commitments.js's
+    // header comment for why).
+    var projectCommitments = data.commitments.filter(function (c) { return c.project_id === projectId; });
+    var commitmentTotals = { committed: 0, approved: 0, actual: 0, remaining: 0 };
+    projectCommitments.forEach(function (c) {
+      var actual = data.cost_actuals
+        .filter(function (a) { return a.commitment_id === c.id; })
+        .reduce(function (sum, a) { return sum + (Number(a.amount) || 0); }, 0);
+      commitmentTotals.committed += Number(c.committed_value) || 0;
+      commitmentTotals.approved += Number(c.approved_value) || 0;
+      commitmentTotals.actual += actual;
+      if (c.committed_value != null) commitmentTotals.remaining += Number(c.committed_value) - actual;
+    });
+    ctx.commitmentSummary = Object.assign({ count: projectCommitments.length }, commitmentTotals);
+
     // ---- Risks / Issues / Opportunities ----
     var projectRisks = data.risks.filter(function (r) { return r.project_id === projectId; });
     var openRisks = projectRisks.filter(function (r) { return r.status !== "closed" && r.type === "risk"; });
@@ -888,7 +907,18 @@
       { label: "Budget", value: fmtMoney(ctx.costSummary.budgeted, p.currency) },
       { label: "Actual", value: fmtMoney(ctx.costSummary.actual, p.currency) },
       { label: "Variance", value: fmtMoney(ctx.costSummary.variance, p.currency), colorVar: ctx.costSummary.variance < 0 ? "--status-critical" : "--status-on-track" },
-    ], "Commitments and Cash Flow aren't tracked anywhere in PCC yet, so they're left off rather than shown as an always-empty tile.");
+    ], "Cash Flow isn't tracked anywhere in PCC yet, so it's left off rather than shown as an always-empty tile.");
+
+    if (ctx.commitmentSummary.count > 0) {
+      renderKpiSection(outlet, "COMMITMENTS", [
+        { label: "Committed", value: fmtMoney(ctx.commitmentSummary.committed, p.currency) },
+        { label: "Approved", value: fmtMoney(ctx.commitmentSummary.approved, p.currency) },
+        { label: "Actual", value: fmtMoney(ctx.commitmentSummary.actual, p.currency) },
+        { label: "Remaining", value: fmtMoney(ctx.commitmentSummary.remaining, p.currency), colorVar: ctx.commitmentSummary.remaining < 0 ? "--status-critical" : null },
+      ]);
+    } else {
+      renderKpiEmptySection(outlet, "COMMITMENTS", "No commitments logged for this project yet — see the Commitments page.");
+    }
 
     if (ctx.evm) {
       renderKpiSection(outlet, "EVM" + (ctx.evm.coveragePct != null && ctx.evm.coveragePct < 100 ? " (" + ctx.evm.coveragePct + "% of budget linked to schedule)" : ""), [
@@ -1879,8 +1909,21 @@
         ["Actual", fmtMoney(ctx.costSummary.actual, ctx.project.currency)],
         ["Variance", fmtMoney(ctx.costSummary.variance, ctx.project.currency)],
       ]));
-      costSection.appendChild(reportEmptyNote("Commitments and Cash Flow aren't tracked anywhere in PCC yet."));
+      costSection.appendChild(reportEmptyNote("Cash Flow isn't tracked anywhere in PCC yet."));
       doc.appendChild(costSection);
+
+      var commitmentSection = reportSection("Commitments Summary");
+      if (ctx.commitmentSummary.count === 0) {
+        commitmentSection.appendChild(reportEmptyNote("No commitments logged for this project."));
+      } else {
+        commitmentSection.appendChild(reportTable(["Metric", "Value"], [
+          ["Committed", fmtMoney(ctx.commitmentSummary.committed, ctx.project.currency)],
+          ["Approved", fmtMoney(ctx.commitmentSummary.approved, ctx.project.currency)],
+          ["Actual", fmtMoney(ctx.commitmentSummary.actual, ctx.project.currency)],
+          ["Remaining", fmtMoney(ctx.commitmentSummary.remaining, ctx.project.currency)],
+        ]));
+      }
+      doc.appendChild(commitmentSection);
     }
 
     if (sections.evm) {

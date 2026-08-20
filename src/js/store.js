@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 41;
+  var SCHEMA_VERSION = 42;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -97,6 +97,8 @@
       resources: [],
       resource_assignments: [],
       resource_unavailability: [],
+      packages: [],
+      commitments: [],
       // Gate 13 (Vendor Management): Vendor Master is portfolio-wide, not scoped to a
       // single project the way Documents/Risk/RFI are — vendor_project_links is the
       // many-to-many join, same shape convention as every other join in this store
@@ -260,11 +262,20 @@
       // entity exists anywhere in this app yet, and inventing one is out of scope for a
       // classification gate; free text is the honest choice until/unless a real Package
       // or Commercial module makes it worth modeling properly.
+      // PCC Evolution Roadmap, Tier F (Gate 19, Commitment Management): the "real
+      // Package or Commercial module" mentioned above now exists — `package_id` links
+      // to the new shared `packages` register (also used by Commitments), additive
+      // alongside the original free-text `package` field, which stays exactly as-is for
+      // any document that already has a value in it (never migrated/renamed — the old
+      // value simply isn't shown by the form going forward, matching this app's
+      // "additive, never destructive" schema convention). New/edited documents use
+      // `package_id`.
       document_type_id: "",
       discipline: "",
       document_number: "",
       revision: "00",
       package: "",
+      package_id: "",
       contract_or_po: "",
       vendor_id: "",
       priority: "medium",
@@ -689,13 +700,22 @@
   /** An actual cost incurred against a project. budget_item_id is optional — an
    * unbudgeted/miscellaneous cost is still worth logging, it just won't roll up under
    * a specific budget line on the Summary tab, only under its category and the
-   * project's overall actual total. */
+   * project's overall actual total.
+   *
+   * PCC Evolution Roadmap, Tier F (Gate 19, Commitment Management): `commitment_id` is
+   * a new optional link into the `commitments` register (Aditya, explicit choice — a
+   * Commitment's own Actual Value is a LIVE SUM of every cost_actuals row tagged to it,
+   * not a separately manually-entered figure that could drift out of sync). `vendor`
+   * above stays free text, unchanged — it predates Vendor Master and Gate 19
+   * deliberately does not retrofit it into a vendor_id link; that's a bigger
+   * reconciliation this gate doesn't need to make. */
   function newCostActual(overrides) {
     var now = new Date().toISOString();
     var base = {
       id: newCostActualId(),
       project_id: "",
       budget_item_id: "",
+      commitment_id: "",
       category: "other",
       description: "",
       amount: null,
@@ -824,6 +844,88 @@
       end_date: "",
       quantity: null,
       reason: "",
+      created_at: now,
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  // ============================================================
+  // PCC Evolution Roadmap, Tier F (Gate 19) — Commitment Management. Executive Center's
+  // own Cost KPI section has flagged "Commitments and Cash Flow aren't tracked anywhere
+  // in PCC yet" since Gate 9, and Document Control's Gate 16 explicitly deferred a real
+  // Package/Commercial module rather than invent one out of scope — this is that gate.
+  //
+  // Two shapes:
+  // - A Package (`newPackage`) is a shared, portfolio-wide master list (name/code),
+  //   same "shared reusable master data" pattern Vendors/Resources already established
+  //   — NOT project-scoped, so the same package name/code can be reused across
+  //   projects. Reused by both Commitments (below) and Documents (Gate 16's existing
+  //   free-text `package` field gains an additive `package_id` — see newDocument()'s
+  //   own comment for why the old field is untouched, not migrated).
+  // - A Commitment (`newCommitment`) is the actual PO/Subcontract/vendor commitment
+  //   record — project-scoped (mandatory, per this app's own register convention),
+  //   `vendor_id` links into Vendor Master (never free text — this app already made
+  //   that mistake once, on cost_actuals.vendor, and Gate 19 shouldn't repeat it).
+  //   `activity_id` is the same optional single-link convention every other register
+  //   uses; there is deliberately NO direct `wbs_id` — WBS is reached transitively via
+  //   the linked activity's own `wbs_id`, matching the app-wide convention (only
+  //   Activity itself carries a direct wbs_id).
+  //   `committed_value`/`approved_value` are manually entered. `actual_value` is
+  //   deliberately NOT a field here (Aditya, explicit choice) — it's a LIVE SUM of
+  //   every cost_actuals row whose own `commitment_id` points back at this commitment,
+  //   computed by commitments.js at render time, same "computed, never denormalized"
+  //   convention this app uses everywhere (Document Available/Overdue, health-score
+  //   RAG bands, Portfolio's Delayed/Upcoming KPIs). "Remaining Commitment" is likewise
+  //   computed (committed_value minus that live actual sum), never stored.
+  //   `budget_item_id` optionally links to an existing Cost Tracking budget line —
+  //   "reuse existing records where possible," per the spec's own instruction, rather
+  //   than re-modeling budget data a second time. Full Budget -> Commitments -> Actual
+  //   -> Forecast wiring into costEvmEngine.js's own EAC/CPI/SPI math is explicitly
+  //   "eventually" per the spec, not this gate — Commitments surfaces its own
+  //   independent KPI set in Executive Center instead of altering EVM's calculations.
+  // ============================================================
+
+  var COMMITMENT_TYPES = ["purchase_order", "subcontract", "vendor_commitment", "material_commitment", "service_commitment", "approved_commercial_commitment"];
+  var COMMITMENT_STATUSES = ["draft", "issued", "approved", "closed", "cancelled"];
+
+  function newPackageId() {
+    return "pkg_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  function newPackage(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newPackageId(),
+      name: "",
+      code: "",
+      notes: "",
+      created_at: now,
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  function newCommitmentId() {
+    return "cmt_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  function newCommitment(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newCommitmentId(),
+      project_id: "",
+      vendor_id: "",
+      package_id: "",
+      type: "purchase_order",
+      po_contract_number: "",
+      commitment_date: now.slice(0, 10),
+      committed_value: null,
+      approved_value: null,
+      budget_item_id: "",
+      activity_id: "",
+      status: "draft",
+      notes: "",
       created_at: now,
       updated_at: now,
     };
@@ -2093,6 +2195,23 @@
       loaded.schema_version = 41;
     }
 
+    if (loaded.schema_version < 42) {
+      // PCC Evolution Roadmap, Tier F: Commitment Management (Gate 19). Brand new
+      // packages/commitments arrays, nothing to backfill on existing records. Adds
+      // commitment_id ("", unlinked) to every existing cost_actuals row and package_id
+      // ("", unlinked) to every existing document — both purely additive; the existing
+      // cost_actuals.vendor and documents.package free-text fields are untouched.
+      if (!loaded.packages) loaded.packages = [];
+      if (!loaded.commitments) loaded.commitments = [];
+      (loaded.cost_actuals || []).forEach(function (a) {
+        if (a.commitment_id === undefined) a.commitment_id = "";
+      });
+      (loaded.documents || []).forEach(function (d) {
+        if (d.package_id === undefined) d.package_id = "";
+      });
+      loaded.schema_version = 42;
+    }
+
     return loaded;
   }
 
@@ -2443,6 +2562,10 @@
     newResource: newResource,
     newResourceAssignment: newResourceAssignment,
     newResourceUnavailability: newResourceUnavailability,
+    newPackage: newPackage,
+    newCommitment: newCommitment,
+    COMMITMENT_TYPES: COMMITMENT_TYPES,
+    COMMITMENT_STATUSES: COMMITMENT_STATUSES,
     RESOURCE_TYPES: RESOURCE_TYPES,
     newVendor: newVendor,
     nextVendorCode: nextVendorCode,

@@ -48,7 +48,10 @@
     pendingDiscipline: "",
     pendingDocumentNumber: "",
     pendingRevision: "00",
-    pendingPackage: "",
+    // PCC Evolution Roadmap, Tier F (Gate 19): pendingPackageId drives the new
+    // `packages` register select; the legacy pendingPackage/document.package free-text
+    // field is no longer editable from this form — see the field's own comment below.
+    pendingPackageId: "",
     pendingContractOrPo: "",
     pendingVendorId: "",
     pendingPriority: "medium",
@@ -69,7 +72,7 @@
     uiState.pendingDiscipline = "";
     uiState.pendingDocumentNumber = "";
     uiState.pendingRevision = "00";
-    uiState.pendingPackage = "";
+    uiState.pendingPackageId = "";
     uiState.pendingContractOrPo = "";
     uiState.pendingVendorId = "";
     uiState.pendingPriority = "medium";
@@ -793,16 +796,30 @@
     revisionField.appendChild(revisionInput);
     classGrid.appendChild(revisionField);
 
+    // PCC Evolution Roadmap, Tier F (Gate 19, Commitment Management): the free-text
+    // `package` field above is legacy display-only now (existing documents keep
+    // whatever value they already have, untouched) — new/edited documents select from
+    // the shared `packages` register instead, the same one Commitments uses. See
+    // newDocument()'s own comment in store.js.
     var packageField = document.createElement("div");
     packageField.className = "field";
     packageField.innerHTML = "<label>Package</label>";
-    var packageInput = document.createElement("input");
-    packageInput.type = "text";
-    packageInput.value = uiState.pendingPackage;
-    packageInput.oninput = function () {
-      uiState.pendingPackage = packageInput.value;
+    var packageSelect = document.createElement("select");
+    var noPackageOpt = document.createElement("option");
+    noPackageOpt.value = "";
+    noPackageOpt.textContent = "(none)";
+    packageSelect.appendChild(noPackageOpt);
+    data.packages.forEach(function (p) {
+      var opt = document.createElement("option");
+      opt.value = p.id;
+      opt.textContent = p.name + (p.code ? " (" + p.code + ")" : "");
+      packageSelect.appendChild(opt);
+    });
+    packageSelect.value = uiState.pendingPackageId;
+    packageSelect.onchange = function () {
+      uiState.pendingPackageId = packageSelect.value;
     };
-    packageField.appendChild(packageInput);
+    packageField.appendChild(packageSelect);
     classGrid.appendChild(packageField);
 
     var contractField = document.createElement("div");
@@ -1041,7 +1058,7 @@
         discipline: uiState.pendingDiscipline || "",
         document_number: uiState.pendingDocumentNumber || "",
         revision: uiState.pendingRevision || "00",
-        package: uiState.pendingPackage || "",
+        package_id: uiState.pendingPackageId || "",
         contract_or_po: uiState.pendingContractOrPo || "",
         vendor_id: uiState.pendingVendorId || "",
         priority: uiState.pendingPriority || "medium",
@@ -1190,6 +1207,14 @@
           return v.id === doc.vendor_id;
         })
       : null;
+    // PCC Evolution Roadmap, Tier F (Gate 19): the shared packages register — see
+    // newDocument()'s own comment in store.js for why the legacy package string isn't
+    // shown here instead.
+    var linkedPackage = doc.package_id
+      ? data.packages.find(function (p) {
+          return p.id === doc.package_id;
+        })
+      : null;
 
     var main = document.createElement("div");
     main.className = "project-card__main";
@@ -1208,6 +1233,7 @@
       (doc.discipline ? " \u00b7 " + doc.discipline : "") +
       (doc.document_number ? " \u00b7 " + doc.document_number + (doc.revision ? " Rev " + doc.revision : "") : "") +
       (linkedVendor ? " \u00b7 Vendor: " + (linkedVendor.vendor_name || "(unnamed vendor)") : "") +
+      (linkedPackage ? " \u00b7 Package: " + linkedPackage.name : "") +
       " \u00b7 Revision " + doc.revision_number +
       "</div>";
 
@@ -1326,7 +1352,7 @@
       uiState.pendingDiscipline = doc.discipline || "";
       uiState.pendingDocumentNumber = doc.document_number || "";
       uiState.pendingRevision = doc.revision || "00";
-      uiState.pendingPackage = doc.package || "";
+      uiState.pendingPackageId = doc.package_id || "";
       uiState.pendingContractOrPo = doc.contract_or_po || "";
       uiState.pendingVendorId = doc.vendor_id || "";
       uiState.pendingPriority = doc.priority || "medium";

@@ -2008,6 +2008,44 @@
       wrap.appendChild(resSection);
     }
 
+    // PCC Evolution Roadmap, Tier F (Gate 19, Commitment Management).
+    var projectCommitments = window.PCC.store.get().commitments.filter(function (c) { return c.project_id === p.id; });
+    if (projectCommitments.length > 0 && window.PCC.commitments) {
+      var data2 = window.PCC.store.get();
+      var cmtSection = document.createElement("div");
+      cmtSection.style.marginTop = "16px";
+      cmtSection.style.paddingTop = "14px";
+      cmtSection.style.borderTop = "1px solid var(--divider)";
+
+      var cmtHeader = document.createElement("div");
+      cmtHeader.style.display = "flex";
+      cmtHeader.style.justifyContent = "space-between";
+      cmtHeader.style.alignItems = "center";
+      var cmtLabel = document.createElement("span");
+      cmtLabel.className = "detail-item__label";
+      cmtLabel.textContent = "COMMITMENTS (" + projectCommitments.length + ")";
+      cmtHeader.appendChild(cmtLabel);
+      var viewAllCmtBtn = document.createElement("button");
+      viewAllCmtBtn.className = "btn btn--ghost";
+      viewAllCmtBtn.textContent = "View All";
+      viewAllCmtBtn.onclick = function () {
+        window.PCC.commitments.filterByProject(p.id);
+        window.PCC.router.go("commitments");
+      };
+      cmtHeader.appendChild(viewAllCmtBtn);
+      cmtSection.appendChild(cmtHeader);
+
+      var totalCommitted = 0;
+      projectCommitments.forEach(function (c) { totalCommitted += Number(c.committed_value) || 0; });
+      var cmtLine = document.createElement("p");
+      cmtLine.style.fontSize = "13px";
+      cmtLine.style.margin = "6px 0 0";
+      cmtLine.textContent = "Total Committed " + formatMoney(totalCommitted) + " across " + projectCommitments.length + " commitment(s).";
+      cmtSection.appendChild(cmtLine);
+
+      wrap.appendChild(cmtSection);
+    }
+
     return wrap;
   }
 
