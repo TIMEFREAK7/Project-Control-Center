@@ -19,6 +19,13 @@
   var RELATIONSHIP_TYPE_LABELS = { FS: "Finish-to-Start", SS: "Start-to-Start", FF: "Finish-to-Finish", SF: "Start-to-Finish" };
   var PRIORITY_LABELS = { low: "Low", medium: "Medium", high: "High" };
   var RECOVERY_ACTION_STATUS_LABELS = { open: "Open", in_progress: "In Progress", completed: "Completed", cancelled: "Cancelled" };
+  var DELAY_CAUSE_LABELS = {
+    owner_caused: "Owner-Caused",
+    contractor_caused: "Contractor-Caused",
+    weather_force_majeure: "Weather / Force Majeure",
+    design_rfi_driven: "Design / RFI-Driven",
+    other: "Other",
+  };
 
   var uiState = {
     projectId: "", // currently selected project \u2014 everything below scopes to this
@@ -32,6 +39,9 @@
     // PCC Evolution Roadmap, Tier C: Delay & Recovery Management. Recovery action id
     // currently being added/edited in the Activity Detail Panel, or "new", or null.
     editingRecoveryActionId: null,
+    // Gate 23: delay record id currently being added/edited in the Activity Detail
+    // Panel, or "new", or null.
+    editingDelayRecordId: null,
     // Gate 4: baseline capture/compare. Baseline list is scoped to the selected
     // *project* (not the selected schedule) since comparing a baseline against a
     // later re-imported revision is the point \u2014 see scheduleBaselineEngine.js header.
@@ -3341,6 +3351,252 @@
     return wrap;
   }
 
+  /** PCC Evolution Roadmap, Tier F: Advanced Delay Analysis (Gate 23). Delay EVENTS
+   * logged against THIS activity — why it happened, whose responsibility, and whether
+   * it's excusable — as its own structured register, distinct from Recovery Actions
+   * above (which track the corrective response, not the cause). Same inline full-CRUD
+   * pattern as renderRecoveryActionsSection() immediately above, deliberately mirrored
+   * rather than sharing a helper — the two forms have different fields entirely, and
+   * this app's own convention favors small per-purpose builders over a generalized one. */
+  function renderDelayRecordsSection(activity, data, rerender) {
+    var wrap = document.createElement("div");
+    wrap.style.marginTop = "14px";
+    wrap.style.paddingTop = "10px";
+    wrap.style.borderTop = "1px solid var(--divider)";
+
+    var rows = data.delay_records
+      .filter(function (r) { return r.activity_id === activity.id; })
+      .sort(function (a, b) { return (b.identified_date || "").localeCompare(a.identified_date || ""); });
+
+    var heading = document.createElement("p");
+    heading.className = "detail-item__label";
+    heading.style.marginBottom = "6px";
+    heading.textContent = "DELAY RECORDS (" + rows.length + ")";
+    wrap.appendChild(heading);
+
+    var addBtn = document.createElement("button");
+    addBtn.className = "btn btn--ghost";
+    addBtn.style.marginBottom = "8px";
+    addBtn.textContent = "+ Add Delay Record";
+    addBtn.onclick = function () {
+      uiState.editingDelayRecordId = "new";
+      rerender();
+    };
+    wrap.appendChild(addBtn);
+
+    if (uiState.editingDelayRecordId) {
+      var editing =
+        uiState.editingDelayRecordId === "new"
+          ? window.PCC.store.newDelayRecord({ activity_id: activity.id, project_id: activity.project_id })
+          : data.delay_records.find(function (r) { return r.id === uiState.editingDelayRecordId; });
+      if (editing) {
+        var formPanel = document.createElement("div");
+        formPanel.className = "panel";
+        formPanel.style.marginBottom = "10px";
+        var form = document.createElement("form");
+        var grid = document.createElement("div");
+        grid.className = "form-grid";
+
+        var causeField = document.createElement("div");
+        causeField.className = "field";
+        causeField.innerHTML = "<label>Delay Cause</label>";
+        var causeSelect = document.createElement("select");
+        causeSelect.id = "delayfield-delay_cause";
+        window.PCC.store.DELAY_RECORD_CAUSES.forEach(function (c) {
+          var opt = document.createElement("option");
+          opt.value = c;
+          opt.textContent = DELAY_CAUSE_LABELS[c];
+          causeSelect.appendChild(opt);
+        });
+        causeSelect.value = editing.delay_cause || "other";
+        causeField.appendChild(causeSelect);
+        grid.appendChild(causeField);
+
+        var daysField = document.createElement("div");
+        daysField.className = "field";
+        daysField.innerHTML = "<label>Delay Days</label>";
+        var daysInput = document.createElement("input");
+        daysInput.type = "number";
+        daysInput.id = "delayfield-delay_days";
+        daysInput.value = editing.delay_days == null ? "" : editing.delay_days;
+        daysField.appendChild(daysInput);
+        grid.appendChild(daysField);
+
+        var identifiedField = document.createElement("div");
+        identifiedField.className = "field";
+        identifiedField.innerHTML = "<label>Identified Date</label>";
+        var identifiedInput = document.createElement("input");
+        identifiedInput.type = "date";
+        identifiedInput.id = "delayfield-identified_date";
+        identifiedInput.value = editing.identified_date || "";
+        identifiedField.appendChild(identifiedInput);
+        grid.appendChild(identifiedField);
+
+        var respField = document.createElement("div");
+        respField.className = "field";
+        respField.innerHTML = "<label>Responsible Party</label>";
+        var respInput = document.createElement("input");
+        respInput.type = "text";
+        respInput.id = "delayfield-responsible_party";
+        respInput.value = editing.responsible_party || "";
+        respField.appendChild(respInput);
+        grid.appendChild(respField);
+
+        var excusableField = document.createElement("div");
+        excusableField.className = "field";
+        var excusableLabel = document.createElement("label");
+        excusableLabel.style.display = "flex";
+        excusableLabel.style.alignItems = "center";
+        excusableLabel.style.gap = "8px";
+        var excusableCheckbox = document.createElement("input");
+        excusableCheckbox.type = "checkbox";
+        excusableCheckbox.id = "delayfield-is_excusable";
+        excusableCheckbox.checked = !!editing.is_excusable;
+        excusableLabel.appendChild(excusableCheckbox);
+        excusableLabel.appendChild(document.createTextNode("Excusable"));
+        excusableField.appendChild(excusableLabel);
+        grid.appendChild(excusableField);
+
+        var descField = document.createElement("div");
+        descField.style.gridColumn = "1 / -1";
+        descField.className = "field";
+        descField.innerHTML = "<label>Description *</label>";
+        var descInput = document.createElement("textarea");
+        descInput.id = "delayfield-description";
+        descInput.rows = 2;
+        descInput.value = editing.description || "";
+        descField.appendChild(descInput);
+        grid.appendChild(descField);
+
+        form.appendChild(grid);
+
+        var errorMsg = document.createElement("p");
+        errorMsg.style.color = "var(--status-critical)";
+        errorMsg.style.fontSize = "12px";
+        errorMsg.style.display = "none";
+        form.appendChild(errorMsg);
+
+        var formActions = document.createElement("div");
+        formActions.style.display = "flex";
+        formActions.style.gap = "10px";
+        formActions.style.marginTop = "10px";
+        var saveBtn = document.createElement("button");
+        saveBtn.type = "submit";
+        saveBtn.className = "btn btn--primary";
+        saveBtn.textContent = uiState.editingDelayRecordId === "new" ? "Add Delay Record" : "Save Changes";
+        var cancelBtn = document.createElement("button");
+        cancelBtn.type = "button";
+        cancelBtn.className = "btn btn--ghost";
+        cancelBtn.textContent = "Cancel";
+        cancelBtn.onclick = function () {
+          uiState.editingDelayRecordId = null;
+          rerender();
+        };
+        formActions.appendChild(saveBtn);
+        formActions.appendChild(cancelBtn);
+        form.appendChild(formActions);
+
+        form.onsubmit = function (e) {
+          e.preventDefault();
+          if (!descInput.value.trim()) {
+            errorMsg.textContent = "Description is required.";
+            errorMsg.style.display = "block";
+            return;
+          }
+          errorMsg.style.display = "none";
+          var values = {
+            delay_cause: causeSelect.value,
+            delay_days: daysInput.value === "" ? null : Number(daysInput.value),
+            identified_date: identifiedInput.value,
+            responsible_party: respInput.value,
+            is_excusable: excusableCheckbox.checked,
+            description: descInput.value.trim(),
+            updated_at: new Date().toISOString(),
+          };
+          window.PCC.store.update(function (d) {
+            if (uiState.editingDelayRecordId === "new") {
+              d.delay_records.push(window.PCC.store.newDelayRecord(Object.assign({ activity_id: activity.id, project_id: activity.project_id }, values)));
+            } else {
+              var existing = d.delay_records.find(function (r) { return r.id === editing.id; });
+              if (existing) Object.assign(existing, values);
+            }
+          });
+          window.PCC.notify("Delay record saved.", "success");
+          uiState.editingDelayRecordId = null;
+          rerender();
+        };
+
+        formPanel.appendChild(form);
+        wrap.appendChild(formPanel);
+      }
+    }
+
+    if (rows.length === 0) {
+      var empty = document.createElement("p");
+      empty.className = "text-secondary";
+      empty.style.fontSize = "12px";
+      empty.textContent = "No delay records logged against this activity yet.";
+      wrap.appendChild(empty);
+      return wrap;
+    }
+
+    rows.forEach(function (r) {
+      var rowEl = document.createElement("div");
+      rowEl.style.display = "flex";
+      rowEl.style.justifyContent = "space-between";
+      rowEl.style.alignItems = "flex-start";
+      rowEl.style.gap = "8px";
+      rowEl.style.marginBottom = "8px";
+      rowEl.style.fontSize = "13px";
+
+      var left = document.createElement("div");
+      left.innerHTML =
+        "<strong>" + r.description + "</strong>" +
+        "<p class='text-secondary' style='font-size:12px;margin:4px 0 0'>" +
+        DELAY_CAUSE_LABELS[r.delay_cause] +
+        (r.responsible_party ? " · " + r.responsible_party : "") +
+        (r.delay_days != null ? " · " + r.delay_days + "d" : "") +
+        (r.identified_date ? " · identified " + r.identified_date : "") +
+        "</p>";
+      rowEl.appendChild(left);
+
+      var right = document.createElement("div");
+      right.style.display = "flex";
+      right.style.alignItems = "center";
+      right.style.gap = "6px";
+      right.style.flexShrink = "0";
+
+      var badge = document.createElement("span");
+      badge.className = "status-badge status-badge--" + (r.is_excusable ? "complete" : "at_risk");
+      badge.style.fontSize = "11px";
+      badge.textContent = r.is_excusable ? "Excusable" : "Non-Excusable";
+      right.appendChild(badge);
+
+      var editRowBtn = document.createElement("button");
+      editRowBtn.className = "btn btn--ghost";
+      editRowBtn.textContent = "Edit";
+      editRowBtn.onclick = function () {
+        uiState.editingDelayRecordId = r.id;
+        rerender();
+      };
+      right.appendChild(editRowBtn);
+
+      var removeBtn = document.createElement("button");
+      removeBtn.className = "btn btn--ghost";
+      removeBtn.textContent = "Remove";
+      removeBtn.onclick = function () {
+        window.PCC.store.update(function (d) { d.delay_records = d.delay_records.filter(function (x) { return x.id !== r.id; }); });
+        rerender();
+      };
+      right.appendChild(removeBtn);
+
+      rowEl.appendChild(right);
+      wrap.appendChild(rowEl);
+    });
+
+    return wrap;
+  }
+
   function renderActivityDetailPanel(container, activity, data, wbsItems, scheduleActivities, relationships, rerender) {
     var panel = document.createElement("div");
     panel.className = "panel";
@@ -3444,6 +3700,7 @@
     panel.appendChild(renderLinkedRecordsSection(activity, data));
     panel.appendChild(renderDocumentReadinessSection(activity, data));
     panel.appendChild(renderRecoveryActionsSection(activity, data, rerender));
+    panel.appendChild(renderDelayRecordsSection(activity, data, rerender));
 
     var actions = document.createElement("div");
     actions.style.display = "flex";
@@ -4015,6 +4272,49 @@
       noChange.style.fontSize = "13px";
       noChange.textContent = "No finish-date or criticality changes among matched activities.";
       panel.appendChild(noChange);
+    }
+
+    // Gate 23 (PCC Evolution Roadmap, Tier F: Advanced Delay Analysis): float erosion —
+    // baseline.total_float minus current.total_float, per matched activity — was always
+    // computable from this same comparison result but never derived or surfaced. Ranked
+    // separately from the "changed" table above because float erosion and finish-date
+    // slip are genuinely distinct signals: an activity can be consuming float steadily
+    // without its finish date having moved yet (still non-critical), which the finish-
+    // variance table alone would miss entirely.
+    var floatErosion = result.activities.matched
+      .filter(function (m) { return m.baseline.total_float != null && m.current.total_float != null && m.baseline.total_float - m.current.total_float > 0; })
+      .map(function (m) { return Object.assign({ erosion: m.baseline.total_float - m.current.total_float }, m); })
+      .sort(function (a, b) { return b.erosion - a.erosion; });
+
+    if (floatErosion.length > 0) {
+      var erosionHeading = document.createElement("h4");
+      erosionHeading.style.marginTop = "14px";
+      erosionHeading.style.marginBottom = "8px";
+      erosionHeading.textContent = "Float Erosion (" + floatErosion.length + ") — activities consuming float since baseline";
+      panel.appendChild(erosionHeading);
+      var erosionList = document.createElement("div");
+      erosionList.className = "project-list";
+      floatErosion.slice(0, 20).forEach(function (m) {
+        var erosionRow = document.createElement("div");
+        erosionRow.className = "detail-card";
+        erosionRow.style.marginBottom = "6px";
+        erosionRow.style.fontSize = "13px";
+        erosionRow.innerHTML =
+          "<strong>" + m.name + "</strong><br/>" +
+          "<span class='text-secondary' style='font-size:12px;'>" +
+          m.baseline.total_float + "d → " + m.current.total_float + "d float (−" + m.erosion + "d)" +
+          (m.current.is_critical ? " · now critical" : "") +
+          "</span>";
+        erosionList.appendChild(erosionRow);
+      });
+      panel.appendChild(erosionList);
+      if (floatErosion.length > 20) {
+        var erosionMore = document.createElement("p");
+        erosionMore.className = "text-secondary";
+        erosionMore.style.fontSize = "12px";
+        erosionMore.textContent = "+" + (floatErosion.length - 20) + " more not shown.";
+        panel.appendChild(erosionMore);
+      }
     }
 
     if (result.activities.added.length > 0 || result.activities.removed.length > 0) {

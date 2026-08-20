@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 44;
+  var SCHEMA_VERSION = 45;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -78,6 +78,10 @@
       // one baseline comparison (baseline compare, Gate 4, is on-demand/ephemeral;
       // recovery actions need to persist regardless of which baseline is currently open).
       recovery_actions: [],
+      // PCC Evolution Roadmap, Tier F: Advanced Delay Analysis (Gate 23). One row per
+      // delay EVENT logged against a Schedule activity — see newDelayRecord() below for
+      // why this is deliberately a separate register from recovery_actions above.
+      delay_records: [],
       // Gate 5b (Tier 2 Cost Tracking): budget line items and the actual-cost log
       // against them. Deliberately two separate arrays, not one shape distinguished by
       // a type field \u2014 unlike Risk/Issue/Opportunity or RFI/TQ, a budget line item and
@@ -1263,6 +1267,40 @@
 
   var RECOVERY_ACTION_STATUSES = ["open", "in_progress", "completed", "cancelled"];
 
+  function newDelayRecordId() {
+    return "dly_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  /** PCC Evolution Roadmap, Tier F: Advanced Delay Analysis (Gate 23). A distinct delay
+   * EVENT logged against one Schedule activity — why it happened and whose responsibility
+   * it was, as its own structured record rather than free text buried in a Recovery
+   * Action's description. Deliberately a separate register from Recovery Actions above,
+   * not a shared shape: a Delay Record answers "what happened and why" (analysis, often
+   * needed for a contractual claim), a Recovery Action answers "what are we doing about
+   * it" (corrective workflow) — related but genuinely distinct questions, and an activity
+   * can accumulate several Delay Records over time (e.g. concurrent causes) the same way
+   * it can accumulate several Recovery Actions. `project_id` denormalized from the
+   * activity for portfolio-wide queries, same convention newRecoveryAction() uses. */
+  function newDelayRecord(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newDelayRecordId(),
+      activity_id: "",
+      project_id: "",
+      delay_cause: "other", // owner_caused | contractor_caused | weather_force_majeure | design_rfi_driven | other
+      is_excusable: false,
+      responsible_party: "",
+      delay_days: null,
+      identified_date: "",
+      description: "",
+      created_at: now,
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  var DELAY_RECORD_CAUSES = ["owner_caused", "contractor_caused", "weather_force_majeure", "design_rfi_driven", "other"];
+
   // ============================================================
   // GATE 9 — Vendor Management. Vendor Master is portfolio-wide (like Projects
   // themselves), not scoped to one project the way Documents/Risk/RFI are — every
@@ -2273,6 +2311,14 @@
       loaded.schema_version = 44;
     }
 
+    if (loaded.schema_version < 45) {
+      // PCC Evolution Roadmap, Tier F: Advanced Delay Analysis (Gate 23). Brand new
+      // register, nothing to backfill on existing records — same pattern as
+      // recovery_actions/decisions/weekly_reviews before it.
+      if (!loaded.delay_records) loaded.delay_records = [];
+      loaded.schema_version = 45;
+    }
+
     return loaded;
   }
 
@@ -2611,6 +2657,8 @@
     newScheduleBaseline: newScheduleBaseline,
     newRecoveryAction: newRecoveryAction,
     RECOVERY_ACTION_STATUSES: RECOVERY_ACTION_STATUSES,
+    newDelayRecord: newDelayRecord,
+    DELAY_RECORD_CAUSES: DELAY_RECORD_CAUSES,
     SCHEDULE_STATUSES: SCHEDULE_STATUSES,
     ACTIVITY_TYPES: ACTIVITY_TYPES,
     ACTIVITY_STATUSES: ACTIVITY_STATUSES,
