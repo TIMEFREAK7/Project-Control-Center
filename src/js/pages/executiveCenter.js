@@ -125,6 +125,7 @@
       cpm = window.PCC.scheduleCpmEngine.calculateSchedule(activities, relationships, {
         dataDate: schedule.data_date,
         nearCriticalThresholdDays: schedule.near_critical_threshold_days,
+        calculationMode: schedule.calculation_mode,
       });
     }
     ctx.cpm = cpm;
@@ -154,12 +155,20 @@
     var remainingDurationTotal = 0;
     var remainingDurationMissingCount = 0;
     var forecastLateActivities = [];
+    // Gate 21 (Status-Date Reforecasting): out-of-sequence detection/mode live in the
+    // CPM engine itself (scheduleCpmEngine.js) — this just surfaces the live result
+    // the same way totalFloat/earlyFinish above prefer the live cpm recalculation over
+    // the last-persisted value on the activity, so this panel reflects the schedule's
+    // current calculation_mode even before the user next clicks "Calculate Schedule".
+    var outOfSequenceActivities = [];
 
     activities.forEach(function (a) {
       var r = cpm && cpm.results[a.id];
       var totalFloat = r ? r.total_float : a.total_float;
       var earlyFinish = r ? r.early_finish : a.early_finish;
       var effectiveFinish = earlyFinish || a.planned_finish;
+      var isOutOfSequence = r ? r.is_out_of_sequence : a.is_out_of_sequence;
+      if (isOutOfSequence) outOfSequenceActivities.push({ id: a.id, name: a.name });
 
       if (totalFloat != null && totalFloat <= 0) criticalActivities.push({ id: a.id, name: a.name });
       else if (totalFloat != null && totalFloat > 0 && totalFloat <= (schedule ? schedule.near_critical_threshold_days : 5)) {
@@ -207,6 +216,7 @@
     ctx.remainingDurationTotalDays = remainingDurationTotal;
     ctx.remainingDurationMissingCount = remainingDurationMissingCount;
     ctx.forecastLateActivities = forecastLateActivities;
+    ctx.outOfSequenceActivities = outOfSequenceActivities;
     // Float Changes / Milestone Variance (the spec's other two status-date bullets) both
     // need a captured baseline's full snapshot, which lives in scheduleBaselineStore.js's
     // IndexedDB — async, unlike everything else buildProjectContext() reads. Rather than
@@ -976,6 +986,7 @@
         { label: "Not Started", value: ctx.notStartedActivityCount },
         { label: "Forecast Late", value: ctx.forecastLateActivities.length, colorVar: ctx.forecastLateActivities.length ? "--status-critical" : null },
         { label: "Remaining Duration", value: ctx.remainingDurationTotalDays + "d" },
+        { label: "Out of Sequence", value: ctx.outOfSequenceActivities.length, colorVar: ctx.outOfSequenceActivities.length ? "--status-at-risk" : null },
       ]);
       renderStatusDateDetail(outlet, ctx, p);
     }
@@ -1117,12 +1128,13 @@
     outlet.appendChild(wrap);
   }
 
-  /** PCC Evolution Roadmap, Tier F (Gate 20, Status-Date Control) — the two parts of the
-   * STATUS DATE section that don't fit a flat KPI grid: the Forecast Late activity list
-   * (per-activity, not just a count) and a pointer into the Baselines tab for Float
-   * Changes/Milestone Variance, which need that tab's own async IndexedDB snapshot load
-   * rather than duplicating it here (see buildProjectContext()'s own comment on
-   * ctx.baselineCount for why). */
+  /** PCC Evolution Roadmap, Tier F (Gate 20 Status-Date Control, extended by Gate 21
+   * Status-Date Reforecasting) — the parts of the STATUS DATE section that don't fit a
+   * flat KPI grid: the Forecast Late and Out of Sequence activity lists (per-activity,
+   * not just a count) and a pointer into the Baselines tab for Float Changes/Milestone
+   * Variance, which need that tab's own async IndexedDB snapshot load rather than
+   * duplicating it here (see buildProjectContext()'s own comment on ctx.baselineCount
+   * for why). */
   function renderStatusDateDetail(outlet, ctx, p) {
     if (ctx.forecastLateActivities.length > 0) {
       var lateWrap = document.createElement("div");
@@ -1149,6 +1161,41 @@
         lateWrap.appendChild(more);
       }
       outlet.appendChild(lateWrap);
+    }
+
+    if (ctx.outOfSequenceActivities.length > 0) {
+      var oosWrap = document.createElement("div");
+      oosWrap.className = "panel";
+      oosWrap.style.marginTop = "10px";
+      var oosHeading = document.createElement("h4");
+      oosHeading.style.marginBottom = "8px";
+      var modeLabel = ctx.schedule && ctx.schedule.calculation_mode === "retained_logic" ? "Retained Logic" : "Progress Override";
+      oosHeading.textContent = "Out of Sequence (" + ctx.outOfSequenceActivities.length + ") — " + modeLabel + " mode";
+      oosWrap.appendChild(oosHeading);
+      ctx.outOfSequenceActivities.slice(0, 20).forEach(function (a) {
+        var row = document.createElement("p");
+        row.style.fontSize = "13px";
+        row.style.margin = "4px 0";
+        row.textContent = esc(a.name || "(unnamed activity)");
+        oosWrap.appendChild(row);
+      });
+      if (ctx.outOfSequenceActivities.length > 20) {
+        var oosMore = document.createElement("p");
+        oosMore.className = "text-secondary";
+        oosMore.style.fontSize = "12px";
+        oosMore.textContent = "+" + (ctx.outOfSequenceActivities.length - 20) + " more not shown.";
+        oosWrap.appendChild(oosMore);
+      }
+      var oosNote = document.createElement("p");
+      oosNote.className = "text-secondary";
+      oosNote.style.fontSize = "12px";
+      oosNote.style.marginTop = "6px";
+      oosNote.textContent =
+        modeLabel === "Retained Logic"
+          ? "These activities had actual progress before their predecessor logic allowed — their forecast is pushed to respect that logic. Change the mode on the Schedule page."
+          : "These activities had actual progress before their predecessor logic allowed — their forecast uses actual dates regardless. Change the mode on the Schedule page.";
+      oosWrap.appendChild(oosNote);
+      outlet.appendChild(oosWrap);
     }
 
     if (ctx.remainingDurationMissingCount > 0) {

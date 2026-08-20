@@ -2062,6 +2062,25 @@ https://github.com/nodeca/pako/blob/main/LICENSE
  * - Data-consistency problems (100% complete with no actual_finish; actual_finish set with no
  *   actual_start; actual_finish before actual_start; in-progress with no remaining_duration) are
  *   flagged, never silently resolved by guessing a number.
+ *
+ * OUT-OF-SEQUENCE PROGRESS & CALCULATION MODE (Gate 21, PCC Evolution Roadmap Tier F):
+ * - An activity is "out of sequence" (OOS) when it has an actual anchor (completed or
+ *   in_progress) but its predecessors' own calculated dates — by the time this activity
+ *   is reached in topological order — would only have permitted a LATER start than when
+ *   it actually started. Detected purely from predecessor-derived constraints (never
+ *   floored at dataDay, unlike the normal not-started ES floor — an activity starting
+ *   before dataDate is normal and not a sequencing problem on its own).
+ * - options.calculationMode controls how an OOS activity's forecast is treated:
+ *     "progress_override" (default — the only behavior that existed before this gate):
+ *       actual dates always win; predecessor logic is ignored for this activity's own ES,
+ *       exactly as before.
+ *     "retained_logic": for an in_progress OOS activity only, its ES (and therefore EF/
+ *       downstream propagation) is pushed out to the predecessor-derived constraint —
+ *       the schedule still respects the logic tie going forward even though the actual
+ *       start already happened early. A completed OOS activity's own dates are NEVER
+ *       moved in either mode — finished work is history, not subject to a "mode."
+ * - is_out_of_sequence is reported for both modes regardless — it's a data-quality signal
+ *   about what happened, independent of which mode is used to forecast what's next.
  */
 (function () {
   "use strict";
@@ -2166,10 +2185,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
    * @param options.dataDate  ISO date string, the project's day-zero / status date (defaults to today)
    * @param options.nearCriticalThresholdDays  float <= this (but > 0) is "near critical" (default 5)
    * @param options.ignoreActuals  true = pure planned-duration CPM, actual dates never consulted
+   * @param options.calculationMode  "progress_override" (default) or "retained_logic" — see the
+   *   file header's OUT-OF-SEQUENCE section for what each does
    * @returns {
    *   results: { [activityId]: { early_start, early_finish, late_start, late_finish,
    *                               total_float, free_float, is_critical, is_near_critical,
-   *                               status, insufficient_data } },
+   *                               status, insufficient_data, is_out_of_sequence } },
    *   projectFinish, plannedProjectFinish, forecastVarianceDays,  (ISO date strings / integer or null)
    *   criticalActivityIds: [...],
    *   cyclicActivityIds: [...],   // excluded from calculation entirely, results[id] is null
@@ -2182,6 +2203,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var dataDay = toDayNumber(dataDate);
     var nearCriticalThreshold = options.nearCriticalThresholdDays != null ? options.nearCriticalThresholdDays : 5;
     var ignoreActuals = !!options.ignoreActuals;
+    var retainedLogic = options.calculationMode === "retained_logic";
 
     var warnings = [];
     var byId = {};
@@ -2260,19 +2282,43 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     // Completed/in-progress activities use their fixed anchor and ignore predecessor
     // constraints for their OWN start \u2014 the work already began regardless of what
     // logic says, but they still constrain their successors normally via EF below.
+    // Exception: an in_progress activity that's out-of-sequence (see below) in
+    // "retained_logic" mode has its ES pushed to the predecessor-derived constraint
+    // instead \u2014 the actual start already happened, but the forecast keeps respecting
+    // the logic tie for what's left.
     var ES = {};
     var EF = {};
+    var outOfSequenceById = {};
     order.forEach(function (id) {
+      var preds = safePredecessors[id];
+      var predConstraint = null; // predecessor-derived only, never floored at dataDay
+      preds.forEach(function (edge) {
+        var c = earliestStartConstraint(ES[edge.fromId], EF[edge.fromId], edge.type, edge.lag, duration[id]);
+        if (predConstraint == null || c > predConstraint) predConstraint = c;
+      });
+
+      var isOOS = !ignoreActuals && fixedES[id] != null && predConstraint != null && predConstraint > fixedES[id];
+      outOfSequenceById[id] = isOOS;
+      if (isOOS) {
+        warnings.push({
+          activityId: id,
+          message:
+            "Out-of-sequence: this activity's actual start is before its predecessor logic would have allowed (" +
+            (statusById[id] === "completed" ? "already completed, dates unaffected" : retainedLogic ? "forecast pushed to respect predecessor logic" : "actual dates retained, predecessor logic overridden") +
+            ").",
+        });
+      }
+
       var es;
       if (fixedES[id] != null) {
-        es = fixedES[id];
+        if (isOOS && retainedLogic && statusById[id] === "in_progress") {
+          es = predConstraint;
+        } else {
+          es = fixedES[id];
+        }
       } else {
-        var preds = safePredecessors[id];
         es = dataDay;
-        preds.forEach(function (edge) {
-          var c = earliestStartConstraint(ES[edge.fromId], EF[edge.fromId], edge.type, edge.lag, duration[id]);
-          if (c > es) es = c;
-        });
+        if (predConstraint != null && predConstraint > es) es = predConstraint;
       }
       ES[id] = es;
       EF[id] = es + duration[id];
@@ -2333,6 +2379,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         is_near_critical: isNearCritical,
         status: statusById[id],
         insufficient_data: insufficientById[id],
+        is_out_of_sequence: !!outOfSequenceById[id],
       };
     });
     cyclicActivityIds.forEach(function (id) {
@@ -2350,6 +2397,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var forecastVarianceDays =
       plannedProjectFinishDay != null && projectFinishDay != null ? projectFinishDay - plannedProjectFinishDay : null;
 
+    var outOfSequenceActivityIds = order.filter(function (id) { return outOfSequenceById[id]; });
+
     return {
       results: results,
       projectFinish: projectFinishDay != null ? toIsoDate(projectFinishDay) : null,
@@ -2357,6 +2406,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       forecastVarianceDays: forecastVarianceDays,
       criticalActivityIds: criticalActivityIds,
       cyclicActivityIds: cyclicActivityIds,
+      outOfSequenceActivityIds: outOfSequenceActivityIds,
       warnings: warnings,
     };
   }
@@ -3729,7 +3779,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 42;
+  var SCHEMA_VERSION = 43;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -4744,6 +4794,15 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   var ACTIVITY_TYPES = ["task", "milestone", "summary", "wbs_summary"];
   var ACTIVITY_STATUSES = ["not_started", "in_progress", "complete", "on_hold"];
   var RELATIONSHIP_TYPES = ["FS", "SS", "FF", "SF"]; // Finish-to-Start, Start-to-Start, Finish-to-Finish, Start-to-Finish
+  // Gate 21 (Status-Date Reforecasting): how the CPM engine resolves out-of-sequence
+  // progress (an activity with actual progress whose predecessor logic wasn't actually
+  // satisfied when it started). "progress_override" (default, and the only behavior
+  // that existed before this gate) lets actual dates win outright; "retained_logic"
+  // pushes an in-progress OOS activity's forecast to respect the predecessor tie even
+  // though its actual start already happened early. Per-schedule, like
+  // near_critical_threshold_days above, for the same reason (different schedules may
+  // reasonably want different treatment).
+  var CALCULATION_MODES = ["progress_override", "retained_logic"];
 
   function newScheduleId() {
     return "sch_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
@@ -4777,6 +4836,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       // requirement that this not be hardcoded. Lives on the schedule (not global)
       // since different schedules/projects may reasonably want different thresholds.
       near_critical_threshold_days: 5,
+      // Gate 21: see CALCULATION_MODES above for what this controls.
+      calculation_mode: "progress_override",
       created_at: now,
       updated_at: now,
     };
@@ -4840,6 +4901,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       late_finish: null,
       total_float: null,
       free_float: null,
+      // Gate 21: whether the CPM engine detected this activity had actual progress
+      // recorded before its predecessor logic would have allowed it to start. Never
+      // set directly by user input — same read-only convention as the fields above.
+      is_out_of_sequence: false,
       // Schedule-based progress: from the imported schedule file's own % Complete column
       // (Gate 2), or hand-edited directly. This is what costEvmEngine.js's EV calculation
       // uses (see that file's header for why).
@@ -5932,6 +5997,22 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       loaded.schema_version = 42;
     }
 
+    if (loaded.schema_version < 43) {
+      // PCC Evolution Roadmap, Tier F: Status-Date Reforecasting (Gate 21). Backfill
+      // calculation_mode onto existing schedules as "progress_override" — the only
+      // behavior that existed before this gate, so every existing schedule keeps
+      // calculating exactly as it did. is_out_of_sequence onto existing activities as
+      // false (unknown until the next "Calculate Schedule" run recomputes it, same
+      // "recompute-on-next-run" precedent as every other CPM-derived field here).
+      (loaded.schedules || []).forEach(function (s) {
+        if (s.calculation_mode === undefined) s.calculation_mode = "progress_override";
+      });
+      (loaded.activities || []).forEach(function (a) {
+        if (a.is_out_of_sequence === undefined) a.is_out_of_sequence = false;
+      });
+      loaded.schema_version = 43;
+    }
+
     return loaded;
   }
 
@@ -6274,6 +6355,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     ACTIVITY_TYPES: ACTIVITY_TYPES,
     ACTIVITY_STATUSES: ACTIVITY_STATUSES,
     RELATIONSHIP_TYPES: RELATIONSHIP_TYPES,
+    CALCULATION_MODES: CALCULATION_MODES,
     newCostBudgetItem: newCostBudgetItem,
     newCostActual: newCostActual,
     COST_CATEGORIES: COST_CATEGORIES,
@@ -11141,6 +11223,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       cpm = window.PCC.scheduleCpmEngine.calculateSchedule(activities, relationships, {
         dataDate: schedule.data_date,
         nearCriticalThresholdDays: schedule.near_critical_threshold_days,
+        calculationMode: schedule.calculation_mode,
       });
     }
     ctx.cpm = cpm;
@@ -11170,12 +11253,20 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var remainingDurationTotal = 0;
     var remainingDurationMissingCount = 0;
     var forecastLateActivities = [];
+    // Gate 21 (Status-Date Reforecasting): out-of-sequence detection/mode live in the
+    // CPM engine itself (scheduleCpmEngine.js) — this just surfaces the live result
+    // the same way totalFloat/earlyFinish above prefer the live cpm recalculation over
+    // the last-persisted value on the activity, so this panel reflects the schedule's
+    // current calculation_mode even before the user next clicks "Calculate Schedule".
+    var outOfSequenceActivities = [];
 
     activities.forEach(function (a) {
       var r = cpm && cpm.results[a.id];
       var totalFloat = r ? r.total_float : a.total_float;
       var earlyFinish = r ? r.early_finish : a.early_finish;
       var effectiveFinish = earlyFinish || a.planned_finish;
+      var isOutOfSequence = r ? r.is_out_of_sequence : a.is_out_of_sequence;
+      if (isOutOfSequence) outOfSequenceActivities.push({ id: a.id, name: a.name });
 
       if (totalFloat != null && totalFloat <= 0) criticalActivities.push({ id: a.id, name: a.name });
       else if (totalFloat != null && totalFloat > 0 && totalFloat <= (schedule ? schedule.near_critical_threshold_days : 5)) {
@@ -11223,6 +11314,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     ctx.remainingDurationTotalDays = remainingDurationTotal;
     ctx.remainingDurationMissingCount = remainingDurationMissingCount;
     ctx.forecastLateActivities = forecastLateActivities;
+    ctx.outOfSequenceActivities = outOfSequenceActivities;
     // Float Changes / Milestone Variance (the spec's other two status-date bullets) both
     // need a captured baseline's full snapshot, which lives in scheduleBaselineStore.js's
     // IndexedDB — async, unlike everything else buildProjectContext() reads. Rather than
@@ -11992,6 +12084,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         { label: "Not Started", value: ctx.notStartedActivityCount },
         { label: "Forecast Late", value: ctx.forecastLateActivities.length, colorVar: ctx.forecastLateActivities.length ? "--status-critical" : null },
         { label: "Remaining Duration", value: ctx.remainingDurationTotalDays + "d" },
+        { label: "Out of Sequence", value: ctx.outOfSequenceActivities.length, colorVar: ctx.outOfSequenceActivities.length ? "--status-at-risk" : null },
       ]);
       renderStatusDateDetail(outlet, ctx, p);
     }
@@ -12133,12 +12226,13 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     outlet.appendChild(wrap);
   }
 
-  /** PCC Evolution Roadmap, Tier F (Gate 20, Status-Date Control) — the two parts of the
-   * STATUS DATE section that don't fit a flat KPI grid: the Forecast Late activity list
-   * (per-activity, not just a count) and a pointer into the Baselines tab for Float
-   * Changes/Milestone Variance, which need that tab's own async IndexedDB snapshot load
-   * rather than duplicating it here (see buildProjectContext()'s own comment on
-   * ctx.baselineCount for why). */
+  /** PCC Evolution Roadmap, Tier F (Gate 20 Status-Date Control, extended by Gate 21
+   * Status-Date Reforecasting) — the parts of the STATUS DATE section that don't fit a
+   * flat KPI grid: the Forecast Late and Out of Sequence activity lists (per-activity,
+   * not just a count) and a pointer into the Baselines tab for Float Changes/Milestone
+   * Variance, which need that tab's own async IndexedDB snapshot load rather than
+   * duplicating it here (see buildProjectContext()'s own comment on ctx.baselineCount
+   * for why). */
   function renderStatusDateDetail(outlet, ctx, p) {
     if (ctx.forecastLateActivities.length > 0) {
       var lateWrap = document.createElement("div");
@@ -12165,6 +12259,41 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         lateWrap.appendChild(more);
       }
       outlet.appendChild(lateWrap);
+    }
+
+    if (ctx.outOfSequenceActivities.length > 0) {
+      var oosWrap = document.createElement("div");
+      oosWrap.className = "panel";
+      oosWrap.style.marginTop = "10px";
+      var oosHeading = document.createElement("h4");
+      oosHeading.style.marginBottom = "8px";
+      var modeLabel = ctx.schedule && ctx.schedule.calculation_mode === "retained_logic" ? "Retained Logic" : "Progress Override";
+      oosHeading.textContent = "Out of Sequence (" + ctx.outOfSequenceActivities.length + ") — " + modeLabel + " mode";
+      oosWrap.appendChild(oosHeading);
+      ctx.outOfSequenceActivities.slice(0, 20).forEach(function (a) {
+        var row = document.createElement("p");
+        row.style.fontSize = "13px";
+        row.style.margin = "4px 0";
+        row.textContent = esc(a.name || "(unnamed activity)");
+        oosWrap.appendChild(row);
+      });
+      if (ctx.outOfSequenceActivities.length > 20) {
+        var oosMore = document.createElement("p");
+        oosMore.className = "text-secondary";
+        oosMore.style.fontSize = "12px";
+        oosMore.textContent = "+" + (ctx.outOfSequenceActivities.length - 20) + " more not shown.";
+        oosWrap.appendChild(oosMore);
+      }
+      var oosNote = document.createElement("p");
+      oosNote.className = "text-secondary";
+      oosNote.style.fontSize = "12px";
+      oosNote.style.marginTop = "6px";
+      oosNote.textContent =
+        modeLabel === "Retained Logic"
+          ? "These activities had actual progress before their predecessor logic allowed — their forecast is pushed to respect that logic. Change the mode on the Schedule page."
+          : "These activities had actual progress before their predecessor logic allowed — their forecast uses actual dates regardless. Change the mode on the Schedule page.";
+      oosWrap.appendChild(oosNote);
+      outlet.appendChild(oosWrap);
     }
 
     if (ctx.remainingDurationMissingCount > 0) {
@@ -19634,6 +19763,22 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     grid.appendChild(textField("Data Date", "data_date", schedule.data_date, "date"));
     grid.appendChild(textField("Near-Critical Threshold (days)", "near_critical_threshold_days", schedule.near_critical_threshold_days, "number"));
 
+    var calcModeField = document.createElement("div");
+    calcModeField.className = "field";
+    calcModeField.innerHTML = "<label>Out-of-Sequence Calculation Mode</label>";
+    var calcModeSelect = document.createElement("select");
+    calcModeSelect.id = "schedfield-calculation_mode";
+    var CALC_MODE_LABELS = { progress_override: "Progress Override (actual dates win)", retained_logic: "Retained Logic (respect predecessor tie)" };
+    window.PCC.store.CALCULATION_MODES.forEach(function (m) {
+      var opt = document.createElement("option");
+      opt.value = m;
+      opt.textContent = CALC_MODE_LABELS[m] || m;
+      calcModeSelect.appendChild(opt);
+    });
+    calcModeSelect.value = schedule.calculation_mode || "progress_override";
+    calcModeField.appendChild(calcModeSelect);
+    grid.appendChild(calcModeField);
+
     var statusField = document.createElement("div");
     statusField.className = "field";
     statusField.innerHTML = "<label>Status</label>";
@@ -19722,6 +19867,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         version: form.querySelector("#schedfield-version").value,
         data_date: form.querySelector("#schedfield-data_date").value,
         near_critical_threshold_days: Number(form.querySelector("#schedfield-near_critical_threshold_days").value) || 0,
+        calculation_mode: form.querySelector("#schedfield-calculation_mode").value,
         status: form.querySelector("#schedfield-status").value,
         is_baseline: form.querySelector("#schedfield-is_baseline").checked,
         description: form.querySelector("#schedfield-description").value,
@@ -20948,6 +21094,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var result = window.PCC.scheduleCpmEngine.calculateSchedule(scheduleActivities, scheduleRelationships, {
       dataDate: schedule.data_date,
       nearCriticalThresholdDays: schedule.near_critical_threshold_days,
+      calculationMode: schedule.calculation_mode,
     });
 
     window.PCC.store.update(function (d) {
@@ -20966,6 +21113,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         a.late_finish = r.late_finish;
         a.total_float = r.total_float;
         a.free_float = r.free_float;
+        a.is_out_of_sequence = r.is_out_of_sequence;
         a.updated_at = new Date().toISOString();
       });
     });
@@ -20989,9 +21137,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
             : ", forecast on plan"
           : "";
       var insufficientMsg = insufficientCount > 0 ? " (" + insufficientCount + " activity(ies) have insufficient data to forecast reliably)" : "";
+      var oosMsg = result.outOfSequenceActivityIds.length > 0 ? " " + result.outOfSequenceActivityIds.length + " activity(ies) out of sequence." : "";
       window.PCC.notify(
         "Calculated \u2014 project finish " + result.projectFinish + varianceMsg + ", " +
-          result.criticalActivityIds.length + " critical activity(ies)." + insufficientMsg,
+          result.criticalActivityIds.length + " critical activity(ies)." + insufficientMsg + oosMsg,
         insufficientCount > 0 ? "error" : "success"
       );
     }
@@ -21336,6 +21485,15 @@ https://github.com/nodeca/pako/blob/main/LICENSE
             floatBadge.textContent = a.total_float + "d float";
           }
           card.appendChild(floatBadge);
+        }
+
+        if (a.is_out_of_sequence) {
+          var oosBadge = document.createElement("span");
+          oosBadge.className = "status-badge status-badge--at_risk";
+          oosBadge.style.marginLeft = "6px";
+          oosBadge.textContent = "Out of Sequence";
+          oosBadge.title = "This activity had actual progress recorded before its predecessor logic would have allowed it to start.";
+          card.appendChild(oosBadge);
         }
 
         var actions = document.createElement("div");
@@ -22829,6 +22987,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         ? "Critical (0 float)"
         : activity.total_float + " day(s) total, " + (activity.free_float == null ? "—" : activity.free_float) + " free"
     );
+    item("Out of Sequence", activity.is_out_of_sequence ? "Yes — actual progress preceded predecessor logic" : "No");
     item("% Complete", (activity.percent_complete || 0) + "%");
     item("Physical Progress", (activity.physical_progress || 0) + "%");
     item("Discipline", activity.discipline);

@@ -43,6 +43,25 @@
  * - Data-consistency problems (100% complete with no actual_finish; actual_finish set with no
  *   actual_start; actual_finish before actual_start; in-progress with no remaining_duration) are
  *   flagged, never silently resolved by guessing a number.
+ *
+ * OUT-OF-SEQUENCE PROGRESS & CALCULATION MODE (Gate 21, PCC Evolution Roadmap Tier F):
+ * - An activity is "out of sequence" (OOS) when it has an actual anchor (completed or
+ *   in_progress) but its predecessors' own calculated dates — by the time this activity
+ *   is reached in topological order — would only have permitted a LATER start than when
+ *   it actually started. Detected purely from predecessor-derived constraints (never
+ *   floored at dataDay, unlike the normal not-started ES floor — an activity starting
+ *   before dataDate is normal and not a sequencing problem on its own).
+ * - options.calculationMode controls how an OOS activity's forecast is treated:
+ *     "progress_override" (default — the only behavior that existed before this gate):
+ *       actual dates always win; predecessor logic is ignored for this activity's own ES,
+ *       exactly as before.
+ *     "retained_logic": for an in_progress OOS activity only, its ES (and therefore EF/
+ *       downstream propagation) is pushed out to the predecessor-derived constraint —
+ *       the schedule still respects the logic tie going forward even though the actual
+ *       start already happened early. A completed OOS activity's own dates are NEVER
+ *       moved in either mode — finished work is history, not subject to a "mode."
+ * - is_out_of_sequence is reported for both modes regardless — it's a data-quality signal
+ *   about what happened, independent of which mode is used to forecast what's next.
  */
 (function () {
   "use strict";
@@ -147,10 +166,12 @@
    * @param options.dataDate  ISO date string, the project's day-zero / status date (defaults to today)
    * @param options.nearCriticalThresholdDays  float <= this (but > 0) is "near critical" (default 5)
    * @param options.ignoreActuals  true = pure planned-duration CPM, actual dates never consulted
+   * @param options.calculationMode  "progress_override" (default) or "retained_logic" — see the
+   *   file header's OUT-OF-SEQUENCE section for what each does
    * @returns {
    *   results: { [activityId]: { early_start, early_finish, late_start, late_finish,
    *                               total_float, free_float, is_critical, is_near_critical,
-   *                               status, insufficient_data } },
+   *                               status, insufficient_data, is_out_of_sequence } },
    *   projectFinish, plannedProjectFinish, forecastVarianceDays,  (ISO date strings / integer or null)
    *   criticalActivityIds: [...],
    *   cyclicActivityIds: [...],   // excluded from calculation entirely, results[id] is null
@@ -163,6 +184,7 @@
     var dataDay = toDayNumber(dataDate);
     var nearCriticalThreshold = options.nearCriticalThresholdDays != null ? options.nearCriticalThresholdDays : 5;
     var ignoreActuals = !!options.ignoreActuals;
+    var retainedLogic = options.calculationMode === "retained_logic";
 
     var warnings = [];
     var byId = {};
@@ -241,19 +263,43 @@
     // Completed/in-progress activities use their fixed anchor and ignore predecessor
     // constraints for their OWN start \u2014 the work already began regardless of what
     // logic says, but they still constrain their successors normally via EF below.
+    // Exception: an in_progress activity that's out-of-sequence (see below) in
+    // "retained_logic" mode has its ES pushed to the predecessor-derived constraint
+    // instead \u2014 the actual start already happened, but the forecast keeps respecting
+    // the logic tie for what's left.
     var ES = {};
     var EF = {};
+    var outOfSequenceById = {};
     order.forEach(function (id) {
+      var preds = safePredecessors[id];
+      var predConstraint = null; // predecessor-derived only, never floored at dataDay
+      preds.forEach(function (edge) {
+        var c = earliestStartConstraint(ES[edge.fromId], EF[edge.fromId], edge.type, edge.lag, duration[id]);
+        if (predConstraint == null || c > predConstraint) predConstraint = c;
+      });
+
+      var isOOS = !ignoreActuals && fixedES[id] != null && predConstraint != null && predConstraint > fixedES[id];
+      outOfSequenceById[id] = isOOS;
+      if (isOOS) {
+        warnings.push({
+          activityId: id,
+          message:
+            "Out-of-sequence: this activity's actual start is before its predecessor logic would have allowed (" +
+            (statusById[id] === "completed" ? "already completed, dates unaffected" : retainedLogic ? "forecast pushed to respect predecessor logic" : "actual dates retained, predecessor logic overridden") +
+            ").",
+        });
+      }
+
       var es;
       if (fixedES[id] != null) {
-        es = fixedES[id];
+        if (isOOS && retainedLogic && statusById[id] === "in_progress") {
+          es = predConstraint;
+        } else {
+          es = fixedES[id];
+        }
       } else {
-        var preds = safePredecessors[id];
         es = dataDay;
-        preds.forEach(function (edge) {
-          var c = earliestStartConstraint(ES[edge.fromId], EF[edge.fromId], edge.type, edge.lag, duration[id]);
-          if (c > es) es = c;
-        });
+        if (predConstraint != null && predConstraint > es) es = predConstraint;
       }
       ES[id] = es;
       EF[id] = es + duration[id];
@@ -314,6 +360,7 @@
         is_near_critical: isNearCritical,
         status: statusById[id],
         insufficient_data: insufficientById[id],
+        is_out_of_sequence: !!outOfSequenceById[id],
       };
     });
     cyclicActivityIds.forEach(function (id) {
@@ -331,6 +378,8 @@
     var forecastVarianceDays =
       plannedProjectFinishDay != null && projectFinishDay != null ? projectFinishDay - plannedProjectFinishDay : null;
 
+    var outOfSequenceActivityIds = order.filter(function (id) { return outOfSequenceById[id]; });
+
     return {
       results: results,
       projectFinish: projectFinishDay != null ? toIsoDate(projectFinishDay) : null,
@@ -338,6 +387,7 @@
       forecastVarianceDays: forecastVarianceDays,
       criticalActivityIds: criticalActivityIds,
       cyclicActivityIds: cyclicActivityIds,
+      outOfSequenceActivityIds: outOfSequenceActivityIds,
       warnings: warnings,
     };
   }

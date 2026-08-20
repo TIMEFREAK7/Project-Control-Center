@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 42;
+  var SCHEMA_VERSION = 43;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -1024,6 +1024,15 @@
   var ACTIVITY_TYPES = ["task", "milestone", "summary", "wbs_summary"];
   var ACTIVITY_STATUSES = ["not_started", "in_progress", "complete", "on_hold"];
   var RELATIONSHIP_TYPES = ["FS", "SS", "FF", "SF"]; // Finish-to-Start, Start-to-Start, Finish-to-Finish, Start-to-Finish
+  // Gate 21 (Status-Date Reforecasting): how the CPM engine resolves out-of-sequence
+  // progress (an activity with actual progress whose predecessor logic wasn't actually
+  // satisfied when it started). "progress_override" (default, and the only behavior
+  // that existed before this gate) lets actual dates win outright; "retained_logic"
+  // pushes an in-progress OOS activity's forecast to respect the predecessor tie even
+  // though its actual start already happened early. Per-schedule, like
+  // near_critical_threshold_days above, for the same reason (different schedules may
+  // reasonably want different treatment).
+  var CALCULATION_MODES = ["progress_override", "retained_logic"];
 
   function newScheduleId() {
     return "sch_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
@@ -1057,6 +1066,8 @@
       // requirement that this not be hardcoded. Lives on the schedule (not global)
       // since different schedules/projects may reasonably want different thresholds.
       near_critical_threshold_days: 5,
+      // Gate 21: see CALCULATION_MODES above for what this controls.
+      calculation_mode: "progress_override",
       created_at: now,
       updated_at: now,
     };
@@ -1120,6 +1131,10 @@
       late_finish: null,
       total_float: null,
       free_float: null,
+      // Gate 21: whether the CPM engine detected this activity had actual progress
+      // recorded before its predecessor logic would have allowed it to start. Never
+      // set directly by user input — same read-only convention as the fields above.
+      is_out_of_sequence: false,
       // Schedule-based progress: from the imported schedule file's own % Complete column
       // (Gate 2), or hand-edited directly. This is what costEvmEngine.js's EV calculation
       // uses (see that file's header for why).
@@ -2212,6 +2227,22 @@
       loaded.schema_version = 42;
     }
 
+    if (loaded.schema_version < 43) {
+      // PCC Evolution Roadmap, Tier F: Status-Date Reforecasting (Gate 21). Backfill
+      // calculation_mode onto existing schedules as "progress_override" — the only
+      // behavior that existed before this gate, so every existing schedule keeps
+      // calculating exactly as it did. is_out_of_sequence onto existing activities as
+      // false (unknown until the next "Calculate Schedule" run recomputes it, same
+      // "recompute-on-next-run" precedent as every other CPM-derived field here).
+      (loaded.schedules || []).forEach(function (s) {
+        if (s.calculation_mode === undefined) s.calculation_mode = "progress_override";
+      });
+      (loaded.activities || []).forEach(function (a) {
+        if (a.is_out_of_sequence === undefined) a.is_out_of_sequence = false;
+      });
+      loaded.schema_version = 43;
+    }
+
     return loaded;
   }
 
@@ -2554,6 +2585,7 @@
     ACTIVITY_TYPES: ACTIVITY_TYPES,
     ACTIVITY_STATUSES: ACTIVITY_STATUSES,
     RELATIONSHIP_TYPES: RELATIONSHIP_TYPES,
+    CALCULATION_MODES: CALCULATION_MODES,
     newCostBudgetItem: newCostBudgetItem,
     newCostActual: newCostActual,
     COST_CATEGORIES: COST_CATEGORIES,
