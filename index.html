@@ -4016,7 +4016,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 49;
+  var SCHEMA_VERSION = 50;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -4034,6 +4034,13 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         company_name: "",
         backup_reminder_days: 7,
         backup_nudge_dismissed_at: null,
+        // PCC Evolution Roadmap, Tier 3 ("final polish"): these two windows were
+        // hardcoded module constants (DUE_SOON_WINDOW_DAYS in dashboard.js,
+        // UPCOMING_WINDOW_DAYS in actionCentre.js) since the gates that introduced them
+        // — now user-configurable. Defaults match those original hardcoded values
+        // exactly, so no existing install's behavior changes on upgrade.
+        document_reminder_due_soon_days: 14,
+        action_centre_upcoming_days: 30,
         // Gate 9 (Project Executive Center): weights for the configurable health score,
         // one set applied to every project rather than per-project config — the spec
         // asks for the weighting logic to be configurable and visible, not for each
@@ -6500,6 +6507,15 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       loaded.schema_version = 49;
     }
 
+    if (loaded.schema_version < 50) {
+      // PCC Evolution Roadmap, Tier 3 ("final polish"): these two windows used to be
+      // hardcoded constants — backfilled to the exact same values so no existing
+      // install's behavior changes on upgrade, only becomes editable going forward.
+      if (loaded.settings.document_reminder_due_soon_days == null) loaded.settings.document_reminder_due_soon_days = 14;
+      if (loaded.settings.action_centre_upcoming_days == null) loaded.settings.action_centre_upcoming_days = 30;
+      loaded.schema_version = 50;
+    }
+
     return loaded;
   }
 
@@ -7615,7 +7631,13 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   // notification surface. Same "Available"/"Overdue"/"Required" status computation as
   // portfolio.js/vendors.js/schedule.js's own copies, duplicated per this app's
   // per-module-helpers convention.
-  var DUE_SOON_WINDOW_DAYS = 14;
+  //
+  // PCC Evolution Roadmap, Tier 3 ("final polish"): this used to be a hardcoded
+  // constant — now reads data.settings.document_reminder_due_soon_days (edited on the
+  // Settings page), defaulting to the same 14 this constant always was.
+  function dueSoonWindowDays(data) {
+    return data.settings.document_reminder_due_soon_days == null ? 14 : data.settings.document_reminder_due_soon_days;
+  }
 
   function todayIso() {
     return new Date().toISOString().slice(0, 10);
@@ -7640,8 +7662,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   };
 
   /** Every document requirement, across ALL active (non-archived) projects, that's
-   * either already Overdue or Required with a due date inside the next
-   * DUE_SOON_WINDOW_DAYS days. Available requirements never surface here — nothing to
+   * either already Overdue or Required with a due date inside the configurable
+   * dueSoonWindowDays() window. Available requirements never surface here — nothing to
    * remind about. Requirements with no due date at all are excluded too (nothing time-
    * sensitive to flag), same as Overdue/Vendor Lookahead's own treatment of "no due
    * date set." Sorted soonest-due-first — a single ascending date sort already puts
@@ -7656,7 +7678,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     activeProjects.forEach(function (p) {
       projectsById[p.id] = p;
     });
-    var dueSoonCutoff = addDaysIso(todayIso(), DUE_SOON_WINDOW_DAYS);
+    var dueSoonCutoff = addDaysIso(todayIso(), dueSoonWindowDays(data));
 
     var reminders = data.project_document_requirements
       .filter(function (r) {
@@ -7816,7 +7838,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       var empty = document.createElement("p");
       empty.className = "text-secondary";
       empty.style.margin = "0";
-      empty.textContent = "Nothing overdue or due within the next " + DUE_SOON_WINDOW_DAYS + " days across the active portfolio.";
+      empty.textContent = "Nothing overdue or due within the next " + dueSoonWindowDays(data) + " days across the active portfolio.";
       panel.appendChild(empty);
       return panel;
     }
@@ -8026,7 +8048,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   window.PCC = window.PCC || {};
   window.PCC.pages = window.PCC.pages || {};
 
-  var UPCOMING_WINDOW_DAYS = 30;
+  // PCC Evolution Roadmap, Tier 3 ("final polish"): this used to be a hardcoded
+  // constant — now reads data.settings.action_centre_upcoming_days (edited on the
+  // Settings page), defaulting to the same 30 this constant always was.
+  function upcomingWindowDays(data) {
+    return data.settings.action_centre_upcoming_days == null ? 30 : data.settings.action_centre_upcoming_days;
+  }
 
   function todayIso() {
     return new Date().toISOString().slice(0, 10);
@@ -8053,24 +8080,25 @@ https://github.com/nodeca/pako/blob/main/LICENSE
    * the upcoming window) buckets into "waiting" — still outstanding, just nothing to sort
    * by date. Dates beyond the upcoming window return null (excluded from this gate
    * entirely — a future Lookahead gate covers the longer horizon). */
-  function bucketFor(dueDate) {
+  function bucketFor(dueDate, windowDays) {
     if (!dueDate) return "waiting";
     var today = todayIso();
     if (dueDate < today) return "overdue";
     if (dueDate === today) return "today";
     if (dueDate <= addDaysIso(today, 7)) return "week";
-    if (dueDate <= addDaysIso(today, UPCOMING_WINDOW_DAYS)) return "upcoming";
+    if (dueDate <= addDaysIso(today, windowDays)) return "upcoming";
     return null;
   }
 
   function collectItems(data, activeProjectIds) {
     var items = [];
+    var windowDays = upcomingWindowDays(data);
 
     data.meetings.forEach(function (m) {
       if (!activeProjectIds[m.project_id]) return;
       (m.actions || []).forEach(function (a) {
         if (a.status !== "open") return;
-        var bucket = bucketFor(a.due_date || "");
+        var bucket = bucketFor(a.due_date || "", windowDays);
         if (!bucket) return;
         // Gate 33 (PCC Evolution Roadmap, Tier B: Meeting Action → Control Linking) —
         // surface whichever of the action's own optional links are set, same "only show
@@ -8103,7 +8131,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     data.rfis.forEach(function (r) {
       if (!activeProjectIds[r.project_id]) return;
       if (r.status !== "open") return;
-      var bucket = bucketFor(r.date_required || "");
+      var bucket = bucketFor(r.date_required || "", windowDays);
       if (!bucket) return;
       items.push({
         kind: r.type === "technical_query" ? "TQ" : "RFI",
@@ -8134,7 +8162,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       if (!type) return;
       var status = computeRequirementStatus(data, req.project_id, req.document_type_id, req.planned_submission_date);
       if (status === "available") return;
-      var bucket = bucketFor(req.planned_submission_date || "");
+      var bucket = bucketFor(req.planned_submission_date || "", windowDays);
       if (!bucket) return;
       var vendor = req.vendor_id ? vendorsById[req.vendor_id] : null;
       items.push({
@@ -8173,13 +8201,18 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     return items;
   }
 
-  var BUCKETS = [
+  // Function, not a module-level constant, since the "Upcoming" label/empty-text embed
+  // the now-configurable window — must be rebuilt from the current setting on every
+  // render, not computed once at load time.
+  function buildBuckets(windowDays) {
+    return [
     { key: "overdue", label: "Overdue", badgeClass: "critical", emptyText: "Nothing overdue." },
     { key: "today", label: "Due Today", badgeClass: "at_risk", emptyText: "Nothing due today." },
     { key: "week", label: "Due This Week", badgeClass: "at_risk", emptyText: "Nothing due in the next 7 days." },
-    { key: "upcoming", label: "Upcoming (8–" + UPCOMING_WINDOW_DAYS + " Days)", badgeClass: "info", emptyText: "Nothing due in the 8–" + UPCOMING_WINDOW_DAYS + " day window." },
+    { key: "upcoming", label: "Upcoming (8–" + windowDays + " Days)", badgeClass: "info", emptyText: "Nothing due in the 8–" + windowDays + " day window." },
     { key: "waiting", label: "Waiting For", badgeClass: "info", emptyText: "Nothing outstanding without a due date." },
-  ];
+    ];
+  }
 
   function kpiCard(label, value, colorVar) {
     var card = document.createElement("div");
@@ -8265,6 +8298,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
   function render(outlet) {
     var data = window.PCC.store.get();
+    var buckets = buildBuckets(upcomingWindowDays(data));
     var activeProjects = data.projects.filter(function (p) {
       return !p.archived;
     });
@@ -8306,7 +8340,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     }
 
     var byBucket = {};
-    BUCKETS.forEach(function (b) {
+    buckets.forEach(function (b) {
       byBucket[b.key] = [];
     });
     items.forEach(function (i) {
@@ -8333,7 +8367,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     kpiGrid.appendChild(kpiCard("WAITING FOR", byBucket.waiting.length, null));
     wrap.appendChild(kpiGrid);
 
-    BUCKETS.forEach(function (b) {
+    buckets.forEach(function (b) {
       wrap.appendChild(bucketPanel(b, byBucket[b.key], projectsById));
     });
 
@@ -23533,6 +23567,27 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     required: { className: "at_risk", label: "Required" },
   };
 
+  /** PCC Evolution Roadmap, Tier 3 ("final polish") — same "Not Ready" rule
+   * renderDocumentReadinessSection() below computes for the Activity Detail Panel,
+   * factored out here so the Gantt bar's own visual flag can reuse it without
+   * duplicating the not-ready computation a second time in this file. An activity with
+   * zero linked requirements is never "not ready" — nothing to flag. This was
+   * explicitly considered and deferred at Gate 24 (Document Readiness); the Detail
+   * Panel section has always had the rule, it just never reached the bar itself. */
+  function activityNotReady(activity, data) {
+    var typesById = {};
+    data.document_types.forEach(function (t) {
+      typesById[t.id] = t;
+    });
+    var rows = data.project_document_requirements.filter(function (r) {
+      return r.activity_id === activity.id && typesById[r.document_type_id];
+    });
+    if (rows.length === 0) return false;
+    return rows.some(function (r) {
+      return computeRequirementStatus(data, r.project_id, r.document_type_id, r.planned_submission_date) !== "available";
+    });
+  }
+
   /** Reads Gate 21's activity_id link in reverse: every project_document_requirements
    * row that names THIS activity as its governing activity. Pure read-only — nothing is
    * written back, and this never blocks editing/scheduling the activity itself; it's a
@@ -24576,6 +24631,23 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         svg.appendChild(progressRect);
       }
 
+      // PCC Evolution Roadmap, Tier 3 ("final polish") — a small marker at the bar's
+      // top-right corner when the activity has a not-yet-available governing document,
+      // same rule the Activity Detail Panel's own Document Readiness section already
+      // computes. pointer-events:none so it never interferes with drag/resize hit-testing.
+      if (activity && activityNotReady(activity, data)) {
+        var readinessMarker = svgEl("circle", {
+          cx: barX + barW - 1, cy: barY - 1, r: 5,
+          fill: "var(--status-critical)", stroke: "var(--bg-paper)", "stroke-width": 1,
+          "data-readiness-marker-for": activity.id,
+          style: "pointer-events:none;",
+        });
+        var readinessTitle = svgEl("title");
+        readinessTitle.textContent = "Not Ready — one or more governing documents are not yet Available";
+        readinessMarker.appendChild(readinessTitle);
+        svg.appendChild(readinessMarker);
+      }
+
       if (activity) attachGanttDrag(barRect, progressRect, activity, "move", pxPerDay, rerender);
 
       // Resize handle: a narrow strip at the bar's right edge. Drawn after (on top of)
@@ -24659,6 +24731,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     if (layout.dataDate) legend.appendChild(legendItem("var(--signal-amber)", "Data Date", true));
     legend.appendChild(legendItem("var(--status-on-track)", "Today"));
     if (uiState.ganttShowBaseline) legend.appendChild(legendItem("var(--text-secondary)", "Baseline (ghost)", true));
+    legend.appendChild(legendItem("var(--status-critical)", "Not Ready (governing document missing)"));
     container.appendChild(legend);
 
     var dragHint = document.createElement("p");
@@ -35697,6 +35770,60 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     companyField.appendChild(companyInput);
     generalPanel.appendChild(companyField);
     wrap.appendChild(generalPanel);
+
+    // --- Reminder & Lookahead Windows (PCC Evolution Roadmap, Tier 3 "final polish") ---
+    // Both used to be hardcoded module constants (DUE_SOON_WINDOW_DAYS in dashboard.js,
+    // UPCOMING_WINDOW_DAYS in actionCentre.js) since the gates that introduced them —
+    // now editable here, same "Remind me to export after" number-field pattern the Data
+    // panel below already establishes.
+    var windowsPanel = document.createElement("div");
+    windowsPanel.className = "panel";
+    windowsPanel.style.maxWidth = "480px";
+    windowsPanel.innerHTML = "<h3 style='margin-bottom:6px;'>Reminder &amp; Lookahead Windows</h3>";
+
+    var dueSoonField = document.createElement("div");
+    dueSoonField.className = "field";
+    dueSoonField.style.maxWidth = "260px";
+    dueSoonField.innerHTML = "<label>Dashboard “Due Soon” window (days)</label>";
+    var dueSoonInput = document.createElement("input");
+    dueSoonInput.type = "number";
+    dueSoonInput.min = "1";
+    dueSoonInput.step = "1";
+    dueSoonInput.value = data.settings.document_reminder_due_soon_days == null ? "14" : data.settings.document_reminder_due_soon_days;
+    dueSoonInput.onchange = function () {
+      var n = parseInt(dueSoonInput.value, 10);
+      if (isNaN(n) || n < 1) n = 14;
+      store.update(function (d) {
+        d.settings.document_reminder_due_soon_days = n;
+      });
+      dueSoonInput.value = n;
+    };
+    dueSoonField.appendChild(dueSoonInput);
+    windowsPanel.appendChild(dueSoonField);
+
+    var upcomingField = document.createElement("div");
+    upcomingField.className = "field";
+    upcomingField.style.marginTop = "10px";
+    upcomingField.style.maxWidth = "260px";
+    upcomingField.innerHTML = "<label>Action Centre “Upcoming” window (days)</label>";
+    var upcomingInput = document.createElement("input");
+    upcomingInput.type = "number";
+    upcomingInput.min = "8";
+    upcomingInput.step = "1";
+    upcomingInput.value = data.settings.action_centre_upcoming_days == null ? "30" : data.settings.action_centre_upcoming_days;
+    upcomingInput.title = "Must be at least 8 — the Due This Week bucket already covers days 1-7.";
+    upcomingInput.onchange = function () {
+      var n = parseInt(upcomingInput.value, 10);
+      if (isNaN(n) || n < 8) n = 30;
+      store.update(function (d) {
+        d.settings.action_centre_upcoming_days = n;
+      });
+      upcomingInput.value = n;
+    };
+    upcomingField.appendChild(upcomingInput);
+    windowsPanel.appendChild(upcomingField);
+
+    wrap.appendChild(windowsPanel);
 
     // --- Document Nomenclature (Gate 16) ---
     var nomenPanel = document.createElement("div");

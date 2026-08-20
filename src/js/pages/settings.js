@@ -42,6 +42,60 @@
     generalPanel.appendChild(companyField);
     wrap.appendChild(generalPanel);
 
+    // --- Reminder & Lookahead Windows (PCC Evolution Roadmap, Tier 3 "final polish") ---
+    // Both used to be hardcoded module constants (DUE_SOON_WINDOW_DAYS in dashboard.js,
+    // UPCOMING_WINDOW_DAYS in actionCentre.js) since the gates that introduced them —
+    // now editable here, same "Remind me to export after" number-field pattern the Data
+    // panel below already establishes.
+    var windowsPanel = document.createElement("div");
+    windowsPanel.className = "panel";
+    windowsPanel.style.maxWidth = "480px";
+    windowsPanel.innerHTML = "<h3 style='margin-bottom:6px;'>Reminder &amp; Lookahead Windows</h3>";
+
+    var dueSoonField = document.createElement("div");
+    dueSoonField.className = "field";
+    dueSoonField.style.maxWidth = "260px";
+    dueSoonField.innerHTML = "<label>Dashboard “Due Soon” window (days)</label>";
+    var dueSoonInput = document.createElement("input");
+    dueSoonInput.type = "number";
+    dueSoonInput.min = "1";
+    dueSoonInput.step = "1";
+    dueSoonInput.value = data.settings.document_reminder_due_soon_days == null ? "14" : data.settings.document_reminder_due_soon_days;
+    dueSoonInput.onchange = function () {
+      var n = parseInt(dueSoonInput.value, 10);
+      if (isNaN(n) || n < 1) n = 14;
+      store.update(function (d) {
+        d.settings.document_reminder_due_soon_days = n;
+      });
+      dueSoonInput.value = n;
+    };
+    dueSoonField.appendChild(dueSoonInput);
+    windowsPanel.appendChild(dueSoonField);
+
+    var upcomingField = document.createElement("div");
+    upcomingField.className = "field";
+    upcomingField.style.marginTop = "10px";
+    upcomingField.style.maxWidth = "260px";
+    upcomingField.innerHTML = "<label>Action Centre “Upcoming” window (days)</label>";
+    var upcomingInput = document.createElement("input");
+    upcomingInput.type = "number";
+    upcomingInput.min = "8";
+    upcomingInput.step = "1";
+    upcomingInput.value = data.settings.action_centre_upcoming_days == null ? "30" : data.settings.action_centre_upcoming_days;
+    upcomingInput.title = "Must be at least 8 — the Due This Week bucket already covers days 1-7.";
+    upcomingInput.onchange = function () {
+      var n = parseInt(upcomingInput.value, 10);
+      if (isNaN(n) || n < 8) n = 30;
+      store.update(function (d) {
+        d.settings.action_centre_upcoming_days = n;
+      });
+      upcomingInput.value = n;
+    };
+    upcomingField.appendChild(upcomingInput);
+    windowsPanel.appendChild(upcomingField);
+
+    wrap.appendChild(windowsPanel);
+
     // --- Document Nomenclature (Gate 16) ---
     var nomenPanel = document.createElement("div");
     nomenPanel.className = "panel";

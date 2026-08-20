@@ -17,7 +17,12 @@
   window.PCC = window.PCC || {};
   window.PCC.pages = window.PCC.pages || {};
 
-  var UPCOMING_WINDOW_DAYS = 30;
+  // PCC Evolution Roadmap, Tier 3 ("final polish"): this used to be a hardcoded
+  // constant — now reads data.settings.action_centre_upcoming_days (edited on the
+  // Settings page), defaulting to the same 30 this constant always was.
+  function upcomingWindowDays(data) {
+    return data.settings.action_centre_upcoming_days == null ? 30 : data.settings.action_centre_upcoming_days;
+  }
 
   function todayIso() {
     return new Date().toISOString().slice(0, 10);
@@ -44,24 +49,25 @@
    * the upcoming window) buckets into "waiting" — still outstanding, just nothing to sort
    * by date. Dates beyond the upcoming window return null (excluded from this gate
    * entirely — a future Lookahead gate covers the longer horizon). */
-  function bucketFor(dueDate) {
+  function bucketFor(dueDate, windowDays) {
     if (!dueDate) return "waiting";
     var today = todayIso();
     if (dueDate < today) return "overdue";
     if (dueDate === today) return "today";
     if (dueDate <= addDaysIso(today, 7)) return "week";
-    if (dueDate <= addDaysIso(today, UPCOMING_WINDOW_DAYS)) return "upcoming";
+    if (dueDate <= addDaysIso(today, windowDays)) return "upcoming";
     return null;
   }
 
   function collectItems(data, activeProjectIds) {
     var items = [];
+    var windowDays = upcomingWindowDays(data);
 
     data.meetings.forEach(function (m) {
       if (!activeProjectIds[m.project_id]) return;
       (m.actions || []).forEach(function (a) {
         if (a.status !== "open") return;
-        var bucket = bucketFor(a.due_date || "");
+        var bucket = bucketFor(a.due_date || "", windowDays);
         if (!bucket) return;
         // Gate 33 (PCC Evolution Roadmap, Tier B: Meeting Action → Control Linking) —
         // surface whichever of the action's own optional links are set, same "only show
@@ -94,7 +100,7 @@
     data.rfis.forEach(function (r) {
       if (!activeProjectIds[r.project_id]) return;
       if (r.status !== "open") return;
-      var bucket = bucketFor(r.date_required || "");
+      var bucket = bucketFor(r.date_required || "", windowDays);
       if (!bucket) return;
       items.push({
         kind: r.type === "technical_query" ? "TQ" : "RFI",
@@ -125,7 +131,7 @@
       if (!type) return;
       var status = computeRequirementStatus(data, req.project_id, req.document_type_id, req.planned_submission_date);
       if (status === "available") return;
-      var bucket = bucketFor(req.planned_submission_date || "");
+      var bucket = bucketFor(req.planned_submission_date || "", windowDays);
       if (!bucket) return;
       var vendor = req.vendor_id ? vendorsById[req.vendor_id] : null;
       items.push({
@@ -164,13 +170,18 @@
     return items;
   }
 
-  var BUCKETS = [
+  // Function, not a module-level constant, since the "Upcoming" label/empty-text embed
+  // the now-configurable window — must be rebuilt from the current setting on every
+  // render, not computed once at load time.
+  function buildBuckets(windowDays) {
+    return [
     { key: "overdue", label: "Overdue", badgeClass: "critical", emptyText: "Nothing overdue." },
     { key: "today", label: "Due Today", badgeClass: "at_risk", emptyText: "Nothing due today." },
     { key: "week", label: "Due This Week", badgeClass: "at_risk", emptyText: "Nothing due in the next 7 days." },
-    { key: "upcoming", label: "Upcoming (8–" + UPCOMING_WINDOW_DAYS + " Days)", badgeClass: "info", emptyText: "Nothing due in the 8–" + UPCOMING_WINDOW_DAYS + " day window." },
+    { key: "upcoming", label: "Upcoming (8–" + windowDays + " Days)", badgeClass: "info", emptyText: "Nothing due in the 8–" + windowDays + " day window." },
     { key: "waiting", label: "Waiting For", badgeClass: "info", emptyText: "Nothing outstanding without a due date." },
-  ];
+    ];
+  }
 
   function kpiCard(label, value, colorVar) {
     var card = document.createElement("div");
@@ -256,6 +267,7 @@
 
   function render(outlet) {
     var data = window.PCC.store.get();
+    var buckets = buildBuckets(upcomingWindowDays(data));
     var activeProjects = data.projects.filter(function (p) {
       return !p.archived;
     });
@@ -297,7 +309,7 @@
     }
 
     var byBucket = {};
-    BUCKETS.forEach(function (b) {
+    buckets.forEach(function (b) {
       byBucket[b.key] = [];
     });
     items.forEach(function (i) {
@@ -324,7 +336,7 @@
     kpiGrid.appendChild(kpiCard("WAITING FOR", byBucket.waiting.length, null));
     wrap.appendChild(kpiGrid);
 
-    BUCKETS.forEach(function (b) {
+    buckets.forEach(function (b) {
       wrap.appendChild(bucketPanel(b, byBucket[b.key], projectsById));
     });
 

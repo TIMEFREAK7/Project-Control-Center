@@ -2994,6 +2994,27 @@
     required: { className: "at_risk", label: "Required" },
   };
 
+  /** PCC Evolution Roadmap, Tier 3 ("final polish") — same "Not Ready" rule
+   * renderDocumentReadinessSection() below computes for the Activity Detail Panel,
+   * factored out here so the Gantt bar's own visual flag can reuse it without
+   * duplicating the not-ready computation a second time in this file. An activity with
+   * zero linked requirements is never "not ready" — nothing to flag. This was
+   * explicitly considered and deferred at Gate 24 (Document Readiness); the Detail
+   * Panel section has always had the rule, it just never reached the bar itself. */
+  function activityNotReady(activity, data) {
+    var typesById = {};
+    data.document_types.forEach(function (t) {
+      typesById[t.id] = t;
+    });
+    var rows = data.project_document_requirements.filter(function (r) {
+      return r.activity_id === activity.id && typesById[r.document_type_id];
+    });
+    if (rows.length === 0) return false;
+    return rows.some(function (r) {
+      return computeRequirementStatus(data, r.project_id, r.document_type_id, r.planned_submission_date) !== "available";
+    });
+  }
+
   /** Reads Gate 21's activity_id link in reverse: every project_document_requirements
    * row that names THIS activity as its governing activity. Pure read-only — nothing is
    * written back, and this never blocks editing/scheduling the activity itself; it's a
@@ -4037,6 +4058,23 @@
         svg.appendChild(progressRect);
       }
 
+      // PCC Evolution Roadmap, Tier 3 ("final polish") — a small marker at the bar's
+      // top-right corner when the activity has a not-yet-available governing document,
+      // same rule the Activity Detail Panel's own Document Readiness section already
+      // computes. pointer-events:none so it never interferes with drag/resize hit-testing.
+      if (activity && activityNotReady(activity, data)) {
+        var readinessMarker = svgEl("circle", {
+          cx: barX + barW - 1, cy: barY - 1, r: 5,
+          fill: "var(--status-critical)", stroke: "var(--bg-paper)", "stroke-width": 1,
+          "data-readiness-marker-for": activity.id,
+          style: "pointer-events:none;",
+        });
+        var readinessTitle = svgEl("title");
+        readinessTitle.textContent = "Not Ready — one or more governing documents are not yet Available";
+        readinessMarker.appendChild(readinessTitle);
+        svg.appendChild(readinessMarker);
+      }
+
       if (activity) attachGanttDrag(barRect, progressRect, activity, "move", pxPerDay, rerender);
 
       // Resize handle: a narrow strip at the bar's right edge. Drawn after (on top of)
@@ -4120,6 +4158,7 @@
     if (layout.dataDate) legend.appendChild(legendItem("var(--signal-amber)", "Data Date", true));
     legend.appendChild(legendItem("var(--status-on-track)", "Today"));
     if (uiState.ganttShowBaseline) legend.appendChild(legendItem("var(--text-secondary)", "Baseline (ghost)", true));
+    legend.appendChild(legendItem("var(--status-critical)", "Not Ready (governing document missing)"));
     container.appendChild(legend);
 
     var dragHint = document.createElement("p");

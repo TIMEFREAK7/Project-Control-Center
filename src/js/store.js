@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 49;
+  var SCHEMA_VERSION = 50;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -27,6 +27,13 @@
         company_name: "",
         backup_reminder_days: 7,
         backup_nudge_dismissed_at: null,
+        // PCC Evolution Roadmap, Tier 3 ("final polish"): these two windows were
+        // hardcoded module constants (DUE_SOON_WINDOW_DAYS in dashboard.js,
+        // UPCOMING_WINDOW_DAYS in actionCentre.js) since the gates that introduced them
+        // — now user-configurable. Defaults match those original hardcoded values
+        // exactly, so no existing install's behavior changes on upgrade.
+        document_reminder_due_soon_days: 14,
+        action_centre_upcoming_days: 30,
         // Gate 9 (Project Executive Center): weights for the configurable health score,
         // one set applied to every project rather than per-project config — the spec
         // asks for the weighting logic to be configurable and visible, not for each
@@ -2491,6 +2498,15 @@
       // backfill on existing records.
       if (!loaded.knowledge_base_articles) loaded.knowledge_base_articles = [];
       loaded.schema_version = 49;
+    }
+
+    if (loaded.schema_version < 50) {
+      // PCC Evolution Roadmap, Tier 3 ("final polish"): these two windows used to be
+      // hardcoded constants — backfilled to the exact same values so no existing
+      // install's behavior changes on upgrade, only becomes editable going forward.
+      if (loaded.settings.document_reminder_due_soon_days == null) loaded.settings.document_reminder_due_soon_days = 14;
+      if (loaded.settings.action_centre_upcoming_days == null) loaded.settings.action_centre_upcoming_days = 30;
+      loaded.schema_version = 50;
     }
 
     return loaded;

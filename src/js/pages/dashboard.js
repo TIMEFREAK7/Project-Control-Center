@@ -16,7 +16,13 @@
   // notification surface. Same "Available"/"Overdue"/"Required" status computation as
   // portfolio.js/vendors.js/schedule.js's own copies, duplicated per this app's
   // per-module-helpers convention.
-  var DUE_SOON_WINDOW_DAYS = 14;
+  //
+  // PCC Evolution Roadmap, Tier 3 ("final polish"): this used to be a hardcoded
+  // constant — now reads data.settings.document_reminder_due_soon_days (edited on the
+  // Settings page), defaulting to the same 14 this constant always was.
+  function dueSoonWindowDays(data) {
+    return data.settings.document_reminder_due_soon_days == null ? 14 : data.settings.document_reminder_due_soon_days;
+  }
 
   function todayIso() {
     return new Date().toISOString().slice(0, 10);
@@ -41,8 +47,8 @@
   };
 
   /** Every document requirement, across ALL active (non-archived) projects, that's
-   * either already Overdue or Required with a due date inside the next
-   * DUE_SOON_WINDOW_DAYS days. Available requirements never surface here — nothing to
+   * either already Overdue or Required with a due date inside the configurable
+   * dueSoonWindowDays() window. Available requirements never surface here — nothing to
    * remind about. Requirements with no due date at all are excluded too (nothing time-
    * sensitive to flag), same as Overdue/Vendor Lookahead's own treatment of "no due
    * date set." Sorted soonest-due-first — a single ascending date sort already puts
@@ -57,7 +63,7 @@
     activeProjects.forEach(function (p) {
       projectsById[p.id] = p;
     });
-    var dueSoonCutoff = addDaysIso(todayIso(), DUE_SOON_WINDOW_DAYS);
+    var dueSoonCutoff = addDaysIso(todayIso(), dueSoonWindowDays(data));
 
     var reminders = data.project_document_requirements
       .filter(function (r) {
@@ -217,7 +223,7 @@
       var empty = document.createElement("p");
       empty.className = "text-secondary";
       empty.style.margin = "0";
-      empty.textContent = "Nothing overdue or due within the next " + DUE_SOON_WINDOW_DAYS + " days across the active portfolio.";
+      empty.textContent = "Nothing overdue or due within the next " + dueSoonWindowDays(data) + " days across the active portfolio.";
       panel.appendChild(empty);
       return panel;
     }
