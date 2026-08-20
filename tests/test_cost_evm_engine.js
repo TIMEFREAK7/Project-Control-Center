@@ -248,5 +248,83 @@ check("a project with zero budget items reports zero everywhere without throwing
   assert.strictEqual(result.coveragePct, null, "0/0 coverage is undefined, not misleadingly 0% or 100%");
 });
 
+// ---------------------------------------------------------------------------
+// Earned Schedule / SPI(t) (Gate 25, PCC Evolution Roadmap Tier F: Advanced
+// Schedule Performance) — see costEvmEngine.js's own header for the full rationale.
+// ---------------------------------------------------------------------------
+
+check("computeEarnedSchedule reports insufficientData with no linked, dated items", () => {
+  const result = engine.computeEarnedSchedule([], [], { ev: 0, dataDate: "2026-01-06" });
+  assert.strictEqual(result.insufficientData, true);
+  assert.strictEqual(result.spiT, null);
+  assert.strictEqual(result.earnedScheduleDays, null);
+});
+
+check("computeEarnedSchedule reports insufficientData without ev/dataDate options", () => {
+  const a = activity({ planned_start: "2026-01-01", planned_finish: "2026-01-11" });
+  const b = budgetItem({ activity_id: a.id, planned_amount: 1000 });
+  assert.strictEqual(engine.computeEarnedSchedule([b], [a], {}).insufficientData, true);
+});
+
+check("a single-item span: Earned Schedule and classic SPI agree (no divergence with only one linear ramp)", () => {
+  // 10-day span, BAC 10,000, data date 5 days in, 30% complete.
+  const a = activity({ planned_start: "2026-01-01", planned_finish: "2026-01-11", percent_complete: 30 });
+  const b = budgetItem({ activity_id: a.id, planned_amount: 10000 });
+  const evm = engine.computeEvm([b], [], [a], [{ id: "sch_1", data_date: "2026-01-06" }]);
+  assert.strictEqual(evm.ev, 3000);
+  assert.strictEqual(evm.pv, 5000);
+  assert.strictEqual(evm.spi, 0.6);
+
+  const es = engine.computeEarnedSchedule([b], [a], { ev: evm.ev, dataDate: "2026-01-06" });
+  assert.strictEqual(es.insufficientData, false);
+  assert.strictEqual(es.earnedScheduleDays, 3, "PV crosses 3000 exactly 3 days into the 10-day, 1000/day ramp");
+  assert.strictEqual(es.actualTimeDays, 5);
+  assert.strictEqual(es.spiT, 0.6, "matches classic SPI exactly with only one linear item");
+  assert.strictEqual(es.scheduleVarianceDays, -2);
+});
+
+check("a two-item near-completion scenario: SPI(t) reveals real lateness that classic SPI's end-of-project convergence masks", () => {
+  // Item A: 5-day span (Jan1-Jan6), fully complete. Item B: 20-day span (Jan1-Jan21),
+  // 90% complete — genuinely 10% of its own scope still outstanding with zero planned
+  // time left (data date IS the planned finish). Classic SPI reads a deceptively
+  // near-1.0 figure (EV/PV both approach BAC as PV stops growing); Earned Schedule
+  // correctly reports the project is still 2 days behind.
+  const a = activity({ id: "act_a", planned_start: "2026-01-01", planned_finish: "2026-01-06", percent_complete: 100 });
+  const b = activity({ id: "act_b", planned_start: "2026-01-01", planned_finish: "2026-01-21", percent_complete: 90 });
+  const itemA = budgetItem({ id: "cb_a", activity_id: "act_a", planned_amount: 5000 });
+  const itemB = budgetItem({ id: "cb_b", activity_id: "act_b", planned_amount: 5000 });
+  const evm = engine.computeEvm([itemA, itemB], [], [a, b], [{ id: "sch_1", data_date: "2026-01-21" }]);
+  assert.strictEqual(evm.ev, 9500); // 5000*1.0 + 5000*0.9
+  assert.strictEqual(evm.pv, 10000); // both spans fully elapsed
+  assert.strictEqual(evm.spi, 0.95, "classic SPI looks almost on-track");
+
+  const es = engine.computeEarnedSchedule([itemA, itemB], [a, b], { ev: evm.ev, dataDate: "2026-01-21" });
+  assert.strictEqual(es.earnedScheduleDays, 18);
+  assert.strictEqual(es.actualTimeDays, 20);
+  assert.strictEqual(es.spiT, 0.9, "SPI(t) is lower than classic SPI here — it isn't fooled by PV having stopped growing");
+  assert.strictEqual(es.scheduleVarianceDays, -2, "2 days behind, correctly, even though classic SPI alone wouldn't tell you that");
+  assert.ok(es.spiT < evm.spi, "the whole point of Earned Schedule: SPI(t) diverges below classic SPI near completion instead of converging to 1.0 alongside it");
+});
+
+check("a fully-earned single item (ev exactly equals the planned curve's total) reports Earned Schedule at the full planned duration, not an error", () => {
+  const a = activity({ planned_start: "2026-01-01", planned_finish: "2026-01-11", percent_complete: 100 });
+  const b = budgetItem({ activity_id: a.id, planned_amount: 1000 });
+  const evm = engine.computeEvm([b], [], [a], [{ id: "sch_1", data_date: "2026-01-05" }]);
+  assert.strictEqual(evm.ev, 1000);
+
+  const es = engine.computeEarnedSchedule([b], [a], { ev: evm.ev, dataDate: "2026-01-05" });
+  assert.strictEqual(es.earnedScheduleDays, 10, "the full 10-day planned span — ev===pvAtFinish is the boundary of the extrapolation branch, not a genuine overshoot (EV can never exceed the linked BAC total)");
+  assert.strictEqual(es.actualTimeDays, 4);
+  assert.strictEqual(es.spiT, 2.5, "well ahead of schedule — finished the full planned scope in under half the elapsed time");
+});
+
+check("zero percent complete reports Earned Schedule of 0 days, not a spurious crossing", () => {
+  const a = activity({ planned_start: "2026-01-01", planned_finish: "2026-01-11", percent_complete: 0 });
+  const b = budgetItem({ activity_id: a.id, planned_amount: 1000 });
+  const es = engine.computeEarnedSchedule([b], [a], { ev: 0, dataDate: "2026-01-06" });
+  assert.strictEqual(es.earnedScheduleDays, 0);
+  assert.strictEqual(es.spiT, 0);
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

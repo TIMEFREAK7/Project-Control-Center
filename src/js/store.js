@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 46;
+  var SCHEMA_VERSION = 47;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -82,6 +82,11 @@
       // delay EVENT logged against a Schedule activity — see newDelayRecord() below for
       // why this is deliberately a separate register from recovery_actions above.
       delay_records: [],
+      // PCC Evolution Roadmap, Tier F: Advanced Schedule Performance (Gate 25). One row
+      // per manually-captured point-in-time performance reading (SPI/SPI(t)/schedule
+      // performance score) — see newSchedulePerformanceSnapshot() below for why this is
+      // its own capture mechanism rather than piggybacking on Weekly Reviews.
+      schedule_performance_snapshots: [],
       // Gate 5b (Tier 2 Cost Tracking): budget line items and the actual-cost log
       // against them. Deliberately two separate arrays, not one shape distinguished by
       // a type field \u2014 unlike Risk/Issue/Opportunity or RFI/TQ, a budget line item and
@@ -1311,6 +1316,44 @@
 
   var DELAY_RECORD_CAUSES = ["owner_caused", "contractor_caused", "weather_force_majeure", "design_rfi_driven", "other"];
 
+  function newSchedulePerformanceSnapshotId() {
+    return "sps_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  /** PCC Evolution Roadmap, Tier F: Advanced Schedule Performance (Gate 25). A frozen,
+   * point-in-time reading of SPI/SPI(t)/schedule performance score — the only way any
+   * of these figures accumulate HISTORY in PCC, since costEvmEngine.js and
+   * schedulePerformanceEngine.js are both pure/on-demand (recomputed fresh on every
+   * render from current data, never stored). Deliberately its OWN capture mechanism —
+   * confirmed with Aditya via AskUserQuestion — rather than piggybacking on Weekly
+   * Reviews' existing snapshot (Gate 14/15's own trending mechanism): Weekly Reviews
+   * are, well, weekly, and trend granularity for a fast-moving schedule shouldn't be
+   * capped at however often someone remembers to write one. `schedule_progress_pct` is
+   * carried alongside the performance figures specifically so Executive Center's
+   * Progress S-Curve can plot a real actual-progress-over-time line for the first time
+   * (previously only a single "today" point was possible — see that chart's own header
+   * comment) without a third history mechanism just for one chart. */
+  function newSchedulePerformanceSnapshot(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newSchedulePerformanceSnapshotId(),
+      project_id: "",
+      captured_at: now,
+      spi: null,
+      cpi: null,
+      spi_t: null,
+      earned_schedule_days: null,
+      actual_time_days: null,
+      schedule_variance_days: null,
+      schedule_performance_score: null,
+      schedule_performance_rag: null,
+      schedule_progress_pct: null,
+      notes: "",
+      created_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
   // ============================================================
   // GATE 9 — Vendor Management. Vendor Master is portfolio-wide (like Projects
   // themselves), not scoped to one project the way Documents/Risk/RFI are — every
@@ -2341,6 +2384,14 @@
       loaded.schema_version = 46;
     }
 
+    if (loaded.schema_version < 47) {
+      // PCC Evolution Roadmap, Tier F: Advanced Schedule Performance (Gate 25). Brand
+      // new register, nothing to backfill on existing records — same pattern
+      // delay_records/recovery_actions before it followed.
+      if (!loaded.schedule_performance_snapshots) loaded.schedule_performance_snapshots = [];
+      loaded.schema_version = 47;
+    }
+
     return loaded;
   }
 
@@ -2681,6 +2732,7 @@
     RECOVERY_ACTION_STATUSES: RECOVERY_ACTION_STATUSES,
     newDelayRecord: newDelayRecord,
     DELAY_RECORD_CAUSES: DELAY_RECORD_CAUSES,
+    newSchedulePerformanceSnapshot: newSchedulePerformanceSnapshot,
     SCHEDULE_STATUSES: SCHEDULE_STATUSES,
     ACTIVITY_TYPES: ACTIVITY_TYPES,
     ACTIVITY_STATUSES: ACTIVITY_STATUSES,

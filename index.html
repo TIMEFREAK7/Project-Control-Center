@@ -2885,6 +2885,23 @@ https://github.com/nodeca/pako/blob/main/LICENSE
  *   pick one and say so" approach scheduleCpmEngine.js already takes for Free Float).
  *   It assumes the project's current cost efficiency (CPI) holds for the remaining
  *   work; ETC = EAC - AC, VAC = BAC - EAC follow from it.
+ *
+ * EARNED SCHEDULE (Gate 25, PCC Evolution Roadmap Tier F: Advanced Schedule
+ * Performance): classic SPI (spi = ev/pv, above) has a well-documented flaw — it
+ * mathematically converges to 1.0 as a project nears completion regardless of how late
+ * it actually finishes, since PV stops growing once every activity's planned span has
+ * elapsed while EV can still catch up to it. Earned Schedule (Lipke) is the standard
+ * fix: instead of comparing dollars, it asks "at what point on the PLANNED time curve
+ * would today's EV have been earned?" (ES, in days) and compares that to how much time
+ * has actually elapsed (AT). SPI(t) = ES/AT doesn't have classic SPI's end-of-project
+ * convergence problem. computeEarnedSchedule() rebuilds the same per-item linear PV(t)
+ * ramps itemPlannedValue() already computes (one call per item at a single date) into a
+ * full day-by-day PV(t) CURVE, then walks it forward from EV=0 to find the day ES
+ * crosses today's actual EV, interpolating within that day for a smooth (non-stepped)
+ * value. A plain forward linear scan, not a closed-form inversion or binary search —
+ * this app avoids algorithmic cleverness where a simple, obviously-correct loop suffices
+ * (same style scheduleCpmEngine.js's forward/backward passes already use), and a
+ * project's day count here is small enough that the scan cost is irrelevant.
  */
 (function () {
   "use strict";
@@ -2895,6 +2912,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   function toDayNumber(isoDateStr) {
     var d = new Date(isoDateStr + "T00:00:00Z");
     return Math.round(d.getTime() / DAY_MS);
+  }
+
+  function toIsoDate(dayNumber) {
+    return new Date(dayNumber * DAY_MS).toISOString().slice(0, 10);
   }
 
   function diffDays(fromIso, toIso) {
@@ -3037,11 +3058,217 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     };
   }
 
+  /** Earned Schedule — see the file header for why this exists alongside classic SPI.
+   * Rebuilds the linked items' [bac, start, finish] spans independently of computeEvm()
+   * (this can be called on its own, e.g. from a captured snapshot's own recomputation)
+   * and walks a day-by-day PV(t) curve to find where EV would sit on the PLANNED
+   * timeline. `options.ev`/`options.dataDate` are required — pass the EV computeEvm()
+   * already produced rather than recomputing it here, so there's one source of truth
+   * for "what EV means" across both figures. Returns insufficientData:true (never a
+   * guessed number) when there's no usable dated/linked item to build a curve from. */
+  function computeEarnedSchedule(budgetItems, activities, options) {
+    options = options || {};
+    var ev = options.ev;
+    var dataDate = options.dataDate;
+    var insufficient = { earnedScheduleDays: null, actualTimeDays: null, spiT: null, scheduleVarianceDays: null, projectStart: null, projectFinish: null, insufficientData: true };
+    if (ev == null || !dataDate) return insufficient;
+
+    var spans = [];
+    budgetItems.forEach(function (item) {
+      if (!item.activity_id) return;
+      var activity = activities.find(function (a) { return a.id === item.activity_id; });
+      if (!activity) return;
+      var dates = effectiveDates(activity);
+      if (dates.source === "none") return;
+      spans.push({ bac: Number(item.planned_amount) || 0, start: dates.start, finish: dates.finish });
+    });
+    if (spans.length === 0) return insufficient;
+
+    var projectStart = spans.reduce(function (min, s) { return s.start < min ? s.start : min; }, spans[0].start);
+    var projectFinish = spans.reduce(function (max, s) { return s.finish > max ? s.finish : max; }, spans[0].finish);
+
+    function pvAt(dateIso) {
+      var total = 0;
+      spans.forEach(function (s) {
+        var durationDays = diffDays(s.start, s.finish);
+        var fraction;
+        if (durationDays <= 0) {
+          fraction = dateIso >= s.start ? 1 : 0;
+        } else {
+          var elapsed = diffDays(s.start, dateIso);
+          fraction = Math.max(0, Math.min(1, elapsed / durationDays));
+        }
+        total += s.bac * fraction;
+      });
+      return total;
+    }
+
+    var totalDays = diffDays(projectStart, projectFinish);
+    var pvAtFinish = pvAt(projectFinish);
+
+    var earnedScheduleDays;
+    if (ev <= 0) {
+      earnedScheduleDays = 0;
+    } else if (ev >= pvAtFinish) {
+      // Ahead of (or exactly at) the full planned curve — extrapolate past
+      // projectFinish using the curve's own average rate rather than capping, so
+      // SPI(t) can legitimately read above 1.0 for a project running ahead.
+      var rate = totalDays > 0 ? pvAtFinish / totalDays : 0;
+      earnedScheduleDays = rate > 0 ? totalDays + (ev - pvAtFinish) / rate : totalDays;
+    } else {
+      earnedScheduleDays = totalDays; // overwritten by the loop below once it finds the crossing day
+      var prevPv = 0;
+      for (var d = 1; d <= totalDays; d++) {
+        var curDate = toIsoDate(toDayNumber(projectStart) + d);
+        var curPv = pvAt(curDate);
+        if (curPv >= ev) {
+          earnedScheduleDays = curPv === prevPv ? d : d - 1 + (ev - prevPv) / (curPv - prevPv);
+          break;
+        }
+        prevPv = curPv;
+      }
+    }
+
+    var actualTimeDays = diffDays(projectStart, dataDate);
+    var spiT = actualTimeDays > 0 ? earnedScheduleDays / actualTimeDays : null;
+
+    return {
+      projectStart: projectStart,
+      projectFinish: projectFinish,
+      earnedScheduleDays: Math.round(earnedScheduleDays * 10) / 10,
+      actualTimeDays: actualTimeDays,
+      spiT: spiT,
+      scheduleVarianceDays: Math.round((earnedScheduleDays - actualTimeDays) * 10) / 10,
+      insufficientData: false,
+    };
+  }
+
   window.PCC.costEvmEngine = {
     computeEvm: computeEvm,
     effectiveDates: effectiveDates,
     diffDays: diffDays,
+    computeEarnedSchedule: computeEarnedSchedule,
   };
+})();
+
+
+/* ---- js/schedulePerformanceEngine.js ---- */
+/* Schedule Performance engine (Gate 25, PCC Evolution Roadmap Tier F: Advanced
+ * Schedule Performance) — calculation only, no DOM, no store writes. Same separation
+ * every other engine in this app keeps (scheduleCpmEngine.js, costEvmEngine.js,
+ * projectHealthEngine.js).
+ *
+ * A DEDICATED score, distinct from projectHealthEngine.js's own "Schedule" factor
+ * (Gate 9) — Aditya's own call via AskUserQuestion, made explicitly aware that the
+ * overall Project Health Score already has a schedule-related factor. That factor
+ * blends critical/near-critical ratios with plan-vs-forecast-finish variance into one
+ * contribution toward the OVERALL project score; this is a schedule-only score built
+ * from the genuinely new Gate 25 metrics (classic SPI, Earned-Schedule SPI(t),
+ * Earned-Schedule variance in days) plus the existing critical-path ratio.
+ *
+ * Weights here are FIXED, not configurable via Settings the way
+ * projectHealthEngine.js's are — this is a smaller, single-purpose score, not a second
+ * full configurable scoring system; introducing a second Settings-configurable weight
+ * set for a narrower score would be more machinery than this gate's own scope asked
+ * for. Same "available/score/note" per-factor breakdown shape as
+ * projectHealthEngine.js's FACTOR_SCORERS, though, so the UI convention (a Factor /
+ * Score / Why table) stays consistent between the two scores.
+ */
+(function () {
+  "use strict";
+  window.PCC = window.PCC || {};
+
+  var WEIGHTS = { spi: 30, spiT: 30, scheduleVarianceDays: 20, criticalRatio: 20 };
+  var FACTOR_LABELS = { spi: "SPI (Cost-Based)", spiT: "SPI(t) (Earned Schedule)", scheduleVarianceDays: "Earned Schedule Variance", criticalRatio: "Critical Path Ratio" };
+
+  function clamp(n, lo, hi) {
+    return Math.max(lo, Math.min(hi, n));
+  }
+
+  // A performance ratio (SPI, SPI(t)) of 1.0 = fully healthy (100). Ratios at or above
+  // 1.0 (on or ahead of plan) all score 100 — this is a health score, not a reward for
+  // running arbitrarily far ahead. Below 0.7 scores 0; linear in between, the same
+  // "pick one documented scale and say so" approach this app's other engines use for
+  // similarly ambiguous industry conventions (see costEvmEngine.js's EAC formula
+  // choice, scheduleCpmEngine.js's Free Float definition).
+  function scoreFromRatio(ratio) {
+    if (ratio == null) return null;
+    if (ratio >= 1) return 100;
+    return clamp(((ratio - 0.7) / 0.3) * 100, 0, 100);
+  }
+
+  // Earned Schedule variance in days: 0 or ahead-of-plan (positive ES-AT) scores 100;
+  // behind scales down to 0 at half the project's planned duration behind.
+  function scoreFromVarianceDays(days, plannedDurationDays) {
+    if (days == null || !plannedDurationDays) return null;
+    if (days >= 0) return 100;
+    var pctBehind = -days / plannedDurationDays;
+    return clamp(100 - pctBehind * 200, 0, 100);
+  }
+
+  // Critical-path ratio: 0% critical scores 100; 67%+ critical scores 0.
+  function scoreFromCriticalRatio(criticalCount, totalCount) {
+    if (!totalCount) return null;
+    var ratio = criticalCount / totalCount;
+    return clamp(100 - ratio * 150, 0, 100);
+  }
+
+  /** `ctx`: { spi, spiT, scheduleVarianceDays, plannedDurationDays, criticalCount,
+   * totalActivityCount }. Every input is data Gate 21/25's own engines already
+   * produce — nothing invented here. A factor with no underlying data is marked
+   * `available: false` and excluded from the score (remaining weights re-normalize),
+   * same convention projectHealthEngine.js uses. */
+  function computeSchedulePerformanceScore(ctx) {
+    var factors = {
+      spi: {
+        available: ctx.spi != null,
+        score: scoreFromRatio(ctx.spi),
+        weight: WEIGHTS.spi,
+        note: ctx.spi != null ? "SPI " + ctx.spi.toFixed(2) + " (EV/PV)." : "No linked, dated budget items with actuals yet.",
+      },
+      spiT: {
+        available: ctx.spiT != null,
+        score: scoreFromRatio(ctx.spiT),
+        weight: WEIGHTS.spiT,
+        note: ctx.spiT != null ? "SPI(t) " + ctx.spiT.toFixed(2) + " (Earned Schedule)." : "Not enough linked, dated budget items to compute Earned Schedule.",
+      },
+      scheduleVarianceDays: {
+        available: ctx.scheduleVarianceDays != null,
+        score: scoreFromVarianceDays(ctx.scheduleVarianceDays, ctx.plannedDurationDays),
+        weight: WEIGHTS.scheduleVarianceDays,
+        note:
+          ctx.scheduleVarianceDays == null
+            ? "No Earned Schedule variance available."
+            : ctx.scheduleVarianceDays < 0
+            ? Math.abs(ctx.scheduleVarianceDays) + " day(s) behind the Earned Schedule plan."
+            : "On or ahead of the Earned Schedule plan.",
+      },
+      criticalRatio: {
+        available: ctx.totalActivityCount > 0,
+        score: scoreFromCriticalRatio(ctx.criticalCount, ctx.totalActivityCount),
+        weight: WEIGHTS.criticalRatio,
+        note: ctx.totalActivityCount > 0 ? ctx.criticalCount + " of " + ctx.totalActivityCount + " activities critical." : "No activities in the active schedule yet.",
+      },
+    };
+
+    var totalWeight = 0;
+    var weightedSum = 0;
+    Object.keys(factors).forEach(function (key) {
+      var f = factors[key];
+      f.label = FACTOR_LABELS[key];
+      if (f.available && f.score != null) {
+        totalWeight += f.weight;
+        weightedSum += f.score * f.weight;
+      }
+    });
+
+    var score = totalWeight > 0 ? Math.round(weightedSum / totalWeight) : null;
+    var rag = score == null ? null : score >= 70 ? "on_track" : score >= 40 ? "at_risk" : "critical";
+
+    return { score: score, rag: rag, factors: factors };
+  }
+
+  window.PCC.schedulePerformanceEngine = { computeSchedulePerformanceScore: computeSchedulePerformanceScore };
 })();
 
 
@@ -3789,7 +4016,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 46;
+  var SCHEMA_VERSION = 47;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -3862,6 +4089,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       // delay EVENT logged against a Schedule activity — see newDelayRecord() below for
       // why this is deliberately a separate register from recovery_actions above.
       delay_records: [],
+      // PCC Evolution Roadmap, Tier F: Advanced Schedule Performance (Gate 25). One row
+      // per manually-captured point-in-time performance reading (SPI/SPI(t)/schedule
+      // performance score) — see newSchedulePerformanceSnapshot() below for why this is
+      // its own capture mechanism rather than piggybacking on Weekly Reviews.
+      schedule_performance_snapshots: [],
       // Gate 5b (Tier 2 Cost Tracking): budget line items and the actual-cost log
       // against them. Deliberately two separate arrays, not one shape distinguished by
       // a type field \u2014 unlike Risk/Issue/Opportunity or RFI/TQ, a budget line item and
@@ -5091,6 +5323,44 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
   var DELAY_RECORD_CAUSES = ["owner_caused", "contractor_caused", "weather_force_majeure", "design_rfi_driven", "other"];
 
+  function newSchedulePerformanceSnapshotId() {
+    return "sps_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  /** PCC Evolution Roadmap, Tier F: Advanced Schedule Performance (Gate 25). A frozen,
+   * point-in-time reading of SPI/SPI(t)/schedule performance score — the only way any
+   * of these figures accumulate HISTORY in PCC, since costEvmEngine.js and
+   * schedulePerformanceEngine.js are both pure/on-demand (recomputed fresh on every
+   * render from current data, never stored). Deliberately its OWN capture mechanism —
+   * confirmed with Aditya via AskUserQuestion — rather than piggybacking on Weekly
+   * Reviews' existing snapshot (Gate 14/15's own trending mechanism): Weekly Reviews
+   * are, well, weekly, and trend granularity for a fast-moving schedule shouldn't be
+   * capped at however often someone remembers to write one. `schedule_progress_pct` is
+   * carried alongside the performance figures specifically so Executive Center's
+   * Progress S-Curve can plot a real actual-progress-over-time line for the first time
+   * (previously only a single "today" point was possible — see that chart's own header
+   * comment) without a third history mechanism just for one chart. */
+  function newSchedulePerformanceSnapshot(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newSchedulePerformanceSnapshotId(),
+      project_id: "",
+      captured_at: now,
+      spi: null,
+      cpi: null,
+      spi_t: null,
+      earned_schedule_days: null,
+      actual_time_days: null,
+      schedule_variance_days: null,
+      schedule_performance_score: null,
+      schedule_performance_rag: null,
+      schedule_progress_pct: null,
+      notes: "",
+      created_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
   // ============================================================
   // GATE 9 — Vendor Management. Vendor Master is portfolio-wide (like Projects
   // themselves), not scoped to one project the way Documents/Risk/RFI are — every
@@ -6121,6 +6391,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       loaded.schema_version = 46;
     }
 
+    if (loaded.schema_version < 47) {
+      // PCC Evolution Roadmap, Tier F: Advanced Schedule Performance (Gate 25). Brand
+      // new register, nothing to backfill on existing records — same pattern
+      // delay_records/recovery_actions before it followed.
+      if (!loaded.schedule_performance_snapshots) loaded.schedule_performance_snapshots = [];
+      loaded.schema_version = 47;
+    }
+
     return loaded;
   }
 
@@ -6461,6 +6739,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     RECOVERY_ACTION_STATUSES: RECOVERY_ACTION_STATUSES,
     newDelayRecord: newDelayRecord,
     DELAY_RECORD_CAUSES: DELAY_RECORD_CAUSES,
+    newSchedulePerformanceSnapshot: newSchedulePerformanceSnapshot,
     SCHEDULE_STATUSES: SCHEDULE_STATUSES,
     ACTIVITY_TYPES: ACTIVITY_TYPES,
     ACTIVITY_STATUSES: ACTIVITY_STATUSES,
@@ -11495,6 +11774,36 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           })
         : null;
 
+    // PCC Evolution Roadmap, Tier F (Gate 25, Advanced Schedule Performance). Earned
+    // Schedule (SPI(t)) doesn't have classic SPI's well-known flaw of converging to 1.0
+    // near project completion — see costEvmEngine.js's own header for the full
+    // rationale. Computed from the same budgetItems/activities/ev/dataDate ctx.evm just
+    // used, so there's one source of truth for what "EV" means across both figures.
+    var dataDateForEvm = (schedule && schedule.data_date) || null;
+    ctx.earnedSchedule =
+      ctx.evm && ctx.evm.ev != null
+        ? window.PCC.costEvmEngine.computeEarnedSchedule(budgetItems, activities, { ev: ctx.evm.ev, dataDate: dataDateForEvm })
+        : null;
+    // A dedicated Schedule Performance Score, distinct from the overall Project Health
+    // Score's own "Schedule" factor — see schedulePerformanceEngine.js's own header for
+    // why this is a separate, smaller, fixed-weight score rather than folded into that
+    // configurable one.
+    ctx.schedulePerformance = window.PCC.schedulePerformanceEngine.computeSchedulePerformanceScore({
+      spi: ctx.evm ? ctx.evm.spi : null,
+      spiT: ctx.earnedSchedule && !ctx.earnedSchedule.insufficientData ? ctx.earnedSchedule.spiT : null,
+      scheduleVarianceDays: ctx.earnedSchedule && !ctx.earnedSchedule.insufficientData ? ctx.earnedSchedule.scheduleVarianceDays : null,
+      plannedDurationDays: ctx.plannedDurationDays,
+      criticalCount: ctx.criticalActivities.length,
+      totalActivityCount: ctx.totalActivityCount,
+    });
+    // Captured performance history for this project, newest first — the source for
+    // both renderSchedulePerformanceDetail()'s list and sCurveChart()'s new actual-
+    // progress overlay. Carried on ctx (not threaded as a separate function param)
+    // since every other per-project derived collection already lives here.
+    ctx.schedulePerformanceSnapshots = data.schedule_performance_snapshots
+      .filter(function (s) { return s.project_id === projectId; })
+      .sort(function (a, b) { return new Date(b.captured_at) - new Date(a.captured_at); });
+
     // PCC Evolution Roadmap, Tier F (Gate 19, Commitment Management). Actual is a live
     // sum of cost_actuals tagged to each commitment — same computation
     // commitments.js's own actualValueFor() does, duplicated here per this app's
@@ -11914,10 +12223,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   }
 
   /** Planned progress S-curve, from real activity dates — a full cumulative-% curve
-   * over time. There is no stored "actual progress on date X" history anywhere in PCC
-   * (only current percent_complete), so "Actual" can only be plotted as a single point
-   * at today/data-date — drawn distinctly and labeled, not a fabricated actual curve. */
-  function sCurveChart(card, activities, referenceDate, todayIso) {
+   * over time. As of Gate 25 (Advanced Schedule Performance), `snapshots` — captured
+   * Schedule Performance snapshots (store.js's schedule_performance_snapshots,
+   * newest-first) — supplies the first real "actual progress on date X" history PCC
+   * has ever stored, so an actual overlay can finally be drawn as a real curve instead
+   * of a single today-only point. Snapshots outside the planned curve's own date range
+   * are skipped rather than distorting the shared x-axis; with zero snapshots the chart
+   * falls back to planned-only, same as before this gate. */
+  function sCurveChart(card, activities, referenceDate, todayIso, snapshots) {
     var dated = activities.filter(function (a) { return a.planned_start && a.planned_finish; });
     if (dated.length === 0) return noDataNote(card, "No activities with planned dates yet.");
     var diffDays = window.PCC.scheduleGanttLayout.diffDays;
@@ -11970,13 +12283,32 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       svg.appendChild(svgEl("line", { x1: refX, y1: 10, x2: refX, y2: 10 + plotH, stroke: "var(--signal-amber)", "stroke-width": 1.5, "stroke-dasharray": "3,3" }));
     }
 
+    // Gate 25: actual-progress overlay from captured Schedule Performance snapshots —
+    // the only "actual progress on date X" history this app has ever stored.
+    var actualPoints = (snapshots || [])
+      .filter(function (sn) { return sn.schedule_progress_pct != null && sn.captured_at.slice(0, 10) >= rangeStart && sn.captured_at.slice(0, 10) <= rangeEnd; })
+      .map(function (sn) { return { day: sn.captured_at.slice(0, 10), pct: sn.schedule_progress_pct }; })
+      .sort(function (a, b) { return a.day < b.day ? -1 : a.day > b.day ? 1 : 0; });
+
+    if (actualPoints.length > 0) {
+      var actualPathD = actualPoints.map(function (ap, i) { return (i === 0 ? "M " : "L ") + xFor(ap.day) + " " + yFor(ap.pct); }).join(" ");
+      svg.appendChild(svgEl("path", { d: actualPathD, fill: "none", stroke: "var(--status-on-track)", "stroke-width": 2 }));
+      actualPoints.forEach(function (ap) {
+        svg.appendChild(svgEl("circle", { cx: xFor(ap.day), cy: yFor(ap.pct), r: 3, fill: "var(--status-on-track)" }));
+      });
+    }
+
     card.appendChild(svg);
     var legend = document.createElement("p");
     legend.className = "text-secondary";
     legend.style.fontSize = "11px";
     legend.style.marginTop = "4px";
-    legend.textContent = "Planned cumulative progress, duration-weighted across " + dated.length + " dated activity(ies). Dashed line: data date. " +
-      "There's no stored day-by-day actual-progress history in PCC to plot a real actual curve — only the current % complete.";
+    legend.textContent =
+      actualPoints.length > 0
+        ? "Planned cumulative progress (blue), duration-weighted across " + dated.length + " dated activity(ies), vs. actual progress (green) from " +
+          actualPoints.length + " captured Schedule Performance snapshot(s). Dashed line: data date."
+        : "Planned cumulative progress, duration-weighted across " + dated.length + " dated activity(ies). Dashed line: data date. " +
+          "Capture a Schedule Performance snapshot (below) to start plotting actual progress here.";
     card.appendChild(legend);
   }
 
@@ -12247,6 +12579,33 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       ]);
     }
 
+    if (ctx.totalActivityCount > 0) {
+      renderKpiSection(outlet, "SCHEDULE PERFORMANCE", [
+        { label: "SPI", value: ctx.evm && ctx.evm.spi != null ? ctx.evm.spi.toFixed(2) : "—", colorVar: ctx.evm && ctx.evm.spi != null && ctx.evm.spi < 1 ? "--status-critical" : null },
+        {
+          label: "SPI(t)",
+          value: ctx.earnedSchedule && ctx.earnedSchedule.spiT != null ? ctx.earnedSchedule.spiT.toFixed(2) : "—",
+          colorVar: ctx.earnedSchedule && ctx.earnedSchedule.spiT != null && ctx.earnedSchedule.spiT < 1 ? "--status-critical" : null,
+        },
+        {
+          label: "Earned Schedule Variance",
+          value:
+            ctx.earnedSchedule && ctx.earnedSchedule.scheduleVarianceDays != null
+              ? (ctx.earnedSchedule.scheduleVarianceDays > 0 ? "+" : "") + ctx.earnedSchedule.scheduleVarianceDays + "d"
+              : "—",
+          colorVar: ctx.earnedSchedule && ctx.earnedSchedule.scheduleVarianceDays != null && ctx.earnedSchedule.scheduleVarianceDays < 0 ? "--status-critical" : null,
+        },
+        {
+          label: "Performance Score",
+          value: ctx.schedulePerformance.score == null ? "—" : ctx.schedulePerformance.score,
+          colorVar: ctx.schedulePerformance.rag === "critical" ? "--status-critical" : ctx.schedulePerformance.rag === "at_risk" ? "--status-at-risk" : null,
+        },
+      ]);
+      renderSchedulePerformanceDetail(outlet, ctx, p, rerender);
+    } else {
+      renderKpiEmptySection(outlet, "SCHEDULE PERFORMANCE", "No schedule with activities yet — see the Schedule page.");
+    }
+
     renderKpiSection(outlet, "RISKS", [
       { label: "Open Risks", value: ctx.openRisks.length },
       { label: "High Risks", value: ctx.highRisks.length, colorVar: ctx.highRisks.length ? "--status-critical" : null },
@@ -12349,6 +12708,135 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     panel.className = "panel empty-state";
     panel.textContent = message;
     wrap.appendChild(panel);
+    outlet.appendChild(wrap);
+  }
+
+  /** PCC Evolution Roadmap, Tier F (Gate 25, Advanced Schedule Performance) — the
+   * SCHEDULE PERFORMANCE section's factor breakdown (never hide the "why," same
+   * convention as Project Health Score's own table), the manual "Capture Performance
+   * Snapshot" action, and the resulting history list. This is the only place any of
+   * these figures persist over time — costEvmEngine.js's computeEarnedSchedule() and
+   * schedulePerformanceEngine.js are both pure, recomputed fresh on every render, never
+   * stored on their own. Deliberately a SEPARATE capture mechanism from Weekly
+   * Reviews' own snapshot (Aditya's own call via AskUserQuestion) — see
+   * newSchedulePerformanceSnapshot()'s header comment in store.js for why. */
+  function renderSchedulePerformanceDetail(outlet, ctx, p, rerender) {
+    var wrap = document.createElement("div");
+    wrap.className = "panel";
+    wrap.style.marginTop = "10px";
+
+    var heading = document.createElement("div");
+    heading.style.display = "flex";
+    heading.style.justifyContent = "space-between";
+    heading.style.alignItems = "center";
+    heading.style.marginBottom = "10px";
+    var headingTitle = document.createElement("h4");
+    headingTitle.textContent = "Schedule Performance Score";
+    heading.appendChild(headingTitle);
+    if (ctx.schedulePerformance.rag) heading.appendChild(ragBadge(ctx.schedulePerformance.rag));
+    wrap.appendChild(heading);
+
+    var table = document.createElement("table");
+    table.style.width = "100%";
+    table.style.fontSize = "12px";
+    table.style.borderCollapse = "collapse";
+    table.style.marginBottom = "10px";
+    var thead = document.createElement("tr");
+    ["Factor", "Weight", "Score", "Why"].forEach(function (h) {
+      var th = document.createElement("th");
+      th.textContent = h;
+      th.style.textAlign = "left";
+      th.style.borderBottom = "1px solid var(--divider)";
+      th.style.padding = "4px 6px";
+      thead.appendChild(th);
+    });
+    table.appendChild(thead);
+    Object.keys(ctx.schedulePerformance.factors).forEach(function (key) {
+      var f = ctx.schedulePerformance.factors[key];
+      var tr = document.createElement("tr");
+      function td(text) {
+        var cell = document.createElement("td");
+        cell.style.padding = "4px 6px";
+        cell.style.borderBottom = "1px solid var(--divider)";
+        cell.style.verticalAlign = "top";
+        cell.textContent = text;
+        return cell;
+      }
+      tr.appendChild(td(f.label));
+      tr.appendChild(td(f.weight + "%"));
+      tr.appendChild(td(f.available && f.score != null ? String(Math.round(f.score)) : "—"));
+      tr.appendChild(td(f.note));
+      table.appendChild(tr);
+    });
+    wrap.appendChild(table);
+
+    var snapshots = ctx.schedulePerformanceSnapshots;
+
+    var captureRow = document.createElement("div");
+    captureRow.style.display = "flex";
+    captureRow.style.justifyContent = "space-between";
+    captureRow.style.alignItems = "center";
+    captureRow.style.flexWrap = "wrap";
+    captureRow.style.gap = "8px";
+
+    var captureNote = document.createElement("span");
+    captureNote.style.fontSize = "13px";
+    captureNote.textContent =
+      snapshots.length > 0
+        ? snapshots.length + " performance snapshot" + (snapshots.length === 1 ? "" : "s") + " captured — last on " + snapshots[0].captured_at.slice(0, 10) + "."
+        : "No performance snapshots captured yet — capture one to start a trend and feed the Progress S-Curve's actual line.";
+    captureRow.appendChild(captureNote);
+
+    var captureBtn = document.createElement("button");
+    captureBtn.className = "btn btn--ghost";
+    captureBtn.textContent = "Capture Performance Snapshot";
+    captureBtn.onclick = function () {
+      window.PCC.store.update(function (d) {
+        d.schedule_performance_snapshots.push(
+          window.PCC.store.newSchedulePerformanceSnapshot({
+            project_id: p.id,
+            spi: ctx.evm ? ctx.evm.spi : null,
+            cpi: ctx.evm ? ctx.evm.cpi : null,
+            spi_t: ctx.earnedSchedule && !ctx.earnedSchedule.insufficientData ? ctx.earnedSchedule.spiT : null,
+            earned_schedule_days: ctx.earnedSchedule && !ctx.earnedSchedule.insufficientData ? ctx.earnedSchedule.earnedScheduleDays : null,
+            actual_time_days: ctx.earnedSchedule && !ctx.earnedSchedule.insufficientData ? ctx.earnedSchedule.actualTimeDays : null,
+            schedule_variance_days: ctx.earnedSchedule && !ctx.earnedSchedule.insufficientData ? ctx.earnedSchedule.scheduleVarianceDays : null,
+            schedule_performance_score: ctx.schedulePerformance.score,
+            schedule_performance_rag: ctx.schedulePerformance.rag,
+            schedule_progress_pct: ctx.scheduleProgressPct,
+          })
+        );
+      });
+      window.PCC.notify("Performance snapshot captured.", "success");
+      rerender();
+    };
+    captureRow.appendChild(captureBtn);
+    wrap.appendChild(captureRow);
+
+    if (snapshots.length > 0) {
+      var historyList = document.createElement("div");
+      historyList.style.marginTop = "10px";
+      snapshots.slice(0, 10).forEach(function (s) {
+        var row = document.createElement("p");
+        row.style.fontSize = "12px";
+        row.style.margin = "4px 0";
+        row.className = "text-secondary";
+        row.textContent =
+          s.captured_at.slice(0, 10) + " — SPI " + (s.spi == null ? "—" : s.spi.toFixed(2)) +
+          " · SPI(t) " + (s.spi_t == null ? "—" : s.spi_t.toFixed(2)) +
+          " · Score " + (s.schedule_performance_score == null ? "—" : s.schedule_performance_score);
+        historyList.appendChild(row);
+      });
+      if (snapshots.length > 10) {
+        var more = document.createElement("p");
+        more.className = "text-secondary";
+        more.style.fontSize = "12px";
+        more.textContent = "+" + (snapshots.length - 10) + " more not shown.";
+        historyList.appendChild(more);
+      }
+      wrap.appendChild(historyList);
+    }
+
     outlet.appendChild(wrap);
   }
 
@@ -12903,7 +13391,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     row1.style.flexWrap = "wrap";
 
     var sCurveCard = chartCard("Progress S-Curve");
-    sCurveChart(sCurveCard, ctx.activities, ctx.referenceDate, ctx.todayIso);
+    sCurveChart(sCurveCard, ctx.activities, ctx.referenceDate, ctx.todayIso, ctx.schedulePerformanceSnapshots);
     row1.appendChild(sCurveCard);
 
     var criticalCard = chartCard("Critical vs Non-Critical Activities");
@@ -13287,7 +13775,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     if (sections.progress) {
       var progressSection = reportSection("Progress Summary (S-Curve)");
-      sCurveChart(progressSection, ctx.activities, ctx.referenceDate, ctx.todayIso);
+      sCurveChart(progressSection, ctx.activities, ctx.referenceDate, ctx.todayIso, ctx.schedulePerformanceSnapshots);
       doc.appendChild(progressSection);
     }
 
