@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 51;
+  var SCHEMA_VERSION = 52;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -24,6 +24,11 @@
       },
       settings: {
         theme: "dark",
+        // UI/UX Overhaul, Gate 2 (Global Navigation): whether the desktop/laptop/tablet
+        // sidebar is showing its icon-rail collapsed state. Manual toggle only, no
+        // per-tier auto-collapse — same value applies at every width down to mobile,
+        // where the sidebar is replaced entirely by the hamburger+drawer nav instead.
+        sidebar_collapsed: false,
         company_name: "",
         backup_reminder_days: 7,
         backup_nudge_dismissed_at: null,
@@ -2559,6 +2564,15 @@
       if (loaded.settings.company_logo_filename == null) loaded.settings.company_logo_filename = "";
       if (loaded.settings.company_logo_mime_type == null) loaded.settings.company_logo_mime_type = "";
       loaded.schema_version = 51;
+    }
+
+    if (loaded.schema_version < 52) {
+      // UI/UX Overhaul, Gate 2 (Global Navigation): new sidebar-collapsed preference,
+      // nothing to backfill on existing records — every existing install starts expanded
+      // (the same behavior it already had, just now explicitly a setting instead of the
+      // only option).
+      if (loaded.settings.sidebar_collapsed == null) loaded.settings.sidebar_collapsed = false;
+      loaded.schema_version = 52;
     }
 
     return loaded;

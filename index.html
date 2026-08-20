@@ -196,8 +196,26 @@ button {
   overflow-y: auto;
 }
 
+/* UI/UX Overhaul Gate 2: .sidebar__label now sits inside .sidebar__header-row
+   alongside the collapse toggle button, instead of standing alone. */
+.sidebar__header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 16px 12px 8px 20px;
+}
+
+.sidebar--collapsed .sidebar__header-row {
+  justify-content: center;
+  padding: 16px 0 8px;
+}
+
+.sidebar__collapse-btn {
+  flex-shrink: 0;
+}
+
 .sidebar__label {
-  padding: 20px 20px 8px;
   font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 2px;
@@ -254,11 +272,11 @@ button {
   opacity: 0.85;
 }
 
-/* Icon-rail collapsed variant — navigation primitive for Gate 2 (Global Navigation),
-   which owns adding the actual collapse toggle button and applying this class to
-   .sidebar. Inert this gate: nothing in layout.js references it yet, so it has no
-   visible effect until Gate 2 wires it up. Kept here, not there, because it's a purely
-   visual/CSS concern the design system owns. */
+/* Icon-rail collapsed variant, built inert in Gate 1 (Design System) and wired up in
+   Gate 2 (Global Navigation) — layout.js's sidebar collapse toggle adds/removes this
+   class and persists the choice to settings.sidebar_collapsed. Applies at every tier
+   the fixed sidebar is shown (Large Desktop down through Tablet); mobile hides the
+   sidebar entirely instead (see the Responsive section further down). */
 .sidebar--collapsed {
   width: 60px;
 }
@@ -347,6 +365,13 @@ button {
 .icon-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+/* Hamburger nav trigger — hidden by default, shown only below 780px (see the
+   Responsive section further down) where the fixed sidebar itself is hidden. */
+.icon-btn--menu {
+  display: none;
+  flex-shrink: 0;
 }
 
 main.page {
@@ -1154,8 +1179,14 @@ a:focus-visible {
   border-bottom: 1px solid var(--divider);
 }
 
+.drawer__title {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
 .drawer__body {
-  padding: var(--space-5);
+  padding: var(--space-3) var(--space-3) var(--space-5);
   overflow-y: auto;
   flex-grow: 1;
 }
@@ -1163,6 +1194,19 @@ a:focus-visible {
 @keyframes drawer-in {
   from { transform: translateX(100%); }
   to { transform: translateX(0); }
+}
+
+/* UI/UX Overhaul Gate 2: the mobile nav drawer reuses the sidebar's own .sidebar__nav/
+   .sidebar__link markup (via layout.js's buildNavList()) so both copies stay visually
+   consistent and share setActiveNav()'s highlighting — this just gives the drawer's
+   copy larger, touch-sized rows instead of the desktop sidebar's denser ones. */
+.drawer .sidebar__nav {
+  padding: 0;
+}
+
+.drawer .sidebar__link {
+  padding: 13px 12px;
+  font-size: var(--text-md);
 }
 
 /* ---- Density groundwork ----
@@ -1175,52 +1219,38 @@ a:focus-visible {
   --space-5: 16px;
 }
 
+/* ===== Responsive: Laptop tier (1024-1279px) =====
+   UI/UX Overhaul Gate 2. The sidebar itself stays full-width here by default — Gate 2
+   deliberately doesn't auto-collapse it (manual toggle only, same as every tier down to
+   Tablet; see .sidebar--collapsed). This tier just tightens the main content padding a
+   touch, matching the brief's "reduce unnecessary padding... prioritize the main
+   workspace" for laptop specifically without changing any layout structure. */
+@media (max-width: 1279px) {
+  main.page {
+    padding: 20px;
+  }
+}
+
 /* ===== Responsive: narrow / phone widths =====
-   Desktop layout assumes room for a 236px fixed sidebar plus a multi-cell
-   title block. Below ~780px that stops fitting, so the sidebar becomes a
-   horizontal scrollable strip at the top instead of a fixed side column,
-   and the title block drops its secondary cells (company/date) to leave
-   room for the sheet name and the action icons. */
+   Desktop layout assumes room for a fixed sidebar plus a multi-cell title block. Below
+   ~780px that stops fitting. UI/UX Overhaul Gate 2 changed what happens here: the fixed
+   sidebar used to become a horizontal scrollable strip of all ~23 links at the top
+   (exactly the "desktop nav squeezed into mobile" pattern the redesign brief calls out
+   to avoid) — it's now hidden entirely and replaced by the hamburger button
+   (.icon-btn--menu, shown only at this width) opening the full nav in a slide-in
+   .drawer (layout.js's openMobileNav/buildNavList). The title block still drops its
+   secondary cells (company/date) to leave room for the sheet name and action icons. */
 @media (max-width: 780px) {
   body {
     overflow-x: hidden;
   }
 
-  /* #app-shell is a row flexbox on desktop (sidebar beside main-column). Without
-     switching to column here, .sidebar's "width: 100%" below is still just a flex-item
-     width inside that row — it gets squeezed to share space with .main-column instead
-     of actually stacking above it. This is what makes the horizontal-scrolling nav
-     strip land at the top of the page instead of beside it. */
-  #app-shell {
-    flex-direction: column;
-  }
-
   .sidebar {
-    position: static;
-    width: 100%;
-    height: auto;
-    border-right: none;
-    border-bottom: 1px solid var(--divider);
-    overflow-y: visible;
-  }
-
-  .sidebar__label,
-  .sidebar__group-label {
     display: none;
   }
 
-  .sidebar__nav {
+  .icon-btn--menu {
     display: flex;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    padding: 8px;
-    gap: 4px;
-  }
-
-  .sidebar__link {
-    flex: 0 0 auto;
-    margin-bottom: 0;
-    white-space: nowrap;
   }
 
   /* One control per row instead of the desktop's wrapped multi-filter row — easier
@@ -4343,7 +4373,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 51;
+  var SCHEMA_VERSION = 52;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -4358,6 +4388,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       },
       settings: {
         theme: "dark",
+        // UI/UX Overhaul, Gate 2 (Global Navigation): whether the desktop/laptop/tablet
+        // sidebar is showing its icon-rail collapsed state. Manual toggle only, no
+        // per-tier auto-collapse — same value applies at every width down to mobile,
+        // where the sidebar is replaced entirely by the hamburger+drawer nav instead.
+        sidebar_collapsed: false,
         company_name: "",
         backup_reminder_days: 7,
         backup_nudge_dismissed_at: null,
@@ -6895,6 +6930,15 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       loaded.schema_version = 51;
     }
 
+    if (loaded.schema_version < 52) {
+      // UI/UX Overhaul, Gate 2 (Global Navigation): new sidebar-collapsed preference,
+      // nothing to backfill on existing records — every existing install starts expanded
+      // (the same behavior it already had, just now explicitly a setting instead of the
+      // only option).
+      if (loaded.settings.sidebar_collapsed == null) loaded.settings.sidebar_collapsed = false;
+      loaded.schema_version = 52;
+    }
+
     return loaded;
   }
 
@@ -7375,8 +7419,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
   // Grouped for findability now that there are a dozen+ items — purely a sidebar
   // presentation grouping, not a new concept elsewhere (routing/PAGE_TITLES below are
-  // still a flat map). Collapses to one continuous horizontal strip on mobile, same as
-  // before grouping existed (see the max-width: 780px rule hiding .sidebar__group-label).
+  // still a flat map). Rendered by buildNavList() into both the fixed sidebar (desktop/
+  // laptop/tablet) and the mobile nav drawer (<768px, UI/UX Overhaul Gate 2) — same
+  // groups/items either way, just a different container.
   var NAV_GROUPS = [
     {
       label: "OVERVIEW",
@@ -7478,19 +7523,26 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     });
     var titleValue = document.getElementById("title-block-sheet");
     if (titleValue) titleValue.textContent = PAGE_TITLES[routeName] || routeName;
+    // Every route change closes the mobile drawer if it's open — covers navigation
+    // triggered by something other than clicking a link inside it (e.g. a button
+    // elsewhere in the page calling router.go() directly).
+    closeMobileNav();
   }
 
-  function buildSidebar() {
-    var sidebar = document.createElement("aside");
-    sidebar.className = "sidebar";
-
-    var label = document.createElement("div");
-    label.className = "sidebar__label";
-    label.textContent = "SHEET INDEX";
-    sidebar.appendChild(label);
-
+  /** Builds one fresh `<ul class="sidebar__nav">` from NAV_GROUPS. Shared by the fixed
+   * sidebar (buildSidebar) and the mobile nav drawer (openMobileNav) — same items, same
+   * `.sidebar__link`/`data-route` shape, so `setActiveNav()`'s plain
+   * `querySelectorAll(".sidebar__link")` highlights whichever copy(ies) are currently in
+   * the DOM without needing to know which. That sweep only runs when the ROUTE changes,
+   * though — the drawer is built fresh on every open, well after the most recent route
+   * change already happened, so its links need their own "active" class set correctly
+   * at build time here too, not just left for the next route change to fix. `onLinkClick`,
+   * when given, fires on every link click in addition to the normal hash navigation —
+   * the drawer uses it to close itself; the fixed sidebar doesn't pass one. */
+  function buildNavList(onLinkClick) {
     var nav = document.createElement("ul");
     nav.className = "sidebar__nav";
+    var currentRoute = window.PCC.router.currentRouteName();
 
     NAV_GROUPS.forEach(function (group) {
       var groupLabel = document.createElement("li");
@@ -7501,18 +7553,108 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       group.items.forEach(function (item) {
         var li = document.createElement("li");
         var a = document.createElement("a");
-        a.className = "sidebar__link";
+        a.className = "sidebar__link" + (item.key === currentRoute ? " active" : "");
         a.href = "#/" + item.key;
         a.setAttribute("data-route", item.key);
         a.innerHTML =
           '<span class="sidebar__icon mono">' + item.code + "</span><span>" + item.label + "</span>";
+        if (onLinkClick) a.addEventListener("click", onLinkClick);
         li.appendChild(a);
         nav.appendChild(li);
       });
     });
 
-    sidebar.appendChild(nav);
+    return nav;
+  }
+
+  function buildSidebar() {
+    var sidebar = document.createElement("aside");
+    sidebar.className = "sidebar";
+    if (window.PCC.store.get().settings.sidebar_collapsed) {
+      sidebar.classList.add("sidebar--collapsed");
+    }
+
+    var headerRow = document.createElement("div");
+    headerRow.className = "sidebar__header-row";
+
+    var label = document.createElement("div");
+    label.className = "sidebar__label";
+    label.textContent = "SHEET INDEX";
+    headerRow.appendChild(label);
+
+    var collapseBtn = document.createElement("button");
+    collapseBtn.className = "icon-btn sidebar__collapse-btn";
+    setCollapseBtnState(collapseBtn, sidebar.classList.contains("sidebar--collapsed"));
+    collapseBtn.onclick = function () {
+      var collapsed = !window.PCC.store.get().settings.sidebar_collapsed;
+      window.PCC.store.update(function (d) {
+        d.settings.sidebar_collapsed = collapsed;
+      });
+      sidebar.classList.toggle("sidebar--collapsed", collapsed);
+      setCollapseBtnState(collapseBtn, collapsed);
+    };
+    headerRow.appendChild(collapseBtn);
+
+    sidebar.appendChild(headerRow);
+    sidebar.appendChild(buildNavList());
     return sidebar;
+  }
+
+  function setCollapseBtnState(btn, collapsed) {
+    btn.textContent = collapsed ? "»" : "«";
+    btn.title = collapsed ? "Expand sidebar" : "Collapse sidebar";
+  }
+
+  var mobileNavKeydownHandler = null;
+
+  function closeMobileNav() {
+    var overlay = document.getElementById("mobile-nav-overlay");
+    if (overlay) overlay.remove();
+    if (mobileNavKeydownHandler) {
+      document.removeEventListener("keydown", mobileNavKeydownHandler);
+      mobileNavKeydownHandler = null;
+    }
+  }
+
+  function openMobileNav() {
+    closeMobileNav();
+
+    var overlay = document.createElement("div");
+    overlay.id = "mobile-nav-overlay";
+    overlay.className = "drawer-overlay";
+    overlay.addEventListener("click", function (e) {
+      if (e.target === overlay) closeMobileNav();
+    });
+
+    var drawer = document.createElement("div");
+    drawer.className = "drawer";
+
+    var header = document.createElement("div");
+    header.className = "drawer__header";
+    var title = document.createElement("span");
+    title.className = "drawer__title";
+    title.textContent = "Menu";
+    var closeBtn = document.createElement("button");
+    closeBtn.className = "icon-btn";
+    closeBtn.title = "Close menu";
+    closeBtn.textContent = "✕";
+    closeBtn.onclick = closeMobileNav;
+    header.appendChild(title);
+    header.appendChild(closeBtn);
+
+    var body = document.createElement("div");
+    body.className = "drawer__body";
+    body.appendChild(buildNavList(closeMobileNav));
+
+    drawer.appendChild(header);
+    drawer.appendChild(body);
+    overlay.appendChild(drawer);
+    document.body.appendChild(overlay);
+
+    mobileNavKeydownHandler = function (e) {
+      if (e.key === "Escape") closeMobileNav();
+    };
+    document.addEventListener("keydown", mobileNavKeydownHandler);
   }
 
   function cell(label, value, opts) {
@@ -7534,6 +7676,16 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   function buildTitleBlock() {
     var header = document.createElement("header");
     header.className = "title-block";
+
+    // Mobile-only (<768px, see styles.css) — the fixed sidebar is hidden entirely at
+    // that width and this is the only way to reach navigation. Hidden via CSS, not JS,
+    // so it's always in the DOM regardless of viewport at the moment the shell mounts.
+    var menuBtn = document.createElement("button");
+    menuBtn.className = "icon-btn icon-btn--menu";
+    menuBtn.title = "Open navigation menu";
+    menuBtn.textContent = "☰";
+    menuBtn.onclick = openMobileNav;
+    header.appendChild(menuBtn);
 
     header.appendChild(cell("SHEET", "Dashboard", { grow: true, id: "title-block-sheet" }));
 
