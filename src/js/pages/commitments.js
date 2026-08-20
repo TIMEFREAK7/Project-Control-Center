@@ -101,6 +101,37 @@
     return Number(committedValue) - actual;
   }
 
+  // PCC Evolution Roadmap, Tier F (Gate 19 follow-on): Schedule integration. Same
+  // COMMITMENT_RISK_WINDOW_DAYS/effective-dates/risk rule as schedule.js's own
+  // "commitments" LINKED_RECORD_SOURCES badge — duplicated here per this app's
+  // per-module-helpers convention, so a Commitment reads the same "at risk" both on
+  // its own page and on the activity it's linked to.
+  var COMMITMENT_RISK_WINDOW_DAYS = 7;
+
+  function todayIso() {
+    return new Date().toISOString().slice(0, 10);
+  }
+  function addDaysIso(isoDateStr, days) {
+    var d = new Date(isoDateStr + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0, 10);
+  }
+  function activityEffectiveStart(activity) {
+    if (!activity || activity.activity_type === "milestone") return null;
+    return activity.early_start || activity.planned_start || null;
+  }
+
+  /** True when this commitment's linked activity is imminent (starting within
+   * COMMITMENT_RISK_WINDOW_DAYS) or already under way, but the commitment itself
+   * isn't approved yet — a procurement lead-time risk, not just a status label. */
+  function commitmentIsAtRisk(c, data) {
+    if (!c.activity_id || c.status === "approved" || c.status === "closed" || c.status === "cancelled") return false;
+    var activity = data.activities.find(function (a) { return a.id === c.activity_id; });
+    var start = activityEffectiveStart(activity);
+    if (!start) return false;
+    return start <= addDaysIso(todayIso(), COMMITMENT_RISK_WINDOW_DAYS);
+  }
+
   function activityOptionsFor(select, data, projectId, selectedActivityId) {
     select.innerHTML = "";
     var noneOpt = document.createElement("option");
@@ -413,13 +444,14 @@
   }
 
   function renderKpiStrip(filtered, data) {
-    var totals = { committed: 0, approved: 0, actual: 0, remaining: 0 };
+    var totals = { committed: 0, approved: 0, actual: 0, remaining: 0, atRisk: 0 };
     filtered.forEach(function (c) {
       var actual = actualValueFor(data, c.id);
       totals.committed += Number(c.committed_value) || 0;
       totals.approved += Number(c.approved_value) || 0;
       totals.actual += actual;
       totals.remaining += remainingFor(c.committed_value, actual) || 0;
+      if (commitmentIsAtRisk(c, data)) totals.atRisk++;
     });
 
     var grid = document.createElement("div");
@@ -430,6 +462,7 @@
       { label: "TOTAL APPROVED", value: formatMoney(totals.approved) },
       { label: "TOTAL ACTUAL", value: formatMoney(totals.actual) },
       { label: "TOTAL REMAINING", value: formatMoney(totals.remaining), colorVar: totals.remaining < 0 ? "--status-critical" : null },
+      { label: "AT RISK", value: totals.atRisk, colorVar: totals.atRisk > 0 ? "--status-critical" : null },
     ].forEach(function (kpi) {
       var card = document.createElement("div");
       card.className = "kpi-card";
@@ -603,6 +636,15 @@
           right.style.display = "flex";
           right.style.alignItems = "center";
           right.style.gap = "8px";
+
+          if (commitmentIsAtRisk(c, data)) {
+            var riskBadge = document.createElement("span");
+            riskBadge.className = "status-badge status-badge--critical";
+            riskBadge.style.fontSize = "11px";
+            riskBadge.textContent = "Procurement Risk";
+            riskBadge.title = "The linked activity starts within " + COMMITMENT_RISK_WINDOW_DAYS + " days (or has already started) and this commitment isn't approved yet.";
+            right.appendChild(riskBadge);
+          }
 
           var statusBadge = document.createElement("span");
           statusBadge.className = "status-badge status-badge--info";

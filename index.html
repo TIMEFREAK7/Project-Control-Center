@@ -11236,8 +11236,26 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     // per-module-helpers convention. Independent of the EVM numbers above; this gate
     // doesn't feed Commitments into costEvmEngine.js's own math (see commitments.js's
     // header comment for why).
+    // Procurement lead-time risk (Gate 19 follow-on, Schedule integration): same rule
+    // as schedule.js's own "commitments" LINKED_RECORD_SOURCES badge and
+    // commitments.js's own commitmentIsAtRisk() — duplicated here per this app's
+    // per-module-helpers convention. Looks up the linked activity across the WHOLE
+    // project (data.activities), not just the primary schedule's own `activities`
+    // variable above, since a commitment can point at an activity on any revision.
+    var COMMITMENT_RISK_WINDOW_DAYS = 7;
+    function commitmentAtRisk(c) {
+      if (!c.activity_id || c.status === "approved" || c.status === "closed" || c.status === "cancelled") return false;
+      var act = data.activities.find(function (a) { return a.id === c.activity_id; });
+      if (!act || act.activity_type === "milestone") return false;
+      var start = act.early_start || act.planned_start || null;
+      if (!start) return false;
+      var cutoff = new Date(todayIso + "T00:00:00Z");
+      cutoff.setUTCDate(cutoff.getUTCDate() + COMMITMENT_RISK_WINDOW_DAYS);
+      return start <= cutoff.toISOString().slice(0, 10);
+    }
+
     var projectCommitments = data.commitments.filter(function (c) { return c.project_id === projectId; });
-    var commitmentTotals = { committed: 0, approved: 0, actual: 0, remaining: 0 };
+    var commitmentTotals = { committed: 0, approved: 0, actual: 0, remaining: 0, atRisk: 0 };
     projectCommitments.forEach(function (c) {
       var actual = data.cost_actuals
         .filter(function (a) { return a.commitment_id === c.id; })
@@ -11246,6 +11264,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       commitmentTotals.approved += Number(c.approved_value) || 0;
       commitmentTotals.actual += actual;
       if (c.committed_value != null) commitmentTotals.remaining += Number(c.committed_value) - actual;
+      if (commitmentAtRisk(c)) commitmentTotals.atRisk++;
     });
     ctx.commitmentSummary = Object.assign({ count: projectCommitments.length }, commitmentTotals);
 
@@ -11931,6 +11950,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         { label: "Approved", value: fmtMoney(ctx.commitmentSummary.approved, p.currency) },
         { label: "Actual", value: fmtMoney(ctx.commitmentSummary.actual, p.currency) },
         { label: "Remaining", value: fmtMoney(ctx.commitmentSummary.remaining, p.currency), colorVar: ctx.commitmentSummary.remaining < 0 ? "--status-critical" : null },
+        { label: "At Risk", value: ctx.commitmentSummary.atRisk, colorVar: ctx.commitmentSummary.atRisk > 0 ? "--status-critical" : null },
       ]);
     } else {
       renderKpiEmptySection(outlet, "COMMITMENTS", "No commitments logged for this project yet — see the Commitments page.");
@@ -22180,7 +22200,48 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         return conflictInWindow ? { label: "Over-Allocated", className: "critical" } : { label: "Available", className: "on_track" };
       },
     },
+    {
+      // PCC Evolution Roadmap, Tier F (Gate 19 follow-on, Commitment Management): a
+      // Commitment already links to one activity (Gate 19), but was never added to
+      // this array, so a linked commitment never actually showed up in the Activity
+      // Detail Panel it points at — the "integrate Schedule with Commitment
+      // Management" gap Aditya asked to close.
+      module: "commitments",
+      label: function (c) { return "Commitment: " + (c.po_contract_number || "(no PO/Contract #)") + " (" + (COMMITMENT_STATUS_LABELS[c.status] || c.status) + ")"; },
+      list: function (data, activityId) {
+        return data.commitments.filter(function (c) { return c.activity_id === activityId; });
+      },
+      view: function (c) {
+        if (window.PCC.commitments && window.PCC.commitments.expandCommitment) window.PCC.commitments.expandCommitment(c.id);
+        window.PCC.router.go("commitments");
+      },
+      // Procurement lead-time risk: this activity is imminent (starting within
+      // COMMITMENT_RISK_WINDOW_DAYS) or already under way, but the commitment behind
+      // it isn't approved yet — the work may not actually be covered when it starts.
+      // Same "computed, transparent, never fabricated" signal the Resources badge
+      // above already establishes for a different kind of readiness.
+      badge: function (c, data, activity) {
+        if (c.status === "approved") return { label: "Approved", className: "on_track" };
+        if (c.status === "closed") return { label: "Closed", className: "on_track" };
+        if (c.status === "cancelled") return { label: "Cancelled", className: "info" };
+        var dates = resourceActivityEffectiveDates(activity);
+        var riskCutoff = addDaysIso(todayIso(), COMMITMENT_RISK_WINDOW_DAYS);
+        if (dates.start && dates.start <= riskCutoff) {
+          return { label: "Procurement Risk", className: "critical" };
+        }
+        return { label: COMMITMENT_STATUS_LABELS[c.status] || c.status, className: "info" };
+      },
+    },
   ];
+
+  var COMMITMENT_STATUS_LABELS = { draft: "Draft", issued: "Issued", approved: "Approved", closed: "Closed", cancelled: "Cancelled" };
+  var COMMITMENT_RISK_WINDOW_DAYS = 7;
+
+  function addDaysIso(isoDateStr, days) {
+    var d = new Date(isoDateStr + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0, 10);
+  }
 
   /** Same calculated-wins/planned-falls-back precedence as resourceLevelingEngine.js's
    * own effectiveDates() — duplicated here per this app's per-module-helpers
@@ -29194,6 +29255,37 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     return Number(committedValue) - actual;
   }
 
+  // PCC Evolution Roadmap, Tier F (Gate 19 follow-on): Schedule integration. Same
+  // COMMITMENT_RISK_WINDOW_DAYS/effective-dates/risk rule as schedule.js's own
+  // "commitments" LINKED_RECORD_SOURCES badge — duplicated here per this app's
+  // per-module-helpers convention, so a Commitment reads the same "at risk" both on
+  // its own page and on the activity it's linked to.
+  var COMMITMENT_RISK_WINDOW_DAYS = 7;
+
+  function todayIso() {
+    return new Date().toISOString().slice(0, 10);
+  }
+  function addDaysIso(isoDateStr, days) {
+    var d = new Date(isoDateStr + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0, 10);
+  }
+  function activityEffectiveStart(activity) {
+    if (!activity || activity.activity_type === "milestone") return null;
+    return activity.early_start || activity.planned_start || null;
+  }
+
+  /** True when this commitment's linked activity is imminent (starting within
+   * COMMITMENT_RISK_WINDOW_DAYS) or already under way, but the commitment itself
+   * isn't approved yet — a procurement lead-time risk, not just a status label. */
+  function commitmentIsAtRisk(c, data) {
+    if (!c.activity_id || c.status === "approved" || c.status === "closed" || c.status === "cancelled") return false;
+    var activity = data.activities.find(function (a) { return a.id === c.activity_id; });
+    var start = activityEffectiveStart(activity);
+    if (!start) return false;
+    return start <= addDaysIso(todayIso(), COMMITMENT_RISK_WINDOW_DAYS);
+  }
+
   function activityOptionsFor(select, data, projectId, selectedActivityId) {
     select.innerHTML = "";
     var noneOpt = document.createElement("option");
@@ -29506,13 +29598,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   }
 
   function renderKpiStrip(filtered, data) {
-    var totals = { committed: 0, approved: 0, actual: 0, remaining: 0 };
+    var totals = { committed: 0, approved: 0, actual: 0, remaining: 0, atRisk: 0 };
     filtered.forEach(function (c) {
       var actual = actualValueFor(data, c.id);
       totals.committed += Number(c.committed_value) || 0;
       totals.approved += Number(c.approved_value) || 0;
       totals.actual += actual;
       totals.remaining += remainingFor(c.committed_value, actual) || 0;
+      if (commitmentIsAtRisk(c, data)) totals.atRisk++;
     });
 
     var grid = document.createElement("div");
@@ -29523,6 +29616,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       { label: "TOTAL APPROVED", value: formatMoney(totals.approved) },
       { label: "TOTAL ACTUAL", value: formatMoney(totals.actual) },
       { label: "TOTAL REMAINING", value: formatMoney(totals.remaining), colorVar: totals.remaining < 0 ? "--status-critical" : null },
+      { label: "AT RISK", value: totals.atRisk, colorVar: totals.atRisk > 0 ? "--status-critical" : null },
     ].forEach(function (kpi) {
       var card = document.createElement("div");
       card.className = "kpi-card";
@@ -29696,6 +29790,15 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           right.style.display = "flex";
           right.style.alignItems = "center";
           right.style.gap = "8px";
+
+          if (commitmentIsAtRisk(c, data)) {
+            var riskBadge = document.createElement("span");
+            riskBadge.className = "status-badge status-badge--critical";
+            riskBadge.style.fontSize = "11px";
+            riskBadge.textContent = "Procurement Risk";
+            riskBadge.title = "The linked activity starts within " + COMMITMENT_RISK_WINDOW_DAYS + " days (or has already started) and this commitment isn't approved yet.";
+            right.appendChild(riskBadge);
+          }
 
           var statusBadge = document.createElement("span");
           statusBadge.className = "status-badge status-badge--info";

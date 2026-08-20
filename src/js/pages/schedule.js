@@ -2863,7 +2863,48 @@
         return conflictInWindow ? { label: "Over-Allocated", className: "critical" } : { label: "Available", className: "on_track" };
       },
     },
+    {
+      // PCC Evolution Roadmap, Tier F (Gate 19 follow-on, Commitment Management): a
+      // Commitment already links to one activity (Gate 19), but was never added to
+      // this array, so a linked commitment never actually showed up in the Activity
+      // Detail Panel it points at — the "integrate Schedule with Commitment
+      // Management" gap Aditya asked to close.
+      module: "commitments",
+      label: function (c) { return "Commitment: " + (c.po_contract_number || "(no PO/Contract #)") + " (" + (COMMITMENT_STATUS_LABELS[c.status] || c.status) + ")"; },
+      list: function (data, activityId) {
+        return data.commitments.filter(function (c) { return c.activity_id === activityId; });
+      },
+      view: function (c) {
+        if (window.PCC.commitments && window.PCC.commitments.expandCommitment) window.PCC.commitments.expandCommitment(c.id);
+        window.PCC.router.go("commitments");
+      },
+      // Procurement lead-time risk: this activity is imminent (starting within
+      // COMMITMENT_RISK_WINDOW_DAYS) or already under way, but the commitment behind
+      // it isn't approved yet — the work may not actually be covered when it starts.
+      // Same "computed, transparent, never fabricated" signal the Resources badge
+      // above already establishes for a different kind of readiness.
+      badge: function (c, data, activity) {
+        if (c.status === "approved") return { label: "Approved", className: "on_track" };
+        if (c.status === "closed") return { label: "Closed", className: "on_track" };
+        if (c.status === "cancelled") return { label: "Cancelled", className: "info" };
+        var dates = resourceActivityEffectiveDates(activity);
+        var riskCutoff = addDaysIso(todayIso(), COMMITMENT_RISK_WINDOW_DAYS);
+        if (dates.start && dates.start <= riskCutoff) {
+          return { label: "Procurement Risk", className: "critical" };
+        }
+        return { label: COMMITMENT_STATUS_LABELS[c.status] || c.status, className: "info" };
+      },
+    },
   ];
+
+  var COMMITMENT_STATUS_LABELS = { draft: "Draft", issued: "Issued", approved: "Approved", closed: "Closed", cancelled: "Cancelled" };
+  var COMMITMENT_RISK_WINDOW_DAYS = 7;
+
+  function addDaysIso(isoDateStr, days) {
+    var d = new Date(isoDateStr + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0, 10);
+  }
 
   /** Same calculated-wins/planned-falls-back precedence as resourceLevelingEngine.js's
    * own effectiveDates() — duplicated here per this app's per-module-helpers
