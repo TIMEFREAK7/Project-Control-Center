@@ -49,7 +49,16 @@
   font-display: swap;
 }
 
-/* ===== Design tokens ===== */
+/* ===== Design tokens =====
+   UI/UX overhaul, Gate 1 (Design System). This file only — no page (src/js/pages/*.js)
+   or shell (layout.js/router.js) changes in this gate. Responsive breakpoint tiers below
+   are documented as the target scheme for Gates 2/8 (nav + tablet/mobile behavior); CSS
+   custom properties can't be read inside @media conditions, so the values are plain
+   literals kept consistent with this comment, not variables:
+     Large Desktop >= 1600px | Desktop 1280-1599px (this stylesheet's unmedia-queried
+     baseline) | Laptop 1024-1279px | Tablet 768-1023px | Mobile < 768px (existing
+     780/480/420px rules further down predate this scheme and are untouched this gate —
+     Gate 2/8 own re-pointing sidebar/nav behavior at these exact tiers). */
 :root {
   --font-display: "Space Grotesk", ui-sans-serif, sans-serif;
   --font-body: "Inter", ui-sans-serif, sans-serif;
@@ -59,6 +68,7 @@
   --signal-amber-dark: #c7860a;
   --status-on-track: #2e9e83;
   --status-at-risk: #d9a441;
+  --status-warning: #d9822b;
   --status-critical: #d64545;
   --status-info: #4c7ea8;
 
@@ -73,6 +83,19 @@
   --space-4: 16px;
   --space-5: 24px;
   --space-6: 32px;
+  --space-7: 40px;
+  --space-8: 48px;
+
+  /* Typography scale — additive groundwork. Existing pages carry their own hardcoded
+     px sizes throughout (13px/13.5px/14px/...); these tokens exist for gradual adoption
+     as each page/module gets touched in a later gate, not a forced rename now. */
+  --text-xs: 11px;
+  --text-sm: 12.5px;
+  --text-base: 14px;
+  --text-md: 15px;
+  --text-lg: 18px;
+  --text-xl: 22px;
+  --text-2xl: 28px;
 
   --transition-fast: 120ms ease;
   --transition-base: 180ms ease;
@@ -85,10 +108,15 @@ html[data-theme="dark"] {
   --text-primary: #e7ecf2;
   --text-secondary: #9fb0c3;
   --divider: rgba(159, 176, 195, 0.16);
-  --grid-line: rgba(124, 152, 184, 0.07);
+  /* Slightly reduced from 0.07 — grid background should read as a subtle engineering
+     texture behind large empty areas (dashboard/header/empty-state), never compete with
+     table/card/panel content. Panels already mask it with an opaque --bg-paper fill;
+     this only affects the visible gaps between them. */
+  --grid-line: rgba(124, 152, 184, 0.045);
   --hover-bg: rgba(159, 176, 195, 0.08);
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.28);
   --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.32);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.4);
 }
 
 html[data-theme="light"] {
@@ -98,10 +126,11 @@ html[data-theme="light"] {
   --text-primary: #1b2430;
   --text-secondary: #54607a;
   --divider: rgba(27, 36, 48, 0.1);
-  --grid-line: rgba(27, 36, 48, 0.05);
+  --grid-line: rgba(27, 36, 48, 0.035);
   --hover-bg: rgba(27, 36, 48, 0.05);
   --shadow-sm: 0 1px 2px rgba(27, 36, 48, 0.06);
   --shadow-md: 0 8px 24px rgba(27, 36, 48, 0.12);
+  --shadow-lg: 0 16px 48px rgba(27, 36, 48, 0.18);
 }
 
 * {
@@ -223,6 +252,26 @@ button {
   width: 16px;
   text-align: center;
   opacity: 0.85;
+}
+
+/* Icon-rail collapsed variant — navigation primitive for Gate 2 (Global Navigation),
+   which owns adding the actual collapse toggle button and applying this class to
+   .sidebar. Inert this gate: nothing in layout.js references it yet, so it has no
+   visible effect until Gate 2 wires it up. Kept here, not there, because it's a purely
+   visual/CSS concern the design system owns. */
+.sidebar--collapsed {
+  width: 60px;
+}
+
+.sidebar--collapsed .sidebar__label,
+.sidebar--collapsed .sidebar__group-label,
+.sidebar--collapsed .sidebar__link span:not(.sidebar__icon) {
+  display: none;
+}
+
+.sidebar--collapsed .sidebar__link {
+  justify-content: center;
+  padding: 9px 0;
 }
 
 .main-column {
@@ -391,6 +440,17 @@ footer.app-footer {
   background-color: var(--bg-paper);
 }
 
+/* Opt-in modifier — inert until a page wraps its table in a fixed/scrollable-height
+   container and adds this class. Groundwork for the denser desktop/laptop data grids
+   described in the redesign brief (Schedule/Documents/Cost); no existing table uses it
+   yet, so this has no visible effect this gate. */
+.data-table--sticky-header th {
+  position: sticky;
+  top: 0;
+  background-color: var(--bg-paper);
+  z-index: 1;
+}
+
 .btn {
   font-family: var(--font-body);
   font-weight: 600;
@@ -439,6 +499,23 @@ a:focus-visible {
 .btn--ghost:hover:not(:disabled) {
   background-color: var(--hover-bg);
   border-color: var(--text-secondary);
+}
+
+/* Size/semantic variants — additive, not yet adopted by any page this gate. Compose
+   with .btn--primary/.btn--ghost (e.g. class="btn btn--ghost btn--sm"). */
+.btn--sm {
+  padding: 5px 11px;
+  font-size: 12px;
+}
+
+.btn--danger {
+  background-color: transparent;
+  border-color: var(--status-critical);
+  color: var(--status-critical);
+}
+
+.btn--danger:hover:not(:disabled) {
+  background-color: rgba(214, 69, 69, 0.12);
 }
 
 .field {
@@ -681,6 +758,54 @@ a:focus-visible {
   background-color: var(--signal-amber);
 }
 
+/* Status-colored variants — additive, opt-in (e.g. class="progress-fill progress-fill--critical").
+   No existing progress bar uses one yet; the default stays plain amber. */
+.progress-fill--on_track { background-color: var(--status-on-track); }
+.progress-fill--at_risk { background-color: var(--status-at-risk); }
+.progress-fill--warning { background-color: var(--status-warning); }
+.progress-fill--critical { background-color: var(--status-critical); }
+.progress-fill--info { background-color: var(--status-info); }
+
+/* Labeled progress bar — a heavier variant of .progress-track/.progress-fill for
+   contexts that need a label + percentage above the bar (project health cards,
+   Executive Center panels). Not yet used by any page this gate. */
+.progress-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.progress-bar__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: var(--text-sm);
+}
+
+.progress-bar__label {
+  color: var(--text-secondary);
+}
+
+.progress-bar__value {
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+.progress-bar__track {
+  width: 100%;
+  height: 8px;
+  background-color: var(--divider);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-bar__fill {
+  height: 100%;
+  background-color: var(--signal-amber);
+  border-radius: 4px;
+  transition: width var(--transition-base);
+}
+
 .status-badge {
   display: inline-flex;
   align-items: center;
@@ -700,6 +825,10 @@ a:focus-visible {
 .status-badge--at_risk {
   background-color: rgba(217, 164, 65, 0.15);
   color: var(--status-at-risk);
+}
+.status-badge--warning {
+  background-color: rgba(217, 130, 43, 0.15);
+  color: var(--status-warning);
 }
 .status-badge--critical {
   background-color: rgba(214, 69, 69, 0.15);
@@ -871,6 +1000,179 @@ a:focus-visible {
   .form-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* ===== New primitives (Gate 1: Design System) =====
+   All inert this gate — no page (src/js/pages/*.js) references any class below yet.
+   Groundwork for later gates: Management Attention (Gate 3/5, already used ad hoc by
+   dashboard.js/executiveCenter.js — this gives it one consistent shared visual pattern
+   instead of each page hand-building its own), and a Modal/Drawer base (the brief lists
+   both under Gate 1 "Navigation primitives"; PCC currently has no modal system at all —
+   forms open inline — so this is new, not a refinement of something existing). */
+
+/* ---- Management Attention list ---- */
+.attention-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.attention-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.attention-item:last-child {
+  border-bottom: none;
+}
+
+.attention-item__icon {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 6px;
+}
+
+.attention-item__icon--critical { background-color: var(--status-critical); }
+.attention-item__icon--warning { background-color: var(--status-warning); }
+.attention-item__icon--at_risk { background-color: var(--status-at-risk); }
+.attention-item__icon--info { background-color: var(--status-info); }
+
+.attention-item__body {
+  min-width: 0;
+  flex-grow: 1;
+}
+
+.attention-item__text {
+  font-size: var(--text-base);
+}
+
+.attention-item__meta {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+/* ---- Modal ---- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  z-index: 1100;
+  animation: overlay-in var(--transition-base);
+}
+
+.modal {
+  background-color: var(--bg-paper);
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  width: 100%;
+  max-width: 560px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  animation: modal-in var(--transition-base);
+}
+
+.modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--divider);
+}
+
+.modal__title {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.modal__body {
+  padding: var(--space-5);
+  overflow-y: auto;
+}
+
+.modal__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5);
+  border-top: 1px solid var(--divider);
+}
+
+@keyframes overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modal-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ---- Drawer (right-edge slide-in panel) ---- */
+.drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 1100;
+  animation: overlay-in var(--transition-base);
+}
+
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 420px;
+  max-width: 92vw;
+  background-color: var(--bg-paper);
+  border-left: 1px solid var(--divider);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  animation: drawer-in var(--transition-base);
+}
+
+.drawer__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--divider);
+}
+
+.drawer__body {
+  padding: var(--space-5);
+  overflow-y: auto;
+  flex-grow: 1;
+}
+
+@keyframes drawer-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+/* ---- Density groundwork ----
+   Unused this gate — no toggle exists yet (Gate 7: Desktop/Laptop Productivity owns
+   adding a density switcher). Reserved so that gate only has to set/read this attribute
+   rather than invent a new spacing scale. */
+[data-density="compact"] {
+  --space-3: 8px;
+  --space-4: 12px;
+  --space-5: 16px;
 }
 
 /* ===== Responsive: narrow / phone widths =====
