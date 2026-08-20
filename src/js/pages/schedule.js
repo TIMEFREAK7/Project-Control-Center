@@ -4220,5 +4220,14 @@
       uiState.tab = "gantt";
       uiState.ganttDetailActivityId = activityId;
     },
+    // PCC Evolution Roadmap, Tier F (Gate 20, Status-Date Control): Executive Center's
+    // new Status Date panel points here for Float Changes/Milestone Variance rather
+    // than duplicating the Baselines tab's own async compare UI — same "land exactly
+    // on the linked feature" convention as viewActivity above.
+    viewBaselines: function (projectId, scheduleId) {
+      uiState.projectId = projectId;
+      uiState.scheduleId = scheduleId;
+      uiState.tab = "baselines";
+    },
   };
 })();

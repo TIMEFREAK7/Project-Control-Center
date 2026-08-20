@@ -11156,6 +11156,20 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var weightedProgressNumerator = 0;
     var weightedProgressDenominator = 0;
     var weightedPhysicalNumerator = 0;
+    // PCC Evolution Roadmap, Tier F (Gate 20, Status-Date Control). The spec's own list
+    // ("at status date, identify: completed / in progress / not started / overdue /
+    // forecast late / remaining duration / critical / near-critical") turned out to be
+    // almost entirely already built — data_date, CPM reforecasting, critical/near-
+    // critical, and overdue (delayedActivities, already above) all predate this gate.
+    // These four are the genuine gaps: a plain in-progress/not-started count, a
+    // remaining-duration rollup, and a per-activity "forecast to finish late" list —
+    // distinct from delayedActivities, which compares against the reference date, not
+    // against each activity's own planned_finish.
+    var inProgressCount = 0;
+    var notStartedCount = 0;
+    var remainingDurationTotal = 0;
+    var remainingDurationMissingCount = 0;
+    var forecastLateActivities = [];
 
     activities.forEach(function (a) {
       var r = cpm && cpm.results[a.id];
@@ -11170,7 +11184,25 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       if (effectiveFinish && effectiveFinish < referenceDate && a.status !== "complete") {
         delayedActivities.push({ id: a.id, name: a.name, finish: effectiveFinish });
       }
-      if (a.status === "complete") completedCount++;
+      if (a.status === "complete") {
+        completedCount++;
+      } else if (a.status === "in_progress") {
+        inProgressCount++;
+        if (a.remaining_duration != null) remainingDurationTotal += Number(a.remaining_duration) || 0;
+        else remainingDurationMissingCount++;
+      } else if (a.status === "not_started") {
+        notStartedCount++;
+        if (a.duration != null) remainingDurationTotal += Number(a.duration) || 0;
+      }
+      if (a.status !== "complete" && earlyFinish && a.planned_finish && earlyFinish > a.planned_finish) {
+        forecastLateActivities.push({
+          id: a.id,
+          name: a.name,
+          plannedFinish: a.planned_finish,
+          forecastFinish: earlyFinish,
+          varianceDays: window.PCC.scheduleGanttLayout.diffDays(a.planned_finish, earlyFinish),
+        });
+      }
       if (a.planned_start) plannedDates.push(a.planned_start);
       if (a.planned_finish) plannedDates.push(a.planned_finish);
 
@@ -11179,12 +11211,27 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       weightedProgressDenominator += weight;
       weightedPhysicalNumerator += weight * (Number(a.physical_progress) || 0);
     });
+    forecastLateActivities.sort(function (a, b) { return b.varianceDays - a.varianceDays; });
 
     ctx.totalActivityCount = activities.length;
     ctx.criticalActivities = criticalActivities;
     ctx.nearCriticalActivities = nearCriticalActivities;
     ctx.delayedActivities = delayedActivities;
     ctx.completedActivityCount = completedCount;
+    ctx.inProgressActivityCount = inProgressCount;
+    ctx.notStartedActivityCount = notStartedCount;
+    ctx.remainingDurationTotalDays = remainingDurationTotal;
+    ctx.remainingDurationMissingCount = remainingDurationMissingCount;
+    ctx.forecastLateActivities = forecastLateActivities;
+    // Float Changes / Milestone Variance (the spec's other two status-date bullets) both
+    // need a captured baseline's full snapshot, which lives in scheduleBaselineStore.js's
+    // IndexedDB — async, unlike everything else buildProjectContext() reads. Rather than
+    // making this whole function async to duplicate schedule.js's own Baselines tab (which
+    // already computes both, in full, via scheduleBaselineEngine.compareBaselineToCurrent(),
+    // this just reports whether baseline data EXISTS (the metadata row is synchronous) so
+    // the Status Date panel can point straight at that existing feature instead of
+    // rebuilding it a second time.
+    ctx.baselineCount = schedule ? data.schedule_baselines.filter(function (b) { return b.schedule_id === schedule.id; }).length : 0;
     ctx.scheduleProgressPct = weightedProgressDenominator > 0 ? (weightedProgressNumerator / weightedProgressDenominator) : null;
     ctx.physicalProgressPct = weightedProgressDenominator > 0 ? (weightedPhysicalNumerator / weightedProgressDenominator) : null;
     ctx.plannedStart = plannedDates.length ? plannedDates.reduce(function (a, b) { return a < b ? a : b; }) : (project.start_date || null);
@@ -11938,6 +11985,17 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       renderKpiEmptySection(outlet, "SCHEDULE", "No schedule with activities yet — see the Schedule page.");
     }
 
+    if (ctx.totalActivityCount > 0) {
+      renderKpiSection(outlet, "STATUS DATE (" + ctx.referenceDate + ")", [
+        { label: "Completed", value: ctx.completedActivityCount },
+        { label: "In Progress", value: ctx.inProgressActivityCount },
+        { label: "Not Started", value: ctx.notStartedActivityCount },
+        { label: "Forecast Late", value: ctx.forecastLateActivities.length, colorVar: ctx.forecastLateActivities.length ? "--status-critical" : null },
+        { label: "Remaining Duration", value: ctx.remainingDurationTotalDays + "d" },
+      ]);
+      renderStatusDateDetail(outlet, ctx, p);
+    }
+
     renderKpiSection(outlet, "COST", [
       { label: "Budget", value: fmtMoney(ctx.costSummary.budgeted, p.currency) },
       { label: "Actual", value: fmtMoney(ctx.costSummary.actual, p.currency) },
@@ -12073,6 +12131,81 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     panel.textContent = message;
     wrap.appendChild(panel);
     outlet.appendChild(wrap);
+  }
+
+  /** PCC Evolution Roadmap, Tier F (Gate 20, Status-Date Control) — the two parts of the
+   * STATUS DATE section that don't fit a flat KPI grid: the Forecast Late activity list
+   * (per-activity, not just a count) and a pointer into the Baselines tab for Float
+   * Changes/Milestone Variance, which need that tab's own async IndexedDB snapshot load
+   * rather than duplicating it here (see buildProjectContext()'s own comment on
+   * ctx.baselineCount for why). */
+  function renderStatusDateDetail(outlet, ctx, p) {
+    if (ctx.forecastLateActivities.length > 0) {
+      var lateWrap = document.createElement("div");
+      lateWrap.className = "panel";
+      lateWrap.style.marginTop = "10px";
+      var lateHeading = document.createElement("h4");
+      lateHeading.style.marginBottom = "8px";
+      lateHeading.textContent = "Forecast to Finish Late (" + ctx.forecastLateActivities.length + ")";
+      lateWrap.appendChild(lateHeading);
+      ctx.forecastLateActivities.slice(0, 20).forEach(function (a) {
+        var row = document.createElement("p");
+        row.style.fontSize = "13px";
+        row.style.margin = "4px 0";
+        row.textContent =
+          esc(a.name || "(unnamed activity)") + " — planned " + a.plannedFinish + ", forecast " + a.forecastFinish +
+          " (+" + a.varianceDays + "d)";
+        lateWrap.appendChild(row);
+      });
+      if (ctx.forecastLateActivities.length > 20) {
+        var more = document.createElement("p");
+        more.className = "text-secondary";
+        more.style.fontSize = "12px";
+        more.textContent = "+" + (ctx.forecastLateActivities.length - 20) + " more not shown.";
+        lateWrap.appendChild(more);
+      }
+      outlet.appendChild(lateWrap);
+    }
+
+    if (ctx.remainingDurationMissingCount > 0) {
+      var missingNote = document.createElement("p");
+      missingNote.className = "text-secondary";
+      missingNote.style.fontSize = "12px";
+      missingNote.style.marginTop = "6px";
+      missingNote.textContent =
+        ctx.remainingDurationMissingCount + " in-progress activit" + (ctx.remainingDurationMissingCount === 1 ? "y has" : "ies have") +
+        " no Remaining Duration set, so Remaining Duration above is understated — update it on the Schedule page.";
+      outlet.appendChild(missingNote);
+    }
+
+    var baselineWrap = document.createElement("div");
+    baselineWrap.className = "panel";
+    baselineWrap.style.marginTop = "10px";
+    baselineWrap.style.display = "flex";
+    baselineWrap.style.justifyContent = "space-between";
+    baselineWrap.style.alignItems = "center";
+    baselineWrap.style.flexWrap = "wrap";
+    baselineWrap.style.gap = "8px";
+
+    var baselineNote = document.createElement("span");
+    baselineNote.style.fontSize = "13px";
+    baselineNote.textContent =
+      ctx.baselineCount > 0
+        ? "Float Changes and Milestone Variance are computed from " + ctx.baselineCount + " captured baseline" + (ctx.baselineCount === 1 ? "" : "s") + " on the Baselines tab."
+        : "No baseline captured for this schedule yet — capture one on the Baselines tab to track Float Changes and Milestone Variance.";
+    baselineWrap.appendChild(baselineNote);
+
+    if (ctx.schedule) {
+      var viewBaselinesBtn = document.createElement("button");
+      viewBaselinesBtn.className = "btn btn--ghost";
+      viewBaselinesBtn.textContent = "View Baselines";
+      viewBaselinesBtn.onclick = function () {
+        if (window.PCC.schedule) window.PCC.schedule.viewBaselines(p.id, ctx.schedule.id);
+        window.PCC.router.go("schedule");
+      };
+      baselineWrap.appendChild(viewBaselinesBtn);
+    }
+    outlet.appendChild(baselineWrap);
   }
 
   // ---------------------------------------------------------------------------------
@@ -23556,6 +23689,15 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       uiState.scheduleId = scheduleId;
       uiState.tab = "gantt";
       uiState.ganttDetailActivityId = activityId;
+    },
+    // PCC Evolution Roadmap, Tier F (Gate 20, Status-Date Control): Executive Center's
+    // new Status Date panel points here for Float Changes/Milestone Variance rather
+    // than duplicating the Baselines tab's own async compare UI — same "land exactly
+    // on the linked feature" convention as viewActivity above.
+    viewBaselines: function (projectId, scheduleId) {
+      uiState.projectId = projectId;
+      uiState.scheduleId = scheduleId;
+      uiState.tab = "baselines";
     },
   };
 })();
