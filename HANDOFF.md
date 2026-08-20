@@ -63,11 +63,11 @@ that override default behavior).
 
 ## Where things stand — Tiers A-E are COMPLETE; Tier F (Advanced Planning/Controls) is underway
 
-`main` is fully up to date through **Gate 18, Resource Management** (PCC Evolution Roadmap, Tier
-F's first gate — a 9-gate tier: 18 Resource Management, 19 Commitment Management, 20 Status-Date
+`main` is fully up to date through **Gate 19, Commitment Management** (PCC Evolution Roadmap, Tier
+F's second gate — a 9-gate tier: 18 Resource Management, 19 Commitment Management, 20 Status-Date
 Control, 21 Status-Date Reforecasting, 22 Baseline & Schedule Revision Control, 23 Advanced Delay
 Analysis, 24 Recovery & Mitigation Planning, 25 Advanced Schedule Performance, 26 Integrated
-Project Controls), merge commit `ec8c638`, `schema_version` **41**. See the "PCC Evolution
+Project Controls), merge commit `a0a9e5b`, `schema_version` **42**. See the "PCC Evolution
 Roadmap" section below for the complete gate-by-gate history — this section covers only the
 current tier's state.
 
@@ -75,7 +75,58 @@ current tier's state.
 features. They are core Project Planning / Project Controls capabilities... Build them as
 separate, independently testable gates."** Full spec text (all 9 gates) was handed over
 conversationally, same as every other tier — not saved to a file in this repo; get it re-confirmed
-from Aditya if a future session doesn't have it in context. **Only Gate 18 is done — Gates 19-26
+from Aditya if a future session doesn't have it in context.
+
+**Gate 19 — Commitment Management** (merge `a0a9e5b`): new page (`src/js/pages/commitments.js`),
+added to the sidebar as **"Commitments"** (code `CN`) in the PLANNING group. Nothing was
+pre-built for this — Executive Center's own header comment had flagged "Commitments and Cash Flow
+aren't tracked anywhere in PCC yet" since Gate 9, and Document Control's Gate 16 explicitly
+deferred a real Package/Commercial module rather than invent one out of scope; this was that gate.
+Two new record types (schema v42):
+- **Commitment**: `project_id` (mandatory), `vendor_id` linking into Vendor Master (never free
+  text — this app already made that mistake once on `cost_actuals.vendor`), `package_id`, `type`
+  (Purchase Order/Subcontract/Vendor/Material/Service/Approved Commercial Commitment — new
+  `COMMITMENT_TYPES` enum), `po_contract_number`, `commitment_date`, `committed_value`,
+  `approved_value`, `status` (new `draft`/`issued`/`approved`/`closed`/`cancelled` enum), optional
+  `budget_item_id` and `activity_id` (never a direct `wbs_id` — WBS stays reached transitively via
+  the linked activity, matching the app-wide convention). **Actual Value is deliberately NOT a
+  stored field** (confirmed via `AskUserQuestion` — Aditya picked the more-work, more-accurate
+  option over manual entry) — it's a live sum of every Cost Tracking actual cost entry linked to
+  the commitment via a new `commitment_id` on `cost_actuals`; Remaining Commitment is likewise
+  computed, never stored.
+- **Package**: a new shared, portfolio-wide register (`packages` — name/code), same pattern
+  Vendors/Resources already established — NOT project-scoped, so the same package is reusable
+  across projects. Reused by both Commitments and Documents (Gate 16's existing free-text
+  `package` field gained an additive `package_id`, also confirmed via `AskUserQuestion` — the old
+  free-text value on any existing document stays exactly as-is, untouched, just no longer shown by
+  the form going forward).
+
+`cost.js`'s Actual Cost form gained an "Against Commitment" select (project-scoped, same pattern
+as its existing "Against Budget Item" select) — this is what drives the live Actual Value sum.
+Executive Center gained a **COMMITMENTS** KPI section (Committed/Approved/Actual/Remaining)
+alongside COST, plus a matching section in the Management Pack print report. Portfolio's Details
+panel gained a COMMITMENTS section showing Total Committed, matching the existing
+Resources/Cost Tracking sections. **Full Budget → Commitments → Actual → Forecast wiring into
+`costEvmEngine.js`'s own EAC/CPI/SPI math stays "eventually," per the spec's own framing — this
+gate did NOT touch EVM's calculations**, Commitments surfaces its own independent KPI set instead.
+
+Tests: new `tests/test_commitment_management_e2e.js` (38 checks, including a 24-route smoke
+test) — a real Commitment created through the actual form, two real Actual Cost entries logged
+through Cost Tracking's real form, and confirming the commitment's Actual/Remaining figures
+update live across the Commitments page, Executive Center, and Portfolio. Schema migration test
+renamed `test_store_schema_v41_migration.js` → `test_store_schema_v42_migration.js` with a new
+v41→v42 migration check. Full suite: **46 files, 1120 checks**, clean, zero regressions.
+Real-Chromium pass (dev build and the verified zip extraction) confirmed the Commitments/Packages
+tabs and Executive Center's new KPI section all render correctly — zero console errors.
+
+**Gotcha hit while building this:** `executiveCenter.js`'s own `fmtMoney()` and `portfolio.js`'s
+own `formatMoney()` do NOT prepend a "$" sign (only a `currency + " "` prefix when the project has
+one set) — unlike `commitments.js`'s own `formatMoney()`, which does add "$". A jsdom test
+asserting on rendered money text needs to match whichever module actually rendered it, not assume
+a consistent format app-wide; this cost a debugging round on two failing assertions before the
+mismatch was found.
+
+**Only Gates 18-19 are done — Gates 20-26
 remain, none started, and each needs its own inspection + scoping round before building, same
 discipline as every gate so far.**
 
@@ -1004,10 +1055,10 @@ breakdown from Aditya directly, the same way Tier D's came, rather than guessing
 
 ## Repo/branch state
 
-`main` is fully up to date through **Gate 18, Resource Management** (`ec8c638`, a direct merge —
+`main` is fully up to date through **Gate 19, Commitment Management** (`a0a9e5b`, a direct merge —
 no PR, per Aditya's now-standing "always merge after completing a gate/phase" instruction, see
 above) — **Tiers A-E are all fully complete; Tier F (Advanced Project Planning & Project Controls)
-is now underway, one of its nine named gates done.** Nine rounds have landed on `main` this
+is now underway, two of its nine named gates done.** Ten rounds have landed on `main` this
 session, all via the same designated remote-session branch, `claude/tier-c-code-inspection-jysweb`
 (name is stale now — it's carried Tier C, D, E, and F gates alike), restarted from the new `main`
 between each per the standing "restart before the next gate" instruction: the Tier C inspection +
@@ -1015,39 +1066,46 @@ between each per the standing "restart before the next gate" instruction: the Ti
 then Delay & Recovery Management (merge `4882f79`), then Decision Register (merge `d57a056`), then
 Weekly Project Review (merge `c3af1d9`), then the Recovery Actions/Decisions reporting-wiring
 follow-on (merge `fef89f6`), then Gate 16 Portfolio Performance (merge `c4959e2`), then Gate 17
-Personal Workbench (merge `332b505`), then Gate 18 Resource Management (merge `ec8c638`). Aditya
-confirmed via `AskUserQuestion` to proceed with each merge given the branch's own "never push
-elsewhere without permission" constraint; see the git log for the exact sequence if that matters
-later. This builds on top of **Tier B (Control Integration)**, complete as of Gate 33, and the
-already-complete 14-gate Document Control sub-spec. `schema_version` on `main` is now **41** —
-Gate 18 added `actual_quantity`/`planned_hours_per_day`/`overtime_hours`/`vendor_id` to
-`resource_assignments` plus a new `resource_unavailability` array (see the "Where things stand"
-section above for full detail). `claude/tier-c-code-inspection-jysweb` carries the same history as
-`main` as of this merge (nothing unmerged on it) and HAS been reset/restarted from the new `main`
-already this round — verify with `git log origin/main..HEAD` and `git status` before assuming this
-is still true by the time you read this.
+Personal Workbench (merge `332b505`), then Gate 18 Resource Management (merge `ec8c638`), then Gate
+19 Commitment Management (merge `a0a9e5b`). Aditya confirmed via `AskUserQuestion` to proceed with
+each merge given the branch's own "never push elsewhere without permission" constraint; see the
+git log for the exact sequence if that matters later. This builds on top of **Tier B (Control
+Integration)**, complete as of Gate 33, and the already-complete 14-gate Document Control sub-spec.
+`schema_version` on `main` is now **42** — Gate 19 added two new registers (`commitments`,
+`packages`) plus `commitment_id` on `cost_actuals` and `package_id` on `documents` (see the "Where
+things stand" section above for full detail). `claude/tier-c-code-inspection-jysweb` carries the
+same history as `main` as of this merge (nothing unmerged on it) and HAS been reset/restarted from
+the new `main` already this round — verify with `git log origin/main..HEAD` and `git status`
+before assuming this is still true by the time you read this.
 
 **Zip delivered this round:** `Project-Control-Center.zip` — `index.html` + `README.md` +
 `data/`/`files/` (existing `README.txt` placeholders), verified via a fresh extraction
-(`/tmp/pcc_zip_verify3/`, not the dev working copy) opened in real Chromium — Resource
-Management's new "Subcontractor" type and "Unavailability" tab both render correctly with a
-seeded resource; zero console errors; screenshot taken and sent per the standing instruction.
+(`/tmp/pcc_zip_verify4/`, not the dev working copy) opened in real Chromium — Commitments'
+KPI strip and a seeded commitment card both render correctly, including a correctly-blank
+"Approved —" for an unset value; zero console errors; screenshot taken and sent per the standing
+instruction.
 
 **Next steps, in likely priority order:**
-1. **Tier F has 8 more named gates, none started — get scope confirmation from Aditya before
-   building the next one.** Gate 19 Commitment Management is next in the spec's own order, but
+1. **Tier F has 7 more named gates, none started — get scope confirmation from Aditya before
+   building the next one.** Gate 20 Status-Date Control is next in the spec's own order, but
    nothing says gates must be built strictly in order — ask before assuming. Full spec text for
    all 9 Tier F gates was handed over conversationally this session and is preserved in this
    conversation's history but was never saved as a file in this repo — don't assume a future
    session can find it; get it re-confirmed from Aditya if it's not still in context. Inspect each
    gate against the real code before proposing anything, same discipline as every gate so far —
-   Gate 18 itself turned out to be a partial-rebuild case (Gate 11 already existed), so don't
-   assume any of Gates 19-26 are starting from zero either.
+   Gates 18 and 19 both turned out to have real prior art or explicit prior deferrals to build on
+   (Gate 11 for Resources, the Gate 9/16 "not tracked yet"/"future Commercial module" notes for
+   Commitments), so don't assume any of Gates 20-26 are starting from zero either. Gate 20's own
+   spec (Status Date, Original Plan/Baseline/Current Schedule/Actual/Forecast distinction) likely
+   overlaps meaningfully with what Schedule Baselines (Gate 4) and the CPM engine's own status-date
+   reforecasting (already in `scheduleCpmEngine.js`, see that file's header comment) already do —
+   inspect before assuming a gap.
 2. Older still-open items, none blocking daily use: category-scheme reconciliation
    (Documents/Vendor/Document-Types), the Gantt-bar readiness flag, the two hardcoded reminder/
    lookahead windows (14-day Document Reminders, 30-day Action Centre Upcoming), Resource
-   Management rate × usage into Cost/EVM (still explicitly deferred — Gate 18 didn't touch cost
-   either), portfolio dashboard filtering.
+   Management rate × usage into Cost/EVM (still explicitly deferred), Commitments' own Budget →
+   Commitments → Actual → Forecast wiring into `costEvmEngine.js`'s EAC/CPI/SPI math (explicitly
+   "eventually" per Gate 19's own spec — not started), portfolio dashboard filtering.
 3. Optional cleanup: these branches on `origin` are all fully merged into `main` and safe to
    delete (not urgent) — `integration/gates-8-13`, `claude/phase-11c-planning-executive-frty7j`,
    `claude/excel-schedule-pcc-editing-dgyy9m`, `claude/doc-control-gate14-master-repo`,
