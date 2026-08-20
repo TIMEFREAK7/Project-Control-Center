@@ -9,6 +9,11 @@
   window.PCC.pages = window.PCC.pages || {};
 
   var SCHEDULE_STATUS_LABELS = { draft: "Draft", active: "Active", superseded: "Superseded", archived: "Archived" };
+  function escHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
   var ACTIVITY_TYPE_LABELS = { task: "Task", milestone: "Milestone", summary: "Summary", wbs_summary: "WBS Summary" };
   var ACTIVITY_STATUS_LABELS = { not_started: "Not Started", in_progress: "In Progress", complete: "Complete", on_hold: "On Hold" };
   var RELATIONSHIP_TYPE_LABELS = { FS: "Finish-to-Start", SS: "Start-to-Start", FF: "Finish-to-Finish", SF: "Start-to-Finish" };
@@ -35,6 +40,8 @@
     baselineComparePending: false,
     baselineCompareResult: null,
     baselineCompareError: null,
+    // Gate 22: baseline id currently in inline-rename mode, or null.
+    renamingBaselineId: null,
     // Gate 2 import flow
     importPanelOpen: false,
     importStep: "pick", // 'pick' | 'reviewing' | 'importing'
@@ -195,21 +202,6 @@
     statusField.appendChild(statusSelect);
     grid.appendChild(statusField);
 
-    var baselineField = document.createElement("div");
-    baselineField.className = "field";
-    var baselineLabel = document.createElement("label");
-    baselineLabel.style.display = "flex";
-    baselineLabel.style.alignItems = "center";
-    baselineLabel.style.gap = "8px";
-    var baselineCheckbox = document.createElement("input");
-    baselineCheckbox.type = "checkbox";
-    baselineCheckbox.id = "schedfield-is_baseline";
-    baselineCheckbox.checked = !!schedule.is_baseline;
-    baselineLabel.appendChild(baselineCheckbox);
-    baselineLabel.appendChild(document.createTextNode("Mark as baseline"));
-    baselineField.appendChild(baselineLabel);
-    grid.appendChild(baselineField);
-
     var descField = document.createElement("div");
     descField.className = "field";
     descField.style.gridColumn = "1 / -1";
@@ -270,7 +262,6 @@
         near_critical_threshold_days: Number(form.querySelector("#schedfield-near_critical_threshold_days").value) || 0,
         calculation_mode: form.querySelector("#schedfield-calculation_mode").value,
         status: form.querySelector("#schedfield-status").value,
-        is_baseline: form.querySelector("#schedfield-is_baseline").checked,
         description: form.querySelector("#schedfield-description").value,
       };
 
@@ -488,7 +479,22 @@
     uiState.importError = null;
 
     function finishImport() {
+      var supersededCount = 0;
       window.PCC.store.update(function (d) {
+        // Gate 22 (PCC Evolution Roadmap, Tier F: Baseline & Schedule Revision
+        // Control): a fresh import is a new revision superseding whatever was active
+        // for this project before it \u2014 auto-flip rather than leave every past
+        // revision "active" forever waiting on a manual edit nobody remembers to make.
+        // Only "active" revisions are touched; "draft"/"archived" are left as the user
+        // set them, and this is scoped to import only (the manual "New Schedule" path
+        // doesn't get this treatment \u2014 creating one by hand isn't "replacing" anything).
+        d.schedules.forEach(function (s) {
+          if (s.project_id === uiState.projectId && s.status === "active") {
+            s.status = "superseded";
+            s.updated_at = new Date().toISOString();
+            supersededCount++;
+          }
+        });
         d.schedules.push(newSchedule);
         d.wbs_items = d.wbs_items.concat(records.wbsItems);
         d.activities = d.activities.concat(records.activities);
@@ -497,7 +503,8 @@
 
       window.PCC.notify(
         "Imported " + records.activities.length + " activities as a new schedule (Rev " + nextRevision +
-          "). The original Excel file is attached \u2014 use \u201cEdit Excel\u201d to update it in place.",
+          ")." + (supersededCount > 0 ? " " + supersededCount + " prior active revision(s) marked Superseded." : "") +
+          " The original Excel file is attached \u2014 use \u201cEdit Excel\u201d to update it in place.",
         "success"
       );
 
@@ -1327,7 +1334,7 @@
       projectSchedules.forEach(function (s) {
         var opt = document.createElement("option");
         opt.value = s.id;
-        opt.textContent = s.name + " (Rev " + s.revision_number + (s.is_baseline ? ", Baseline" : "") + ")";
+        opt.textContent = s.name + " (Rev " + s.revision_number + ")";
         schedSelect.appendChild(opt);
       });
       if (!uiState.scheduleId || !projectSchedules.some(function (s) { return s.id === uiState.scheduleId; })) {
@@ -1447,6 +1454,7 @@
       wbs_count: wbsItems.length,
       activity_count: activities.length,
       relationship_count: relationships.length,
+      baseline_project_finish: window.PCC.scheduleBaselineEngine.overallFinish(snapshot.activities),
     });
 
     uiState.baselineSaving = true;
@@ -4053,7 +4061,8 @@
     note.style.marginBottom = "10px";
     note.textContent =
       "Baselines from every schedule revision in this project. \u201cCompare\u201d checks a baseline " +
-      "against whichever schedule is currently selected above.";
+      "against whichever schedule is currently selected above. At most one baseline can be Official " +
+      "\u2014 marking one locks it against deletion and drives Executive Center's Schedule Variance.";
     container.appendChild(note);
 
     var list = document.createElement("div");
@@ -4065,19 +4074,60 @@
       row.style.justifyContent = "space-between";
       row.style.alignItems = "center";
       row.style.marginBottom = "6px";
+      row.style.flexWrap = "wrap";
+      row.style.gap = "8px";
 
       var main = document.createElement("div");
-      main.innerHTML =
-        "<strong>" + b.name + "</strong><br/>" +
-        "<span class='text-secondary' style='font-size:12px;'>" +
-        "Captured " + new Date(b.captured_at).toLocaleString() + " \u00b7 " +
-        b.activity_count + " activities \u00b7 from Rev " + b.schedule_revision_number +
-        "</span>";
+      if (uiState.renamingBaselineId === b.id) {
+        var renameInput = document.createElement("input");
+        renameInput.type = "text";
+        renameInput.value = b.name;
+        renameInput.style.marginBottom = "4px";
+        var renameSaveBtn = document.createElement("button");
+        renameSaveBtn.type = "button";
+        renameSaveBtn.className = "btn btn--ghost";
+        renameSaveBtn.textContent = "Save";
+        renameSaveBtn.onclick = function () {
+          var newName = renameInput.value.trim();
+          if (newName) {
+            window.PCC.store.update(function (d) {
+              var item = d.schedule_baselines.find(function (x) { return x.id === b.id; });
+              if (item) item.name = newName;
+            });
+          }
+          uiState.renamingBaselineId = null;
+          rerender();
+        };
+        var renameCancelBtn = document.createElement("button");
+        renameCancelBtn.type = "button";
+        renameCancelBtn.className = "btn btn--ghost";
+        renameCancelBtn.textContent = "Cancel";
+        renameCancelBtn.onclick = function () {
+          uiState.renamingBaselineId = null;
+          rerender();
+        };
+        main.appendChild(renameInput);
+        var renameActions = document.createElement("div");
+        renameActions.appendChild(renameSaveBtn);
+        renameActions.appendChild(renameCancelBtn);
+        main.appendChild(renameActions);
+      } else {
+        main.innerHTML =
+          "<strong>" + escHtml(b.name) + "</strong>" +
+          (b.is_official ? " <span class='status-badge status-badge--complete'>Official</span>" : "") +
+          "<br/>" +
+          "<span class='text-secondary' style='font-size:12px;'>" +
+          "Captured " + new Date(b.captured_at).toLocaleString() + " \u00b7 " +
+          b.activity_count + " activities \u00b7 from Rev " + b.schedule_revision_number +
+          (b.baseline_project_finish ? " \u00b7 project finish at capture " + b.baseline_project_finish : "") +
+          "</span>";
+      }
       row.appendChild(main);
 
       var actions = document.createElement("div");
       actions.style.display = "flex";
       actions.style.gap = "8px";
+      actions.style.flexWrap = "wrap";
 
       var compareBtn = document.createElement("button");
       compareBtn.className = "btn btn--ghost";
@@ -4099,9 +4149,46 @@
       };
       actions.appendChild(compareBtn);
 
+      var renameBtn = document.createElement("button");
+      renameBtn.className = "btn btn--ghost";
+      renameBtn.textContent = "Rename";
+      renameBtn.onclick = function () {
+        uiState.renamingBaselineId = b.id;
+        rerender();
+      };
+      actions.appendChild(renameBtn);
+
+      var officialBtn = document.createElement("button");
+      officialBtn.className = "btn btn--ghost";
+      officialBtn.textContent = b.is_official ? "Unmark Official" : "Mark Official";
+      officialBtn.onclick = function () {
+        // Captured before the store mutation below \u2014 b is the same object reference
+        // store.update() mutates in place, so reading b.is_official AFTER the update
+        // would already reflect the new state, not the one this click is toggling
+        // away from.
+        var wasOfficial = b.is_official;
+        window.PCC.store.update(function (d) {
+          d.schedule_baselines.forEach(function (item) {
+            if (item.project_id !== b.project_id) return;
+            // At most one official baseline per project (Gate 22) \u2014 marking this one
+            // implicitly unmarks whichever else was official, rather than requiring a
+            // separate "unmark the old one first" step.
+            item.is_official = item.id === b.id ? !wasOfficial : false;
+          });
+        });
+        window.PCC.notify(
+          wasOfficial ? "Baseline unmarked as Official." : 'Baseline marked Official \u2014 Executive Center\u2019s Schedule Variance now measures against it.',
+          "success"
+        );
+        rerender();
+      };
+      actions.appendChild(officialBtn);
+
       var deleteBtn = document.createElement("button");
       deleteBtn.className = "btn btn--ghost";
       deleteBtn.textContent = "Delete";
+      deleteBtn.disabled = !!b.is_official;
+      deleteBtn.title = b.is_official ? "Unmark as Official before deleting." : "";
       deleteBtn.onclick = function () {
         if (!confirm('Delete baseline "' + b.name + '"? This cannot be undone.')) return;
         window.PCC.scheduleBaselineStore.deleteSnapshot(b.id).catch(function () {});
