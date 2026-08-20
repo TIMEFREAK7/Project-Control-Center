@@ -61,7 +61,7 @@ that override default behavior).
   populated state, and again on the zip-verification pass) and send the PNGs via `SendUserFile`
   before or alongside the written report. Applies to every gate from here on, not just this one.
 
-## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) now underway
+## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
 `main` is fully up to date through **Tier 3, "final polish," Gate 4** (Gantt virtualization for
 10,000+ activities), `schema_version` **51** (unchanged since Gate 2 — neither Gate 3 nor Gate 4
@@ -69,8 +69,9 @@ needed a schema bump, both being pure rendering/UI work). Note this is a
 DIFFERENT roadmap than the "PCC Evolution Roadmap" Tiers A-F
 above it, which finished with Gate 26 — Tier 3 is a numbered tier from the ORIGINAL, much older
 locked build order (`Tier 1`/`Tier 2`/`Tier 3`, see README.md's "Locked build order" section),
-deferred since day one. Both Tiers A-F and Tiers 1-2 are now complete; Tier 3 is the last remaining
-named scope anywhere in the project's history.
+deferred since day one. **Tiers A-F, Tiers 1-2, and Tier 3 are now all complete or explicitly
+closed out — there is no more open named-tier scope anywhere in this project's history.** The next
+session should ask Aditya what's next rather than assume there's a queued tier to continue.
 
 **Tier 3 is five items, confirmed via `AskUserQuestion`**: AI Document Processing, Knowledge Base,
 AI Project Assistant, Lessons Learned, final polish. **AI Document Processing and AI Project
@@ -80,7 +81,7 @@ architecture, and the original spec itself explicitly excluded AI ("Tier 2... do
 OCR, document parsing"). Lessons Learned and Knowledge Base are both built (Gates 1-2). **"Final
 polish" turned out to be big enough to need its own multi-gate breakdown** — inspecting the full
 10-item deferred backlog (README.md/HANDOFF.md's "Other open items") found most of them are real
-feature builds wearing a "polish" label, not touch-ups, so Aditya is picking them one at a time via
+feature builds wearing a "polish" label, not touch-ups, so Aditya picked them one at a time via
 `AskUserQuestion` rather than building all of them in one gate:
 - **Already resolved, dropped from the list**: Resource Assignments in the activity-linking system
   — the old backlog note was stale, this was actually done back at Gate 11.
@@ -89,19 +90,20 @@ feature builds wearing a "polish" label, not touch-ups, so Aditya is picking the
 - **Final polish Gate 2 (built)**: Report Template System (named/saved section
   templates + a company logo on every printable report) — see the write-up below.
 - **Final polish Gate 3 (built)**: Dashboard-level filtering — see the write-up below.
-- **Final polish Gate 4 (built, this round)**: Gantt virtualization for 10,000+ activities — see
-  the write-up below.
-- **Confirmed by Aditya, not yet built**: Vendor↔Cost
-  integration (vendor_id on cost items + a Cost tab on Vendor Profile), Commitments→EVM wiring
-  (commitment_id already exists on cost_actuals, but costEvmEngine.js's EAC/CPI/SPI math doesn't use
-  it yet), category-scheme reconciliation (Documents/Vendor Document/Document Types categories —
-  deferred twice already at Gates 14 and 16, building it now on the third ask).
-- **Explicitly NOT picked**: Resource rate × usage feeding Cost Tracking/EVM.
+- **Final polish Gate 4 (built)**: Gantt virtualization for 10,000+ activities — see the write-up
+  below.
+- **Explicitly deferred to a future upgrade, Aditya's own call (2026-08-20), NOT built**:
+  Vendor↔Cost integration (vendor_id on cost items + a Cost tab on Vendor Profile),
+  Commitments→EVM wiring (commitment_id already exists on cost_actuals, but costEvmEngine.js's
+  EAC/CPI/SPI math doesn't use it yet), and category-scheme reconciliation (Documents/Vendor
+  Document/Document Types categories — deferred three times now, at Gates 14, 16, and this
+  close-out). None of these three is scoped or started — a future session picking one back up
+  should treat it as a fresh scoping round from scratch (inspect current code state first, some of
+  these backlog notes have already turned out stale before), not resume anything in progress.
+- **Explicitly NOT picked, standing decision**: Resource rate × usage feeding Cost Tracking/EVM.
 
-Each of the confirmed-not-yet-built items needs its OWN scoping round before starting — inspect
-current state first (some backlog notes have already turned out to be stale), propose scope, wait
-for confirmation, same discipline as every other gate. Don't assume the order listed above is the
-build order; ask which one's next.
+With those three explicitly deferred (same status as the already-skipped AI items and the
+not-picked Resource rate×usage→EVM), **Tier 3 has no more open items — it is done.**
 
 **General lesson learned this tier, worth repeating for whatever gate comes next**: a
 `schema_version` assertion hardcoded with `assert.strictEqual` in an already-shipped gate's own
@@ -394,16 +396,20 @@ pre-existing, already-documented, already-handled limit — exactly why `blobSto
 blobs to IndexedDB back in Phase 12 — unrelated to this gate and already caught/toasted rather than
 thrown uncaught).
 
-**Next step for a fresh session: scope the next "final polish" item with Aditya.** Confirmed but
-not yet built, no fixed order — ask which one's next: Vendor↔Cost
-integration, Commitments→EVM wiring, category-scheme reconciliation. Each needs its own
-inspection-first scoping round, same discipline as every gate so far — some of these backlog notes
-have already turned out to be stale once (Resource Assignments), so don't assume any of the rest
-are exactly as described without checking. AI Document Processing/AI Project Assistant stay skipped
-per the standing decision above unless Aditya explicitly revisits it; Resource rate × usage → EVM
-was explicitly NOT picked and stays deferred. Once the confirmed items are done (or explicitly
-deferred again), Tier 3 — and with it, every named tier in this project's entire history — will be
-complete.
+**Tier 3 close-out (2026-08-20, no code change — a scope decision only).** Right after Gate 4
+shipped, Aditya was asked which "final polish" item was next and explicitly deferred all three
+remaining ones — Vendor↔Cost integration, Commitments→EVM wiring, category-scheme reconciliation —
+to a future upgrade rather than picking one to build now. **This closes out Tier 3 with no open
+items**, and since Tiers A-F and Tiers 1-2 were already complete, **there is no more open named-tier
+scope anywhere in this project's history as of this session.**
+
+**Next step for a fresh session: do NOT assume there's a queued tier or gate to continue — ask
+Aditya what's next.** If a future session picks up any of the three deferred items, treat it as a
+brand-new scoping round from scratch (inspect current code state first — some of these backlog
+notes have already turned out to be stale before, e.g. Resource Assignments turned out to already
+be done back at Gate 11), not a resumption of anything in progress. AI Document Processing/AI
+Project Assistant stay skipped per the standing decision above unless Aditya explicitly revisits it;
+Resource rate × usage → EVM was explicitly NOT picked and stays deferred alongside the other three.
 
 **Gate 26 — Integrated Project Controls** (merge pending — see commit log). Inspection found
 Gates 23 (Advanced Delay Analysis) and 24 (Recovery & Mitigation Planning) each shipped real
