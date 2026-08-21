@@ -1588,6 +1588,52 @@ a:focus-visible {
   }
 }
 
+/* ===== Responsive: Tablet tier (<= 1023px) — touch targets =====
+   UI/UX Overhaul Gate 8. The first rule targeting this tier specifically (768-1023px
+   per the brief; written as max-width:1023px since it also covers mobile, where these
+   same controls need the same enlarging). Every icon-btn/menu-item/checkbox row in the
+   app was sized for a mouse pointer — 32px icon buttons, tightly-padded menu rows —
+   comfortably clickable but noticeably below the ~44px touch target platforms
+   recommend. Scoped to this tier only: desktop/laptop keep their current, denser
+   sizing untouched, since a mouse doesn't need the extra padding a fingertip does. */
+@media (max-width: 1023px) {
+  .icon-btn {
+    width: 44px;
+    height: 44px;
+    font-size: 17px;
+  }
+
+  .btn {
+    padding: 12px 18px;
+  }
+
+  .btn--sm {
+    padding: 9px 14px;
+  }
+
+  .card-menu__item,
+  .card-menu__checkbox-item {
+    padding: 11px 14px;
+  }
+}
+
+/* UI/UX Overhaul Gate 8: Schedule Activities' mobile card fallback (see
+   buildActivityMobileCard() in schedule.js) is always built, alongside the real
+   <table> data grid — this rule is what actually keeps it hidden above the phone
+   breakpoint below, matching .doc-register-resize-handle's own "always built, CSS
+   decides which one shows" approach a few rules up. */
+.activities-mobile-cards {
+  display: none;
+}
+
+/* UI/UX Overhaul Gate 8: same "always built, CSS decides which one shows" split for
+   the Gantt tab — .gantt-mobile-timeline (see the end of renderGanttTab() in
+   schedule.js) stays hidden until the phone breakpoint below takes over from the
+   interactive chart. */
+.gantt-mobile-timeline {
+  display: none;
+}
+
 /* ===== Responsive: narrow / phone widths =====
    Navigation itself (the hamburger + overlay) is already identical at every screen size
    — nothing sidebar-related left to adjust here. Below ~780px the title block still
@@ -1596,6 +1642,35 @@ a:focus-visible {
 @media (max-width: 780px) {
   body {
     overflow-x: hidden;
+  }
+
+  /* UI/UX Overhaul Gate 8: swap the Schedule Activities data grid (Gate 7) for its
+     stacked-card fallback — a many-column table has nowhere to go at phone widths but
+     a fight with horizontal scroll, exactly what the brief's "avoid tiny tables"
+     guidance warns against. */
+  .activities-table-wrap {
+    display: none;
+  }
+  .activities-mobile-cards {
+    display: flex;
+  }
+
+  /* UI/UX Overhaul Gate 8: swap the interactive Gantt chart for a read-only, tap-to-
+     open-details timeline at phone widths — dragging a bar to reschedule needs a mouse
+     (or at least a lot more precision than a fingertip on a 2px-tall handle), and the
+     chart's own toolbar already fills the screen before any bar would be visible.
+     !important is required here specifically because these elements set their own
+     inline display (flex, for their internal layout) — the same reason .panel's
+     max-width override a few rules below needs it too; a plain class rule can't win
+     against an inline style otherwise. */
+  .gantt-chart-panel,
+  .gantt-chart-only-control {
+    display: none !important;
+  }
+  /* .gantt-mobile-timeline is also .project-list, which already sets flex-direction/gap
+     — only display needs overriding here. */
+  .gantt-mobile-timeline {
+    display: flex;
   }
 
   /* One control per row instead of the desktop's wrapped multi-filter row — easier
