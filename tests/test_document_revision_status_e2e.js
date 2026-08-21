@@ -104,7 +104,9 @@ function findFieldByLabel(dom, labelText) {
     win.PCC.router.render();
     var outletText = win.document.getElementById("page-outlet").textContent;
     assert.ok(outletText.indexOf("spec-rev00.pdf") !== -1);
-    assert.ok(outletText.indexOf("Revision 1") !== -1);
+    // UI/UX Overhaul Gate 6: the preview pane's detail-grid renders "Revision" and its
+    // value as separate label/value elements (no space/colon between them).
+    assert.ok(outletText.indexOf("Revision1") !== -1);
     assert.ok(findButtonByText(dom, "New Revision"), "New Revision button must be present");
     assert.ok(!findAllButtonsByText(dom, "History (1)").length, "a single-revision document has no History button");
   });
@@ -144,7 +146,7 @@ function findFieldByLabel(dom, labelText) {
     var outletText = win.document.getElementById("page-outlet").textContent;
     assert.ok(outletText.indexOf("spec-rev01.pdf") !== -1, "latest revision's filename must be the visible row");
     assert.ok(outletText.indexOf("spec-rev00.pdf") === -1, "the older revision must not appear as its own top-level row");
-    assert.ok(outletText.indexOf("Revision 2") !== -1);
+    assert.ok(outletText.indexOf("Revision2") !== -1);
     assert.ok(findButtonByText(dom, "History (2)"), "History button must show the correct revision count");
   });
 
@@ -156,10 +158,14 @@ function findFieldByLabel(dom, labelText) {
   });
 
   await check("changing the Status select on the row updates the store immediately, no separate save step", () => {
-    var statusSelects = Array.from(win.document.querySelectorAll("#page-outlet select")).filter(function (s) {
+    // UI/UX Overhaul Gate 6: the per-document Status editor now lives in the preview
+    // pane, not the row itself — and the new filter toolbar's own "All statuses" select
+    // shares the same option values, so this must be scoped to .doc-register-preview
+    // specifically rather than grabbing the first matching <select> on the page.
+    var statusSelects = Array.from(win.document.querySelectorAll("#page-outlet .doc-register-preview select")).filter(function (s) {
       return Array.from(s.options).some(function (o) { return o.value === "under_review"; });
     });
-    assert.ok(statusSelects.length > 0, "a document row's Status quick-change select must be present");
+    assert.ok(statusSelects.length > 0, "the preview pane's Status quick-change select must be present");
     var rowStatusSelect = statusSelects[0];
     rowStatusSelect.value = "under_review";
     rowStatusSelect.dispatchEvent(new win.Event("change"));

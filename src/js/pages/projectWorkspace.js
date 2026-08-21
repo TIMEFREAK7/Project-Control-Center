@@ -19,13 +19,11 @@
    * Non-Overview nav items never render inside this page — clicking one calls that
    * module's own existing filterByProject()/viewProject() hand-off function (the same
    * convention Portfolio/Executive Center already use to agree on "which project" across
-   * page boundaries) and then routes there. No other module's internals are touched by
-   * this gate; two small, additive exceptions are schedule.js gaining a matching
-   * viewProject() (it only had viewActivity/viewBaselines, which require a scheduleId the
-   * Workspace doesn't have — see schedule.js's own comment) and the Documents nav item
-   * routing to #/documents WITHOUT a project pre-filter, since documents.js has no
-   * project-filter concept at all today (a pre-existing gap, not introduced by this gate
-   * — worth a future Gate 6 Documents pass, not this one). */
+   * page boundaries) and then routes there. schedule.js gained a matching viewProject()
+   * back in Gate 4 (it only had viewActivity/viewBaselines, which require a scheduleId
+   * the Workspace doesn't have — see schedule.js's own comment); the Documents nav item
+   * now also lands pre-filtered, via documents.js's own filterByProject() added in
+   * Gate 6 (Documents was the last register with no project-filter concept at all). */
 
   var STATUS_LABELS = {
     on_track: "On Track",
@@ -97,9 +95,12 @@
   function navigateToModule(key, projectId) {
     if (key === "executiveCenter" && window.PCC.executiveCenter) {
       window.PCC.executiveCenter.viewProject(projectId);
-    } else if (key === "documents") {
-      // No project-filter hook exists on documents.js today — land on the page
-      // unfiltered rather than inventing one here (Gate 6's job, one module at a time).
+    } else if (key === "documents" && window.PCC.files) {
+      // UI/UX Overhaul Gate 6: documents.js exports as window.PCC.files (not
+      // window.PCC.documents), so it needs its own branch here rather than falling into
+      // the generic window.PCC[key] lookup below — it now has a real filterByProject()
+      // (the gap this comment used to describe is closed).
+      window.PCC.files.filterByProject(projectId);
     } else if (window.PCC[key] && typeof window.PCC[key].filterByProject === "function") {
       window.PCC[key].filterByProject(projectId);
     } else if (window.PCC[key] && typeof window.PCC[key].viewProject === "function") {
