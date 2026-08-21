@@ -5045,5 +5045,17 @@
       uiState.scheduleId = scheduleId;
       uiState.tab = "baselines";
     },
+    /** UI/UX Overhaul Gate 4 (Project Workspace): the one small, additive gap in this
+     * page's own hand-off convention — viewActivity/viewBaselines above both require a
+     * scheduleId the Workspace's nav doesn't have (it only knows the project). Leaves
+     * scheduleId untouched on purpose: renderPage()'s own schedule <select> already
+     * falls back to projectSchedules[0] whenever the current scheduleId doesn't belong
+     * to uiState.projectId (see its onchange handler above), so a stale id from whatever
+     * project was last viewed self-corrects on the very next render — no need to
+     * duplicate that "pick the primary schedule" logic here. */
+    viewProject: function (projectId) {
+      uiState.projectId = projectId;
+      uiState.tab = "gantt";
+    },
   };
 })();

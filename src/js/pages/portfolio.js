@@ -677,6 +677,16 @@
     var actions = document.createElement("div");
     actions.className = "project-card__actions";
 
+    // Gate 4 (Project Workspace): the new primary CTA, alongside (not replacing) the
+    // existing Executive Center/Details actions — confirmed with Aditya during scoping.
+    var workspaceBtn = document.createElement("button");
+    workspaceBtn.className = "btn btn--primary";
+    workspaceBtn.textContent = "Open Workspace";
+    workspaceBtn.onclick = function () {
+      if (window.PCC.projectWorkspace) window.PCC.projectWorkspace.viewProject(p.id);
+      window.PCC.router.go("projectWorkspace");
+    };
+
     var execCenterBtn = document.createElement("button");
     execCenterBtn.className = "btn btn--ghost";
     execCenterBtn.textContent = "Executive Center";
@@ -693,6 +703,7 @@
       onChanged();
     };
 
+    actions.appendChild(workspaceBtn);
     actions.appendChild(execCenterBtn);
     actions.appendChild(detailsBtn);
 
