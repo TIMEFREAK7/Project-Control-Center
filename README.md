@@ -2745,6 +2745,49 @@ its gates are now satisfied (two were already built pre-roadmap, two — Activit
 gate — were built this session). The next gate needs its own scoping and confirmation from Tier C
 (Project Performance) before it starts.
 
+## Mobile & Desktop Packaging — Gate 1: Desktop (Electron) (2026-08-21)
+
+*(Between Gate 33 above and this entry, a separate UI/UX Overhaul initiative — 8 gates,
+desktop/laptop/tablet/mobile redesign, `schema_version` reaching 53 — was built and shipped;
+full detail lives in `HANDOFF.md` since this README wasn't kept current for it. Noted here so the
+date jump below isn't confusing, not backfilled — out of scope for this entry.)*
+
+**A new initiative, separate from the app's feature roadmaps**: package the existing app as a
+native-feeling desktop app (Electron) and, eventually, an Android APK (Capacitor), starting from a
+general-purpose packaging playbook handed over for reuse on this project. Adapted to PCC's actual
+architecture before any code was written — the playbook assumed a Vite/webpack SPA building to
+`dist/`; PCC bundles everything (JS, CSS, fonts) into one self-contained `index.html` with no
+relative asset paths, which turns out to sidestep the playbook's most common Electron gotcha
+(`base: './'` fixes for broken relative paths under `file://`) entirely.
+
+**What changed:** a new top-level `packaging/` folder, deliberately isolated from `src/` with its
+own `package.json` (`electron` + `electron-builder` as devDependencies) — the shipped `index.html`
+stays exactly as dependency-free as before; nothing under `src/` or `build.js` changed.
+`packaging/scripts/copy-app.js` copies the repo root's built `index.html` into `packaging/electron/`
+before every run/build; `packaging/electron/main.js` loads that copy in a plain `BrowserWindow`.
+
+**Verified for real, not just "it compiled":** launched under a virtual display (`xvfb-run`) and
+inspected live over the Chrome DevTools Protocol — confirmed the real app loads (correct title and
+`file://` URL, not a blank window), `localStorage` and `indexedDB` are both available under
+`file://`, and a real `window.PCC.store.update()` write round-trips through the store's 250ms
+autosave debounce into `localStorage` correctly. Then ran an actual `electron-builder` distributable
+build, producing a real Linux AppImage. The sandbox has no FUSE (which AppImages need to
+self-mount) — used AppImage's own documented `--appimage-extract` fallback to verify the **actual
+packaged artifact** rather than just the pre-package build tree; same CDP checks passed against the
+extracted, packaged app. A real desktop machine has FUSE by default and needs no such workaround.
+
+**Standing zip-delivery convention extended** (Aditya, explicit): the platform installer(s) now
+ship in the end-user zip alongside `index.html`/`README.md`/`data/`/`files/`, once built —
+`packaging/`'s own source and `node_modules/` stay out, same "dev-only tooling" treatment `src/`,
+`build.js`, and `tests/` already get.
+
+**Not done yet:** Android (Capacitor) — flagged during the adaptation pass as needing real plugin
+work (`@capacitor/filesystem`/`share` for Export/Import/Open File, a native print plugin for
+`window.print()`, since a bare Android WebView doesn't implement either the way a full browser
+does), not just wrapping. `.dmg`/`.exe` desktop builds need their respective host OSes. No custom
+app icon yet. Code signing (both platforms) is a deliberate later decision, not needed for
+personal/internal use.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
