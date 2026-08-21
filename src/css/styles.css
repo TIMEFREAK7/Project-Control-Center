@@ -750,6 +750,87 @@ a:focus-visible {
   min-width: 140px;
 }
 
+/* Gate 3 (UI/UX Overhaul, Portfolio): health-focused stat chips on each project card
+   (Open Risks/Issues, Open RFIs/TQs, Document Availability) — cheap counts computed
+   directly from the store, not via Executive Center's heavy CPM-engine
+   buildProjectContext, which would be far too expensive to run once per card in a
+   list. Schedule status is deliberately NOT a separate figure here — the card's
+   existing status badge already carries that signal (Aditya's own call, Gate 3
+   scoping round). */
+.project-card__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  min-width: 160px;
+}
+
+.card-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.card-stat__label {
+  font-size: 10.5px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.card-stat__value {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* Contextual "..." menu (Edit/Archive) — PCC's first menu/dropdown component. Gate 1
+   shipped modal/drawer primitives but no menu; this is small and net-new, scoped to
+   this gate's own need rather than a general-purpose menu system. */
+.card-menu {
+  position: relative;
+  display: inline-block;
+}
+
+.card-menu__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: default;
+}
+
+.card-menu__dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 41;
+  min-width: 130px;
+  background-color: var(--bg-paper-raised);
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+}
+
+.card-menu__item {
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  font-size: 13px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.card-menu__item:hover {
+  background-color: var(--hover-bg);
+}
+
 .progress-track {
   width: 100px;
   height: 6px;
