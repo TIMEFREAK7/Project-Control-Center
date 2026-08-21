@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 52;
+  var SCHEMA_VERSION = 53;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -29,6 +29,11 @@
         // per-tier auto-collapse — same value applies at every width down to mobile,
         // where the sidebar is replaced entirely by the hamburger+drawer nav instead.
         sidebar_collapsed: false,
+        // UI/UX Overhaul, Gate 7 (Desktop/Laptop Productivity — Density Control):
+        // 'compact' | 'comfortable' | 'spacious', applied via [data-density] in
+        // styles.css. "comfortable" IS today's existing spacing values — see the
+        // schema v53 migration below for why that's the safe default.
+        density: "comfortable",
         company_name: "",
         backup_reminder_days: 7,
         backup_nudge_dismissed_at: null,
@@ -2573,6 +2578,16 @@
       // only option).
       if (loaded.settings.sidebar_collapsed == null) loaded.settings.sidebar_collapsed = false;
       loaded.schema_version = 52;
+    }
+
+    if (loaded.schema_version < 53) {
+      // UI/UX Overhaul, Gate 7 (Desktop/Laptop Productivity — Density Control): new
+      // spacing-density preference, same "explicit setting instead of the only option"
+      // shape as Gate 2's sidebar_collapsed above. "comfortable" is today's existing
+      // spacing values exactly (see [data-density] in styles.css), so every existing
+      // install looks identical on upgrade until the user actually changes it.
+      if (loaded.settings.density == null) loaded.settings.density = "comfortable";
+      loaded.schema_version = 53;
     }
 
     return loaded;

@@ -1354,14 +1354,86 @@ a:focus-visible {
   font-size: var(--text-md);
 }
 
-/* ---- Density groundwork ----
-   Unused this gate — no toggle exists yet (Gate 7: Desktop/Laptop Productivity owns
-   adding a density switcher). Reserved so that gate only has to set/read this attribute
-   rather than invent a new spacing scale. */
+/* ---- Density control ----
+   UI/UX Overhaul Gate 7 (Desktop/Laptop Productivity). "Comfortable" (no attribute) is
+   the app's original, unchanged spacing — every value below matches what these
+   selectors already hardcoded before this gate, so a comfortable install looks
+   pixel-identical to before. "Compact"/"spacious" were built (and, for the token part,
+   reserved since Gate 1) as a matched step in each direction from that baseline.
+
+   Two things had to be overridden, not one: the --space-3/4/5 TOKENS (below, reserved
+   since Gate 1) only ever fed .modal/.drawer's own padding — verified by grepping for
+   real consumers before wiring this up. Every screen that actually matters for
+   day-to-day density (main.page, .panel, .toolbar, .project-card, .project-list,
+   .form-grid) was hardcoded in px, not tokenized, so a toggle wired to the tokens alone
+   would persist correctly but be invisible almost everywhere. The second block of rules
+   below overrides those specific hardcoded properties directly — surgical additions
+   scoped to [data-density], not a retrofit of the existing rules to consume variables
+   (safer: nothing about their comfortable-mode behavior changes). Toggled by layout.js's
+   density toggle (title-block icon-btn, same pattern as the theme toggle next to it) via
+   settings.density + this data-attribute. */
 [data-density="compact"] {
   --space-3: 8px;
   --space-4: 12px;
   --space-5: 16px;
+}
+
+[data-density="spacious"] {
+  --space-3: 16px;
+  --space-4: 20px;
+  --space-5: 32px;
+}
+
+[data-density="compact"] main.page {
+  padding: 16px;
+}
+[data-density="spacious"] main.page {
+  padding: 32px;
+}
+
+[data-density="compact"] .panel {
+  padding: 14px;
+}
+[data-density="compact"] .panel + .panel {
+  margin-top: 10px;
+}
+[data-density="spacious"] .panel {
+  padding: 28px;
+}
+[data-density="spacious"] .panel + .panel {
+  margin-top: 22px;
+}
+
+[data-density="compact"] .toolbar {
+  gap: 6px;
+  margin-bottom: 10px;
+}
+[data-density="spacious"] .toolbar {
+  gap: 14px;
+  margin-bottom: 22px;
+}
+
+[data-density="compact"] .project-card {
+  padding: 10px 12px;
+  gap: 10px;
+}
+[data-density="spacious"] .project-card {
+  padding: 18px 22px;
+  gap: 20px;
+}
+
+[data-density="compact"] .project-list {
+  gap: 6px;
+}
+[data-density="spacious"] .project-list {
+  gap: 14px;
+}
+
+[data-density="compact"] .form-grid {
+  gap: 0 12px;
+}
+[data-density="spacious"] .form-grid {
+  gap: 0 22px;
 }
 
 /* ===== Responsive: Laptop tier (1024-1279px) =====
@@ -4502,7 +4574,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 52;
+  var SCHEMA_VERSION = 53;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -4522,6 +4594,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         // per-tier auto-collapse — same value applies at every width down to mobile,
         // where the sidebar is replaced entirely by the hamburger+drawer nav instead.
         sidebar_collapsed: false,
+        // UI/UX Overhaul, Gate 7 (Desktop/Laptop Productivity — Density Control):
+        // 'compact' | 'comfortable' | 'spacious', applied via [data-density] in
+        // styles.css. "comfortable" IS today's existing spacing values — see the
+        // schema v53 migration below for why that's the safe default.
+        density: "comfortable",
         company_name: "",
         backup_reminder_days: 7,
         backup_nudge_dismissed_at: null,
@@ -7068,6 +7145,16 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       loaded.schema_version = 52;
     }
 
+    if (loaded.schema_version < 53) {
+      // UI/UX Overhaul, Gate 7 (Desktop/Laptop Productivity — Density Control): new
+      // spacing-density preference, same "explicit setting instead of the only option"
+      // shape as Gate 2's sidebar_collapsed above. "comfortable" is today's existing
+      // spacing values exactly (see [data-density] in styles.css), so every existing
+      // install looks identical on upgrade until the user actually changes it.
+      if (loaded.settings.density == null) loaded.settings.density = "comfortable";
+      loaded.schema_version = 53;
+    }
+
     return loaded;
   }
 
@@ -7648,6 +7735,34 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     if (icon) icon.textContent = current === "dark" ? "\u2600" : "\u263D";
   }
 
+  // UI/UX Overhaul, Gate 7 (Desktop/Laptop Productivity \u2014 Density Control). Same
+  // pattern as applyTheme/toggleTheme above: a persisted settings.density value, a
+  // data-attribute the CSS in styles.css keys off of, and an icon-btn whose glyph
+  // reflects the CURRENT state (not the next one), same as the theme toggle's sun/moon.
+  // Block-height glyphs (short/medium/tall) read as "amount of space" at a glance
+  // without needing a label.
+  var DENSITY_CYCLE = ["compact", "comfortable", "spacious"];
+  var DENSITY_ICONS = { compact: "\u2581", comfortable: "\u2584", spacious: "\u2588" };
+  var DENSITY_LABELS = { compact: "Compact", comfortable: "Comfortable", spacious: "Spacious" };
+
+  function applyDensity(density) {
+    document.documentElement.setAttribute("data-density", density);
+  }
+
+  function toggleDensity() {
+    var store = window.PCC.store;
+    var currentIndex = DENSITY_CYCLE.indexOf(store.get().settings.density || "comfortable");
+    var next = DENSITY_CYCLE[(currentIndex + 1) % DENSITY_CYCLE.length];
+    store.update(function (data) {
+      data.settings.density = next;
+    });
+    applyDensity(next);
+    var icon = document.getElementById("density-toggle-icon");
+    if (icon) icon.textContent = DENSITY_ICONS[next];
+    var btn = document.getElementById("density-toggle-btn");
+    if (btn) btn.title = "Spacing density: " + DENSITY_LABELS[next] + " (click to cycle)";
+  }
+
   function setActiveNav(routeName) {
     var links = document.querySelectorAll(".sidebar__link");
     links.forEach(function (link) {
@@ -7895,9 +8010,18 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       "</span>";
     themeBtn.onclick = toggleTheme;
 
+    var currentDensity = window.PCC.store.get().settings.density || "comfortable";
+    var densityBtn = document.createElement("button");
+    densityBtn.className = "icon-btn";
+    densityBtn.id = "density-toggle-btn";
+    densityBtn.title = "Spacing density: " + DENSITY_LABELS[currentDensity] + " (click to cycle)";
+    densityBtn.innerHTML = '<span id="density-toggle-icon">' + DENSITY_ICONS[currentDensity] + "</span>";
+    densityBtn.onclick = toggleDensity;
+
     actions.appendChild(exportBtn);
     actions.appendChild(importBtn);
     actions.appendChild(importInput);
+    actions.appendChild(densityBtn);
     actions.appendChild(themeBtn);
 
     header.appendChild(actions);
@@ -8060,6 +8184,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
   function mount() {
     applyTheme(window.PCC.store.get().settings.theme || "dark");
+    applyDensity(window.PCC.store.get().settings.density || "comfortable");
 
     var shell = document.createElement("div");
     shell.id = "app-shell";
@@ -8098,6 +8223,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var companyEl = document.getElementById("title-block-company");
     if (companyEl) companyEl.textContent = window.PCC.store.get().settings.company_name || "\u2014";
     applyTheme(window.PCC.store.get().settings.theme || "dark");
+    applyDensity(window.PCC.store.get().settings.density || "comfortable");
   }
 
   window.PCC.layout = {
