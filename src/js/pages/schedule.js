@@ -3897,7 +3897,10 @@
     var pxPerDay = ganttPxPerDay(totalSpanDays, uiState.ganttZoom === "auto" ? null : uiState.ganttZoom);
     var labelWidth = 200;
     var rowHeight = 26;
-    var headerHeight = 28;
+    // 44 (was 28): the axis date ticks sit at y=12; Today/Data Date labels need their
+    // own space below that, not sharing a y-coordinate with them — see the marker
+    // block below for why this was bumped (a real overlap bug, not a stylistic choice).
+    var headerHeight = 44;
     var chartWidth = labelWidth + totalSpanDays * pxPerDay;
     var chartHeight = headerHeight + layout.rows.length * rowHeight + 6;
 
@@ -3929,16 +3932,37 @@
       svgEl("line", { x1: labelWidth, y1: 0, x2: labelWidth, y2: chartHeight, stroke: "var(--divider)", "stroke-width": 1 })
     );
 
+    // Data Date / Today markers. Bug fix: these two labels used to sit at fixed y=12
+    // (Today) and y=24 (Data Date) regardless of how close their lines were in x — y=12
+    // is the SAME row the axis date ticks above already use, so whenever Today (or Data
+    // Date) landed near a tick (common — "today" is often close to "now" on the axis),
+    // the tick's own date text and "Today" collided directly, rendering as illegible
+    // overlapping glyphs. Data Date and Today can also coincide or sit within a day or
+    // two of each other (the data date is usually close to today by definition), which
+    // made the two marker labels themselves collide. Fixed by: (1) giving the marker
+    // labels their own vertical band below the axis-tick row entirely (headerHeight
+    // bumped above), and (2) only stacking Today/Data Date into two rows when their
+    // lines are actually close enough in x for the labels to overlap — otherwise both
+    // sit on the same row, which is the common case and reads better un-stacked.
+    var ddx = layout.dataDate ? xForDate(layout.dataDate) : null;
+    var todayMarkerIso = todayIso();
+    var todayInRange = todayMarkerIso >= layout.rangeStart && todayMarkerIso <= layout.rangeEnd;
+    var tdx = todayInRange ? xForDate(todayMarkerIso) : null;
+    // ~60px comfortably covers "Data Date" at 10px bold font plus its 4px left margin —
+    // wider than the labels can ever need, so this only fires when they'd truly overlap.
+    var markersClose = ddx !== null && tdx !== null && Math.abs(ddx - tdx) < 60;
+    var ddLabelY = markersClose ? headerHeight - 6 : headerHeight - 12;
+    var tdLabelY = markersClose ? headerHeight - 18 : headerHeight - 12;
+
     // Data date marker, if the schedule has one set.
-    if (layout.dataDate) {
-      var ddx = xForDate(layout.dataDate);
+    if (ddx !== null) {
       svg.appendChild(
         svgEl("line", {
           x1: ddx, y1: 0, x2: ddx, y2: chartHeight,
           stroke: "var(--signal-amber)", "stroke-width": 2, "stroke-dasharray": "4,3",
         })
       );
-      var ddLabel = svgEl("text", { x: ddx + 4, y: headerHeight - 4, "font-size": 10, fill: "var(--signal-amber)", "font-weight": "600" });
+      var ddLabel = svgEl("text", { x: ddx + 4, y: ddLabelY, "font-size": 10, fill: "var(--signal-amber)", "font-weight": "600" });
       ddLabel.textContent = "Data Date";
       svg.appendChild(ddLabel);
     }
@@ -3946,13 +3970,11 @@
     // Today line — distinct from Data Date (Section 4/7's spec calls out both). Only
     // drawn when it falls inside the chart's own date range, same guard the Data Date
     // marker doesn't currently need since it's always derived from within the schedule.
-    var todayMarkerIso = todayIso();
-    if (todayMarkerIso >= layout.rangeStart && todayMarkerIso <= layout.rangeEnd) {
-      var tdx = xForDate(todayMarkerIso);
+    if (tdx !== null) {
       svg.appendChild(
         svgEl("line", { x1: tdx, y1: 0, x2: tdx, y2: chartHeight, stroke: "var(--status-on-track)", "stroke-width": 2 })
       );
-      var tdLabel = svgEl("text", { x: tdx + 4, y: headerHeight - 16, "font-size": 10, fill: "var(--status-on-track)", "font-weight": "600" });
+      var tdLabel = svgEl("text", { x: tdx + 4, y: tdLabelY, "font-size": 10, fill: "var(--status-on-track)", "font-weight": "600" });
       tdLabel.textContent = "Today";
       svg.appendChild(tdLabel);
     }

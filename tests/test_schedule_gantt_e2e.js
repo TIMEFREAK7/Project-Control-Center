@@ -190,6 +190,63 @@ function findButtonByText(dom, text) {
     assert.ok(outlet.textContent.indexOf("Data Date") !== -1, "chart should label the data date marker");
   });
 
+  // Bug fix: Today/Data Date labels used to sit at a fixed y that collided with the
+  // axis date-tick row above them (same y-coordinate), and — when the two markers
+  // landed close together in x, which happens often since a data date is usually near
+  // "today" by definition — with each other too, rendering as illegible overlapping
+  // text. Self-contained (own project/schedule/activity, dates computed relative to the
+  // real "today" at test-run time) so it doesn't depend on the file's other fixed 2026
+  // dates happening to include today.
+  var closeMarkersProjectId;
+  await check("seed a project whose schedule spans today, with data_date one day after today", () => {
+    function addDays(iso, n) {
+      var d = new Date(iso + "T00:00:00Z");
+      d.setUTCDate(d.getUTCDate() + n);
+      return d.toISOString().slice(0, 10);
+    }
+    var todayIso = new Date().toISOString().slice(0, 10);
+    win.PCC.store.update(function (d) {
+      var p = win.PCC.store.newProject({ name: "Close Markers Project", status: "on_track" });
+      d.projects.push(p);
+      closeMarkersProjectId = p.id;
+      var s = win.PCC.store.newSchedule({ project_id: p.id, name: "Baseline", status: "active", data_date: addDays(todayIso, 1) });
+      d.schedules.push(s);
+      d.activities.push(win.PCC.store.newActivity({
+        project_id: p.id, schedule_id: s.id, name: "Spanning Task",
+        planned_start: addDays(todayIso, -20), planned_finish: addDays(todayIso, 20),
+      }));
+    });
+    win.PCC.schedule.viewProject(closeMarkersProjectId);
+    win.PCC.router.go("schedule");
+    win.PCC.router.render();
+    assert.ok(closeMarkersProjectId);
+  });
+
+  await check("Today and Data Date labels stagger into separate rows, both clear of the axis date-tick row", () => {
+    var outlet = win.document.getElementById("page-outlet");
+    var svg = outlet.querySelector("svg");
+    var texts = Array.from(svg.querySelectorAll("text"));
+    var todayLabel = texts.find(function (t) { return t.textContent === "Today"; });
+    var dataDateLabel = texts.find(function (t) { return t.textContent === "Data Date"; });
+    assert.ok(todayLabel, "Today label not found — today must fall inside the chart's date range");
+    assert.ok(dataDateLabel, "Data Date label not found");
+
+    var axisTickY = Number(texts.find(function (t) { return /^\d+\/\d+$/.test(t.textContent); }).getAttribute("y"));
+    var todayY = Number(todayLabel.getAttribute("y"));
+    var dataDateY = Number(dataDateLabel.getAttribute("y"));
+
+    assert.ok(todayY - axisTickY >= 10, "Today label must sit well clear of the axis date-tick row, not share its y");
+    assert.ok(dataDateY - axisTickY >= 10, "Data Date label must sit well clear of the axis date-tick row, not share its y");
+    assert.ok(Math.abs(todayY - dataDateY) >= 8, "with the markers this close in x, the two labels must stagger onto separate rows");
+
+    // Switch back to the file's original project — the checks below assume they're
+    // still working with that project's own schedules (e.g. the "Empty Schedule" added
+    // to it further down), not this check's own throwaway project.
+    win.PCC.schedule.viewProject(projectId);
+    win.PCC.router.go("schedule");
+    win.PCC.router.render();
+  });
+
   await check("switching schedules to one with zero activities shows the Gantt empty state", () => {
     win.PCC.store.update(function (data) {
       var empty = win.PCC.store.newSchedule({ project_id: projectId, name: "Empty Schedule", revision_number: 2 });
