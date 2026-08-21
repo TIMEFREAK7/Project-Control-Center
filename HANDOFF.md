@@ -63,9 +63,11 @@ that override default behavior).
 
 ## NEW INITIATIVE: UI/UX Overhaul (started 2026-08-20) — a THIRD, separate roadmap
 
-`main` is up to date through **UI/UX Overhaul Gate 6 (Documents — first Existing-Modules gate)**,
-`schema_version` **52** (unchanged since Gate 2 — Gates 3-6 are all pure display/computed-stats/
-reorganization work, no schema touch). Gate 2 included its
+`main` is up to date through **UI/UX Overhaul Gate 6 (Risk Register — second Existing-Modules
+gate)**, plus a standalone bug fix for the Gantt chart's Today/Data Date label overlap (shipped
+between the Documents and Risk Register Gate 6 passes — see the "Recently fixed bugs / notable
+gotchas" section near the end of this file). `schema_version` **52** (unchanged since Gate 2 —
+Gates 3-6 are all pure display/computed-stats/reorganization work, no schema touch). Gate 2 included its
 post-ship nav revision (an Outlook-Online-style hidden overlay with accordion groups, replacing
 Gate 2's original persistent/collapsible sidebar — see that gate's own write-up below for detail).
 With Tiers A-F, Tiers 1-2, and Tier 3 all complete/closed out (see below), Aditya started an
@@ -597,8 +599,71 @@ Chromium pass (desktop two-panel layout, 820px tablet stacking, 390px mobile sta
 Workspace hand-off landing pre-filtered) confirmed everything renders correctly — zero console
 errors. Zip verified separately post-merge (fresh extraction, real Chromium) — clean.
 
+**UI/UX Overhaul Gate 6 — Risk Register (second "Existing Modules, one at a time" gate)** (merge
+`b637161`). A fresh session asked Aditya which module to do next via a plain "Scope risk register"
+request (no `AskUserQuestion` needed to pick the module this time — Aditya named it directly).
+
+Inspection before scoping found Risk Register already close to the target UX state, unlike
+Documents — it already had a full filter toolbar (search/type/status/project), a heat map, and a
+two-part card+details layout. Two real issues surfaced instead, confirmed with Aditya via two
+rounds of `AskUserQuestion`:
+- **Round 1 (accepted, "Do the heat map fix, then look harder for more")**: the Heat Map's cell
+  counts came from `data.risks` — every risk in the whole app — with **no regard to the toolbar's
+  own type/status/project/search filters**. Since the toolbar's `statusFilter` defaults to `"open"`
+  (hiding closed items by day-to-day default), this meant the heat map was ALWAYS showing stale,
+  inflated counts (including closed items) even with zero user interaction, and stayed wrong after
+  any further filtering.
+- **Round 2 (accepted, "Yes, match Portfolio's '⋯' menu pattern")**: risk cards always showed three
+  full-width buttons (Details/Edit/Delete) with no contextual grouping, unlike Portfolio's Gate 3
+  cards.
+
+What shipped, `risks.js` + no schema/CSS changes (Gate 3's `.card-menu` primitives were reused
+as-is):
+- **`riskMatchesFilters` split into `riskMatchesToolbarFilters` (type/status/project/search) and
+  `riskMatchesFilters` (adds the heat map's OWN probability × impact filter on top)** — the heat
+  map now filters through `riskMatchesToolbarFilters` only, so it shares the toolbar's state without
+  double-applying its own click-a-cell filter to itself. `renderHeatmap()` now shows a conditional
+  subtitle ("Reflects the current search/type/status/project filters below...") whenever the
+  toolbar's filters are actually narrowing the count, so it's visually obvious the heat map isn't
+  showing the whole portfolio.
+- **A second, related wiring bug caught and fixed in the same pass, before it could ship broken**:
+  the toolbar's search/type/status/project handlers only called the lightweight `renderList()` (to
+  preserve the search input's focus/cursor position on every keystroke — this project's existing
+  "text inputs use a partial update, not a full rerender" convention). That alone would NOT have
+  refreshed the heat map panel, so filter changes would have updated the list correctly while
+  leaving the heat map showing stale counts. Fixed by giving the heat map its own `heatmapWrap`
+  container + `renderHeatmapPanel()`, and adding `refreshFilteredViews()` (calls both
+  `renderHeatmapPanel()` and `renderList()`) as what all four toolbar controls call now instead of
+  `renderList()` alone.
+- **Card actions restructured**: `renderRiskCard()`'s Edit/Delete buttons moved into a new "⋯"
+  `.card-menu` (menu toggle → optional `.card-menu__overlay` + `.card-menu__dropdown` with two
+  `.card-menu__item`s), directly mirroring `portfolio.js`'s Gate 3 pattern field-for-field — new
+  `uiState.openMenuId` (risk id or null), same shape as Portfolio's own. Details stays the one
+  primary, always-visible action.
+
+**No bugs shipped uncaught this gate** — both the heat map's own stale-count bug (found during
+inspection, before any code was written) and the toolbar-wiring gap it would have introduced (found
+during implementation, before any test ran) were caught proactively. `node --check` and the new
+test file both passed clean on the first run.
+
+Tests: new `tests/test_uiux_gate6_risk_register_e2e.js` (38 checks, including a 27-route smoke
+test) — the heat map already reflecting the default "Open" status filter with zero user
+interaction (2 of 3 seeded risks counted, not 3), the heat map narrowing further on a project
+filter while the list narrows in lock-step, the heat map widening back out when the status filter
+clears (and the subtitle text flipping accordingly), risk cards showing only "Details" as a direct
+button with Edit/Delete absent from the card face, the "⋯" menu opening/closing via its own toggle
+and the overlay, Edit opening the form and closing the menu, Delete (confirmed) removing the entry
+and closing the menu, and declining the confirm leaving the entry untouched. No pre-existing test
+files needed updates — nothing in the existing suite touched Risk Register's card buttons or heat
+map counts before this gate. Full suite: **65 files, 1858 checks**, zero regressions. Real-Chromium
+pass (four seeded risks/issues/opportunities across two projects — default view showing the heat
+map correctly excluding the one closed entry, the "⋯" menu open showing Edit/Delete, and the
+project filter narrowing both the heat map and the list together) confirmed everything renders and
+behaves correctly — zero console errors. Zip verified separately post-merge (fresh extraction, real
+Chromium, `page.title()` and a route render both confirmed clean) — clean.
+
 **Next step for a fresh session: ask Aditya what's next (another Gate 6 module — Schedule/Vendors/
-Risks/Issues/RFIs/Meetings/Changes/"other modules actually present" per the brief — or a different
+RFI/TQ/Meetings/Change Orders/"other modules actually present" per the brief — or a different
 initiative entirely) rather than assuming approval to continue automatically** — this initiative's
 own standing rule (inspect, propose, wait for explicit approval, build exactly that, stop) applies
 to every gate, including the next one, and Gate 6 stays "one module at a time" until every module
