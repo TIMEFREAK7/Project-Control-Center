@@ -145,22 +145,41 @@ function findButtonByText(dom, text) {
     assert.ok(outlet.textContent.indexOf("Exec Center Tower") !== -1, "Executive Center should show the seeded project");
   });
 
+  // UI/UX Overhaul Gate 5: the Overview tab's 13 KPI sections are now grouped into
+  // Schedule/Cost & Commitments/Risk & Compliance sub-tabs (a hero row stays always
+  // visible with the client name and a few condensed figures) instead of one flat
+  // stack — these checks now navigate each sub-tab in turn, returning to Summary
+  // afterward since every check below this point through "editing and saving an
+  // Executive Summary section..." depends on Summary-tab content (Health Score,
+  // Diagnostics, Executive Summary, Management Action List).
   await check("KPI cards reflect real seeded numbers, not fabricated ones", () => {
     var outlet = win.document.getElementById("page-outlet");
-    var text = outlet.textContent;
-    assert.ok(text.indexOf("Acme Client") !== -1, "client should appear in overview");
-    assert.ok(text.indexOf("Critical Activities") !== -1);
-    assert.ok(text.indexOf("Open Risks") !== -1);
-    assert.ok(text.indexOf("Open RFIs") !== -1);
+    assert.ok(outlet.textContent.indexOf("Acme Client") !== -1, "client should appear in the hero header");
+
+    findButtonByText(dom, "Schedule").click();
+    outlet = win.document.getElementById("page-outlet");
+    assert.ok(outlet.textContent.indexOf("Critical Activities") !== -1);
+
+    findButtonByText(dom, "Risk & Compliance").click();
+    outlet = win.document.getElementById("page-outlet");
+    assert.ok(outlet.textContent.indexOf("Open Risks") !== -1);
+    assert.ok(outlet.textContent.indexOf("Open RFIs") !== -1);
+
+    findButtonByText(dom, "Cost & Commitments").click();
+    outlet = win.document.getElementById("page-outlet");
     // Cost KPI: budget item total (60000) + nothing else should be the budgeted figure
     // since a real Cost Tracking line item exists (no Portfolio-budget fallback).
-    assert.ok(text.indexOf("60,000") !== -1, "budgeted amount should reflect the real Cost Tracking line item, got: " + text.slice(0, 200));
+    assert.ok(outlet.textContent.indexOf("60,000") !== -1, "budgeted amount should reflect the real Cost Tracking line item, got: " + outlet.textContent.slice(0, 200));
+
+    findButtonByText(dom, "Summary").click();
   });
 
   await check("EVM section renders because this project has real Cost Tracking budget items linked to an activity", () => {
+    findButtonByText(dom, "Cost & Commitments").click();
     var outlet = win.document.getElementById("page-outlet");
     assert.ok(outlet.textContent.indexOf("EVM") !== -1, "EVM KPI section should render since budget items exist");
     assert.ok(outlet.textContent.indexOf("SPI") !== -1 && outlet.textContent.indexOf("CPI") !== -1);
+    findButtonByText(dom, "Summary").click();
   });
 
   await check("Project Health Score panel renders a numeric score, RAG badge, and a full breakdown", () => {
@@ -243,10 +262,20 @@ function findButtonByText(dom, text) {
   });
 
   await check("Charts render without throwing (S-Curve, Critical vs Non-Critical, Float Distribution, Risk Heat Map, RFI, Change Orders)", () => {
-    var outlet = win.document.getElementById("page-outlet");
-    var svgs = outlet.querySelectorAll("svg");
-    assert.ok(svgs.length >= 3, "expected multiple chart SVGs, found " + svgs.length);
+    // UI/UX Overhaul Gate 5: charts are now split across the Schedule sub-tab
+    // (S-Curve/Critical vs Non-Critical/Float/Milestone Timeline) and the Risk &
+    // Compliance sub-tab (Risk Heat Map/RFI/Change Orders) instead of one combined
+    // "Charts" section — check each sub-tab has its own real SVGs.
+    findButtonByText(dom, "Schedule").click();
+    var scheduleSvgs = win.document.getElementById("page-outlet").querySelectorAll("svg");
+    assert.ok(scheduleSvgs.length >= 2, "expected multiple chart SVGs on the Schedule sub-tab, found " + scheduleSvgs.length);
+
+    findButtonByText(dom, "Risk & Compliance").click();
+    var riskSvgs = win.document.getElementById("page-outlet").querySelectorAll("svg");
+    assert.ok(riskSvgs.length >= 1, "expected a chart SVG on the Risk & Compliance sub-tab, found " + riskSvgs.length);
+
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
+    findButtonByText(dom, "Summary").click();
   });
 
   await check("switching to 'Snapshot & Management Pack' renders the one-page Project Snapshot with real numbers", () => {

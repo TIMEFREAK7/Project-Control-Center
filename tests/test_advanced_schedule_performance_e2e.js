@@ -114,6 +114,13 @@ function findButtonByText(dom, text) {
     win.PCC.executiveCenter.viewProject(projectId);
     win.PCC.router.go("executiveCenter");
     win.PCC.router.render();
+    // UI/UX Overhaul Gate 5: SCHEDULE PERFORMANCE (and the S-Curve chart below it) now
+    // live on the Schedule sub-tab, not the default Summary landing view. Every check
+    // after this one stays on the Schedule sub-tab too, since nothing here navigates
+    // away from it.
+    var scheduleTab = Array.from(outlet().querySelectorAll(".toolbar button")).find((b) => b.textContent.trim() === "Schedule");
+    assert.ok(scheduleTab, "Schedule sub-tab not found");
+    scheduleTab.click();
 
     var kpiCards = Array.from(outlet().querySelectorAll(".kpi-card"));
     function kpiValue(label) {

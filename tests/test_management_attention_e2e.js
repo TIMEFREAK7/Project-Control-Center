@@ -144,11 +144,15 @@ function findButtonInPanelByText(panel, text) {
     assert.ok(outlet().textContent.indexOf("Archived critical activity") === -1, "an archived project's own alert text must never appear anywhere on the page");
   });
 
-  await check("severity badges read 'Critical' and 'Warning' correctly, scoped to their own project's group", () => {
+  await check("severity icons mark Project A's alert critical and Project B's alert warning, scoped to their own project's group", () => {
+    // UI/UX Overhaul Gate 5: this panel is now built on Gate 1's .attention-list/
+    // .attention-item primitive (a colored dot, no text badge) instead of its own
+    // hand-built status-badge rows — same worst-first grouping, just a different marker.
     var panel = attentionPanel(dom);
-    var badges = Array.from(panel.querySelectorAll(".status-badge")).map((b) => b.textContent.trim());
-    assert.ok(badges.indexOf("Critical") !== -1);
-    assert.ok(badges.indexOf("Warning") !== -1);
+    var lists = panel.querySelectorAll(".attention-list");
+    assert.strictEqual(lists.length, 2, "expected one .attention-list per project group");
+    assert.ok(lists[0].querySelector(".attention-item__icon--critical"), "Project A's group (first, worst-first) must show a critical-severity item");
+    assert.ok(lists[1].querySelector(".attention-item__icon--warning"), "Project B's group (second) must show a warning-severity item");
   });
 
   await check("'View Project' on Project A's group navigates to Executive Center with that project selected", () => {

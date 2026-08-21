@@ -8427,27 +8427,33 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
       group.appendChild(groupHeader);
 
+      // UI/UX Overhaul Gate 5: retrofitted onto Gate 1's .attention-list/.attention-item
+      // primitive (Workspace's own Management Attention, Gate 4, and Executive Center's
+      // Diagnostics/Management Action List, this same gate) instead of this panel's own
+      // hand-built badge+row markup — no change to which alerts appear, only how. This
+      // panel only ever carries "critical"/"warning" severities (filtered upstream in
+      // computeManagementAttention above), never "info".
+      var list = document.createElement("div");
+      list.className = "attention-list";
       g.alerts.forEach(function (a) {
         var row = document.createElement("div");
-        row.style.display = "flex";
-        row.style.alignItems = "center";
-        row.style.gap = "8px";
-        row.style.fontSize = "13px";
-        row.style.padding = "4px 0";
+        row.className = "attention-item";
 
-        var badge = document.createElement("span");
-        badge.className = "status-badge status-badge--" + (a.severity === "critical" ? "critical" : "at_risk");
-        badge.style.fontSize = "11px";
-        badge.style.flexShrink = "0";
-        badge.textContent = a.severity === "critical" ? "Critical" : "Warning";
-        row.appendChild(badge);
+        var icon = document.createElement("span");
+        icon.className = "attention-item__icon attention-item__icon--" + (a.severity === "critical" ? "critical" : "warning");
+        row.appendChild(icon);
 
-        var text = document.createElement("span");
+        var body = document.createElement("div");
+        body.className = "attention-item__body";
+        var text = document.createElement("div");
+        text.className = "attention-item__text";
         text.textContent = a.description;
-        row.appendChild(text);
+        body.appendChild(text);
+        row.appendChild(body);
 
-        group.appendChild(row);
+        list.appendChild(row);
       });
+      group.appendChild(list);
 
       panel.appendChild(group);
     });
@@ -13105,6 +13111,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   var uiState = {
     projectId: "",
     tab: "overview", // 'overview' | 'output' | 'weeklyReviews'
+    // UI/UX Overhaul Gate 5: which sub-tab of the Overview tab is showing — the old
+    // single flat vertical stack of 13 KPI sections is now grouped by topic, "summary"
+    // being the default landing view (health/diagnostics/executive summary/management
+    // action list), not a project field, resets on reload same as `tab` above.
+    overviewSubTab: "summary", // 'summary' | 'schedule' | 'cost' | 'risk' | 'resources'
     editingSummarySection: null, // 'status' | 'achievements' | 'challenges' | 'attention' | 'upcoming' | null
     editingWeights: false,
     upcomingRangeDays: 30,
@@ -14114,23 +14125,105 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     return span;
   }
 
+  /** UI/UX Overhaul Gate 5: the Overview tab used to be one flat vertical stack of 13
+   * KPI sections + 6 major panels — ~3650px of scroll even on a near-empty project (see
+   * this gate's own scoping screenshot). Restructured into "summary first, detail on
+   * demand": an always-visible hero (name/client/RAG badge + 5 condensed at-a-glance
+   * figures) so switching sub-tabs never loses "which project, how healthy" context,
+   * then a sub-tab row grouping the same 13 KPI sections by topic. Every figure and
+   * panel below is UNCHANGED from before — same buildProjectContext() fields, same
+   * computeHealthScore()/computeDiagnostics(), zero business-logic touched — this
+   * function only decides WHERE each existing piece renders, not what it computes. */
   function renderOverviewTab(outlet, data, ctx, health, diagnostics, rerender) {
     var p = ctx.project;
 
-    // ---- Project Overview panel ----
-    var overviewPanel = document.createElement("div");
-    overviewPanel.className = "panel";
-    var ovHeader = document.createElement("div");
-    ovHeader.style.display = "flex";
-    ovHeader.style.justifyContent = "space-between";
-    ovHeader.style.alignItems = "flex-start";
-    ovHeader.style.marginBottom = "12px";
-    var ovTitle = document.createElement("div");
-    ovTitle.innerHTML = "<h3 style='margin-bottom:2px;'>" + esc(p.name || "(unnamed project)") + "</h3>" +
+    // ---- Hero ----
+    var hero = document.createElement("div");
+    hero.className = "panel";
+    var heroHeader = document.createElement("div");
+    heroHeader.style.display = "flex";
+    heroHeader.style.justifyContent = "space-between";
+    heroHeader.style.alignItems = "flex-start";
+    heroHeader.style.marginBottom = "12px";
+    var heroTitle = document.createElement("div");
+    heroTitle.innerHTML = "<h3 style='margin-bottom:2px;'>" + esc(p.name || "(unnamed project)") + "</h3>" +
       "<span class='text-secondary' style='font-size:12px;'>" + esc(p.client || "—") + (p.sector ? " · " + esc(p.sector) : "") + (p.project_type ? " · " + esc(p.project_type) : "") + "</span>";
-    ovHeader.appendChild(ovTitle);
-    ovHeader.appendChild(ragBadge(health.rag));
-    overviewPanel.appendChild(ovHeader);
+    heroHeader.appendChild(heroTitle);
+    heroHeader.appendChild(ragBadge(health.rag));
+    hero.appendChild(heroHeader);
+
+    var heroKpis = document.createElement("div");
+    heroKpis.className = "kpi-grid";
+    function heroKpi(label, value, colorVar) {
+      var card = document.createElement("div");
+      card.className = "kpi-card";
+      var valueStyle = colorVar ? ' style="color:var(' + colorVar + ')"' : "";
+      card.innerHTML = '<span class="kpi-card__label">' + esc(label) + '</span><span class="kpi-card__value mono"' + valueStyle + ">" + esc(value) + "</span>";
+      heroKpis.appendChild(card);
+    }
+    heroKpi("PROGRESS", fmtPct(p.progress));
+    heroKpi(
+      "SCHEDULE VARIANCE",
+      ctx.forecastVarianceDays == null ? "—" : (ctx.forecastVarianceDays > 0 ? "+" : "") + ctx.forecastVarianceDays + "d",
+      ctx.forecastVarianceDays > 0 ? "--status-critical" : null
+    );
+    heroKpi("COST VARIANCE", fmtMoney(ctx.costSummary.variance, p.currency), ctx.costSummary.variance < 0 ? "--status-critical" : null);
+    heroKpi("OPEN RISKS", ctx.openRisks.length, ctx.highRisks.length ? "--status-critical" : null);
+    heroKpi("OVERDUE RFIs", ctx.overdueRfis.length, ctx.overdueRfis.length ? "--status-critical" : null);
+    hero.appendChild(heroKpis);
+    outlet.appendChild(hero);
+
+    // ---- Sub-nav ----
+    var subTabs = [
+      { key: "summary", label: "Summary" },
+      { key: "schedule", label: "Schedule" },
+      { key: "cost", label: "Cost & Commitments" },
+      { key: "risk", label: "Risk & Compliance" },
+    ];
+    // Gate 11: only offered once Resource Management has real data, same "only show
+    // when the module exists" rule the old RESOURCES KPI section already followed.
+    if (data.resources.length > 0) subTabs.push({ key: "resources", label: "Resources" });
+
+    var validSubTabKeys = subTabs.map(function (t) { return t.key; });
+    if (validSubTabKeys.indexOf(uiState.overviewSubTab) === -1) uiState.overviewSubTab = "summary";
+
+    var subNav = document.createElement("div");
+    subNav.className = "toolbar no-print";
+    subNav.style.marginBottom = "16px";
+    subNav.style.flexWrap = "wrap";
+    subTabs.forEach(function (t) {
+      var btn = document.createElement("button");
+      btn.className = "btn " + (uiState.overviewSubTab === t.key ? "btn--primary" : "btn--ghost");
+      btn.textContent = t.label;
+      btn.onclick = function () {
+        uiState.overviewSubTab = t.key;
+        rerender();
+      };
+      subNav.appendChild(btn);
+    });
+    outlet.appendChild(subNav);
+
+    if (uiState.overviewSubTab === "schedule") {
+      renderScheduleSubTab(outlet, ctx, p, rerender);
+    } else if (uiState.overviewSubTab === "cost") {
+      renderCostSubTab(outlet, ctx, p);
+    } else if (uiState.overviewSubTab === "risk") {
+      renderRiskSubTab(outlet, ctx);
+    } else if (uiState.overviewSubTab === "resources") {
+      renderResourcesSubTab(outlet, ctx);
+    } else {
+      renderSummarySubTab(outlet, data, ctx, health, diagnostics, p, rerender);
+    }
+  }
+
+  function renderSummarySubTab(outlet, data, ctx, health, diagnostics, p, rerender) {
+    // ---- Project Details panel (the old always-on header's detail-grid, unchanged) ----
+    var detailsPanel = document.createElement("div");
+    detailsPanel.className = "panel";
+    var detailsHeading = document.createElement("h3");
+    detailsHeading.style.marginBottom = "10px";
+    detailsHeading.textContent = "Project Details";
+    detailsPanel.appendChild(detailsHeading);
 
     var grid = document.createElement("div");
     grid.className = "detail-grid";
@@ -14154,10 +14247,26 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     ovItem("Project Manager", p.project_manager);
     ovItem("Planner", p.planner);
     ovItem("Overall Progress", fmtPct(p.progress));
-    overviewPanel.appendChild(grid);
-    outlet.appendChild(overviewPanel);
+    detailsPanel.appendChild(grid);
+    outlet.appendChild(detailsPanel);
 
-    // ---- KPI cards ----
+    outlet.appendChild(renderHealthScorePanel(health, data, rerender));
+    outlet.appendChild(renderDiagnosticsPanel(diagnostics));
+    outlet.appendChild(renderExecutiveSummaryPanel(data, ctx, rerender));
+
+    var twoCol = document.createElement("div");
+    twoCol.style.display = "flex";
+    twoCol.style.gap = "16px";
+    twoCol.style.flexWrap = "wrap";
+    twoCol.style.marginTop = "16px";
+    twoCol.appendChild(renderRecentActivityPanel(ctx));
+    twoCol.appendChild(renderUpcomingItemsPanel(ctx, rerender));
+    outlet.appendChild(twoCol);
+
+    outlet.appendChild(renderManagementActionListPanel(ctx));
+  }
+
+  function renderScheduleSubTab(outlet, ctx, p, rerender) {
     renderKpiSection(outlet, "PROGRESS", [
       { label: "Overall Progress", value: fmtPct(p.progress) },
       { label: "Schedule Progress", value: fmtPct(ctx.scheduleProgressPct) },
@@ -14190,38 +14299,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         { label: "Out of Sequence", value: ctx.outOfSequenceActivities.length, colorVar: ctx.outOfSequenceActivities.length ? "--status-at-risk" : null },
       ]);
       renderStatusDateDetail(outlet, ctx, p);
-    }
-
-    renderKpiSection(outlet, "COST", [
-      { label: "Budget", value: fmtMoney(ctx.costSummary.budgeted, p.currency) },
-      { label: "Actual", value: fmtMoney(ctx.costSummary.actual, p.currency) },
-      { label: "Variance", value: fmtMoney(ctx.costSummary.variance, p.currency), colorVar: ctx.costSummary.variance < 0 ? "--status-critical" : "--status-on-track" },
-    ], "Cash Flow isn't tracked anywhere in PCC yet, so it's left off rather than shown as an always-empty tile.");
-
-    if (ctx.commitmentSummary.count > 0) {
-      renderKpiSection(outlet, "COMMITMENTS", [
-        { label: "Committed", value: fmtMoney(ctx.commitmentSummary.committed, p.currency) },
-        { label: "Approved", value: fmtMoney(ctx.commitmentSummary.approved, p.currency) },
-        { label: "Actual", value: fmtMoney(ctx.commitmentSummary.actual, p.currency) },
-        { label: "Remaining", value: fmtMoney(ctx.commitmentSummary.remaining, p.currency), colorVar: ctx.commitmentSummary.remaining < 0 ? "--status-critical" : null },
-        { label: "At Risk", value: ctx.commitmentSummary.atRisk, colorVar: ctx.commitmentSummary.atRisk > 0 ? "--status-critical" : null },
-      ]);
-    } else {
-      renderKpiEmptySection(outlet, "COMMITMENTS", "No commitments logged for this project yet — see the Commitments page.");
-    }
-
-    if (ctx.evm) {
-      renderKpiSection(outlet, "EVM" + (ctx.evm.coveragePct != null && ctx.evm.coveragePct < 100 ? " (" + ctx.evm.coveragePct + "% of budget linked to schedule)" : ""), [
-        { label: "PV", value: fmtMoney(ctx.evm.pv, p.currency) },
-        { label: "EV", value: fmtMoney(ctx.evm.ev, p.currency) },
-        { label: "AC", value: fmtMoney(ctx.evm.ac, p.currency) },
-        { label: "SPI", value: ctx.evm.spi == null ? "—" : ctx.evm.spi.toFixed(2), colorVar: ctx.evm.spi != null && ctx.evm.spi < 1 ? "--status-critical" : null },
-        { label: "CPI", value: ctx.evm.cpi == null ? "—" : ctx.evm.cpi.toFixed(2), colorVar: ctx.evm.cpi != null && ctx.evm.cpi < 1 ? "--status-critical" : null },
-        { label: "BAC", value: fmtMoney(ctx.evm.bac, p.currency) },
-        { label: "EAC", value: fmtMoney(ctx.evm.eac, p.currency) },
-        { label: "ETC", value: fmtMoney(ctx.evm.etc, p.currency) },
-        { label: "VAC", value: fmtMoney(ctx.evm.vac, p.currency), colorVar: ctx.evm.vac != null && ctx.evm.vac < 0 ? "--status-critical" : null },
-      ]);
     }
 
     if (ctx.totalActivityCount > 0) {
@@ -14268,6 +14345,44 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       renderKpiEmptySection(outlet, "DELAY & RECOVERY", "No delay records or recovery actions logged for this project yet — see an activity's own Detail Panel in the Schedule module.");
     }
 
+    outlet.appendChild(renderScheduleCharts(ctx));
+  }
+
+  function renderCostSubTab(outlet, ctx, p) {
+    renderKpiSection(outlet, "COST", [
+      { label: "Budget", value: fmtMoney(ctx.costSummary.budgeted, p.currency) },
+      { label: "Actual", value: fmtMoney(ctx.costSummary.actual, p.currency) },
+      { label: "Variance", value: fmtMoney(ctx.costSummary.variance, p.currency), colorVar: ctx.costSummary.variance < 0 ? "--status-critical" : "--status-on-track" },
+    ], "Cash Flow isn't tracked anywhere in PCC yet, so it's left off rather than shown as an always-empty tile.");
+
+    if (ctx.commitmentSummary.count > 0) {
+      renderKpiSection(outlet, "COMMITMENTS", [
+        { label: "Committed", value: fmtMoney(ctx.commitmentSummary.committed, p.currency) },
+        { label: "Approved", value: fmtMoney(ctx.commitmentSummary.approved, p.currency) },
+        { label: "Actual", value: fmtMoney(ctx.commitmentSummary.actual, p.currency) },
+        { label: "Remaining", value: fmtMoney(ctx.commitmentSummary.remaining, p.currency), colorVar: ctx.commitmentSummary.remaining < 0 ? "--status-critical" : null },
+        { label: "At Risk", value: ctx.commitmentSummary.atRisk, colorVar: ctx.commitmentSummary.atRisk > 0 ? "--status-critical" : null },
+      ]);
+    } else {
+      renderKpiEmptySection(outlet, "COMMITMENTS", "No commitments logged for this project yet — see the Commitments page.");
+    }
+
+    if (ctx.evm) {
+      renderKpiSection(outlet, "EVM" + (ctx.evm.coveragePct != null && ctx.evm.coveragePct < 100 ? " (" + ctx.evm.coveragePct + "% of budget linked to schedule)" : ""), [
+        { label: "PV", value: fmtMoney(ctx.evm.pv, p.currency) },
+        { label: "EV", value: fmtMoney(ctx.evm.ev, p.currency) },
+        { label: "AC", value: fmtMoney(ctx.evm.ac, p.currency) },
+        { label: "SPI", value: ctx.evm.spi == null ? "—" : ctx.evm.spi.toFixed(2), colorVar: ctx.evm.spi != null && ctx.evm.spi < 1 ? "--status-critical" : null },
+        { label: "CPI", value: ctx.evm.cpi == null ? "—" : ctx.evm.cpi.toFixed(2), colorVar: ctx.evm.cpi != null && ctx.evm.cpi < 1 ? "--status-critical" : null },
+        { label: "BAC", value: fmtMoney(ctx.evm.bac, p.currency) },
+        { label: "EAC", value: fmtMoney(ctx.evm.eac, p.currency) },
+        { label: "ETC", value: fmtMoney(ctx.evm.etc, p.currency) },
+        { label: "VAC", value: fmtMoney(ctx.evm.vac, p.currency), colorVar: ctx.evm.vac != null && ctx.evm.vac < 0 ? "--status-critical" : null },
+      ]);
+    }
+  }
+
+  function renderRiskSubTab(outlet, ctx) {
     renderKpiSection(outlet, "RISKS", [
       { label: "Open Risks", value: ctx.openRisks.length },
       { label: "High Risks", value: ctx.highRisks.length, colorVar: ctx.highRisks.length ? "--status-critical" : null },
@@ -14287,42 +14402,18 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       { label: "Approved", value: ctx.approvedChangeOrders.length },
     ]);
 
-    // Gate 11: only shown once Resource Management has real data, matching the same
-    // "only display when the module exists" rule EVM already follows.
-    if (data.resources.length > 0) {
-      renderKpiSection(outlet, "RESOURCES", [
-        { label: "Resources Assigned", value: ctx.assignedResourceCount },
-        {
-          label: "Over-Allocated (Portfolio-Wide)",
-          value: ctx.overAllocatedResources.length,
-          colorVar: ctx.overAllocatedResources.length ? "--status-critical" : null,
-        },
-      ]);
-    }
+    outlet.appendChild(renderRiskCharts(ctx));
+  }
 
-    // ---- Health Score ----
-    outlet.appendChild(renderHealthScorePanel(health, data, rerender));
-
-    // ---- Diagnostics / Alerts ----
-    outlet.appendChild(renderDiagnosticsPanel(diagnostics));
-
-    // ---- Executive Summary ----
-    outlet.appendChild(renderExecutiveSummaryPanel(data, ctx, rerender));
-
-    // ---- Charts ----
-    outlet.appendChild(renderChartsSection(ctx));
-
-    // ---- Recent Activity / Upcoming / Management Actions ----
-    var threeCol = document.createElement("div");
-    threeCol.style.display = "flex";
-    threeCol.style.gap = "16px";
-    threeCol.style.flexWrap = "wrap";
-    threeCol.style.marginTop = "16px";
-    threeCol.appendChild(renderRecentActivityPanel(ctx));
-    threeCol.appendChild(renderUpcomingItemsPanel(ctx, rerender));
-    outlet.appendChild(threeCol);
-
-    outlet.appendChild(renderManagementActionListPanel(ctx));
+  function renderResourcesSubTab(outlet, ctx) {
+    renderKpiSection(outlet, "RESOURCES", [
+      { label: "Resources Assigned", value: ctx.assignedResourceCount },
+      {
+        label: "Over-Allocated (Portfolio-Wide)",
+        value: ctx.overAllocatedResources.length,
+        colorVar: ctx.overAllocatedResources.length ? "--status-critical" : null,
+      },
+    ]);
   }
 
   function renderKpiSection(outlet, title, kpis, footnote) {
@@ -14801,8 +14892,13 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     return panel;
   }
 
-  var SEVERITY_BADGE_CLASS = { critical: "status-badge--critical", warning: "status-badge--at_risk", info: "status-badge--info" };
   var SEVERITY_LABEL = { critical: "Critical", warning: "Warning", info: "Info" };
+
+  // UI/UX Overhaul Gate 5: retrofitted onto Gate 1's .attention-list/.attention-item
+  // primitive (first adopted by Workspace's Management Attention, Gate 4) instead of
+  // this panel's own hand-built badge+row markup — same visual language, zero change to
+  // what computeDiagnostics() itself returns.
+  var DIAGNOSTICS_ICON_CLASS = { critical: "critical", warning: "warning", info: "info" };
 
   function renderDiagnosticsPanel(diagnostics) {
     var panel = document.createElement("div");
@@ -14821,28 +14917,31 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       return panel;
     }
     var list = document.createElement("div");
-    list.className = "project-list";
+    list.className = "attention-list";
     diagnostics.forEach(function (a) {
       var row = document.createElement("div");
-      row.className = "detail-card";
-      row.style.display = "flex";
-      row.style.justifyContent = "space-between";
-      row.style.alignItems = "center";
-      row.style.gap = "10px";
-      row.style.marginBottom = "6px";
-      var main = document.createElement("div");
-      main.innerHTML =
-        "<span class='status-badge " + SEVERITY_BADGE_CLASS[a.severity] + "'>" + SEVERITY_LABEL[a.severity] + "</span> " +
-        "<span class='text-secondary' style='font-size:11px;'>" + esc(a.source) + "</span><br/>" +
-        "<span style='font-size:13px;'>" + esc(a.description) + "</span>";
-      row.appendChild(main);
+      row.className = "attention-item";
       if (a.link && a.link.module) {
-        var linkBtn = document.createElement("button");
-        linkBtn.className = "btn btn--ghost no-print";
-        linkBtn.textContent = "View";
-        linkBtn.onclick = function () { navigateToLink(a.link); };
-        row.appendChild(linkBtn);
+        row.style.cursor = "pointer";
+        row.onclick = function () { navigateToLink(a.link); };
       }
+
+      var icon = document.createElement("span");
+      icon.className = "attention-item__icon attention-item__icon--" + (DIAGNOSTICS_ICON_CLASS[a.severity] || "info");
+      row.appendChild(icon);
+
+      var body = document.createElement("div");
+      body.className = "attention-item__body";
+      var text = document.createElement("div");
+      text.className = "attention-item__text";
+      text.textContent = a.description;
+      body.appendChild(text);
+      var meta = document.createElement("div");
+      meta.className = "attention-item__meta";
+      meta.textContent = SEVERITY_LABEL[a.severity] + " · " + a.source;
+      body.appendChild(meta);
+      row.appendChild(body);
+
       list.appendChild(row);
     });
     panel.appendChild(list);
@@ -15090,10 +15189,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   // Charts section
   // ---------------------------------------------------------------------------------
 
-  function renderChartsSection(ctx) {
+  // UI/UX Overhaul Gate 5: the old single renderChartsSection() split by topic to match
+  // the Overview tab's new Schedule/Risk & Compliance sub-tabs — same chart cards, same
+  // computed data, just grouped with the KPI sections they illustrate instead of one
+  // seven-chart wall at the bottom of the old flat page.
+  function renderScheduleCharts(ctx) {
     var wrap = document.createElement("div");
     wrap.style.marginTop = "16px";
-    var h = document.createElement("h3");
+    var h = document.createElement("h4");
     h.style.marginBottom = "10px";
     h.textContent = "Charts";
     wrap.appendChild(h);
@@ -15136,9 +15239,26 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     milestoneTimelineMini(milestoneCard, ctx.upcomingMilestones, ctx.todayIso);
     row2.appendChild(milestoneCard);
 
+    wrap.appendChild(row2);
+    return wrap;
+  }
+
+  function renderRiskCharts(ctx) {
+    var wrap = document.createElement("div");
+    wrap.style.marginTop = "16px";
+    var h = document.createElement("h4");
+    h.style.marginBottom = "10px";
+    h.textContent = "Charts";
+    wrap.appendChild(h);
+
+    var row1 = document.createElement("div");
+    row1.style.display = "flex";
+    row1.style.gap = "16px";
+    row1.style.flexWrap = "wrap";
+
     var riskCard = chartCard("Risk Heat Map (open)");
     riskHeatMapMini(riskCard, ctx.openRisks.concat(ctx.openIssues));
-    row2.appendChild(riskCard);
+    row1.appendChild(riskCard);
 
     var rfiCard = chartCard("RFI / TQ — Open vs Closed");
     var closedRfis = ctx.allRfis.length - ctx.openRfis.length;
@@ -15147,15 +15267,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       { label: "Overdue", value: ctx.overdueRfis.length, color: "var(--status-critical)" },
       { label: "Closed", value: closedRfis, color: "var(--status-on-track)" },
     ]);
-    row2.appendChild(rfiCard);
-
-    wrap.appendChild(row2);
-
-    var row3 = document.createElement("div");
-    row3.style.display = "flex";
-    row3.style.gap = "16px";
-    row3.style.flexWrap = "wrap";
-    row3.style.marginTop = "16px";
+    row1.appendChild(rfiCard);
 
     var coCard = chartCard("Change Orders — Status");
     horizontalBarChart(coCard, [
@@ -15163,9 +15275,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       { label: "Approved", value: ctx.approvedChangeOrders.length, color: "var(--status-on-track)" },
       { label: "Rejected", value: ctx.rejectedChangeOrders.length, color: "var(--status-critical)" },
     ]);
-    row3.appendChild(coCard);
+    row1.appendChild(coCard);
 
-    wrap.appendChild(row3);
+    wrap.appendChild(row1);
     return wrap;
   }
 
@@ -15257,15 +15369,15 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     panel.appendChild(h);
 
     var items = [];
-    ctx.delayedActivities.forEach(function (a) { items.push({ text: "Delayed activity: " + a.name + " (finish " + a.finish + ")", link: { module: "schedule" } }); });
-    ctx.highRisks.forEach(function (r) { items.push({ text: "Critical risk: " + r.title, link: { module: "risks", recordId: r.id } }); });
-    ctx.overdueRfis.forEach(function (r) { items.push({ text: "Overdue RFI: " + r.number + " " + r.subject, link: { module: "rfis", recordId: r.id } }); });
-    ctx.pendingChangeOrders.forEach(function (co) { items.push({ text: "Pending approval: " + co.number + " " + co.title, link: { module: "changeOrders", recordId: co.id } }); });
-    ctx.overdueMeetingActions.forEach(function (a) { items.push({ text: "Outstanding action (" + a.meetingTitle + "): " + a.description, link: { module: "meetings", recordId: a.meetingId } }); });
-    ctx.criticalIssues.forEach(function (r) { items.push({ text: "Critical issue: " + r.title, link: { module: "risks", recordId: r.id } }); });
-    ctx.slippedMilestones.forEach(function (m) { items.push({ text: "Schedule slippage: milestone “" + m.name + "” +" + m.varianceDays + "d", link: { module: "schedule" } }); });
+    ctx.delayedActivities.forEach(function (a) { items.push({ severity: "critical", text: "Delayed activity: " + a.name + " (finish " + a.finish + ")", link: { module: "schedule" } }); });
+    ctx.highRisks.forEach(function (r) { items.push({ severity: "critical", text: "Critical risk: " + r.title, link: { module: "risks", recordId: r.id } }); });
+    ctx.overdueRfis.forEach(function (r) { items.push({ severity: "warning", text: "Overdue RFI: " + r.number + " " + r.subject, link: { module: "rfis", recordId: r.id } }); });
+    ctx.pendingChangeOrders.forEach(function (co) { items.push({ severity: "info", text: "Pending approval: " + co.number + " " + co.title, link: { module: "changeOrders", recordId: co.id } }); });
+    ctx.overdueMeetingActions.forEach(function (a) { items.push({ severity: "warning", text: "Outstanding action (" + a.meetingTitle + "): " + a.description, link: { module: "meetings", recordId: a.meetingId } }); });
+    ctx.criticalIssues.forEach(function (r) { items.push({ severity: "critical", text: "Critical issue: " + r.title, link: { module: "risks", recordId: r.id } }); });
+    ctx.slippedMilestones.forEach(function (m) { items.push({ severity: "warning", text: "Schedule slippage: milestone “" + m.name + "” +" + m.varianceDays + "d", link: { module: "schedule" } }); });
     if (ctx.costSummary.actual > ctx.costSummary.budgeted && ctx.costSummary.budgeted > 0) {
-      items.push({ text: "Cost warning: actual cost exceeds budget", link: { module: "cost" } });
+      items.push({ severity: "critical", text: "Cost warning: actual cost exceeds budget", link: { module: "cost" } });
     }
 
     if (items.length === 0) {
@@ -15277,24 +15389,28 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       return panel;
     }
 
+    // UI/UX Overhaul Gate 5: retrofitted onto .attention-list/.attention-item, same as
+    // renderDiagnosticsPanel() above — no change to which items appear, only how.
     var list = document.createElement("div");
-    list.className = "project-list";
+    list.className = "attention-list";
     items.forEach(function (i) {
       var row = document.createElement("div");
-      row.className = "detail-card";
-      row.style.display = "flex";
-      row.style.justifyContent = "space-between";
-      row.style.alignItems = "center";
-      row.style.marginBottom = "6px";
-      var text = document.createElement("span");
-      text.style.fontSize = "13px";
+      row.className = "attention-item";
+      row.style.cursor = "pointer";
+      row.onclick = function () { navigateToLink(i.link); };
+
+      var icon = document.createElement("span");
+      icon.className = "attention-item__icon attention-item__icon--" + i.severity;
+      row.appendChild(icon);
+
+      var body = document.createElement("div");
+      body.className = "attention-item__body";
+      var text = document.createElement("div");
+      text.className = "attention-item__text";
       text.textContent = i.text;
-      row.appendChild(text);
-      var linkBtn = document.createElement("button");
-      linkBtn.className = "btn btn--ghost no-print";
-      linkBtn.textContent = "View";
-      linkBtn.onclick = function () { navigateToLink(i.link); };
-      row.appendChild(linkBtn);
+      body.appendChild(text);
+      row.appendChild(body);
+
       list.appendChild(row);
     });
     panel.appendChild(list);

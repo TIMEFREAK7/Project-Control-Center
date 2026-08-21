@@ -214,6 +214,11 @@ function findButtonByText(dom, text) {
     win.PCC.executiveCenter.viewProject(projectId);
     win.PCC.router.go("executiveCenter");
     win.PCC.router.render();
+    // UI/UX Overhaul Gate 5: COMMITMENTS now lives on the Cost & Commitments sub-tab,
+    // not the default Summary landing view.
+    var costTab = Array.from(outlet().querySelectorAll(".toolbar button")).find((b) => b.textContent.trim() === "Cost & Commitments");
+    assert.ok(costTab, "Cost & Commitments sub-tab not found");
+    costTab.click();
     var text = outlet().textContent;
     assert.ok(text.indexOf("COMMITMENTS") !== -1, "Commitments KPI section must render");
     assert.ok(text.indexOf("25,000") !== -1, "actual/remaining figures should appear");
