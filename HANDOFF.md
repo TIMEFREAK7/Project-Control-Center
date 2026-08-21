@@ -63,14 +63,15 @@ that override default behavior).
 
 ## NEW INITIATIVE: UI/UX Overhaul (started 2026-08-20) — a THIRD, separate roadmap
 
-`main` is up to date through **UI/UX Overhaul Gate 7 — Better Data Grids** (the second of Gate 7's
-five brief-listed capabilities, after Density Control; Gate 6 "Existing Modules" is ON HOLD after
-Documents/Risk Register/Schedule — see below), plus a standalone bug fix for the Gantt chart's
-Today/Data Date label overlap (shipped between the Documents and Risk Register Gate 6 passes — see
-the "Recently fixed bugs / notable gotchas" section near the end of this file). `schema_version`
-**53** (Gate 7 Density Control's `settings.density` field — see its own write-up below; Better Data
-Grids needed no schema change; unchanged from 52 through all of Gates 3-6, which were pure display/
-computed-stats/reorganization work). Gate 2 included its
+`main` is up to date through **UI/UX Overhaul Gate 7 — ALL FIVE brief-listed capabilities now
+complete** (Density Control, Better Data Grids, Focus Mode, Resizable Panels, Side-by-Side Views —
+Gate 7 itself is DONE; Gate 6 "Existing Modules" is still ON HOLD after Documents/Risk Register/
+Schedule — see below), plus a standalone bug fix for the Gantt chart's Today/Data Date label
+overlap (shipped between the Documents and Risk Register Gate 6 passes — see the "Recently fixed
+bugs / notable gotchas" section near the end of this file). `schema_version` **53** (Gate 7 Density
+Control's `settings.density` field — see its own write-up below; none of Gate 7's other four
+capabilities needed a schema change; unchanged from 52 through all of Gates 3-6, which were pure
+display/computed-stats/reorganization work). Gate 2 included its
 post-ship nav revision (an Outlook-Online-style hidden overlay with accordion groups, replacing
 Gate 2's original persistent/collapsible sidebar — see that gate's own write-up below for detail).
 With Tiers A-F, Tiers 1-2, and Tier 3 all complete/closed out (see below), Aditya started an
@@ -894,12 +895,122 @@ frozen-column behavior at a narrow 420px viewport with real horizontal overflow)
 everything renders and behaves correctly — zero console errors. Zip verified separately post-merge
 (fresh extraction, real Chromium, sort + grid classes exercised) — clean.
 
-**Next step for a fresh session**: with Gate 6 still on hold, ask Aditya which of Gate 7's
-remaining three capabilities (Focus Mode / Resizable Panels / Side-by-Side Views) to scope next, or
-whether to move to Gate 8 (Tablet/Mobile Optimization) instead — same standing rule as every other
-gate (inspect real code first, propose scope, wait for explicit approval, build exactly that,
-stop). Don't assume which one without asking, and don't assume Gate 6 resumes before Gate 7
-finishes.
+**UI/UX Overhaul Gate 7 — Desktop/Laptop Productivity, Focus Mode + Resizable Panels +
+Side-by-Side Views (Gate 7 now COMPLETE)** (merge `c070e32`). Aditya asked to scope and build all
+three remaining Gate 7 capabilities together in one pass, rather than one at a time like Density
+Control and Better Data Grids before it — a deliberate departure from this initiative's usual
+smallest-safe-slice cadence, made explicitly by Aditya rather than assumed. Two rounds of
+`AskUserQuestion` (four total questions) confirmed the concrete scope before any code was written:
+which pages get Focus Mode (all four the brief mentions — Schedule, Documents, Executive Center,
+Reports — not just the brief's own two worked examples), whether to build Resizable Panels at all
+(yes, Documents' register+preview split), and whether to build Side-by-Side Views (yes, Gantt's
+Activity Detail Panel). No schema change for any of the three.
+
+**Focus Mode** (`layout.js` + `styles.css`): a title-block icon-btn toggle next to theme/density
+(same glyph-reflects-current-state convention, "⛶", plus a new generic `.icon-btn--active` style
+any future binary toggle can reuse), but deliberately **not persisted** — `settings.theme`/
+`settings.density` are durable appearance preferences, Focus Mode is "declutter while I work on
+this right now," so it resets on reload same as every other per-session `uiState` toggle in this
+app. Toggles `body.focus-mode`, which the CSS uses two ways: unconditionally hides
+`footer.app-footer` everywhere (pure status text, always safe to hide), and hides whatever a page
+tags with the new `.focus-mode-hide` class — each page opts its OWN non-essential
+heading/description/picker-bar chrome into this individually, never a toolbar's actual
+filter/search/action controls (every page keeps working normally in focus mode). Applied to:
+Schedule (heading + description + the entire schedule-picker bar — matches the brief's own
+"Activities + Gantt + filters" Schedule Focus Mode example verbatim, and applies across every
+Schedule tab, not just Gantt, since focus mode is a global declutter state), Documents (heading +
+the explanatory info panel — matches the brief's Documents example), Executive Center (heading +
+subtitle), Reports (heading).
+
+**Inspection finding that shaped the whole Focus Mode design**: hiding cells inside `.title-block`
+(SHEET/COMPANY/DATE) does NOT reduce the row's rendered height — `align-items: stretch` means the
+row's height is set by its tallest cell regardless of how many cells are hidden, so that's a
+horizontal-declutter win only, not a vertical-workspace win. The real vertical wins are the footer
+(global) and each page's own heading/description/picker-bar (page-specific) — this is why Focus
+Mode's CSS never touches `.title-block__cell` visibility at all, only `.app-footer` and each page's
+own tagged chrome.
+
+**Resizable Panels** (`documents.js` + `styles.css`): a drag handle (`.doc-register-resize-handle`,
+new CSS — a thin drawn line inside a wider, easier-to-grab hit target, `col-resize` cursor) between
+Documents' register list and preview pane (Gate 6's two-panel layout) — the one clear existing
+candidate in the app, a fixed `flex: 1 1 340px` / `flex: 2 1 480px` split with zero resize
+capability before this. A custom width overrides the CSS split entirely via `flex: 0 0 Npx` +
+`max-width: none` (setting only `width` would NOT have been enough — the stylesheet's own
+`max-width: 420px` would still have capped it). Mutates `listPane.style` directly on every
+`mousemove` (never `rerender()` mid-drag — slow, and would tear down the very listeners driving the
+drag), clamped to `[240, 640]`px, and commits to module-level `uiState.docRegisterListWidth` (not
+persisted) only on `mouseup` using the LAST width the drag itself already computed and applied —
+deliberately not a fresh `getBoundingClientRect()` read at that point, which would be re-deriving
+the same number through actual layout a second time for no reason (and isn't meaningfully
+measurable in a real-layout-less test environment at all — see the Testing note below).
+Double-click resets to the default split. Hidden below 780px, where `.doc-register` already stacks
+its two panes into one column (existing `flex-wrap` behavior, no new breakpoint rule) and a
+horizontal drag handle between two STACKED panes would be a stray sliver with nothing to do.
+
+**Side-by-Side Views** (`schedule.js` + `styles.css`): the Gantt tab's Activity Detail Panel moves
+from rendering full-width ABOVE the chart into a side panel NEXT TO it (new `.gantt-layout-row`/
+`.gantt-detail-pane` CSS, same two-panel spirit as `.doc-register`) once the chart itself is ready
+to render. Deferred to that point rather than building the row from the start: DOM surgery (detach
+the already-rendered detail panel, re-wrap it with the chart in a new row), so every early-return
+path above that point in `renderGanttTab()` (the "no dated activities" empty state, etc.) keeps its
+exact pre-existing behavior of showing the detail panel full-width regardless of whether the chart
+itself can render — a genuine behavior a real user could hit (opening an activity's detail when its
+schedule happens to have zero calculable dates), preserved on purpose rather than simplified away.
+
+**One real bug caught during manual real-Chromium verification — not by a test written first, and
+not obvious from its own error message**: clicking any activity bar to open its Detail Panel threw
+`"NotFoundError: The child can not be found in the parent"` on EVERY click, even a plain one with
+no drag involved — traced to the Gantt tab's pre-existing jump-controls bar
+(Today/Project Start/Project Finish/Data Date), which did `container.insertBefore(jumpBar, wrap)`
+assuming `wrap` (the chart's own panel) was always container's own DIRECT child. That assumption
+broke the instant Side-by-Side Views started nesting `wrap` inside the new row alongside the detail
+pane. **The stack trace pointed at the wrong line first** — the actual DOM-surgery
+`container.removeChild(detailPanelEl)` a few lines earlier looked like the obvious suspect (same
+error text, same function), but a focused jsdom repro script wrapping THAT call in its own
+try/catch showed it succeeding cleanly every time; the real failure was several lines further down,
+at the `insertBefore` call, only surfacing via `window.onerror` slightly later in the same
+synchronous execution. **General lesson for any future "detach and re-wrap" DOM restructuring**:
+grep for every OTHER place in the same function that references the node being moved — not just
+the two places you're deliberately touching — since `insertBefore`/`replaceChild`/`removeChild`
+calls elsewhere in a large function can carry an unstated "this is always my direct child"
+assumption that only breaks once something upstream changes that node's parent. Fixed by tracking
+`chartRowEl` (whichever element is actually `container`'s own direct child at that point — the new
+row when a detail panel is open, `wrap` itself otherwise) and using that as the `insertBefore`
+reference instead of `wrap` directly.
+
+**Testing note, genuinely useful for any future drag-interaction test**: jsdom has no real layout
+engine, so `getBoundingClientRect()` always returns an all-zero rect — this could have made the
+resize handle's drag math untestable, but because the handler computes width as
+`moveEvent.clientX - registerRect.left`, and `registerRect.left` is always `0` in jsdom, the
+clamped result reduces to a fully deterministic function of the `clientX` value the test itself
+dispatches. This is genuinely how the math works in a real browser too (not a jsdom-only
+coincidence) — it just means jsdom happens to make the "container starts at x=0" case trivially
+reproducible, which is exactly why committing the LAST-drag-computed width on `mouseup` (rather
+than a fresh `getBoundingClientRect()` re-read) was the right implementation choice even before
+testability was a consideration.
+
+Tests: new `tests/test_uiux_gate7_focus_resize_sidebyside_e2e.js` (46 checks, including a
+27-route smoke test) — Focus Mode toggling on/off across all four pages with COMPUTED-STYLE
+assertions (`getComputedStyle(el).display === "none"`, not just a class-presence check) that every
+`.focus-mode-hide` element actually goes invisible and core content (tab bar, toolbars, the chart,
+the register+preview) stays visible, plus the footer; the resize handle's live drag and clamping,
+persistence of the committed width across an unrelated rerender, and double-click reset; the
+side-by-side row appearing only once an activity is selected and disappearing again on Close, and
+specifically the jump-controls bar rendering without throwing (the exact spot the bug above broke).
+No pre-existing test files needed updates. Full suite: **70 files, 2019 checks**, zero regressions.
+Real-Chromium pass (Schedule Gantt before/after Focus Mode, the side-by-side Activity Detail Panel
+opened while ALSO in Focus Mode simultaneously, Documents' register pane dragged wider with the
+preview pane shrinking to match, Documents/Executive Center/Reports each in Focus Mode) confirmed
+everything renders and behaves correctly — zero console errors. Zip verified separately post-merge
+(fresh extraction, real Chromium, side-by-side + Focus Mode exercised together) — clean.
+
+**Gate 7 (Desktop/Laptop Productivity) is now COMPLETE — all five brief-listed capabilities shipped
+across three passes** (Density Control; Better Data Grids; Focus Mode + Resizable Panels +
+Side-by-Side Views together). **Next step for a fresh session**: with Gate 7 done and Gate 6 still
+on hold, ask Aditya whether to resume Gate 6 (Vendors/RFI/TQ/Meetings/Change Orders) or move to
+Gate 8 (Tablet/Mobile Optimization) — same standing rule as every other gate (inspect real code
+first, propose scope, wait for explicit approval, build exactly that, stop). Don't assume which one
+without asking.
 
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
