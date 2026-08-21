@@ -725,12 +725,19 @@ activities, and the search-only case showing "Clear Filters" appearing correctly
 everything renders and behaves correctly — zero console errors. Zip verified separately post-merge
 (fresh extraction, real Chromium, Activities tab filters exercised) — clean.
 
-**Next step for a fresh session: ask Aditya what's next (another Gate 6 module — Vendors/RFI/TQ/
-Meetings/Change Orders/"other modules actually present" per the brief — or a different initiative
-entirely) rather than assuming approval to continue automatically** — this initiative's own
-standing rule (inspect, propose, wait for explicit approval, build exactly that, stop) applies to
-every gate, including the next one, and Gate 6 stays "one module at a time" until every module has
-had its own pass. Ask which module before picking one unilaterally.
+**Gate 6 is now ON HOLD, Aditya's explicit call (2026-08-21), after Documents/Risk Register/
+Schedule.** The remaining "Existing Modules, one at a time" passes — Vendors, RFI/TQ, Meetings,
+Change Orders, and any other module the brief covers — are NOT started and NOT scoped. This is a
+pause, not a close-out (unlike Tiers A-F/Tier 3 above, which are genuinely done) — a future session
+should treat Gate 6 as resumable, not finished, and should ask Aditya before assuming it's time to
+pick it back up again versus continuing whatever gate came after it. Do not silently resume Gate 6
+just because it's next in the brief's own numbering.
+
+**Next step for a fresh session**: with Gate 6 on hold, the initiative moves to whichever of Gate
+7 (Desktop/Laptop Productivity) or Gate 8 (Tablet/Mobile Optimization) Aditya confirms next — same
+standing rule as every other gate (inspect real code first, propose scope, wait for explicit
+approval, build exactly that, stop). Don't assume which one without asking, and don't assume
+Gate 6 resumes before either of them.
 
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
