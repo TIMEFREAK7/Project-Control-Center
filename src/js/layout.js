@@ -104,6 +104,34 @@
     if (icon) icon.textContent = current === "dark" ? "\u2600" : "\u263D";
   }
 
+  // UI/UX Overhaul, Gate 7 (Desktop/Laptop Productivity \u2014 Density Control). Same
+  // pattern as applyTheme/toggleTheme above: a persisted settings.density value, a
+  // data-attribute the CSS in styles.css keys off of, and an icon-btn whose glyph
+  // reflects the CURRENT state (not the next one), same as the theme toggle's sun/moon.
+  // Block-height glyphs (short/medium/tall) read as "amount of space" at a glance
+  // without needing a label.
+  var DENSITY_CYCLE = ["compact", "comfortable", "spacious"];
+  var DENSITY_ICONS = { compact: "\u2581", comfortable: "\u2584", spacious: "\u2588" };
+  var DENSITY_LABELS = { compact: "Compact", comfortable: "Comfortable", spacious: "Spacious" };
+
+  function applyDensity(density) {
+    document.documentElement.setAttribute("data-density", density);
+  }
+
+  function toggleDensity() {
+    var store = window.PCC.store;
+    var currentIndex = DENSITY_CYCLE.indexOf(store.get().settings.density || "comfortable");
+    var next = DENSITY_CYCLE[(currentIndex + 1) % DENSITY_CYCLE.length];
+    store.update(function (data) {
+      data.settings.density = next;
+    });
+    applyDensity(next);
+    var icon = document.getElementById("density-toggle-icon");
+    if (icon) icon.textContent = DENSITY_ICONS[next];
+    var btn = document.getElementById("density-toggle-btn");
+    if (btn) btn.title = "Spacing density: " + DENSITY_LABELS[next] + " (click to cycle)";
+  }
+
   function setActiveNav(routeName) {
     var links = document.querySelectorAll(".sidebar__link");
     links.forEach(function (link) {
@@ -351,9 +379,18 @@
       "</span>";
     themeBtn.onclick = toggleTheme;
 
+    var currentDensity = window.PCC.store.get().settings.density || "comfortable";
+    var densityBtn = document.createElement("button");
+    densityBtn.className = "icon-btn";
+    densityBtn.id = "density-toggle-btn";
+    densityBtn.title = "Spacing density: " + DENSITY_LABELS[currentDensity] + " (click to cycle)";
+    densityBtn.innerHTML = '<span id="density-toggle-icon">' + DENSITY_ICONS[currentDensity] + "</span>";
+    densityBtn.onclick = toggleDensity;
+
     actions.appendChild(exportBtn);
     actions.appendChild(importBtn);
     actions.appendChild(importInput);
+    actions.appendChild(densityBtn);
     actions.appendChild(themeBtn);
 
     header.appendChild(actions);
@@ -516,6 +553,7 @@
 
   function mount() {
     applyTheme(window.PCC.store.get().settings.theme || "dark");
+    applyDensity(window.PCC.store.get().settings.density || "comfortable");
 
     var shell = document.createElement("div");
     shell.id = "app-shell";
@@ -554,6 +592,7 @@
     var companyEl = document.getElementById("title-block-company");
     if (companyEl) companyEl.textContent = window.PCC.store.get().settings.company_name || "\u2014";
     applyTheme(window.PCC.store.get().settings.theme || "dark");
+    applyDensity(window.PCC.store.get().settings.density || "comfortable");
   }
 
   window.PCC.layout = {
