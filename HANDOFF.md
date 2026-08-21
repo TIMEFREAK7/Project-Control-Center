@@ -24,7 +24,11 @@ that override default behavior).
   `README.md`, and empty `data/`/`files/` placeholder folders (with their own `README.txt`,
   already present at the repo root — reuse them) — **not** `src/`, `build.js`, `tests/`,
   `.claude/`, `CLAUDE.md`, or `HANDOFF.md`. Verify before sending: extract fresh (not the dev
-  working copy) and open `index.html` in real Chromium.
+  working copy) and open `index.html` in real Chromium. **Extended as of the Mobile & Desktop
+  Packaging initiative (Aditya, explicit)**: once a platform installer exists (the Electron
+  `.AppImage`/`.dmg`/`.exe`, later the Android `.apk`), it ships in the zip too, alongside
+  `index.html`/`README.md`/`data/`/`files/` — `packaging/`'s own source/`node_modules/` stay out,
+  same dev-only treatment as `src/`/`build.js`/`tests/`.
 - **After every major upgrade, update `HANDOFF.md` at the repo root AND hand Aditya the complete
   updated file directly**, so a new session can resume without re-deriving everything from git
   log and source.
@@ -1103,6 +1107,76 @@ after Documents/Risk Register/Schedule (Vendors/RFI-TQ/Meetings/Change Orders no
 there is no other gate left to move to in this initiative. Same standing rule as every other gate:
 inspect real code first, propose scope, wait for explicit approval, build exactly that, stop. Don't
 assume which module without asking.
+
+## NEW INITIATIVE: Mobile & Desktop Packaging (started 2026-08-21) — a FOURTH, separate initiative
+
+Aditya asked to package the app as a native-feeling Android APK (Capacitor) and desktop app
+(Electron), from a general-purpose playbook handed over for reuse on this project. Before writing
+any code, the playbook was adapted to PCC's actual architecture (it assumed a Vite/webpack SPA
+building to `dist/`; PCC is one self-contained generated `index.html` with everything — JS, CSS,
+fonts — inlined, no relative asset paths at all). Two real gaps were flagged during that pass:
+Android's WebView doesn't implement `window.print()` by default (Reports/Executive Center rely on
+it) and would need a native print plugin; Export/Import/"Open File" (currently `Blob` +
+`URL.createObjectURL()` + `a.download`/`window.open()`) likely needs `@capacitor/filesystem` +
+`@capacitor/share` rewiring inside a bare WebView. Electron has neither problem — full Chromium
+renderer, `window.print()` and the Blob/download pattern both work as-is — so Electron was built
+first.
+
+**Before any packaging work started**, two safety-net branches were pushed to `origin` given an
+unrelated discovery made along the way (see "Repo/branch state" below for the full story):
+`backup/original-history-through-gate18` (the pre-reset original commit history, unrelated to
+current `main` but confirmed to be a strict subset of it — nothing unique was ever at risk) and
+`backup/pre-mobile-desktop-packaging` (current `main` HEAD, `19ba61a`, as an explicit restore
+point before packaging touched the repo).
+
+**Gate 1 — Desktop (Electron), done, 2026-08-21.** Added `packaging/` at the repo root: an
+isolated folder with its own `package.json` (`electron` + `electron-builder` as devDependencies)
+so the shipped `index.html` stays exactly as dependency-free as before — nothing under `src/`
+changed. `packaging/scripts/copy-app.js` copies the repo root's built `index.html` into
+`packaging/electron/` before every run/build (electron-builder's `files` resolution stays inside
+the package directory, so the app can't be referenced by a `../` path). `packaging/electron/main.js`
+does a plain `win.loadFile()` on that copy — no `base: './'` fix needed, unlike the playbook's
+generic Vite case, since there are no relative asset URLs to break.
+
+Verified for real, not just "it compiled": launched under `xvfb-run` (this sandbox has no display
+but does have `Xvfb`/`xvfb-run` installed) with `--remote-debugging-port`, then drove it live over
+the Chrome DevTools Protocol from Node (Node 22's built-in `WebSocket` client, no extra deps
+needed). Confirmed: correct page title and `file://` URL (not a blank window — the exact failure
+mode the playbook's own checklist warns about), `localStorage` and `indexedDB` both available
+under `file://`, and — the check that actually matters — a real `window.PCC.store.update()` write
+round-trips through the store's 250ms autosave debounce into `localStorage` under the real key
+(`pcc_local_data_v1`), with `meta.last_saved_at` correctly stamped. Then ran an actual
+`electron-builder` distributable build (`npm run electron:build` in `packaging/`) producing a real
+Linux AppImage (`packaging/release/Project Control Center-1.0.0.AppImage`, ~129MB, expected since
+it bundles Chromium+Electron). First build attempt crashed on an unrequested auto-update metadata
+step (`Cannot read properties of null (reading 'provider')`, from `app-builder-lib`'s
+`updateInfoBuilder`) — fixed by adding `"publish": null` to the electron-builder config (also
+added `"author"` and `linux.category`/`synopsis` to clear two informational warnings). Rebuilt
+clean. The sandbox has no FUSE (`dlopen(): error loading libfuse.so.2`), which AppImages need to
+self-mount — used AppImage's own documented fallback (`--appimage-extract`, then run the extracted
+`AppRun` directly) to verify the **actual packaged artifact**, not just the pre-package
+`linux-unpacked/` tree: same CDP check, correct title, loading from
+`resources/app.asar/electron/index.html` inside the extracted image. This is a sandbox constraint,
+not a defect — a real Linux desktop has FUSE by default and the AppImage will just run.
+
+App id set to `com.aditya.projectcontrolcenter` (`packaging/package.json`'s `build.appId`) — for
+Electron this only affects auto-updater/protocol registration, not signing continuity the way
+Android's `applicationId` does, so it's much lower-stakes than the playbook's Android warning
+about it, but still worth Aditya explicitly confirming before this ever actually ships broadly.
+
+**Standing zip convention extended, per Aditya's explicit instruction this session**: the
+"rebuild, test, hand over a zip" convention (see Standing Instructions above) now also includes
+shipping the platform installer(s) alongside `index.html`/`README.md`/`data//files/` — not just
+the web deliverable. `packaging/` itself (source, `node_modules/`, the copied
+`electron/index.html`) stays **out** of the end-user zip, same "dev-only tooling" treatment as
+`src/`/`build.js`/`tests/` — only the built `.AppImage` (and, once built, `.dmg`/`.exe`) goes in.
+
+**Not done yet**: Android (Capacitor) — Part A of the adapted plan, with the two flagged gaps
+(`window.print()`, Export/Import/Open File under a bare WebView) still needing real plugin work,
+not just `npx cap add android`. No custom app icon/splash for Electron yet (using electron-builder's
+default). `.dmg`/`.exe` builds need their respective host OSes (or cross-build tooling) — only the
+Linux AppImage has actually been built and verified so far. Code signing (both platforms) is an
+explicit later decision per the playbook, not needed for personal/internal use.
 
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
