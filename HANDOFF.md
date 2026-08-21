@@ -63,15 +63,16 @@ that override default behavior).
 
 ## NEW INITIATIVE: UI/UX Overhaul (started 2026-08-20) — a THIRD, separate roadmap
 
-`main` is up to date through **UI/UX Overhaul Gate 7 — ALL FIVE brief-listed capabilities now
-complete** (Density Control, Better Data Grids, Focus Mode, Resizable Panels, Side-by-Side Views —
-Gate 7 itself is DONE; Gate 6 "Existing Modules" is still ON HOLD after Documents/Risk Register/
-Schedule — see below), plus a standalone bug fix for the Gantt chart's Today/Data Date label
-overlap (shipped between the Documents and Risk Register Gate 6 passes — see the "Recently fixed
-bugs / notable gotchas" section near the end of this file). `schema_version` **53** (Gate 7 Density
-Control's `settings.density` field — see its own write-up below; none of Gate 7's other four
-capabilities needed a schema change; unchanged from 52 through all of Gates 3-6, which were pure
-display/computed-stats/reorganization work). Gate 2 included its
+`main` is up to date through **UI/UX Overhaul Gate 8 — Tablet/Mobile Optimization, which CLOSES
+OUT the brief's entire original 8-gate breakdown** (Gates 1, 2, 3, 4, 5, 7, and 8 are all
+COMPLETE; Gate 6 "Existing Modules" is still ON HOLD after Documents/Risk Register/Schedule — see
+below — and is now the ONLY open item left in this whole initiative), plus a standalone bug fix
+for the Gantt chart's Today/Data Date label overlap (shipped between the Documents and Risk
+Register Gate 6 passes — see the "Recently fixed bugs / notable gotchas" section near the end of
+this file). `schema_version` **53** (Gate 7 Density Control's `settings.density` field — see its
+own write-up below; no gate since, including Gate 8, needed a schema change; unchanged from 52
+through Gates 3-6 and 8, all pure display/computed-stats/reorganization/responsive-CSS work). Gate
+2 included its
 post-ship nav revision (an Outlook-Online-style hidden overlay with accordion groups, replacing
 Gate 2's original persistent/collapsible sidebar — see that gate's own write-up below for detail).
 With Tiers A-F, Tiers 1-2, and Tier 3 all complete/closed out (see below), Aditya started an
@@ -1006,11 +1007,102 @@ everything renders and behaves correctly — zero console errors. Zip verified s
 
 **Gate 7 (Desktop/Laptop Productivity) is now COMPLETE — all five brief-listed capabilities shipped
 across three passes** (Density Control; Better Data Grids; Focus Mode + Resizable Panels +
-Side-by-Side Views together). **Next step for a fresh session**: with Gate 7 done and Gate 6 still
-on hold, ask Aditya whether to resume Gate 6 (Vendors/RFI/TQ/Meetings/Change Orders) or move to
-Gate 8 (Tablet/Mobile Optimization) — same standing rule as every other gate (inspect real code
-first, propose scope, wait for explicit approval, build exactly that, stop). Don't assume which one
-without asking.
+Side-by-Side Views together).
+
+**UI/UX Overhaul Gate 8 — Tablet/Mobile Optimization (Gate 8 now COMPLETE — closes out the brief's
+entire 8-gate breakdown)** (merge `3544b4f`). Aditya said "move to Gate 8" directly — no module
+choice to make, unlike Gate 6. Per the brief's own Gate 8 definition ("Mobile navigation, Cards,
+Forms, Tables, Gantt alternative, Touch targets, Responsive layouts"), inspection came first: a
+real-Chromium pass at tablet (820×1024) and mobile (390×844) across Dashboard, Portfolio, Schedule
+Activities/Gantt, Documents, Risk Register, and the nav drawer. Most of the brief's list was
+already solid from earlier gates — the nav drawer (Gate 2 revision), Documents' and Risk Register's
+card/panel layouts (Gate 6), and most forms already reflowed cleanly. Two concrete, brief-anticipated
+gaps surfaced, plus a systemic one: the Schedule Activities tab is a wide multi-column `.data-table`
+(Gate 7's own data-grid work) with nowhere to go at 390px — it just overflowed; the Gantt chart is an
+SVG dragged with a mouse, unusable by touch, and the brief explicitly calls for a "Gantt alternative"
+on mobile; and icon buttons/menu items were sized for a mouse cursor (32px `.icon-btn`) everywhere,
+not a fingertip, well below the ~44px touch-target guideline at any width below laptop. Confirmed via
+`AskUserQuestion` — Aditya picked building all three ("Grid/Gantt gaps + touch targets") over the
+narrower options offered.
+
+What shipped, `schedule.js` + `styles.css` only, no schema change:
+- **Activities mobile card fallback** — the existing "always build both representations, let CSS
+  pick" pattern already used for Documents' two-panel stacking and Gate 7's own resize-handle hiding.
+  `renderList()` now builds a `.project-list.activities-mobile-cards` (one `.project-card` per
+  filtered activity — the same card family Portfolio/Workspace already use) alongside the existing
+  table, which got a `.activities-table-wrap` class. New `.activities-table-wrap { display: none }`
+  / `.activities-mobile-cards { display: flex }` swap inside the existing `@media (max-width: 780px)`
+  block. `buildActivityRowMenu(a)` was extracted out of the table row's own actions cell so BOTH the
+  table row's "⋯" Edit/Delete menu and the new mobile card's "⋯" menu are the exact same shared
+  function — one menu implementation, two call sites, not a duplicate.
+- **Gantt mobile timeline** — a `.project-list.gantt-mobile-timeline` of `.project-card`s (name, WBS
+  · type · start→finish, status/critical badges), sorted by planned start, built from the SAME
+  toolbar-filtered `activities` array the chart itself already computes (so the two never disagree
+  about what's in scope). Tapping a card sets `uiState.ganttDetailActivityId` and reuses the exact
+  same Activity Detail Panel the chart's own bars open — no separate detail view built. The chart's
+  own toolbar pieces (Zoom controls, the baseline-overlay bar, the jump bar, the legend, the drag
+  hint) all got a new `.gantt-chart-only-control` class and are hidden alongside the chart itself
+  below 780px via `!important` (required specifically because several of them set their own INLINE
+  `style.display`, which beats a plain stylesheet rule regardless of selector specificity — same
+  precedent as the pre-existing `.panel { max-width: none !important; }` rule). The Zoom label + 6
+  buttons needed grouping into a hideable unit without disrupting the toolbar's own flex/gap/wrap
+  layout, so they're wrapped in a `zoomGroup` span with `display: contents` (invisible to the parent
+  flexbox's layout, but still a single class-toggleable unit) rather than a normal wrapping `<div>`.
+- **Touch targets** — new `@media (max-width: 1023px)` tier (first tablet-specific breakpoint in the
+  app, sitting between the existing Laptop `≤1279px` and phone `≤780px` tiers): `.icon-btn` 32px→44px,
+  `.btn` padding 12px/18px, `.btn--sm` 9px/14px, `.card-menu__item`/`.card-menu__checkbox-item`
+  11px/14px — purely additive, the desktop `:root`-level 32px `.icon-btn` rule is untouched.
+
+**One real regression caught by the existing test suite, not a new one — the most significant issue
+this gate**: after building the Gantt mobile timeline with the same "always build both, CSS hides"
+pattern as Activities, the pre-existing `test_gantt_virtualization_e2e.js` (seeds 3000 activities,
+asserts the chart's own virtualization keeps un-rendered activity names OUT of the DOM entirely)
+started failing — the timeline, built unconditionally, put all 3000 activity names into
+`main.innerHTML` even though CSS hid the timeline visually, and jsdom's `.textContent` doesn't
+respect `display:none`. This wasn't just a test artifact: building 3000 unvirtualized `.project-card`
+DOM nodes even when hidden is a genuine real-world cost the Activities case doesn't have (the chart
+itself IS virtualized; the mobile timeline has none of its own). Fixed by making the Gantt timeline
+a genuine JS conditional — `if (window.innerWidth <= 780) { ...build the timeline... }` — rather than
+CSS-only, so at desktop/tablet widths it's never built at all. `window.matchMedia` was ruled out for
+this check (not implemented in this project's jsdom version — would have broken every jsdom test that
+renders the Gantt tab); plain `window.innerWidth`, which jsdom lets you assign directly, works
+identically in real browsers and jsdom. Documented in both `schedule.js`'s own comment and the new
+test file's header, explicitly contrasting this asymmetry with the Activities grid's CSS-only
+approach and why it's the correct call here specifically, not an inconsistency.
+
+**Testing-environment finding worth keeping for any future gate touching `@media` CSS**: confirmed
+directly (a minimal `@media (max-width: 500px)` repro) that jsdom's `getComputedStyle()` never
+reflects `@media` rules regardless of `window.innerWidth` — it always reports the base/non-media
+rule. This means any CSS-only responsive toggle (like the Activities table/card swap) can only be
+tested in jsdom via DOM-structure/content checks on both always-built representations plus grepping
+the shipped `<style>` tag text for the actual rule text (the same technique Gate 7's density test
+already established), never via a computed-style assertion — real visual/rendered confirmation has
+to come from real-Chromium screenshots instead, which this gate did at both 820px and 390px.
+
+Tests: new `tests/test_uiux_gate8_tablet_mobile_e2e.js` (42 checks, including a 27-route smoke test)
+— both Activities representations built for the same filtered set with matching field content; the
+mobile card's "⋯" menu proven to open the identical Edit/Delete as the table row's (proving the
+shared `buildActivityRowMenu` extraction works); CSS-bundle text-grep checks for the table/card and
+chart/timeline breakpoint swaps; at desktop width (1024) the Gantt tab builds the chart and NOT the
+timeline (`.gantt-mobile-timeline` genuinely absent from the DOM, not just hidden); at phone width
+(390) the timeline builds instead, correctly sorted by planned start, the chart SVG still builds too
+(tagged for CSS to pick), tapping a timeline card opens the real Activity Detail Panel, and switching
+back to desktop width removes the timeline and restores the zoom/jump controls; the new tablet
+touch-target tier's CSS text confirmed present with 44px sizing, and the original desktop 32px
+`.icon-btn` rule confirmed untouched. Full suite: **70 files, 2061 checks**, zero regressions (the
+virtualization test's own 21 checks pass again after the fix). Real-Chromium pass at 820px/390px
+(Activities table→cards, Gantt chart→timeline, 44px touch targets at tablet width) confirmed
+everything renders and behaves correctly — zero console errors. Zip verified separately post-merge
+(fresh extraction, real Chromium, `index.html`/`README.md` diffed byte-identical against the pushed
+`main` HEAD, Activities cards + Gantt timeline + tablet touch targets all exercised live) — clean.
+
+**Gate 8 is now COMPLETE — this closes out the brief's entire original 8-gate breakdown.** Gates 1,
+2, 3, 4, 5, 7, and 8 are all done; Gate 6 "Existing Modules" is the only item left, still on hold
+after Documents/Risk Register/Schedule (Vendors/RFI-TQ/Meetings/Change Orders not yet started).
+**Next step for a fresh session**: ask Aditya whether to resume Gate 6 for its remaining modules —
+there is no other gate left to move to in this initiative. Same standing rule as every other gate:
+inspect real code first, propose scope, wait for explicit approval, build exactly that, stop. Don't
+assume which module without asking.
 
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
