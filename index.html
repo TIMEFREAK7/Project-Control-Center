@@ -28152,6 +28152,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     heatmapFilter: null, // { probability, impact } or null
     editingId: null,
     expandedId: null,
+    openMenuId: null, // risk id whose "⋯" card menu is open, or null
     pendingPrefill: null, // { project_id, source_meeting_id } set by createFromMeeting()
   };
 
@@ -28381,11 +28382,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     container.appendChild(panel);
   }
 
-  function riskMatchesFilters(r) {
+  // UI/UX Overhaul Gate 6 (Risk Register): split out of the old single riskMatchesFilters()
+  // so the heat map can share the toolbar's own type/status/project/search filters
+  // without also applying the heat map's OWN probability x impact filter (which it
+  // produces, not consumes) — see the bug this fixes in renderHeatmap()'s own comment.
+  function riskMatchesToolbarFilters(r) {
     if (uiState.typeFilter && r.type !== uiState.typeFilter) return false;
     if (uiState.statusFilter && r.status !== uiState.statusFilter) return false;
     if (uiState.projectFilter && r.project_id !== uiState.projectFilter) return false;
-    if (uiState.heatmapFilter && (r.probability !== uiState.heatmapFilter.probability || r.impact !== uiState.heatmapFilter.impact)) return false;
     if (uiState.search) {
       var haystack = (r.title + " " + r.description + " " + r.owner).toLowerCase();
       if (haystack.indexOf(uiState.search.toLowerCase()) === -1) return false;
@@ -28393,7 +28397,22 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     return true;
   }
 
+  function riskMatchesFilters(r) {
+    if (!riskMatchesToolbarFilters(r)) return false;
+    if (uiState.heatmapFilter && (r.probability !== uiState.heatmapFilter.probability || r.impact !== uiState.heatmapFilter.impact)) return false;
+    return true;
+  }
+
+  // UI/UX Overhaul Gate 6 (Risk Register): this used to count `allRisks` — every risk
+  // in the whole app, regardless of the toolbar's own type/status/project/search
+  // filters — so filtering the list below to one project left the heat map showing
+  // stale, misleading counts from every project. Now counts only the risks the
+  // toolbar's filters currently allow through (still ignoring the heat map's OWN
+  // probability x impact filter, since that's what these cells produce, not consume).
   function renderHeatmap(allRisks, rerender) {
+    var risksInScope = allRisks.filter(riskMatchesToolbarFilters);
+    var isNarrowed = risksInScope.length !== allRisks.length;
+
     var wrap = document.createElement("div");
     wrap.className = "panel";
     wrap.style.marginBottom = "16px";
@@ -28408,7 +28427,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     sub.style.fontSize = "12px";
     sub.style.marginTop = "0";
     sub.style.marginBottom = "12px";
-    sub.textContent = "Click a cell to filter the list below by that probability/impact combination.";
+    sub.textContent = isNarrowed
+      ? "Reflects the current search/type/status/project filters below. Click a cell to also filter by that probability/impact combination."
+      : "Click a cell to filter the list below by that probability/impact combination.";
     wrap.appendChild(sub);
 
     var grid = document.createElement("div");
@@ -28432,7 +28453,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       grid.appendChild(rowLabel);
 
       ["low", "medium", "high"].forEach(function (impact) {
-        var count = allRisks.filter(function (r) {
+        var count = risksInScope.filter(function (r) {
           return r.probability === prob && r.impact === impact;
         }).length;
         var severity = SEVERITY_MATRIX[prob][impact];
@@ -28505,31 +28526,67 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       onChanged();
     };
 
-    var editBtn = document.createElement("button");
-    editBtn.className = "btn btn--ghost";
-    editBtn.textContent = "Edit";
-    editBtn.onclick = function () {
-      uiState.editingId = r.id;
-      onChanged();
-    };
-
-    var deleteBtn = document.createElement("button");
-    deleteBtn.className = "btn btn--ghost";
-    deleteBtn.textContent = "Delete";
-    deleteBtn.onclick = function () {
-      if (!window.confirm("Delete this register entry? This can't be undone.")) return;
-      window.PCC.store.update(function (data) {
-        data.risks = data.risks.filter(function (item) {
-          return item.id !== r.id;
-        });
-      });
-      window.PCC.notify("Register entry deleted.", "info");
-      onChanged();
-    };
-
     actions.appendChild(detailsBtn);
-    actions.appendChild(editBtn);
-    actions.appendChild(deleteBtn);
+
+    // UI/UX Overhaul Gate 6 (Risk Register): Edit/Delete moved off the card face and into
+    // a "⋯" contextual menu, matching the pattern established in portfolio.js (Gate 3) —
+    // Details stays as the one primary always-visible action.
+    var menuWrap = document.createElement("div");
+    menuWrap.className = "card-menu";
+
+    var menuBtn = document.createElement("button");
+    menuBtn.className = "icon-btn";
+    menuBtn.setAttribute("aria-label", "More actions");
+    menuBtn.textContent = "⋯";
+    menuBtn.onclick = function () {
+      uiState.openMenuId = uiState.openMenuId === r.id ? null : r.id;
+      onChanged();
+    };
+    menuWrap.appendChild(menuBtn);
+
+    if (uiState.openMenuId === r.id) {
+      var overlay = document.createElement("button");
+      overlay.className = "card-menu__overlay";
+      overlay.setAttribute("aria-label", "Close menu");
+      overlay.onclick = function () {
+        uiState.openMenuId = null;
+        onChanged();
+      };
+      menuWrap.appendChild(overlay);
+
+      var dropdown = document.createElement("div");
+      dropdown.className = "card-menu__dropdown";
+
+      var editItem = document.createElement("button");
+      editItem.className = "card-menu__item";
+      editItem.textContent = "Edit";
+      editItem.onclick = function () {
+        uiState.editingId = r.id;
+        uiState.openMenuId = null;
+        onChanged();
+      };
+
+      var deleteItem = document.createElement("button");
+      deleteItem.className = "card-menu__item";
+      deleteItem.textContent = "Delete";
+      deleteItem.onclick = function () {
+        if (!window.confirm("Delete this register entry? This can't be undone.")) return;
+        window.PCC.store.update(function (data) {
+          data.risks = data.risks.filter(function (item) {
+            return item.id !== r.id;
+          });
+        });
+        window.PCC.notify("Register entry deleted.", "info");
+        uiState.openMenuId = null;
+        onChanged();
+      };
+
+      dropdown.appendChild(editItem);
+      dropdown.appendChild(deleteItem);
+      menuWrap.appendChild(dropdown);
+    }
+
+    actions.appendChild(menuWrap);
 
     card.appendChild(main);
     card.appendChild(badgeWrap);
@@ -28679,7 +28736,20 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     h1.style.marginBottom = "16px";
     outlet.appendChild(h1);
 
-    outlet.appendChild(renderHeatmap(data.risks, rerender));
+    // UI/UX Overhaul Gate 6: the heat map now reflects the toolbar's own filters (see
+    // riskMatchesToolbarFilters()/renderHeatmap()'s own comments for the bug this
+    // fixes), so it needs its own refreshable container — the toolbar's search/type/
+    // status/project handlers below call refreshFilteredViews() instead of the lighter
+    // renderList() alone, updating both the heat map and the list without a full-page
+    // rerender (which would blow away the search input's focus/cursor position mid-type,
+    // the same reason renderList() existed as a separate partial-update path already).
+    var heatmapWrap = document.createElement("div");
+    outlet.appendChild(heatmapWrap);
+    function renderHeatmapPanel() {
+      heatmapWrap.innerHTML = "";
+      heatmapWrap.appendChild(renderHeatmap(data.risks, refreshFilteredViews));
+    }
+    renderHeatmapPanel();
 
     if (uiState.editingId) {
       var riskBeingEdited =
@@ -28701,7 +28771,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     searchInput.value = uiState.search;
     searchInput.oninput = function () {
       uiState.search = searchInput.value;
-      renderList();
+      refreshFilteredViews();
     };
 
     var typeSelect = document.createElement("select");
@@ -28718,7 +28788,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     typeSelect.value = uiState.typeFilter;
     typeSelect.onchange = function () {
       uiState.typeFilter = typeSelect.value;
-      renderList();
+      refreshFilteredViews();
     };
 
     var statusSelect = document.createElement("select");
@@ -28735,7 +28805,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     statusSelect.value = uiState.statusFilter;
     statusSelect.onchange = function () {
       uiState.statusFilter = statusSelect.value;
-      renderList();
+      refreshFilteredViews();
     };
 
     var projSelectFilter = document.createElement("select");
@@ -28752,7 +28822,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     projSelectFilter.value = uiState.projectFilter;
     projSelectFilter.onchange = function () {
       uiState.projectFilter = projSelectFilter.value;
-      renderList();
+      refreshFilteredViews();
     };
 
     var spacer = document.createElement("div");
@@ -28805,6 +28875,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         list.appendChild(renderRiskEntry(r, projects, rerender));
       });
       listWrap.appendChild(list);
+    }
+
+    // Refreshes both the heat map and the list without a full-page rerender — used by
+    // every toolbar filter control so the heat map's counts never go stale relative to
+    // what's actually listed below it.
+    function refreshFilteredViews() {
+      renderHeatmapPanel();
+      renderList();
     }
 
     renderList();
