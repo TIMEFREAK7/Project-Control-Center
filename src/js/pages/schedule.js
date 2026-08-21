@@ -113,6 +113,17 @@
     activityFilterWbsId: "",
     activityFilterStatus: "",
     activityFilterCritical: false,
+    // UI/UX Overhaul Gate 7 (Desktop/Laptop Productivity — Better Data Grids): Schedule
+    // Activities became a real sortable <table> grid with a column-visibility toggle
+    // and a frozen (pinned) Activity-name column, matching the brief's own literal
+    // example table. Deliberately module-level uiState, not a persisted setting — same
+    // "resets on reload" treatment every other per-page display preference in this app
+    // already gets (uiState.tab, uiState.activityFilter, etc.), not a schema change.
+    activitySortKey: null, // one of ACTIVITY_GRID_COLUMNS' keys, or null for insertion order
+    activitySortDir: "asc", // 'asc' | 'desc'
+    activityVisibleColumns: { wbs: true, type: true, start: true, finish: true, percent_complete: true, float: true, status: true },
+    activityColumnsMenuOpen: false,
+    activityRowMenuId: null, // activity id whose row-level "⋯" menu is open, or null
   };
 
   function projectName(projects, projectId) {
@@ -1828,6 +1839,62 @@
     return true;
   }
 
+  // UI/UX Overhaul Gate 7 (Better Data Grids): the columns the Activities grid can
+  // show/hide via its "Columns" toggle. "name" (the frozen first column) and the
+  // Actions column are never hideable, so they're not in this list — only the seven
+  // columns the brief's own example table implies (WBS/Type/Start/Finish/%
+  // Complete/Float/Status).
+  var ACTIVITY_GRID_COLUMNS = [
+    { key: "wbs", label: "WBS" },
+    { key: "type", label: "Type" },
+    { key: "start", label: "Start" },
+    { key: "finish", label: "Finish" },
+    { key: "percent_complete", label: "% Complete" },
+    { key: "float", label: "Float" },
+    { key: "status", label: "Status" },
+  ];
+
+  function activitySortValue(a, wbsItems, key) {
+    switch (key) {
+      case "name":
+        return (a.name || "").toLowerCase();
+      case "wbs":
+        return wbsName(wbsItems, a.wbs_id).toLowerCase();
+      case "type":
+        return ACTIVITY_TYPE_LABELS[a.activity_type] || "";
+      case "start":
+        return a.planned_start || "";
+      case "finish":
+        return a.planned_finish || "";
+      case "percent_complete":
+        return a.percent_complete || 0;
+      // Unlinked/not-yet-calculated float sorts to the "least urgent" end regardless of
+      // direction — treated as larger than any real float value, same as this tab's
+      // pre-existing "Critical only" filter already treats total_float == null as
+      // "not critical."
+      case "float":
+        return a.total_float == null ? Infinity : a.total_float;
+      case "status":
+        return ACTIVITY_STATUS_LABELS[a.status] || "";
+      default:
+        return "";
+    }
+  }
+
+  function sortActivitiesForGrid(activities, wbsItems) {
+    if (!uiState.activitySortKey) return activities;
+    var key = uiState.activitySortKey;
+    var dir = uiState.activitySortDir === "desc" ? -1 : 1;
+    // .slice() first: never sort the caller's own filtered array in place.
+    return activities.slice().sort(function (a, b) {
+      var va = activitySortValue(a, wbsItems, key);
+      var vb = activitySortValue(b, wbsItems, key);
+      if (va < vb) return -1 * dir;
+      if (va > vb) return 1 * dir;
+      return 0;
+    });
+  }
+
   function renderActivitiesTab(container, data, rerender) {
     var scheduleActivities = data.activities.filter(function (a) {
       return a.schedule_id === uiState.scheduleId;
@@ -1942,6 +2009,52 @@
     toolbar.appendChild(clearBtn);
     updateClearBtnVisibility();
 
+    // UI/UX Overhaul Gate 7 (Better Data Grids): column-visibility toggle, same
+    // .card-menu popover Portfolio/Risk Register's "⋯" menus already use — a checklist
+    // of the grid's seven hideable columns (Activity and Actions are never hideable, so
+    // they're not offered here) via .card-menu__checkbox-item.
+    var columnsMenuWrap = document.createElement("div");
+    columnsMenuWrap.className = "card-menu";
+
+    var columnsMenuBtn = document.createElement("button");
+    columnsMenuBtn.className = "btn btn--ghost";
+    columnsMenuBtn.textContent = "Columns";
+    columnsMenuBtn.onclick = function () {
+      uiState.activityColumnsMenuOpen = !uiState.activityColumnsMenuOpen;
+      rerender();
+    };
+    columnsMenuWrap.appendChild(columnsMenuBtn);
+
+    if (uiState.activityColumnsMenuOpen) {
+      var columnsOverlay = document.createElement("button");
+      columnsOverlay.className = "card-menu__overlay";
+      columnsOverlay.setAttribute("aria-label", "Close column menu");
+      columnsOverlay.onclick = function () {
+        uiState.activityColumnsMenuOpen = false;
+        rerender();
+      };
+      columnsMenuWrap.appendChild(columnsOverlay);
+
+      var columnsDropdown = document.createElement("div");
+      columnsDropdown.className = "card-menu__dropdown";
+      ACTIVITY_GRID_COLUMNS.forEach(function (col) {
+        var itemLabel = document.createElement("label");
+        itemLabel.className = "card-menu__checkbox-item";
+        var itemCheckbox = document.createElement("input");
+        itemCheckbox.type = "checkbox";
+        itemCheckbox.checked = uiState.activityVisibleColumns[col.key];
+        itemCheckbox.onchange = function () {
+          uiState.activityVisibleColumns[col.key] = itemCheckbox.checked;
+          rerender();
+        };
+        itemLabel.appendChild(itemCheckbox);
+        itemLabel.appendChild(document.createTextNode(col.label));
+        columnsDropdown.appendChild(itemLabel);
+      });
+      columnsMenuWrap.appendChild(columnsDropdown);
+    }
+    toolbar.appendChild(columnsMenuWrap);
+
     var spacer = document.createElement("div");
     spacer.className = "toolbar__spacer";
     toolbar.appendChild(spacer);
@@ -1960,9 +2073,38 @@
     var listWrap = document.createElement("div");
     container.appendChild(listWrap);
 
+    // UI/UX Overhaul Gate 7 (Better Data Grids): a sortable <th> whose click target is
+    // just the label+arrow (.data-table__sort-btn), not the cell's full padding box.
+    // Clicking the currently-active column flips direction instead of resetting it \u2014
+    // the usual spreadsheet/data-grid convention.
+    function buildSortableTh(key, label) {
+      var th = document.createElement("th");
+      var btn = document.createElement("button");
+      btn.className = "data-table__sort-btn";
+      btn.type = "button";
+      btn.appendChild(document.createTextNode(label));
+      if (uiState.activitySortKey === key) {
+        var arrow = document.createElement("span");
+        arrow.className = "data-table__sort-arrow";
+        arrow.textContent = uiState.activitySortDir === "desc" ? "\u25bc" : "\u25b2";
+        btn.appendChild(arrow);
+      }
+      btn.onclick = function () {
+        if (uiState.activitySortKey === key) {
+          uiState.activitySortDir = uiState.activitySortDir === "asc" ? "desc" : "asc";
+        } else {
+          uiState.activitySortKey = key;
+          uiState.activitySortDir = "asc";
+        }
+        renderList();
+      };
+      th.appendChild(btn);
+      return th;
+    }
+
     function renderList() {
       listWrap.innerHTML = "";
-      var filtered = scheduleActivities.filter(activityMatchesActivitiesTabFilter);
+      var filtered = sortActivitiesForGrid(scheduleActivities.filter(activityMatchesActivitiesTabFilter), wbsItems);
 
       if (filtered.length === 0) {
         var empty = document.createElement("div");
@@ -1976,86 +2118,169 @@
         return;
       }
 
-      var table = document.createElement("div");
-      table.className = "project-list";
+      var panel = document.createElement("div");
+      panel.className = "panel";
+
+      // Horizontal scroll lives on its own wrapper, not the .panel itself, so the
+      // panel's own border/shadow/padding don't visually break mid-scroll \u2014 same split
+      // the Gantt tab's own chart wrapper already uses for the same reason.
+      var scrollWrap = document.createElement("div");
+      scrollWrap.style.overflowX = "auto";
+
+      var table = document.createElement("table");
+      table.className = "data-table data-table--sticky-header data-table--frozen-first-col";
+
+      var thead = document.createElement("thead");
+      var headRow = document.createElement("tr");
+      headRow.appendChild(buildSortableTh("name", "Activity"));
+      ACTIVITY_GRID_COLUMNS.forEach(function (col) {
+        if (uiState.activityVisibleColumns[col.key]) headRow.appendChild(buildSortableTh(col.key, col.label));
+      });
+      var actionsHeadTh = document.createElement("th");
+      actionsHeadTh.textContent = "";
+      headRow.appendChild(actionsHeadTh);
+      thead.appendChild(headRow);
+      table.appendChild(thead);
+
+      var tbody = document.createElement("tbody");
       filtered.forEach(function (a) {
-        var row = document.createElement("div");
-        row.className = "project-entry";
+        var row = document.createElement("tr");
 
-        var card = document.createElement("div");
-        card.className = "detail-card";
-        card.style.display = "flex";
-        card.style.justifyContent = "space-between";
-        card.style.alignItems = "center";
-        card.style.gap = "12px";
-        card.style.flexWrap = "wrap";
-
-        var main = document.createElement("div");
-        main.innerHTML =
-          "<strong>" + a.name + "</strong><br/>" +
-          "<span class='text-secondary' style='font-size:12px;'>" +
-          wbsName(wbsItems, a.wbs_id) + " \u00b7 " + ACTIVITY_TYPE_LABELS[a.activity_type] +
-          (a.planned_start ? " \u00b7 " + a.planned_start : "") +
-          (a.planned_finish ? " \u2192 " + a.planned_finish : "") +
-          " \u00b7 " + (a.percent_complete || 0) + "% complete" +
-          " \u00b7 " + (a.physical_progress || 0) + "% physical</span>";
-        card.appendChild(main);
-
-        var badge = document.createElement("span");
-        badge.className =
-          "status-badge " +
-          (a.status === "complete" ? "status-badge--complete" : a.status === "on_hold" ? "status-badge--at_risk" : "status-badge--info");
-        badge.textContent = ACTIVITY_STATUS_LABELS[a.status];
-        card.appendChild(badge);
-
-        if (a.total_float != null) {
-          var floatBadge = document.createElement("span");
-          floatBadge.style.marginLeft = "6px";
-          if (a.total_float <= 0) {
-            floatBadge.className = "status-badge status-badge--critical";
-            floatBadge.textContent = "Critical";
-          } else {
-            floatBadge.className = "status-badge status-badge--info";
-            floatBadge.textContent = a.total_float + "d float";
-          }
-          card.appendChild(floatBadge);
-        }
-
+        var nameTd = document.createElement("td");
+        nameTd.appendChild(document.createTextNode(a.name || "(unnamed activity)"));
         if (a.is_out_of_sequence) {
-          var oosBadge = document.createElement("span");
-          oosBadge.className = "status-badge status-badge--at_risk";
-          oosBadge.style.marginLeft = "6px";
-          oosBadge.textContent = "Out of Sequence";
-          oosBadge.title = "This activity had actual progress recorded before its predecessor logic would have allowed it to start.";
-          card.appendChild(oosBadge);
+          var oosIcon = document.createElement("span");
+          oosIcon.textContent = " \u26a0";
+          oosIcon.title = "Out of sequence: this activity had actual progress recorded before its predecessor logic would have allowed it to start.";
+          nameTd.appendChild(oosIcon);
+        }
+        row.appendChild(nameTd);
+
+        if (uiState.activityVisibleColumns.wbs) {
+          var wbsTd = document.createElement("td");
+          wbsTd.textContent = wbsName(wbsItems, a.wbs_id);
+          row.appendChild(wbsTd);
         }
 
-        var actions = document.createElement("div");
-        actions.style.display = "flex";
-        actions.style.gap = "8px";
+        if (uiState.activityVisibleColumns.type) {
+          var typeTd = document.createElement("td");
+          typeTd.textContent = ACTIVITY_TYPE_LABELS[a.activity_type];
+          row.appendChild(typeTd);
+        }
 
-        var editBtn = document.createElement("button");
-        editBtn.className = "btn btn--ghost";
-        editBtn.textContent = "Edit";
-        editBtn.onclick = function () {
-          uiState.editingActivityId = a.id;
+        if (uiState.activityVisibleColumns.start) {
+          var startTd = document.createElement("td");
+          startTd.textContent = a.planned_start || "\u2014";
+          row.appendChild(startTd);
+        }
+
+        if (uiState.activityVisibleColumns.finish) {
+          var finishTd = document.createElement("td");
+          finishTd.textContent = a.planned_finish || "\u2014";
+          row.appendChild(finishTd);
+        }
+
+        if (uiState.activityVisibleColumns.percent_complete) {
+          var pctTd = document.createElement("td");
+          pctTd.innerHTML =
+            (a.percent_complete || 0) + "%" +
+            "<br/><span class='text-secondary' style='font-size:11px;'>" + (a.physical_progress || 0) + "% physical</span>";
+          row.appendChild(pctTd);
+        }
+
+        if (uiState.activityVisibleColumns.float) {
+          var floatTd = document.createElement("td");
+          if (a.total_float != null) {
+            var floatBadge = document.createElement("span");
+            if (a.total_float <= 0) {
+              floatBadge.className = "status-badge status-badge--critical";
+              floatBadge.textContent = "Critical";
+            } else {
+              floatBadge.className = "status-badge status-badge--info";
+              floatBadge.textContent = a.total_float + "d float";
+            }
+            floatTd.appendChild(floatBadge);
+          } else {
+            floatTd.textContent = "\u2014";
+          }
+          row.appendChild(floatTd);
+        }
+
+        if (uiState.activityVisibleColumns.status) {
+          var statusTd = document.createElement("td");
+          var statusBadge = document.createElement("span");
+          statusBadge.className =
+            "status-badge " +
+            (a.status === "complete" ? "status-badge--complete" : a.status === "on_hold" ? "status-badge--at_risk" : "status-badge--info");
+          statusBadge.textContent = ACTIVITY_STATUS_LABELS[a.status];
+          statusTd.appendChild(statusBadge);
+          row.appendChild(statusTd);
+        }
+
+        // Row-level "\u22ef" menu (Edit/Delete), same .card-menu pattern established for
+        // Portfolio/Risk Register cards \u2014 a table row's Actions cell is too narrow for
+        // two full-width text buttons the way the old flex-card layout had room for.
+        var actionsTd = document.createElement("td");
+        var rowMenuWrap = document.createElement("div");
+        rowMenuWrap.className = "card-menu";
+
+        var rowMenuBtn = document.createElement("button");
+        rowMenuBtn.className = "icon-btn";
+        rowMenuBtn.setAttribute("aria-label", "More actions");
+        rowMenuBtn.textContent = "\u22ef";
+        rowMenuBtn.onclick = function () {
+          uiState.activityRowMenuId = uiState.activityRowMenuId === a.id ? null : a.id;
           rerender();
         };
-        actions.appendChild(editBtn);
+        rowMenuWrap.appendChild(rowMenuBtn);
 
-        var deleteBtn = document.createElement("button");
-        deleteBtn.className = "btn btn--ghost";
-        deleteBtn.textContent = "Delete";
-        deleteBtn.onclick = function () {
-          deleteActivityWithConfirm(a, rerender);
-        };
-        actions.appendChild(deleteBtn);
+        if (uiState.activityRowMenuId === a.id) {
+          var rowOverlay = document.createElement("button");
+          rowOverlay.className = "card-menu__overlay";
+          rowOverlay.setAttribute("aria-label", "Close menu");
+          rowOverlay.onclick = function () {
+            uiState.activityRowMenuId = null;
+            rerender();
+          };
+          rowMenuWrap.appendChild(rowOverlay);
 
-        card.appendChild(actions);
-        row.appendChild(card);
-        table.appendChild(row);
+          var rowDropdown = document.createElement("div");
+          rowDropdown.className = "card-menu__dropdown";
+
+          var editItem = document.createElement("button");
+          editItem.className = "card-menu__item";
+          editItem.textContent = "Edit";
+          editItem.onclick = function () {
+            uiState.editingActivityId = a.id;
+            uiState.activityRowMenuId = null;
+            rerender();
+          };
+
+          var deleteItem = document.createElement("button");
+          deleteItem.className = "card-menu__item";
+          deleteItem.textContent = "Delete";
+          deleteItem.onclick = function () {
+            deleteActivityWithConfirm(a, function () {
+              uiState.activityRowMenuId = null;
+              rerender();
+            });
+          };
+
+          rowDropdown.appendChild(editItem);
+          rowDropdown.appendChild(deleteItem);
+          rowMenuWrap.appendChild(rowDropdown);
+        }
+
+        actionsTd.appendChild(rowMenuWrap);
+        row.appendChild(actionsTd);
+
+        tbody.appendChild(row);
       });
-      listWrap.appendChild(table);
+      table.appendChild(tbody);
+
+      scrollWrap.appendChild(table);
+      panel.appendChild(scrollWrap);
+      listWrap.appendChild(panel);
     }
 
     renderList();

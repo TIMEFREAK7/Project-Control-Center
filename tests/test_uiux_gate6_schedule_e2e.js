@@ -119,7 +119,7 @@ function findButtonByText(dom, text, root) {
   });
 
   await check("all four activities show with no filter applied", () => {
-    var rows = outlet().querySelectorAll(".project-entry");
+    var rows = outlet().querySelectorAll(".data-table tbody tr");
     assert.strictEqual(rows.length, 4);
   });
 
@@ -131,7 +131,7 @@ function findButtonByText(dom, text, root) {
     wbsSelect.value = wbsStructureId;
     wbsSelect.dispatchEvent(new win.Event("change"));
 
-    var rows = outlet().querySelectorAll(".project-entry");
+    var rows = outlet().querySelectorAll(".data-table tbody tr");
     assert.strictEqual(rows.length, 2);
     assert.ok(outlet().textContent.indexOf("Steel Erection") !== -1);
     assert.ok(outlet().textContent.indexOf("Excavation") === -1);
@@ -154,7 +154,7 @@ function findButtonByText(dom, text, root) {
     statusSelect.value = "in_progress";
     statusSelect.dispatchEvent(new win.Event("change"));
 
-    var rows = outlet().querySelectorAll(".project-entry");
+    var rows = outlet().querySelectorAll(".data-table tbody tr");
     assert.strictEqual(rows.length, 1);
     assert.ok(outlet().textContent.indexOf("Foundation Pour") !== -1);
 
@@ -171,7 +171,7 @@ function findButtonByText(dom, text, root) {
     checkbox.checked = true;
     checkbox.dispatchEvent(new win.Event("change"));
 
-    var rows = outlet().querySelectorAll(".project-entry");
+    var rows = outlet().querySelectorAll(".data-table tbody tr");
     // Excavation (float 0) and Foundation Pour (float 0) are critical; Steel Erection
     // (float 5) and the milestone (float null) are not.
     assert.strictEqual(rows.length, 2);
@@ -189,7 +189,7 @@ function findButtonByText(dom, text, root) {
     searchInput.value = "Steel";
     searchInput.dispatchEvent(new win.Event("input"));
 
-    var rows = outlet().querySelectorAll(".project-entry");
+    var rows = outlet().querySelectorAll(".data-table tbody tr");
     assert.strictEqual(rows.length, 1);
     assert.ok(outlet().textContent.indexOf("Steel Erection") !== -1);
 
@@ -208,7 +208,7 @@ function findButtonByText(dom, text, root) {
     var clearBtn = findButtonByText(dom, "Clear Filters", actToolbar());
     clearBtn.click();
 
-    var rows = outlet().querySelectorAll(".project-entry");
+    var rows = outlet().querySelectorAll(".data-table tbody tr");
     assert.strictEqual(rows.length, 4, "all activities must show again after clearing");
 
     var freshClearBtn = findButtonByText(dom, "Clear Filters", actToolbar());

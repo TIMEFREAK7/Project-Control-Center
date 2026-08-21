@@ -446,15 +446,61 @@ footer.app-footer {
   background-color: var(--bg-paper);
 }
 
-/* Opt-in modifier — inert until a page wraps its table in a fixed/scrollable-height
-   container and adds this class. Groundwork for the denser desktop/laptop data grids
-   described in the redesign brief (Schedule/Documents/Cost); no existing table uses it
-   yet, so this has no visible effect this gate. */
+/* Opt-in modifier, first given a real caller in UI/UX Overhaul Gate 7 (Better Data
+   Grids — Schedule Activities). Sticks each <th> to the top of whatever scrolling
+   ancestor the table sits in (the page itself, when the table's own wrapper only
+   scrolls horizontally — see .data-table--frozen-first-col's own comment on why that
+   split matters for the corner cell). */
 .data-table--sticky-header th {
   position: sticky;
   top: 0;
   background-color: var(--bg-paper);
   z-index: 1;
+}
+
+/* Opt-in modifier, UI/UX Overhaul Gate 7 (Better Data Grids). Pins the first column
+   (the row's own identifying label — e.g. Activity name) so it stays visible while the
+   rest of a wide grid scrolls horizontally underneath it. Needs its own background
+   (matching .panel's, which every .data-table today renders inside) so scrolled
+   content doesn't visibly bleed through the sticky cells. When BOTH this and
+   --sticky-header apply to the same table, the top-left corner cell is sticky on two
+   axes at once and needs to paint above both the plain sticky-top header cells and the
+   plain sticky-left body cells — hence the higher z-index on that one intersection. */
+.data-table--frozen-first-col th:first-child,
+.data-table--frozen-first-col td:first-child {
+  position: sticky;
+  left: 0;
+  background-color: var(--bg-paper);
+  z-index: 1;
+  border-right: 1px solid var(--divider);
+}
+.data-table--sticky-header.data-table--frozen-first-col th:first-child {
+  z-index: 2;
+}
+
+/* Opt-in modifier, UI/UX Overhaul Gate 7 (Better Data Grids). A sortable column
+   header's clickable label + direction indicator — kept as a plain inline-flex button
+   rather than restyling the whole <th>, so only the label/arrow are the click target,
+   not the cell's full padding box. */
+.data-table__sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.data-table__sort-btn:hover {
+  color: var(--text-primary);
+}
+.data-table__sort-arrow {
+  font-size: 9px;
+  opacity: 0.7;
 }
 
 .btn {
@@ -890,6 +936,24 @@ a:focus-visible {
 }
 
 .card-menu__item:hover {
+  background-color: var(--hover-bg);
+}
+
+/* UI/UX Overhaul Gate 7 (Better Data Grids): a checkbox row inside .card-menu__dropdown
+   — same popover, different item shape (a toggle, not an action) — used by Schedule
+   Activities' column-visibility menu. Kept as its own class rather than overloading
+   .card-menu__item since a <label> needs flex alignment a <button> doesn't. */
+.card-menu__checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.card-menu__checkbox-item:hover {
   background-color: var(--hover-bg);
 }
 
