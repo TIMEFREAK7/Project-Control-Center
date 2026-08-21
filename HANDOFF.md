@@ -63,11 +63,11 @@ that override default behavior).
 
 ## NEW INITIATIVE: UI/UX Overhaul (started 2026-08-20) — a THIRD, separate roadmap
 
-`main` is up to date through **UI/UX Overhaul Gate 6 (Risk Register — second Existing-Modules
-gate)**, plus a standalone bug fix for the Gantt chart's Today/Data Date label overlap (shipped
-between the Documents and Risk Register Gate 6 passes — see the "Recently fixed bugs / notable
-gotchas" section near the end of this file). `schema_version` **52** (unchanged since Gate 2 —
-Gates 3-6 are all pure display/computed-stats/reorganization work, no schema touch). Gate 2 included its
+`main` is up to date through **UI/UX Overhaul Gate 6 (Schedule — third Existing-Modules gate)**,
+plus a standalone bug fix for the Gantt chart's Today/Data Date label overlap (shipped between
+the Documents and Risk Register Gate 6 passes — see the "Recently fixed bugs / notable gotchas"
+section near the end of this file). `schema_version` **52** (unchanged since Gate 2 — Gates 3-6
+are all pure display/computed-stats/reorganization work, no schema touch). Gate 2 included its
 post-ship nav revision (an Outlook-Online-style hidden overlay with accordion groups, replacing
 Gate 2's original persistent/collapsible sidebar — see that gate's own write-up below for detail).
 With Tiers A-F, Tiers 1-2, and Tier 3 all complete/closed out (see below), Aditya started an
@@ -662,12 +662,75 @@ project filter narrowing both the heat map and the list together) confirmed ever
 behaves correctly — zero console errors. Zip verified separately post-merge (fresh extraction, real
 Chromium, `page.title()` and a route render both confirmed clean) — clean.
 
-**Next step for a fresh session: ask Aditya what's next (another Gate 6 module — Schedule/Vendors/
-RFI/TQ/Meetings/Change Orders/"other modules actually present" per the brief — or a different
-initiative entirely) rather than assuming approval to continue automatically** — this initiative's
-own standing rule (inspect, propose, wait for explicit approval, build exactly that, stop) applies
-to every gate, including the next one, and Gate 6 stays "one module at a time" until every module
-has had its own pass. Ask which module before picking one unilaterally.
+**UI/UX Overhaul Gate 6 — Schedule (third "Existing Modules, one at a time" gate)** (merge
+`ec95ae0`). Aditya named the module directly again ("Schedule") — no `AskUserQuestion` needed to
+pick it.
+
+Inspection (real-Chromium screenshots across all six sub-tabs — Activities, Gantt, WBS,
+Relationships, Baselines, What-If — with a seeded schedule) found Schedule is already **the most
+mature module in the app**: the Gantt tab has a full filter toolbar (WBS/discipline/contractor/
+responsible + a "quick" status-bucket select for critical/near-critical/delayed/completed/in
+progress/not started/milestones), zoom controls, jump buttons, a legend, and baseline-overlay
+support; Baselines and What-If are clean, purpose-built panels. The Today/Data Date label fix from
+earlier this session was confirmed still working during this same inspection pass. One real,
+scoped gap surfaced: the **Activities tab** (the flat list view used for hand-entry/editing) only
+had a text-search box — no way to filter by WBS/status/critical there, even though the Gantt tab a
+few clicks away already computes all three over the exact same activity list. Confirmed with
+Aditya via `AskUserQuestion` (three options: filters-only / filters + card-menu consistency for
+Activities-WBS-Relationships rows / skip Schedule) — **filters-only, recommended and chosen**. The
+card-menu option was declined since those rows only carry 2 actions (Edit/Delete) each, not the
+3+-action clutter that justified it on Risk Register/Portfolio.
+
+What shipped, `schedule.js` only, no schema/CSS change:
+- **`activityMatchesActivitiesTabFilter(a)`** (new) — name search (unchanged) + WBS/status/
+  critical. Deliberately NOT a reuse of the existing `activityMatchesGanttFilter()`, which carries
+  chart-only fields (discipline/contractor/responsiblePerson/the referenceDate-driven "quick"
+  bucket) this flat list has no use for — same "each register keeps its own small filter
+  predicate" precedent this initiative has followed since Gate 6 Risk Register's own
+  `riskMatchesToolbarFilters()` split.
+- **New toolbar controls on the Activities tab**: a WBS `<select>`, a Status `<select>`
+  (Not Started/In Progress/Complete/On Hold, from the existing `ACTIVITY_STATUS_LABELS`), a
+  "Critical only" checkbox (`total_float <= 0`, same semantics as the Gantt tab's own "Critical"
+  quick-filter option), and a "Clear Filters" button.
+
+**One bug self-caught before shipping, during the first real-Chromium pass (not written into a
+test first)**: the WBS/status/critical controls initially called the same lightweight
+`renderList()` the search box already used (to preserve the search input's own typing focus —
+this app's standing convention) — which only rebuilds the activity list, not the toolbar it lives
+in. Since "Clear Filters" is conditionally shown based on whether ANY filter is active, typing in
+the search box alone (with no WBS/status/critical set) left the button silently stuck hidden even
+though a filter was now active — the exact shape of staleness bug this same Gate 6 pass's Risk
+Register predecessor caught in its heat map. Fixed by: keeping the search box on its lighter
+`renderList()`-only path (still needed to preserve focus while typing), switching the WBS/status/
+critical controls to call a full `rerender()` instead (no focus concern for selects/checkboxes —
+unlike a text input, nothing is lost by rebuilding them), and making "Clear Filters" always exist
+in the DOM with its visibility toggled directly (`style.display`) from BOTH paths, so the search
+box's lighter update can still keep it in sync without needing to rebuild the toolbar around it.
+**General lesson, now confirmed twice in the same gate cycle**: any toolbar element whose
+visibility depends on "is any filter active" needs to be reachable from every filter control's own
+update path, including ones that deliberately skip a full rerender for focus-preservation reasons
+— don't assume a lighter partial-update path will incidentally cover UI that lives outside what it
+directly redraws.
+
+Tests: new `tests/test_uiux_gate6_schedule_e2e.js` (40 checks, including a 27-route smoke test) —
+the toolbar's four controls (search/WBS/status/critical), each narrowing the list correctly, the
+"Clear Filters" button appearing/disappearing correctly across ALL FOUR paths including the
+search-only case that exposed the bug above, the zero-match empty state, "Clear Filters" resetting
+everything together, and the Gantt tab still rendering (SVG present, no thrown errors) after the
+Activities tab change. No pre-existing test files needed updates — nothing in the existing suite
+asserted on the Activities tab's toolbar shape or empty-state text before this gate. Full suite:
+**66 files, 1898 checks**, zero regressions. Real-Chromium pass (default Activities view, WBS
+filter narrowing to one WBS item's activities, "Critical only" narrowing to the two zero-float
+activities, and the search-only case showing "Clear Filters" appearing correctly) confirmed
+everything renders and behaves correctly — zero console errors. Zip verified separately post-merge
+(fresh extraction, real Chromium, Activities tab filters exercised) — clean.
+
+**Next step for a fresh session: ask Aditya what's next (another Gate 6 module — Vendors/RFI/TQ/
+Meetings/Change Orders/"other modules actually present" per the brief — or a different initiative
+entirely) rather than assuming approval to continue automatically** — this initiative's own
+standing rule (inspect, propose, wait for explicit approval, build exactly that, stop) applies to
+every gate, including the next one, and Gate 6 stays "one module at a time" until every module has
+had its own pass. Ask which module before picking one unilaterally.
 
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
