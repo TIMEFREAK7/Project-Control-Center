@@ -30,6 +30,20 @@
     archived: "Archived",
   };
   var uiState = {
+    // UI/UX Overhaul Gate 6 (Documents): this register never had a filter toolbar at
+    // all — render() showed every document across every project in one flat list, the
+    // only register in the app with no search/project/category/status narrowing (Risk
+    // Register/Portfolio/RFI-TQ all have one). Same field names/conventions as
+    // risks.js's own uiState (search/statusFilter/projectFilter) plus a categoryFilter.
+    search: "",
+    categoryFilter: "",
+    statusFilter: "",
+    projectFilter: "",
+    // Which document is shown in the new two-panel register+preview layout's right-hand
+    // pane, or null if none selected yet. Replaces the old per-row inline expand — the
+    // preview pane now always shows full detail for whichever document is selected,
+    // instead of a separate accordion under each row.
+    selectedDocId: null,
     formOpen: false,
     pendingFile: null, // { name, size, type, extraction } once read
     pendingProjectId: "",
@@ -38,7 +52,11 @@
     pendingMeetingId: "", // set by createFromMeeting() when opened via a meeting's "Attach Document" button
     readError: null,
     readingLabel: null,
-    expandedDocId: null, // document id whose extracted data/text is expanded, or null
+    // Whether the selected document's extracted data/text is expanded within the
+    // preview pane — a plain toggle (not per-document) since only one document is ever
+    // selected/previewed at a time; reset whenever the selection changes (see
+    // selectDocument() below).
+    previewExtractionExpanded: false,
     duplicateMatches: [], // [{ record, reason, strength }] for the current pendingFile, or []
     duplicateAcknowledged: false, // true once the user clicks "Continue Anyway" on a warning
     // Gate 16 (Document Control 3): classification fields, all optional, additive on top
@@ -140,6 +158,12 @@
         select.appendChild(opt);
       });
     select.value = selectedActivityId || "";
+  }
+
+  function esc(s) {
+    var div = document.createElement("div");
+    div.textContent = s === null || s === undefined ? "" : String(s);
+    return div.innerHTML;
   }
 
   function formatBytes(bytes) {
@@ -1177,78 +1201,123 @@
     return "Text extracted (" + extraction.char_count.toLocaleString() + " chars" + (extraction.page_count ? ", " + extraction.page_count + " pages" : "") + ")";
   }
 
-  function renderDocumentRow(doc, data, onChanged) {
-    var card = document.createElement("div");
-    card.className = "project-card";
+  /** UI/UX Overhaul Gate 6 (Documents): the old renderDocumentRow()/renderDocumentEntry()
+   * pair crammed every field (project/size/date/meeting/activity/type/discipline/number+
+   * revision/vendor/package/revision-number) into one dense meta line, plus up to 7
+   * action buttons — the "expose every database field" pattern the brief calls out.
+   * Split into a compact list row (renderDocumentListItem, left pane) and a full-detail
+   * preview pane (renderDocumentPreviewPanel, right pane) per the brief's own "Document
+   * Experience" section. All business logic below (status edit, delete-with-confirm,
+   * new-revision prefill, history expand, extraction preview) is copied verbatim from
+   * the old renderDocumentRow — only WHERE it renders changed. */
 
-    // Gate 17 (Document Control 4): version control. `doc` passed in here is always the
-    // latest revision (see render()'s use of latestDocuments()) — allRevisions is every
-    // row sharing its document_group_id, newest first, doc itself always allRevisions[0].
+  function selectDocument(docId) {
+    uiState.selectedDocId = docId;
+    uiState.previewExtractionExpanded = false;
+  }
+
+  function renderDocumentListItem(doc, data, isSelected, onSelect) {
+    var item = document.createElement("div");
+    item.className = "doc-register-item" + (isSelected ? " doc-register-item--selected" : "");
+    item.onclick = onSelect;
+
+    var name = document.createElement("div");
+    name.className = "doc-register-item__name";
+    name.textContent = doc.filename;
+    item.appendChild(name);
+
+    var meta = document.createElement("div");
+    meta.className = "doc-register-item__meta";
+    meta.textContent =
+      projectName(data, doc.project_id) +
+      (doc.document_number ? " · " + doc.document_number + (doc.revision ? " Rev " + doc.revision : "") : "");
+    item.appendChild(meta);
+
+    var badges = document.createElement("div");
+    badges.className = "doc-register-item__badges";
+    var catBadge = document.createElement("span");
+    catBadge.className = "status-badge status-badge--complete";
+    catBadge.textContent = CATEGORY_LABELS[doc.category] || doc.category;
+    badges.appendChild(catBadge);
+    var statusBadge = document.createElement("span");
+    statusBadge.className = "status-badge status-badge--info";
+    statusBadge.textContent = STATUS_LABELS[doc.status] || doc.status;
+    badges.appendChild(statusBadge);
+    if (doc.is_duplicate) {
+      var dupBadge = document.createElement("span");
+      dupBadge.className = "status-badge status-badge--at_risk";
+      dupBadge.textContent = "Possible Duplicate";
+      dupBadge.title = doc.duplicate_reason || "Flagged as a possible duplicate at upload time.";
+      badges.appendChild(dupBadge);
+    }
+    item.appendChild(badges);
+
+    return item;
+  }
+
+  function renderDocumentPreviewPanel(doc, data, onChanged) {
+    var panel = document.createElement("div");
+    panel.className = "panel doc-register-preview";
+
+    // Gate 17 (Document Control 4): version control. `doc` is always the latest
+    // revision (see render()'s use of latestDocuments()) — allRevisions is every row
+    // sharing its document_group_id, newest first, doc itself always allRevisions[0].
     var allRevisions = revisionsFor(data.documents, doc.document_group_id);
 
     var linkedMeeting = doc.meeting_id
-      ? data.meetings.find(function (m) {
-          return m.id === doc.meeting_id;
-        })
+      ? data.meetings.find(function (m) { return m.id === doc.meeting_id; })
       : null;
     var linkedActivity = doc.activity_id
-      ? data.activities.find(function (a) {
-          return a.id === doc.activity_id;
-        })
+      ? data.activities.find(function (a) { return a.id === doc.activity_id; })
       : null;
-    // Gate 16 (Document Control 3): classification metadata, all optional.
     var linkedDocType = doc.document_type_id
-      ? data.document_types.find(function (t) {
-          return t.id === doc.document_type_id;
-        })
+      ? data.document_types.find(function (t) { return t.id === doc.document_type_id; })
       : null;
     var linkedVendor = doc.vendor_id
-      ? data.vendors.find(function (v) {
-          return v.id === doc.vendor_id;
-        })
+      ? data.vendors.find(function (v) { return v.id === doc.vendor_id; })
       : null;
-    // PCC Evolution Roadmap, Tier F (Gate 19): the shared packages register — see
-    // newDocument()'s own comment in store.js for why the legacy package string isn't
-    // shown here instead.
     var linkedPackage = doc.package_id
-      ? data.packages.find(function (p) {
-          return p.id === doc.package_id;
-        })
+      ? data.packages.find(function (p) { return p.id === doc.package_id; })
       : null;
 
-    var main = document.createElement("div");
-    main.className = "project-card__main";
-    main.innerHTML =
-      "<div class='project-card__name'>" +
-      doc.filename +
-      "</div><div class='project-card__meta'>" +
-      projectName(data, doc.project_id) +
-      " \u00b7 " +
-      formatBytes(doc.file_size) +
-      " \u00b7 " +
-      new Date(doc.uploaded_at).toLocaleDateString() +
-      (linkedMeeting ? " \u00b7 From meeting: " + linkedMeeting.title : "") +
-      (linkedActivity ? " \u00b7 Linked to activity: " + linkedActivity.name : "") +
-      (linkedDocType ? " \u00b7 Type: " + linkedDocType.name : "") +
-      (doc.discipline ? " \u00b7 " + doc.discipline : "") +
-      (doc.document_number ? " \u00b7 " + doc.document_number + (doc.revision ? " Rev " + doc.revision : "") : "") +
-      (linkedVendor ? " \u00b7 Vendor: " + (linkedVendor.vendor_name || "(unnamed vendor)") : "") +
-      (linkedPackage ? " \u00b7 Package: " + linkedPackage.name : "") +
-      " \u00b7 Revision " + doc.revision_number +
-      "</div>";
+    var header = document.createElement("div");
+    header.style.display = "flex";
+    header.style.justifyContent = "space-between";
+    header.style.alignItems = "flex-start";
+    header.style.marginBottom = "12px";
+    var titleWrap = document.createElement("div");
+    titleWrap.innerHTML = "<h3 style='margin-bottom:2px;word-break:break-word;'>" + esc(doc.filename) + "</h3>";
+    header.appendChild(titleWrap);
+    var headerBadges = document.createElement("div");
+    headerBadges.style.display = "flex";
+    headerBadges.style.gap = "6px";
+    headerBadges.style.flexShrink = "0";
+    var catBadge = document.createElement("span");
+    catBadge.className = "status-badge status-badge--complete";
+    catBadge.textContent = CATEGORY_LABELS[doc.category] || doc.category;
+    headerBadges.appendChild(catBadge);
+    if (doc.is_duplicate) {
+      var dupBadge = document.createElement("span");
+      dupBadge.className = "status-badge status-badge--at_risk";
+      dupBadge.textContent = "Possible Duplicate";
+      dupBadge.title = doc.duplicate_reason || "Flagged as a possible duplicate at upload time.";
+      headerBadges.appendChild(dupBadge);
+    }
+    header.appendChild(headerBadges);
+    panel.appendChild(header);
 
-    var badge = document.createElement("span");
-    badge.className = "status-badge status-badge--complete";
-    badge.textContent = CATEGORY_LABELS[doc.category] || doc.category;
-
-    // Gate 17: status is editable right on the row \u2014 a document's lifecycle state is
-    // expected to change over time without reopening the whole classification form,
-    // same "quick toggle, no separate save step" convention as Document Types'
-    // Deactivate button and Gate 15's requirement checkboxes.
+    // Gate 17: status is editable right here — a document's lifecycle state is expected
+    // to change over time without reopening the whole classification form, same "quick
+    // toggle, no separate save step" convention as Document Types' Deactivate button.
+    var statusRow = document.createElement("div");
+    statusRow.style.marginBottom = "14px";
+    var statusLabel = document.createElement("label");
+    statusLabel.className = "detail-item__label";
+    statusLabel.textContent = "STATUS";
+    statusRow.appendChild(statusLabel);
     var statusSelect = document.createElement("select");
-    statusSelect.style.marginLeft = "6px";
-    statusSelect.className = "mono";
-    statusSelect.style.fontSize = "12px";
+    statusSelect.style.display = "block";
+    statusSelect.style.marginTop = "4px";
     window.PCC.store.DOCUMENT_STATUSES.forEach(function (s) {
       var opt = document.createElement("option");
       opt.value = s;
@@ -1258,35 +1327,50 @@
     statusSelect.value = doc.status;
     statusSelect.onchange = function () {
       window.PCC.store.update(function (d) {
-        var existing = d.documents.find(function (item) {
-          return item.id === doc.id;
-        });
+        var existing = d.documents.find(function (item) { return item.id === doc.id; });
         if (existing) existing.status = statusSelect.value;
       });
       onChanged();
     };
+    statusRow.appendChild(statusSelect);
+    panel.appendChild(statusRow);
 
-    var dupBadge = null;
-    if (doc.is_duplicate) {
-      dupBadge = document.createElement("span");
-      dupBadge.className = "status-badge status-badge--at_risk";
-      dupBadge.style.marginLeft = "6px";
-      dupBadge.textContent = "Possible Duplicate";
-      dupBadge.title = doc.duplicate_reason || "Flagged as a possible duplicate at upload time.";
+    var grid = document.createElement("div");
+    grid.className = "detail-grid";
+    function item(label, value) {
+      var div = document.createElement("div");
+      div.innerHTML = "<span class='detail-item__label'>" + esc(label) + "</span><div>" + (value === null || value === undefined || value === "" ? "—" : esc(value)) + "</div>";
+      grid.appendChild(div);
     }
+    item("Project", projectName(data, doc.project_id));
+    item("Size", formatBytes(doc.file_size));
+    item("Uploaded", new Date(doc.uploaded_at).toLocaleDateString());
+    item("Revision", doc.revision_number);
+    if (linkedDocType) item("Type", linkedDocType.name);
+    if (doc.discipline) item("Discipline", doc.discipline);
+    if (doc.document_number) item("Document No.", doc.document_number + (doc.revision ? " Rev " + doc.revision : ""));
+    if (linkedVendor) item("Vendor", linkedVendor.vendor_name || "(unnamed vendor)");
+    if (linkedPackage) item("Package", linkedPackage.name);
+    if (linkedMeeting) item("From Meeting", linkedMeeting.title || "(untitled)");
+    if (linkedActivity) item("Linked Activity", linkedActivity.name);
+    panel.appendChild(grid);
 
-    var extractionNote = document.createElement("div");
-    extractionNote.className = "project-card__figures";
+    var extractionNote = document.createElement("p");
+    extractionNote.className = "text-secondary";
+    extractionNote.style.fontSize = "12px";
+    extractionNote.style.margin = "14px 0 0";
     extractionNote.textContent = extractionSummary(doc.extraction);
+    panel.appendChild(extractionNote);
 
     var actions = document.createElement("div");
     actions.className = "project-card__actions";
+    actions.style.marginTop = "14px";
     if (doc.extraction) {
       var viewBtn = document.createElement("button");
       viewBtn.className = "btn btn--ghost";
-      viewBtn.textContent = uiState.expandedDocId === doc.id ? "Hide" : "View";
+      viewBtn.textContent = uiState.previewExtractionExpanded ? "Hide Extracted Data" : "View Extracted Data";
       viewBtn.onclick = function () {
-        uiState.expandedDocId = uiState.expandedDocId === doc.id ? null : doc.id;
+        uiState.previewExtractionExpanded = !uiState.previewExtractionExpanded;
         onChanged();
       };
       actions.appendChild(viewBtn);
@@ -1359,7 +1443,7 @@
       uiState.pendingCriticality = doc.criticality || "";
       uiState.pendingRemarks = doc.remarks || "";
       // A new revision hasn't been reviewed yet, regardless of where the previous one
-      // ended up \u2014 never carries over "approved"/"rejected" from the prior revision.
+      // ended up — never carries over "approved"/"rejected" from the prior revision.
       uiState.pendingStatus = "draft";
       uiState.pendingRevisionGroupId = doc.document_group_id;
       onChanged();
@@ -1381,26 +1465,20 @@
     deleteBtn.className = "btn btn--ghost";
     deleteBtn.textContent = "Delete";
     deleteBtn.onclick = function () {
-      var allRevisionIds = allRevisions.map(function (item) {
-        return item.id;
-      });
+      var allRevisionIds = allRevisions.map(function (item) { return item.id; });
       var warning =
         allRevisions.length > 1
-          ? "Delete \u201c" + doc.filename + "\u201d and all " + allRevisions.length + " of its revisions? This removes every stored file and extracted data in this revision history. This can't be undone."
-          : "Delete \u201c" + doc.filename + "\u201d? This removes the stored file and extracted data. This can't be undone.";
+          ? "Delete “" + doc.filename + "” and all " + allRevisions.length + " of its revisions? This removes every stored file and extracted data in this revision history. This can't be undone."
+          : "Delete “" + doc.filename + "”? This removes the stored file and extracted data. This can't be undone.";
       if (!window.confirm(warning)) return;
       window.PCC.store.update(function (d) {
-        d.documents = d.documents.filter(function (item) {
-          return allRevisionIds.indexOf(item.id) === -1;
-        });
+        d.documents = d.documents.filter(function (item) { return allRevisionIds.indexOf(item.id) === -1; });
         // Keep project.attachments in sync — it's not what rendering reads from (that
         // filters data.documents directly), but leaving stale ids in there would make
         // the field mean nothing the next time something does rely on it.
         d.projects.forEach(function (p) {
           if (p.attachments) {
-            p.attachments = p.attachments.filter(function (id) {
-              return allRevisionIds.indexOf(id) === -1;
-            });
+            p.attachments = p.attachments.filter(function (id) { return allRevisionIds.indexOf(id) === -1; });
           }
         });
       });
@@ -1410,25 +1488,33 @@
       allRevisionIds.forEach(function (id) {
         window.PCC.blobStore.deleteBlob(id).catch(function () {});
       });
-      if (allRevisionIds.indexOf(uiState.expandedDocId) !== -1) uiState.expandedDocId = null;
+      if (allRevisionIds.indexOf(uiState.selectedDocId) !== -1) selectDocument(null);
       if (uiState.expandedRevisionsGroupId === doc.document_group_id) uiState.expandedRevisionsGroupId = null;
       window.PCC.notify(allRevisions.length > 1 ? "Document and its revision history deleted." : "Document deleted.", "info");
       onChanged();
     };
     actions.appendChild(deleteBtn);
+    panel.appendChild(actions);
 
-    card.appendChild(main);
-    card.appendChild(badge);
-    card.appendChild(statusSelect);
-    if (dupBadge) card.appendChild(dupBadge);
-    card.appendChild(extractionNote);
-    card.appendChild(actions);
+    if (uiState.previewExtractionExpanded && doc.extraction) {
+      var extractionWrap = document.createElement("div");
+      extractionWrap.className = "project-details";
+      extractionWrap.style.marginTop = "14px";
+      extractionWrap.appendChild(
+        doc.extraction.type === "excel" ? renderExcelPreview(doc.extraction) : renderTextPreview(doc.extraction)
+      );
+      panel.appendChild(extractionWrap);
+    }
 
     if (uiState.expandedRevisionsGroupId === doc.document_group_id && allRevisions.length > 1) {
       var histWrap = document.createElement("div");
-      histWrap.style.marginTop = "10px";
-      histWrap.style.paddingTop = "10px";
+      histWrap.style.marginTop = "14px";
+      histWrap.style.paddingTop = "14px";
       histWrap.style.borderTop = "1px solid var(--divider)";
+      var histHeading = document.createElement("h4");
+      histHeading.style.marginBottom = "8px";
+      histHeading.textContent = "Revision History";
+      histWrap.appendChild(histHeading);
       // allRevisions[0] is doc itself (already shown above) — only older ones here.
       allRevisions.slice(1).forEach(function (rev) {
         var revRow = document.createElement("div");
@@ -1456,25 +1542,27 @@
 
         histWrap.appendChild(revRow);
       });
-      card.appendChild(histWrap);
+      panel.appendChild(histWrap);
     }
 
-    return card;
+    return panel;
   }
 
-  function renderDocumentEntry(doc, data, onChanged) {
-    var entry = document.createElement("div");
-    entry.className = "project-entry";
-    entry.appendChild(renderDocumentRow(doc, data, onChanged));
-    if (uiState.expandedDocId === doc.id && doc.extraction) {
-      var detailsWrap = document.createElement("div");
-      detailsWrap.className = "project-details";
-      detailsWrap.appendChild(
-        doc.extraction.type === "excel" ? renderExcelPreview(doc.extraction) : renderTextPreview(doc.extraction)
-      );
-      entry.appendChild(detailsWrap);
+  // UI/UX Overhaul Gate 6 (Documents): this register never had a filter toolbar or a
+  // search box at all — the old render() showed literally every document across every
+  // project in one flat list, unlike every other register (Risk Register/Portfolio/
+  // RFI-TQ all have search + project/type/status filters). Same predicate shape as
+  // risks.js's own riskMatchesFilters().
+  function documentMatchesFilters(doc, data) {
+    if (uiState.projectFilter && doc.project_id !== uiState.projectFilter) return false;
+    if (uiState.categoryFilter && doc.category !== uiState.categoryFilter) return false;
+    if (uiState.statusFilter && doc.status !== uiState.statusFilter) return false;
+    if (uiState.search) {
+      var q = uiState.search.toLowerCase();
+      var haystack = (doc.filename + " " + (doc.document_number || "")).toLowerCase();
+      if (haystack.indexOf(q) === -1) return false;
     }
-    return entry;
+    return true;
   }
 
   function render(outlet) {
@@ -1496,56 +1584,179 @@
     infoPanel.innerHTML =
       "<p class='text-secondary' style='margin:0; font-size:13px;'>Excel, Word, and PDF files are read " +
       "client-side, and both the extracted data/text and the original file itself are saved with the " +
-      "document \u2014 no internet needed, nothing distorted. \u201cOpen File\u201d always reproduces the exact " +
+      "document — no internet needed, nothing distorted. “Open File” always reproduces the exact " +
       "file you uploaded. PDF text extraction won't work on scanned/image-only PDFs (no text layer to " +
-      "read), but the original still opens fine. Browser storage typically caps around 5\u201310MB total, " +
+      "read), but the original still opens fine. Browser storage typically caps around 5–10MB total, " +
       "so export your data regularly once you're attaching real files.</p>";
     outlet.appendChild(infoPanel);
 
+    var hasActiveProjectsForDoc = data.projects.some(function (p) { return !p.archived; });
+
+    // Same as before this gate: the upload form, when open, renders ABOVE the register
+    // rather than replacing it — the existing document list/preview stays visible below
+    // it (no `return` here), so uploading doesn't hide what's already on file.
     if (uiState.formOpen) {
       renderUploadForm(outlet, data, rerender);
-    } else {
-      var addBtn = document.createElement("button");
-      addBtn.className = "btn btn--primary";
-      addBtn.textContent = "+ Add Document";
-      addBtn.style.marginBottom = "16px";
-      var hasActiveProjectsForDoc = data.projects.some(function (p) {
-        return !p.archived;
-      });
-      addBtn.disabled = !hasActiveProjectsForDoc;
-      addBtn.title = hasActiveProjectsForDoc ? "" : "Add a project in Portfolio first";
-      addBtn.onclick = function () {
-        uiState.formOpen = true;
-        rerender();
-      };
-      outlet.appendChild(addBtn);
     }
 
     if (data.documents.length === 0) {
+      if (!uiState.formOpen) {
+        var addBtnEmpty = document.createElement("button");
+        addBtnEmpty.className = "btn btn--primary";
+        addBtnEmpty.textContent = "+ Add Document";
+        addBtnEmpty.style.marginBottom = "16px";
+        addBtnEmpty.disabled = !hasActiveProjectsForDoc;
+        addBtnEmpty.title = hasActiveProjectsForDoc ? "" : "Add a project in Portfolio first";
+        addBtnEmpty.onclick = function () {
+          uiState.formOpen = true;
+          rerender();
+        };
+        outlet.appendChild(addBtnEmpty);
+      }
+
       var empty = document.createElement("div");
       empty.className = "panel empty-state";
-      var hasProjectsForEmpty = data.projects.some(function (p) {
-        return !p.archived;
-      });
-      empty.textContent = hasProjectsForEmpty
-        ? "No documents yet. Click \u201c+ Add Document\u201d to upload one."
+      empty.textContent = hasActiveProjectsForDoc
+        ? "No documents yet. Click “+ Add Document” to upload one."
         : "Add a project in Portfolio first, then upload documents against it.";
       outlet.appendChild(empty);
       return;
     }
 
-    var list = document.createElement("div");
-    list.className = "project-list";
+    // ---- Filter toolbar ----
+    var toolbar = document.createElement("div");
+    toolbar.className = "toolbar";
+
+    var searchInput = document.createElement("input");
+    searchInput.type = "text";
+    searchInput.placeholder = "Search filename, document number…";
+    searchInput.value = uiState.search;
+    searchInput.oninput = function () {
+      uiState.search = searchInput.value;
+      rerender();
+    };
+    toolbar.appendChild(searchInput);
+
+    var categorySelect = document.createElement("select");
+    var allCatOpt = document.createElement("option");
+    allCatOpt.value = "";
+    allCatOpt.textContent = "All categories";
+    categorySelect.appendChild(allCatOpt);
+    Object.keys(CATEGORY_LABELS).forEach(function (c) {
+      var opt = document.createElement("option");
+      opt.value = c;
+      opt.textContent = CATEGORY_LABELS[c];
+      categorySelect.appendChild(opt);
+    });
+    categorySelect.value = uiState.categoryFilter;
+    categorySelect.onchange = function () {
+      uiState.categoryFilter = categorySelect.value;
+      rerender();
+    };
+    toolbar.appendChild(categorySelect);
+
+    var statusFilterSelect = document.createElement("select");
+    var allStatusOpt = document.createElement("option");
+    allStatusOpt.value = "";
+    allStatusOpt.textContent = "All statuses";
+    statusFilterSelect.appendChild(allStatusOpt);
+    window.PCC.store.DOCUMENT_STATUSES.forEach(function (s) {
+      var opt = document.createElement("option");
+      opt.value = s;
+      opt.textContent = STATUS_LABELS[s] || s;
+      statusFilterSelect.appendChild(opt);
+    });
+    statusFilterSelect.value = uiState.statusFilter;
+    statusFilterSelect.onchange = function () {
+      uiState.statusFilter = statusFilterSelect.value;
+      rerender();
+    };
+    toolbar.appendChild(statusFilterSelect);
+
+    var projectFilterSelect = document.createElement("select");
+    var allProjOpt = document.createElement("option");
+    allProjOpt.value = "";
+    allProjOpt.textContent = "All projects";
+    projectFilterSelect.appendChild(allProjOpt);
+    data.projects.forEach(function (p) {
+      var opt = document.createElement("option");
+      opt.value = p.id;
+      opt.textContent = p.name || "(unnamed project)";
+      projectFilterSelect.appendChild(opt);
+    });
+    projectFilterSelect.value = uiState.projectFilter;
+    projectFilterSelect.onchange = function () {
+      uiState.projectFilter = projectFilterSelect.value;
+      rerender();
+    };
+    toolbar.appendChild(projectFilterSelect);
+
+    var spacer = document.createElement("div");
+    spacer.className = "toolbar__spacer";
+    toolbar.appendChild(spacer);
+
+    // Hidden while the upload form is already open (below) — avoids a redundant second
+    // "+ Add Document" trigger on screen at once, same as the pre-Gate-6 behavior where
+    // the single add button lived only in the non-form branch.
+    if (!uiState.formOpen) {
+      var addBtn = document.createElement("button");
+      addBtn.className = "btn btn--primary";
+      addBtn.textContent = "+ Add Document";
+      addBtn.disabled = !hasActiveProjectsForDoc;
+      addBtn.title = hasActiveProjectsForDoc ? "" : "Add a project in Portfolio first";
+      addBtn.onclick = function () {
+        uiState.formOpen = true;
+        // Gate 6: default the upload form to whichever project is currently filtered, so
+        // filtering to a project then clicking "+ Add Document" doesn't lose that context.
+        if (uiState.projectFilter) uiState.pendingProjectId = uiState.projectFilter;
+        rerender();
+      };
+      toolbar.appendChild(addBtn);
+    }
+
+    outlet.appendChild(toolbar);
+
+    // ---- Two-panel register + preview (Gate 6) ----
     // Gate 17: only the latest revision of each document group is a top-level row — see
     // latestDocuments()'s own header comment. Older revisions are reached via "History".
-    latestDocuments(data.documents)
-      .sort(function (a, b) {
-        return new Date(b.uploaded_at) - new Date(a.uploaded_at);
-      })
-      .forEach(function (doc) {
-        list.appendChild(renderDocumentEntry(doc, data, rerender));
-      });
-    outlet.appendChild(list);
+    var filtered = latestDocuments(data.documents)
+      .filter(function (doc) { return documentMatchesFilters(doc, data); })
+      .sort(function (a, b) { return new Date(b.uploaded_at) - new Date(a.uploaded_at); });
+
+    if (filtered.length === 0) {
+      var noMatch = document.createElement("div");
+      noMatch.className = "panel empty-state";
+      noMatch.textContent = "No documents match this search/filter.";
+      outlet.appendChild(noMatch);
+      return;
+    }
+
+    // Self-correcting selection, same "pick the first valid option" convention
+    // schedule.js's own scheduleId/projectId selects already use: a selection that's
+    // stale (deleted) or filtered out of view falls back to the first visible document.
+    if (!uiState.selectedDocId || !filtered.some(function (d) { return d.id === uiState.selectedDocId; })) {
+      uiState.selectedDocId = filtered[0].id;
+    }
+    var selectedDoc = filtered.find(function (d) { return d.id === uiState.selectedDocId; });
+
+    var register = document.createElement("div");
+    register.className = "doc-register";
+
+    var listPane = document.createElement("div");
+    listPane.className = "doc-register-list";
+    filtered.forEach(function (doc) {
+      listPane.appendChild(
+        renderDocumentListItem(doc, data, doc.id === uiState.selectedDocId, function () {
+          selectDocument(doc.id);
+          rerender();
+        })
+      );
+    });
+    register.appendChild(listPane);
+
+    register.appendChild(renderDocumentPreviewPanel(selectedDoc, data, rerender));
+
+    outlet.appendChild(register);
   }
 
   window.PCC.pages.documents = render;
@@ -1564,7 +1775,14 @@
       uiState.readError = null;
     },
     expandDocument: function (docId) {
-      uiState.expandedDocId = docId;
+      selectDocument(docId);
+    },
+    // UI/UX Overhaul Gate 6: the one piece of the cross-page "which project" hand-off
+    // convention Documents was missing (flagged as a known gap during Gate 4's build) —
+    // every other register already has this. Workspace's Documents nav tab now lands
+    // pre-filtered instead of showing every project's documents unfiltered.
+    filterByProject: function (projectId) {
+      uiState.projectFilter = projectId;
     },
     // Gate 17: latest-revision-per-group only — see latestDocuments()'s own header
     // comment. portfolio.js's ATTACHMENTS section uses this so a document with several

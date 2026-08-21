@@ -170,10 +170,14 @@ function findFieldByLabel(dom, labelText) {
     win.PCC.router.go("documents");
     win.PCC.router.render();
     var outletText = win.document.getElementById("page-outlet").textContent;
-    assert.ok(outletText.indexOf("Type: RFIs") !== -1, "document row must show the linked document type name");
-    assert.ok(outletText.indexOf("ELE") !== -1, "document row must show discipline");
-    assert.ok(outletText.indexOf("001 Rev 02") !== -1, "document row must show document number + revision");
-    assert.ok(outletText.indexOf("Vendor: Acme Electrical") !== -1, "document row must show the linked vendor name");
+    // UI/UX Overhaul Gate 6: the single-line "Label: Value" meta text was split into a
+    // compact list row (project/document number) plus a full-detail preview pane (a
+    // .detail-grid of separate label/value elements, no colon between them) — this
+    // single seeded document auto-selects into that preview pane.
+    assert.ok(outletText.indexOf("TypeRFIs") !== -1, "preview pane must show the linked document type name");
+    assert.ok(outletText.indexOf("ELE") !== -1, "preview pane must show discipline");
+    assert.ok(outletText.indexOf("001 Rev 02") !== -1, "document row/preview must show document number + revision");
+    assert.ok(outletText.indexOf("VendorAcme Electrical") !== -1, "preview pane must show the linked vendor name");
   });
 
   await check("'View Vendor' on the document row navigates to Vendors and opens that vendor's profile", () => {

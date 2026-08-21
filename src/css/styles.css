@@ -698,6 +698,68 @@ a:focus-visible {
   gap: 10px;
 }
 
+/* UI/UX Overhaul Gate 6 (Documents): register + preview two-panel layout, per the
+   brief's own "Document Experience" section. flex-wrap (not a media query) stacks the
+   panels on narrow viewports — the same responsive approach Gates 3-5 already use
+   throughout this app, rather than a new breakpoint-specific rule. */
+.doc-register {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.doc-register-list {
+  flex: 1 1 340px;
+  min-width: 280px;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.doc-register-item {
+  background-color: var(--bg-paper);
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: border-color var(--transition-base), background-color var(--transition-base);
+}
+
+.doc-register-item:hover {
+  border-color: var(--text-secondary);
+}
+
+.doc-register-item--selected {
+  border-color: var(--signal-amber);
+  background-color: var(--bg-paper-raised);
+}
+
+.doc-register-item__name {
+  font-weight: 600;
+  font-size: 13.5px;
+  word-break: break-word;
+}
+
+.doc-register-item__meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.doc-register-item__badges {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.doc-register-preview {
+  flex: 2 1 480px;
+  min-width: 320px;
+}
+
 .project-card {
   background-color: var(--bg-paper);
   border: 1px solid var(--divider);
