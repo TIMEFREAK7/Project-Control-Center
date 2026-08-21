@@ -63,8 +63,9 @@ that override default behavior).
 
 ## NEW INITIATIVE: UI/UX Overhaul (started 2026-08-20) — a THIRD, separate roadmap
 
-`main` is up to date through **UI/UX Overhaul Gate 3 (Portfolio)**, `schema_version` **52**
-(unchanged — Gate 3 was pure display/computed-stats work, no schema touch). Gate 2 included its
+`main` is up to date through **UI/UX Overhaul Gate 4 (Project Workspace)**, `schema_version` **52**
+(unchanged since Gate 2 — Gates 3 and 4 are both pure display/computed-stats work, no schema
+touch). Gate 2 included its
 post-ship nav revision (an Outlook-Online-style hidden overlay with accordion groups, replacing
 Gate 2's original persistent/collapsible sidebar — see that gate's own write-up below for detail).
 With Tiers A-F, Tiers 1-2, and Tier 3 all complete/closed out (see below), Aditya started an
@@ -367,10 +368,99 @@ the feature branch cleanly. **General lesson**: before merging a working branch 
 future session, check `git log main --oneline -1` against `git log origin/main --oneline -1` first
 — a local `main` that predates the container's most recent `git fetch` can silently be very stale.
 
-**Next step for a fresh session: ask Aditya what's next (Gate 4 — Project Workspace, per the
+**UI/UX Overhaul Gate 4 — Project Workspace** (merge `b9bff41`). Aditya pasted the full original
+brief text into this session (it had only ever lived in prior conversation history, per the caveat
+above) — worth preserving here in case a future session needs it again: it's a long, detailed spec
+(design direction, responsive tiers, Portfolio/Workspace/Executive Center mockups, an explicit
+"Do not invent data that does not exist" / "SUMMARY FIRST, DETAIL ON DEMAND" principle, and the
+same 8-gate breakdown already known). Two genuine forks were put to Aditya via `AskUserQuestion`
+before building:
+- **Add Workspace alongside Portfolio's existing "Details" accordion, not replacing it** — both
+  stay. Portfolio's card gained a new "Open Workspace" primary action (amber, first in the row)
+  without touching Executive Center/Details/the "⋯" menu Gate 3 just shipped.
+- **Defer the CPM-derived progress chart and true Forecast Finish to Executive Center, keep
+  Workspace's Overview CPM-engine-free** — the brief's own Project Overview mockup wanted both, but
+  neither is real without running the full CPM engine, and Executive Center already builds both in
+  full and sits one nav click away. This was the deciding scope line for the whole gate: everything
+  on Workspace's Overview had to be a plain, cheap store filter, no exceptions.
+
+**Inspection finding that shaped the whole design**: Executive Center's own Management Attention/
+Upcoming/Recent Activity panels (`buildProjectContext()`) mix CPM-dependent figures (delayed/
+critical activities, slipped milestones) with plenty that are NOT CPM-dependent at all (overdue
+RFIs, pending change orders, overdue meeting actions, high-severity risks — plain field filters).
+Even Executive Center's own `upcomingMilestones` already falls back to `activity.planned_start`
+whenever no CPM has run for that schedule — so building a genuinely cheap subset wasn't an
+approximation, it reused an already-existing fallback code path almost verbatim.
+
+What shipped, new `src/js/pages/projectWorkspace.js` (route `#/projectWorkspace`):
+- **Header + project-level nav**: name/client·company·country/status badge, then Overview (current)
+  + 8 primary tabs (Executive Center, Schedule, Documents, Cost Tracking, Risks, RFI/TQ, Meetings,
+  Changes) + a "More" overflow (Daily Log, Decision Register, Lessons Learned, Knowledge Base,
+  Commitments, Resources, Vendors) reusing Gate 3's `.card-menu`/`.card-menu__dropdown` component
+  for the overflow — its second real use, not a new pattern. Vendors/Document Types/Document
+  Control Dashboard/Delay & Recovery Dashboard were deliberately left OFF the Workspace nav
+  entirely — they're cross-project rollups with no real per-project deep-link (except Vendors,
+  which does have `filterByProject()` and made the cut).
+- **Every non-Overview tab is a pure hand-off**: calls that module's own existing
+  `filterByProject()`/`viewProject()` then `router.go()` — zero module-internals rewrites. Two
+  small, additive, fully-disclosed exceptions: `schedule.js` gained a `viewProject(projectId)` (it
+  only had `viewActivity`/`viewBaselines`, both requiring a `scheduleId` the Workspace doesn't have
+  — deliberately leaves `scheduleId` untouched since `renderScheduleBar()`'s own pre-existing
+  `<select>` fallback already self-corrects to `projectSchedules[0]` whenever the current id doesn't
+  belong to the new project, so no `pickPrimarySchedule()`-style logic needed duplicating);
+  Documents has NO project-filter hook at all today (not even a dropdown), so its tab lands on
+  `#/documents` unfiltered — a pre-existing gap, not introduced by this gate, flagged as a candidate
+  for a future Gate 6 Documents pass rather than silently patched in here.
+- **Overview**: a `.kpi-grid` (Progress, Finish, Budget, Open Risks/Issues, Open RFIs/TQs,
+  Documents available/total — the same fields Gate 3's card stat chips already compute, schedule
+  status deliberately omitted per that gate's own precedent: the status badge already carries it);
+  a Management Attention panel — **the first real adoption of Gate 1's `.attention-list`/
+  `.attention-item` primitive**, six item types (critical risk/issue, overdue RFI, overdue document
+  requirement, overdue meeting action, pending change order, cost-overrun warning), each clickable
+  straight to its module; Upcoming (milestones/meetings/RFIs due soon, window from the existing
+  `settings.action_centre_upcoming_days`) and Recent Activity (cross-module updated-record feed,
+  copied from Executive Center's own equivalent panel almost verbatim since it needs no CPM either).
+- Project switcher `<select>` for when Workspace is reached directly (sidebar nav, not via
+  Portfolio's new button) — defaults to the first active project, same pattern Executive Center's
+  own toolbar already uses.
+
+No bugs self-caught this gate. Two test bugs caught and fixed before the full suite run (test file
+issues, not app issues): the status-badge assertion checked for `"AT RISK"` (CSS
+`text-transform:uppercase` only changes rendering, not `textContent`, which reads `"At Risk"`); the
+Upcoming-panel milestone/meeting seed dates initially reused a shared `futureIso` constant
+("2099-01-01") meant for far-future project fields like `finish_date` — miles outside the 30-day
+Upcoming window, so nothing matched. Fixed by adding a `soonIso` (today + 5 days) for anything the
+Upcoming lookahead needs to actually catch. **General lesson for any future test seeding "upcoming"
+data**: don't reach for the same "far future" date constant used for unrelated long-range fields —
+a near-future date is a different fixture, needed whenever a lookahead-window filter is involved.
+
+Tests: new `tests/test_uiux_gate4_workspace_e2e.js` (42 checks, including a 27-route smoke test) —
+Portfolio's new button coexisting with Executive Center/Details, KPI tiles reading real seeded
+figures, all six Management Attention item types appearing (and a low-severity issue correctly
+NOT appearing), clicking an attention item navigating to its module, Upcoming/Recent Activity
+content, the Schedule hand-off landing on the right project's own Gantt tab (not empty/another
+project's), the Risks hand-off pre-filtering correctly, the "More" overflow opening/closing and
+navigating, the project switcher changing which project's data renders, and the empty-portfolio
+state. Full suite: **62 files, 1737 checks**, zero regressions. Real-Chromium pass (desktop
+Overview with all panels populated, the "More" dropdown open, the Schedule tab landing directly on
+the seeded project's Gantt with its milestone visible, 390px mobile and 820px tablet layouts)
+confirmed everything renders correctly via the app's own pre-existing `.kpi-grid`/`.panel`/
+`.toolbar` responsive behavior — no new breakpoint CSS needed — zero console errors. Zip verified
+separately post-merge (fresh extraction, real Chromium) — clean.
+
+**Process note, learned from Gate 3's incident, applied successfully this time**: checked
+`git log main --oneline -1` against `git log origin/main --oneline -1` BEFORE merging — both
+matched, so the merge went through cleanly on the first attempt with no reset needed. Confirms the
+general lesson from Gate 3's write-up above is the right habit to keep.
+
+**Next step for a fresh session: ask Aditya what's next (Gate 5 — Executive Center, per the
 brief's own 8-gate breakdown) rather than assuming approval to continue automatically** — this
 initiative's own standing rule (inspect, propose, wait for explicit approval, build exactly that,
-stop) applies to every gate, including the next one.
+stop) applies to every gate, including the next one. Executive Center is a redesign of something
+substantial already built (160KB, the largest file in the app) — the brief wants it to become "a
+major professional feature" with charts, a management-attention pattern, and an export-ready
+structure; re-inspect its current tab structure (Overview/Weekly Reviews/Output) fresh rather than
+assuming this session's notes still apply verbatim.
 
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
