@@ -2,11 +2,12 @@
   "use strict";
   window.PCC = window.PCC || {};
 
-  // Grouped for findability now that there are a dozen+ items — purely a sidebar
-  // presentation grouping, not a new concept elsewhere (routing/PAGE_TITLES below are
-  // still a flat map). Rendered by buildNavList() into both the fixed sidebar (desktop/
-  // laptop/tablet) and the mobile nav drawer (<768px, UI/UX Overhaul Gate 2) — same
-  // groups/items either way, just a different container.
+  // Grouped for findability now that there are a dozen+ items. Rendered by
+  // buildNavList() into the nav overlay (openNav/closeNav) — UI/UX Overhaul Gate 2's
+  // persistent/collapsible sidebar was replaced by an Outlook-Online-style pattern at
+  // Aditya's explicit request: the nav is hidden at every screen size until the
+  // hamburger button is clicked, and each group below is its own expand/collapse
+  // accordion rather than always showing every item at once.
   var NAV_GROUPS = [
     {
       label: "OVERVIEW",
@@ -108,32 +109,64 @@
     });
     var titleValue = document.getElementById("title-block-sheet");
     if (titleValue) titleValue.textContent = PAGE_TITLES[routeName] || routeName;
-    // Every route change closes the mobile drawer if it's open — covers navigation
+    // Every route change closes the nav overlay if it's open — covers navigation
     // triggered by something other than clicking a link inside it (e.g. a button
     // elsewhere in the page calling router.go() directly).
-    closeMobileNav();
+    closeNav();
   }
 
-  /** Builds one fresh `<ul class="sidebar__nav">` from NAV_GROUPS. Shared by the fixed
-   * sidebar (buildSidebar) and the mobile nav drawer (openMobileNav) — same items, same
-   * `.sidebar__link`/`data-route` shape, so `setActiveNav()`'s plain
-   * `querySelectorAll(".sidebar__link")` highlights whichever copy(ies) are currently in
-   * the DOM without needing to know which. That sweep only runs when the ROUTE changes,
-   * though — the drawer is built fresh on every open, well after the most recent route
-   * change already happened, so its links need their own "active" class set correctly
-   * at build time here too, not just left for the next route change to fix. `onLinkClick`,
-   * when given, fires on every link click in addition to the normal hash navigation —
-   * the drawer uses it to close itself; the fixed sidebar doesn't pass one. */
-  function buildNavList(onLinkClick) {
+  // Which groups are expanded, keyed by group label. Populated lazily the first time
+  // each group is ever built (see buildNavList below) so the group containing the
+  // current route starts open — everything else starts collapsed. A manual
+  // expand/collapse persists across closing and reopening the nav within the same page
+  // load (this is a plain module variable, not store-backed), but resets on an actual
+  // reload, same as the nav itself always starting closed on a fresh page load.
+  var expandedGroups = {};
+
+  /** Builds one fresh `<ul class="sidebar__nav">` from NAV_GROUPS as an accordion — each
+   * group is a clickable header (button, with a chevron) followed by its items, shown
+   * only while that group is expanded. `setActiveNav()`'s plain
+   * `querySelectorAll(".sidebar__link")` sweep only runs on a ROUTE change, though, and
+   * this list is rebuilt fresh every time the nav opens — well after the most recent
+   * route change already happened — so links need their own "active" class set
+   * correctly at build time here too, not left for the next route change to fix. */
+  function buildNavList() {
     var nav = document.createElement("ul");
     nav.className = "sidebar__nav";
     var currentRoute = window.PCC.router.currentRouteName();
 
     NAV_GROUPS.forEach(function (group) {
-      var groupLabel = document.createElement("li");
-      groupLabel.className = "sidebar__group-label";
-      groupLabel.textContent = group.label;
-      nav.appendChild(groupLabel);
+      var containsActiveRoute = group.items.some(function (item) {
+        return item.key === currentRoute;
+      });
+      if (!(group.label in expandedGroups)) {
+        expandedGroups[group.label] = containsActiveRoute;
+      }
+
+      var groupLi = document.createElement("li");
+      groupLi.className = "sidebar__group";
+
+      var toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "sidebar__group-toggle";
+      toggle.innerHTML =
+        '<span class="sidebar__group-label">' + group.label + "</span>" +
+        '<span class="sidebar__group-chevron">›</span>';
+
+      var itemsList = document.createElement("ul");
+      itemsList.className = "sidebar__group-items";
+
+      function applyExpandedState() {
+        var expanded = !!expandedGroups[group.label];
+        groupLi.classList.toggle("sidebar__group--expanded", expanded);
+        toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+      }
+
+      toggle.onclick = function () {
+        expandedGroups[group.label] = !expandedGroups[group.label];
+        applyExpandedState();
+      };
+      applyExpandedState();
 
       group.items.forEach(function (item) {
         var li = document.createElement("li");
@@ -143,76 +176,42 @@
         a.setAttribute("data-route", item.key);
         a.innerHTML =
           '<span class="sidebar__icon mono">' + item.code + "</span><span>" + item.label + "</span>";
-        if (onLinkClick) a.addEventListener("click", onLinkClick);
+        a.addEventListener("click", closeNav);
         li.appendChild(a);
-        nav.appendChild(li);
+        itemsList.appendChild(li);
       });
+
+      groupLi.appendChild(toggle);
+      groupLi.appendChild(itemsList);
+      nav.appendChild(groupLi);
     });
 
     return nav;
   }
 
-  function buildSidebar() {
-    var sidebar = document.createElement("aside");
-    sidebar.className = "sidebar";
-    if (window.PCC.store.get().settings.sidebar_collapsed) {
-      sidebar.classList.add("sidebar--collapsed");
-    }
+  var navKeydownHandler = null;
 
-    var headerRow = document.createElement("div");
-    headerRow.className = "sidebar__header-row";
-
-    var label = document.createElement("div");
-    label.className = "sidebar__label";
-    label.textContent = "SHEET INDEX";
-    headerRow.appendChild(label);
-
-    var collapseBtn = document.createElement("button");
-    collapseBtn.className = "icon-btn sidebar__collapse-btn";
-    setCollapseBtnState(collapseBtn, sidebar.classList.contains("sidebar--collapsed"));
-    collapseBtn.onclick = function () {
-      var collapsed = !window.PCC.store.get().settings.sidebar_collapsed;
-      window.PCC.store.update(function (d) {
-        d.settings.sidebar_collapsed = collapsed;
-      });
-      sidebar.classList.toggle("sidebar--collapsed", collapsed);
-      setCollapseBtnState(collapseBtn, collapsed);
-    };
-    headerRow.appendChild(collapseBtn);
-
-    sidebar.appendChild(headerRow);
-    sidebar.appendChild(buildNavList());
-    return sidebar;
-  }
-
-  function setCollapseBtnState(btn, collapsed) {
-    btn.textContent = collapsed ? "»" : "«";
-    btn.title = collapsed ? "Expand sidebar" : "Collapse sidebar";
-  }
-
-  var mobileNavKeydownHandler = null;
-
-  function closeMobileNav() {
-    var overlay = document.getElementById("mobile-nav-overlay");
+  function closeNav() {
+    var overlay = document.getElementById("nav-overlay");
     if (overlay) overlay.remove();
-    if (mobileNavKeydownHandler) {
-      document.removeEventListener("keydown", mobileNavKeydownHandler);
-      mobileNavKeydownHandler = null;
+    if (navKeydownHandler) {
+      document.removeEventListener("keydown", navKeydownHandler);
+      navKeydownHandler = null;
     }
   }
 
-  function openMobileNav() {
-    closeMobileNav();
+  function openNav() {
+    closeNav();
 
     var overlay = document.createElement("div");
-    overlay.id = "mobile-nav-overlay";
+    overlay.id = "nav-overlay";
     overlay.className = "drawer-overlay";
     overlay.addEventListener("click", function (e) {
-      if (e.target === overlay) closeMobileNav();
+      if (e.target === overlay) closeNav();
     });
 
     var drawer = document.createElement("div");
-    drawer.className = "drawer";
+    drawer.className = "drawer drawer--left";
 
     var header = document.createElement("div");
     header.className = "drawer__header";
@@ -223,23 +222,23 @@
     closeBtn.className = "icon-btn";
     closeBtn.title = "Close menu";
     closeBtn.textContent = "✕";
-    closeBtn.onclick = closeMobileNav;
+    closeBtn.onclick = closeNav;
     header.appendChild(title);
     header.appendChild(closeBtn);
 
     var body = document.createElement("div");
     body.className = "drawer__body";
-    body.appendChild(buildNavList(closeMobileNav));
+    body.appendChild(buildNavList());
 
     drawer.appendChild(header);
     drawer.appendChild(body);
     overlay.appendChild(drawer);
     document.body.appendChild(overlay);
 
-    mobileNavKeydownHandler = function (e) {
-      if (e.key === "Escape") closeMobileNav();
+    navKeydownHandler = function (e) {
+      if (e.key === "Escape") closeNav();
     };
-    document.addEventListener("keydown", mobileNavKeydownHandler);
+    document.addEventListener("keydown", navKeydownHandler);
   }
 
   function cell(label, value, opts) {
@@ -262,14 +261,14 @@
     var header = document.createElement("header");
     header.className = "title-block";
 
-    // Mobile-only (<768px, see styles.css) — the fixed sidebar is hidden entirely at
-    // that width and this is the only way to reach navigation. Hidden via CSS, not JS,
-    // so it's always in the DOM regardless of viewport at the moment the shell mounts.
+    // The only way to reach navigation at any screen size — there is no persistent
+    // sidebar any more (Outlook-Online-style: hidden until this is clicked, then opens
+    // as an overlay, see openNav/closeNav above).
     var menuBtn = document.createElement("button");
     menuBtn.className = "icon-btn icon-btn--menu";
     menuBtn.title = "Open navigation menu";
     menuBtn.textContent = "☰";
-    menuBtn.onclick = openMobileNav;
+    menuBtn.onclick = openNav;
     header.appendChild(menuBtn);
 
     header.appendChild(cell("SHEET", "Dashboard", { grow: true, id: "title-block-sheet" }));
@@ -518,7 +517,6 @@
 
     var shell = document.createElement("div");
     shell.id = "app-shell";
-    shell.appendChild(buildSidebar());
 
     var mainCol = document.createElement("div");
     mainCol.className = "main-column";

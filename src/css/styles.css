@@ -177,61 +177,71 @@ button {
   min-height: 100vh;
 }
 
-.sidebar {
-  width: var(--sidebar-width);
-  flex-shrink: 0;
-  border-right: 1px solid var(--divider);
-  background-color: var(--bg-paper);
-  position: fixed;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  overflow-y: auto;
+/* UI/UX Overhaul Gate 2 revision: Aditya asked for an Outlook-Online-style nav instead
+   of the persistent/collapsible sidebar this used to be — there is no more `.sidebar`
+   element in the DOM at any screen size. Navigation lives entirely in the hamburger-
+   triggered overlay below (.drawer--left), reusing the same .sidebar__nav/.sidebar__link
+   class names (so this file's link/icon styling doesn't need to change), now organized
+   as click-to-expand accordion groups instead of one always-visible flat list. */
+.sidebar__nav {
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
-/* UI/UX Overhaul Gate 2: .sidebar__label now sits inside .sidebar__header-row
-   alongside the collapse toggle button, instead of standing alone. */
-.sidebar__header-row {
+.sidebar__group + .sidebar__group {
+  border-top: 1px solid var(--divider);
+  margin-top: 4px;
+  padding-top: 4px;
+}
+
+.sidebar__group-toggle {
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 16px 12px 8px 20px;
+  padding: 10px 12px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  transition: background-color var(--transition-fast);
 }
 
-.sidebar--collapsed .sidebar__header-row {
-  justify-content: center;
-  padding: 16px 0 8px;
+.sidebar__group-toggle:hover {
+  background-color: var(--hover-bg);
 }
 
-.sidebar__collapse-btn {
-  flex-shrink: 0;
-}
-
-.sidebar__label {
+.sidebar__group-toggle .sidebar__group-label {
   font-family: var(--font-mono);
   font-size: 11px;
-  letter-spacing: 2px;
+  letter-spacing: 1.5px;
   color: var(--text-secondary);
 }
 
-.sidebar__nav {
+.sidebar__group-chevron {
+  color: var(--text-secondary);
+  font-size: 14px;
+  transition: transform var(--transition-base);
+}
+
+.sidebar__group--expanded .sidebar__group-chevron {
+  transform: rotate(90deg);
+}
+
+.sidebar__group-items {
   list-style: none;
   margin: 0;
   padding: 0 8px;
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height var(--transition-base);
 }
 
-.sidebar__group-label {
-  padding: 14px 12px 6px;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 1.5px;
-  color: var(--text-secondary);
-  opacity: 0.75;
-}
-
-.sidebar__group-label:first-child {
-  padding-top: 4px;
+.sidebar__group--expanded .sidebar__group-items {
+  max-height: 600px;
 }
 
 .sidebar__link {
@@ -265,30 +275,9 @@ button {
   opacity: 0.85;
 }
 
-/* Icon-rail collapsed variant, built inert in Gate 1 (Design System) and wired up in
-   Gate 2 (Global Navigation) — layout.js's sidebar collapse toggle adds/removes this
-   class and persists the choice to settings.sidebar_collapsed. Applies at every tier
-   the fixed sidebar is shown (Large Desktop down through Tablet); mobile hides the
-   sidebar entirely instead (see the Responsive section further down). */
-.sidebar--collapsed {
-  width: 60px;
-}
-
-.sidebar--collapsed .sidebar__label,
-.sidebar--collapsed .sidebar__group-label,
-.sidebar--collapsed .sidebar__link span:not(.sidebar__icon) {
-  display: none;
-}
-
-.sidebar--collapsed .sidebar__link {
-  justify-content: center;
-  padding: 9px 0;
-}
-
 .main-column {
   flex-grow: 1;
   min-width: 0;
-  margin-left: var(--sidebar-width);
   display: flex;
   flex-direction: column;
   min-height: 100vh;
@@ -360,10 +349,9 @@ button {
   cursor: not-allowed;
 }
 
-/* Hamburger nav trigger — hidden by default, shown only below 780px (see the
-   Responsive section further down) where the fixed sidebar itself is hidden. */
+/* Hamburger nav trigger — the only way to reach navigation now, at every screen size
+   (Outlook-Online-style: no persistent sidebar any more). */
 .icon-btn--menu {
-  display: none;
   flex-shrink: 0;
 }
 
@@ -1189,10 +1177,24 @@ a:focus-visible {
   to { transform: translateX(0); }
 }
 
-/* UI/UX Overhaul Gate 2: the mobile nav drawer reuses the sidebar's own .sidebar__nav/
-   .sidebar__link markup (via layout.js's buildNavList()) so both copies stay visually
-   consistent and share setActiveNav()'s highlighting — this just gives the drawer's
-   copy larger, touch-sized rows instead of the desktop sidebar's denser ones. */
+/* Left-anchored variant — the nav overlay (layout.js's openNav) is the one drawer
+   consumer that needs to slide out from the same edge as the hamburger button that
+   opens it (top-left), rather than the generic primitive's default right edge. */
+.drawer--left {
+  right: auto;
+  left: 0;
+  border-left: none;
+  border-right: 1px solid var(--divider);
+  animation: drawer-in-left var(--transition-base);
+}
+
+@keyframes drawer-in-left {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+/* The nav overlay reuses .sidebar__nav/.sidebar__link (layout.js's buildNavList()) —
+   larger, touch-sized rows than a hypothetical persistent-sidebar context would need. */
 .drawer .sidebar__nav {
   padding: 0;
 }
@@ -1225,25 +1227,13 @@ a:focus-visible {
 }
 
 /* ===== Responsive: narrow / phone widths =====
-   Desktop layout assumes room for a fixed sidebar plus a multi-cell title block. Below
-   ~780px that stops fitting. UI/UX Overhaul Gate 2 changed what happens here: the fixed
-   sidebar used to become a horizontal scrollable strip of all ~23 links at the top
-   (exactly the "desktop nav squeezed into mobile" pattern the redesign brief calls out
-   to avoid) — it's now hidden entirely and replaced by the hamburger button
-   (.icon-btn--menu, shown only at this width) opening the full nav in a slide-in
-   .drawer (layout.js's openMobileNav/buildNavList). The title block still drops its
-   secondary cells (company/date) to leave room for the sheet name and action icons. */
+   Navigation itself (the hamburger + overlay) is already identical at every screen size
+   — nothing sidebar-related left to adjust here. Below ~780px the title block still
+   drops its secondary cells (company/date) to leave room for the sheet name and action
+   icons, and forms/toolbars stack to one control per row. */
 @media (max-width: 780px) {
   body {
     overflow-x: hidden;
-  }
-
-  .sidebar {
-    display: none;
-  }
-
-  .icon-btn--menu {
-    display: flex;
   }
 
   /* One control per row instead of the desktop's wrapped multi-filter row — easier
@@ -1251,10 +1241,6 @@ a:focus-visible {
   .toolbar input[type="text"],
   .toolbar select {
     flex-basis: 100%;
-  }
-
-  .main-column {
-    margin-left: 0;
   }
 
   .title-block__cell:not(.title-block__cell--grow) {
