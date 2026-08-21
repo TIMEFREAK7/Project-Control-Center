@@ -63,11 +63,13 @@ that override default behavior).
 
 ## NEW INITIATIVE: UI/UX Overhaul (started 2026-08-20) — a THIRD, separate roadmap
 
-`main` is up to date through **UI/UX Overhaul Gate 6 (Schedule — third Existing-Modules gate)**,
-plus a standalone bug fix for the Gantt chart's Today/Data Date label overlap (shipped between
-the Documents and Risk Register Gate 6 passes — see the "Recently fixed bugs / notable gotchas"
-section near the end of this file). `schema_version` **52** (unchanged since Gate 2 — Gates 3-6
-are all pure display/computed-stats/reorganization work, no schema touch). Gate 2 included its
+`main` is up to date through **UI/UX Overhaul Gate 7 — Density Control** (the first of Gate 7's
+five brief-listed capabilities; Gate 6 "Existing Modules" is ON HOLD after Documents/Risk
+Register/Schedule — see below), plus a standalone bug fix for the Gantt chart's Today/Data Date
+label overlap (shipped between the Documents and Risk Register Gate 6 passes — see the "Recently
+fixed bugs / notable gotchas" section near the end of this file). `schema_version` **53** (Gate 7
+Density Control's `settings.density` field — see its own write-up below; unchanged from 52 through
+all of Gates 3-6, which were pure display/computed-stats/reorganization work). Gate 2 included its
 post-ship nav revision (an Outlook-Online-style hidden overlay with accordion groups, replacing
 Gate 2's original persistent/collapsible sidebar — see that gate's own write-up below for detail).
 With Tiers A-F, Tiers 1-2, and Tier 3 all complete/closed out (see below), Aditya started an
@@ -733,11 +735,86 @@ should treat Gate 6 as resumable, not finished, and should ask Aditya before ass
 pick it back up again versus continuing whatever gate came after it. Do not silently resume Gate 6
 just because it's next in the brief's own numbering.
 
-**Next step for a fresh session**: with Gate 6 on hold, the initiative moves to whichever of Gate
-7 (Desktop/Laptop Productivity) or Gate 8 (Tablet/Mobile Optimization) Aditya confirms next — same
+**UI/UX Overhaul Gate 7 — Desktop/Laptop Productivity, Density Control** (merge `5835b45`). With
+Gate 6 on hold, Aditya asked to scope the next gate. The full original UI/UX Overhaul brief had
+only ever been pasted into an earlier session's conversation, not saved anywhere in the repo — this
+session didn't have it in context, so per the brief's own "get it re-confirmed if a future session
+doesn't have it" caveat (already noted above), Aditya re-pasted the complete brief verbatim rather
+than this session guessing at Gate 7's scope from inert CSS hooks alone. **The full brief text is
+still not saved anywhere in the repo — only this write-up's summary of it survives here. If a
+future session needs the complete verbatim brief again (full design direction, every gate's
+detailed requirements, all the "do not" lists), it must be re-pasted by Aditya again; do not assume
+a future session can reconstruct it from this file.**
+
+Gate 7 itself covers five capabilities per the brief: Focus Mode, Density Control, Resizable
+Panels, Better Data Grids, Side-by-Side Views — explicitly "add where appropriate," not a mandatory
+checklist for every module, and easily the broadest of the eight gates. Confirmed via
+`AskUserQuestion` to scope one capability at a time rather than attempt all five in one gate, per
+the brief's own "smallest safe gate" rule. Aditya picked **Density Control** first — the smallest,
+safest slice: a `[data-density="compact"]` CSS spacing override had been reserved (inert, no
+toggle) since Gate 1.
+
+**A second `AskUserQuestion` confirmed two states (Compact/Comfortable) vs. the brief's own
+three-state example (Spacious/Comfortable/Compact) — Aditya chose all three**, so a new "spacious"
+CSS tier had to be designed from scratch (it didn't exist in any form before this gate): mirrors
+compact's own deltas in reverse (same +/-4px on space-3/4, +/-8px on space-5) rather than an
+arbitrary wider scale, so the three states read as one consistent step, not two different design
+decisions bolted together.
+
+**Schema change, flagged to Aditya before building per his "STOP and explain" rule**: new
+`settings.density` field (`'compact' | 'comfortable' | 'spacious'`, default `'comfortable'` —
+matches every existing install's actual spacing exactly, so nothing changes on upgrade),
+`schema_version` **52 → 53**, one migration step, same shape as Gate 2's `sidebar_collapsed`.
+`tests/test_store_schema_v52_migration.js` renamed to `test_store_schema_v53_migration.js` (this
+project's "one canonical full-chain migration test targeting latest" convention), all 28
+`schema_version` assertions bumped 52→53, new backfill checks added.
+
+What shipped: `layout.js` gained `applyDensity()`/`toggleDensity()`, mirroring `applyTheme()`/
+`toggleTheme()`'s exact pattern — a title-block icon-btn next to the theme toggle, glyph reflecting
+the CURRENT state (▁/▄/█ for compact/comfortable/spacious, same "icon shows current state, not the
+next one" convention the theme toggle's sun/moon already established), persisted via
+`settings.density`, re-applied on `mount()` and `refreshTitleBlock()`.
+
+**One real gap caught and fixed before shipping — via real-Chromium screenshots, not a test**:
+the first working build (toggle wired to the reserved `[data-density]` primitive, exactly as
+designed) produced THREE PIXEL-IDENTICAL SCREENSHOTS across all three states. Traced it: the
+`--space-3/4/5` tokens the primitive overrides are only ever consumed by `.modal`/`.drawer`
+padding — verified by grepping the whole stylesheet for real consumers. Every screen that actually
+matters for day-to-day density — `main.page` (24px padding), `.panel` (20px padding), `.toolbar`
+(10px gap), `.project-card` (14px/16px padding+gap), `.project-list` (10px gap), `.form-grid`
+(16px column gap) — was hardcoded in px, never tokenized. Wiring the toggle to the reserved
+primitive alone would have shipped something that persists correctly but is invisible almost
+everywhere the brief actually cares about ("particularly useful for laptops and large monitors").
+Flagged to Aditya via `AskUserQuestion` before continuing; confirmed to extend `[data-density]`
+with attribute-scoped overrides for those specific real properties directly (surgical new rules,
+not a retrofit of the existing hardcoded values into `var()` — safer, since comfortable-mode
+behavior can't drift from what it already was). **General lesson for any future gate that "wires up
+a reserved primitive" from an earlier gate**: verify the primitive actually has real consumers
+before assuming wiring it up is sufficient — an unused CSS hook from a prior gate can look
+ready-to-go while being functionally disconnected from the screens that matter.
+
+Tests: new `tests/test_uiux_gate7_density_e2e.js` (34 checks, including a 27-route smoke test) —
+default state, the toggle cycling comfortable→spacious→compact→comfortable and persisting
+`settings.density` at each step, survival across a simulated reload (re-invoking `layout.mount()`),
+and a check that greps the bundled `<style>` content for the six attribute-scoped overrides that
+make the toggle visible on real screens (not just the inert token block). No pre-existing test
+files needed updates beyond the schema-version-assertion bump described above — nothing in the
+existing suite asserted on the title-block's icon-btn count/order or on `main.page`/`.panel`/
+`.toolbar`'s exact padding values. Full suite: **68 files, 1934 checks**, zero regressions.
+Real-Chromium pass (Portfolio and Risk Register at all three density states — compact visibly
+tighter, spacious visibly airier, comfortable pixel-identical to before — plus a 390px mobile
+check) confirmed everything renders and behaves correctly, including the persisted preference
+surviving an actual `page.reload()` (past the app's existing 250ms autosave debounce, which the
+first verification attempt mistakenly outran and initially misread as a bug) — zero console
+errors. Zip verified separately post-merge (fresh extraction, real Chromium, toggle exercised) —
+clean.
+
+**Next step for a fresh session**: with Gate 6 still on hold, ask Aditya which of Gate 7's
+remaining four capabilities (Focus Mode / Resizable Panels / Better Data Grids / Side-by-Side
+Views) to scope next, or whether to move to Gate 8 (Tablet/Mobile Optimization) instead — same
 standing rule as every other gate (inspect real code first, propose scope, wait for explicit
-approval, build exactly that, stop). Don't assume which one without asking, and don't assume
-Gate 6 resumes before either of them.
+approval, build exactly that, stop). Don't assume which one without asking, and don't assume Gate 6
+resumes before Gate 7 finishes.
 
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
