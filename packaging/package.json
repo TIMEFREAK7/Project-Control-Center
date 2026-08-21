@@ -1,0 +1,34 @@
+{
+  "name": "pcc-desktop",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Desktop packaging (Electron) for Project Control Center. Wraps the self-contained index.html built by ../build.js in a native window — dev-only tooling, not part of the shipped single-file app.",
+  "main": "electron/main.js",
+  "scripts": {
+    "electron:dev": "node scripts/copy-app.js && electron .",
+    "electron:build": "node scripts/copy-app.js && electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^43.4.1",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.aditya.projectcontrolcenter",
+    "productName": "Project Control Center",
+    "files": [
+      "electron/**/*"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "mac": {
+      "target": "dmg"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  }
+}
