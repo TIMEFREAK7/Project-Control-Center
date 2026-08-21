@@ -566,6 +566,7 @@
     var projects = data.projects;
 
     var h1 = document.createElement("h2");
+    h1.className = "focus-mode-hide";
     h1.textContent = "Reports";
     h1.style.marginBottom = "16px";
     outlet.appendChild(h1);

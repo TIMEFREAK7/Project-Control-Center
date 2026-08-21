@@ -132,6 +132,32 @@
     if (btn) btn.title = "Spacing density: " + DENSITY_LABELS[next] + " (click to cycle)";
   }
 
+  // UI/UX Overhaul, Gate 7 (Desktop/Laptop Productivity — Focus Mode). Unlike
+  // theme/density above, this is NOT a persisted settings value — it's a "declutter
+  // while I work on this right now" state, the same "resets on reload" treatment every
+  // other per-session UI toggle in this app already gets (uiState.tab and friends).
+  // Global (a body-level class), not per-page, so entering it from one page and
+  // navigating to another keeps the app decluttered rather than snapping back — see
+  // this function's own CSS counterpart ([data-density] neighbor) for what actually
+  // hides: the app footer everywhere, plus whatever a given page has tagged
+  // .focus-mode-hide (its own heading/description/picker-bar chrome — never anything a
+  // page needs to keep working, e.g. never a toolbar's own filter/search controls).
+  var focusModeOn = false;
+
+  function isFocusMode() {
+    return focusModeOn;
+  }
+
+  function toggleFocusMode() {
+    focusModeOn = !focusModeOn;
+    document.body.classList.toggle("focus-mode", focusModeOn);
+    var btn = document.getElementById("focus-mode-toggle-btn");
+    if (btn) {
+      btn.classList.toggle("icon-btn--active", focusModeOn);
+      btn.title = focusModeOn ? "Exit Focus Mode" : "Enter Focus Mode (hide non-essential chrome)";
+    }
+  }
+
   function setActiveNav(routeName) {
     var links = document.querySelectorAll(".sidebar__link");
     links.forEach(function (link) {
@@ -387,10 +413,18 @@
     densityBtn.innerHTML = '<span id="density-toggle-icon">' + DENSITY_ICONS[currentDensity] + "</span>";
     densityBtn.onclick = toggleDensity;
 
+    var focusModeBtn = document.createElement("button");
+    focusModeBtn.className = "icon-btn" + (focusModeOn ? " icon-btn--active" : "");
+    focusModeBtn.id = "focus-mode-toggle-btn";
+    focusModeBtn.title = focusModeOn ? "Exit Focus Mode" : "Enter Focus Mode (hide non-essential chrome)";
+    focusModeBtn.textContent = "⛶";
+    focusModeBtn.onclick = toggleFocusMode;
+
     actions.appendChild(exportBtn);
     actions.appendChild(importBtn);
     actions.appendChild(importInput);
     actions.appendChild(densityBtn);
+    actions.appendChild(focusModeBtn);
     actions.appendChild(themeBtn);
 
     header.appendChild(actions);
@@ -600,5 +634,6 @@
     setActiveNav: setActiveNav,
     refreshTitleBlock: refreshTitleBlock,
     refreshBackupNudge: refreshBackupNudge,
+    isFocusMode: isFocusMode,
   };
 })();
