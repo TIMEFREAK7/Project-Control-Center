@@ -2781,12 +2781,21 @@ ship in the end-user zip alongside `index.html`/`README.md`/`data/`/`files/`, on
 `packaging/`'s own source and `node_modules/` stay out, same "dev-only tooling" treatment `src/`,
 `build.js`, and `tests/` already get.
 
+**Windows build added same day**, on request. `electron-builder`'s NSIS target needs Wine to
+cross-build from Linux (not present by default) — `wine64` alone wasn't enough (NSIS installer
+stubs are 32-bit; needed `wine32:i386` via multiarch too), and the first successful-looking build
+was actually a broken 162KB stub with no payload before that was sorted out. Verified differently
+than the Linux build: rather than fighting Wine's incomplete Win32 emulation to actually run the
+installer, inspected it structurally — extracted the NSIS archive to confirm a genuine ~104MB
+Windows Electron payload (real `.dll`s, `Project Control Center.exe`, `resources/app.asar`), then
+extracted `app.asar` itself and diffed the embedded `index.html` against the real build:
+byte-identical. Output: `Project Control Center Setup 1.0.0.exe` (~104.5MB, unsigned).
+
 **Not done yet:** Android (Capacitor) — flagged during the adaptation pass as needing real plugin
 work (`@capacitor/filesystem`/`share` for Export/Import/Open File, a native print plugin for
 `window.print()`, since a bare Android WebView doesn't implement either the way a full browser
-does), not just wrapping. `.dmg`/`.exe` desktop builds need their respective host OSes. No custom
-app icon yet. Code signing (both platforms) is a deliberate later decision, not needed for
-personal/internal use.
+does), not just wrapping. macOS `.dmg` needs a macOS host. No custom app icon yet. Code signing
+(both platforms) is a deliberate later decision, not needed for personal/internal use.
 
 ## Locked build order (unchanged)
 

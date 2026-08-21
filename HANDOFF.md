@@ -1171,12 +1171,49 @@ the web deliverable. `packaging/` itself (source, `node_modules/`, the copied
 `electron/index.html`) stays **out** of the end-user zip, same "dev-only tooling" treatment as
 `src/`/`build.js`/`tests/` — only the built `.AppImage` (and, once built, `.dmg`/`.exe`) goes in.
 
+**Windows (`.exe`) build added same day, 2026-08-21**, on Aditya's request. `electron-builder`'s
+NSIS target needs Wine to cross-build from Linux — not installed by default in this sandbox.
+Installing it took two passes: `wine64` alone (`apt-get install --no-install-recommends wine64`,
+avoiding a large chain of unrelated multimedia/graphics recommends) got `electron-builder` far
+enough to produce a build, but the artifact it left behind was suspiciously small (162KB — an NSIS
+stub with no payload attached) and the build log showed `wine: could not exec the wine loader`.
+Root cause: NSIS-generated installer stubs are 32-bit PE binaries, and `wine64` alone has no 32-bit
+support without i386 multiarch (`dpkg --add-architecture i386 && apt-get install wine32:i386`,
+which itself needed `libgd3:i386` installed first to clear a dependency conflict on
+`libgphoto2-6t64:i386`). After that, `electron-builder`'s full pipeline (packaging, asar
+integrity update, three separate `signtool.exe` invocations via Wine, block map generation)
+completed clean — output: `packaging/release/Project Control Center Setup 1.0.0.exe`, 104.5MB,
+matching the real payload size this time.
+
+**Verification took a different shape than the Linux AppImage check.** Actually *running* the
+installer under Wine (`wine "...Setup 1.0.0.exe" /S`, silent install) hung repeatedly past 5
+minutes — Wine's own first-run prefix initialization and its incomplete Win32 API emulation are
+known to have gaps unrelated to whether the installer works on a real Windows machine, so chasing
+that further wasn't a good use of time. Switched to structural verification instead, using
+`electron-builder`'s own cached 7-Zip tool
+(`~/.cache/electron-builder/7zip@1.0.0/.../bin/7za`) to open the NSIS archive directly: confirmed
+it contains a full `$PLUGINSDIR/app-64.7z` payload (104,002,842 bytes, not a stub), extracted that
+7z to find genuine Windows Electron runtime files (`vulkan-1.dll`, `d3dcompiler_47.dll`,
+`ffmpeg.dll`, per-locale `.pak` files, `Project Control Center.exe`,
+`resources/app.asar`), then used `@electron/asar` (already a transitive dependency in
+`packaging/node_modules`) to list and extract `app.asar`'s contents — `electron/index.html`,
+`electron/main.js`, `electron/preload.js`, `package.json`, exactly as expected — and diffed the
+extracted `index.html` against the repo's real build: **byte-identical**, 4,481,056 bytes. Strong
+content-level confidence without needing Wine to actually execute the installer.
+
+**Delivered to Aditya split into 4 chat-sized parts** (same pattern as the Linux AppImage
+delivery — the file exceeds the 30MB chat upload limit) with a sha256 checksum
+(`b80443bd...7bc7a349`) to verify reassembly, and a note that it's unsigned so Windows SmartScreen
+will show an "unknown publisher" warning on first run (expected, not a bug).
+
 **Not done yet**: Android (Capacitor) — Part A of the adapted plan, with the two flagged gaps
 (`window.print()`, Export/Import/Open File under a bare WebView) still needing real plugin work,
 not just `npx cap add android`. No custom app icon/splash for Electron yet (using electron-builder's
-default). `.dmg`/`.exe` builds need their respective host OSes (or cross-build tooling) — only the
-Linux AppImage has actually been built and verified so far. Code signing (both platforms) is an
-explicit later decision per the playbook, not needed for personal/internal use.
+default). macOS `.dmg` needs a macOS host (or cross-build tooling) — not attempted. Code signing
+(both platforms) is an explicit later decision per the playbook, not needed for personal/internal
+use. This sandbox now has `wine`/`wine32:i386`/`wine64` installed persistently for the session —
+a fresh session/container won't have them; the install commands above are the reference if a
+Windows build is needed again.
 
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
