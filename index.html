@@ -757,6 +757,87 @@ a:focus-visible {
   min-width: 140px;
 }
 
+/* Gate 3 (UI/UX Overhaul, Portfolio): health-focused stat chips on each project card
+   (Open Risks/Issues, Open RFIs/TQs, Document Availability) — cheap counts computed
+   directly from the store, not via Executive Center's heavy CPM-engine
+   buildProjectContext, which would be far too expensive to run once per card in a
+   list. Schedule status is deliberately NOT a separate figure here — the card's
+   existing status badge already carries that signal (Aditya's own call, Gate 3
+   scoping round). */
+.project-card__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  min-width: 160px;
+}
+
+.card-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.card-stat__label {
+  font-size: 10.5px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.card-stat__value {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* Contextual "..." menu (Edit/Archive) — PCC's first menu/dropdown component. Gate 1
+   shipped modal/drawer primitives but no menu; this is small and net-new, scoped to
+   this gate's own need rather than a general-purpose menu system. */
+.card-menu {
+  position: relative;
+  display: inline-block;
+}
+
+.card-menu__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: default;
+}
+
+.card-menu__dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 41;
+  min-width: 130px;
+  background-color: var(--bg-paper-raised);
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+}
+
+.card-menu__item {
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  font-size: 13px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.card-menu__item:hover {
+  background-color: var(--hover-bg);
+}
+
 .progress-track {
   width: 100px;
   height: 6px;
@@ -10060,6 +10141,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     view: "cards", // 'cards' | 'compare'
     editingId: null, // null = form closed, "new" = creating, otherwise an existing project id
     expandedId: null, // project id whose details panel is open, or null
+    openMenuId: null, // project id whose card contextual (Edit/Archive) menu is open, or null
     vendorLinkPickerOpen: false, // Gate 9: "+ Link Vendor" inline picker in the Vendors section below
     // Gate 18 (Document Control UX refinement): document-requirement selection lives in
     // the Add/Edit Project form itself now (not a separately-toggled section on an
@@ -10589,7 +10671,40 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     return wrap;
   }
 
+  /** Gate 3 (UI/UX Overhaul, Portfolio): cheap, per-project health counts computed
+   * directly from the store for the card's stat chips. Deliberately NOT routed through
+   * Executive Center's buildProjectContext() \u2014 that runs the full CPM engine and is far
+   * too expensive to call once per card in a portfolio list. Open Risks/Issues and Open
+   * RFIs/TQs use the exact same filters already established by renderProjectDetails()
+   * below (status !== "closed"); Document Availability mirrors the same
+   * available/total logic Executive Center's own Gate 27 summary uses, scoped to just
+   * the counts. */
+  function projectCardStats(data, projectId) {
+    var openRisks = data.risks.filter(function (r) {
+      return r.project_id === projectId && r.status !== "closed";
+    }).length;
+    var openRfis = data.rfis.filter(function (r) {
+      return r.project_id === projectId && r.status !== "closed";
+    }).length;
+
+    var docTypesById = {};
+    data.document_types.forEach(function (t) {
+      docTypesById[t.id] = t;
+    });
+    var requirements = data.project_document_requirements.filter(function (r) {
+      return r.project_id === projectId && docTypesById[r.document_type_id];
+    });
+    var docsAvailable = requirements.filter(function (r) {
+      return data.documents.some(function (d) {
+        return d.project_id === projectId && d.document_type_id === r.document_type_id;
+      });
+    }).length;
+
+    return { openRisks: openRisks, openRfis: openRfis, docsAvailable: docsAvailable, docsTotal: requirements.length };
+  }
+
   function renderProjectCard(p, onChanged) {
+    var data = window.PCC.store.get();
     var card = document.createElement("div");
     card.className = "project-card" + (p.archived ? " project-card--archived" : "");
 
@@ -10606,19 +10721,31 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     badge.className = "status-badge status-badge--" + p.status;
     badge.textContent = STATUS_LABELS[p.status] || p.status;
 
+    var progressPct = Math.max(0, Math.min(100, p.progress || 0));
     var progress = document.createElement("div");
-    progress.className = "project-card__progress";
+    progress.className = "progress-bar";
+    progress.style.minWidth = "160px";
     progress.innerHTML =
-      "<div class='progress-track'><div class='progress-fill' style='width:" +
-      Math.max(0, Math.min(100, p.progress || 0)) +
-      "%;'></div></div><span class='mono text-secondary' style='font-size:12px;'>" +
-      (p.progress || 0) +
-      "%</span>";
+      "<div class='progress-bar__row'><span class='progress-bar__label'>Progress</span>" +
+      "<span class='progress-bar__value'>" + progressPct + "%</span></div>" +
+      "<div class='progress-bar__track'><div class='progress-bar__fill progress-fill--" +
+      p.status + "' style='width:" + progressPct + "%;'></div></div>";
 
     var figures = document.createElement("div");
     figures.className = "project-card__figures";
     figures.innerHTML =
       "Budget " + formatMoney(p.budget, p.currency) + "<br>Finish " + (p.finish_date || "\u2014");
+
+    var stats = projectCardStats(data, p.id);
+    var statsRow = document.createElement("div");
+    statsRow.className = "project-card__stats";
+    statsRow.innerHTML =
+      "<div class='card-stat'><span class='card-stat__label'>Open Risks / Issues</span>" +
+      "<span class='card-stat__value'>" + stats.openRisks + "</span></div>" +
+      "<div class='card-stat'><span class='card-stat__label'>Open RFIs / TQs</span>" +
+      "<span class='card-stat__value'>" + stats.openRfis + "</span></div>" +
+      "<div class='card-stat'><span class='card-stat__label'>Documents</span>" +
+      "<span class='card-stat__value'>" + stats.docsAvailable + "/" + stats.docsTotal + "</span></div>";
 
     var actions = document.createElement("div");
     actions.className = "project-card__actions";
@@ -10639,59 +10766,92 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       onChanged();
     };
 
-    var editBtn = document.createElement("button");
-    editBtn.className = "btn btn--ghost";
-    editBtn.textContent = "Edit";
-    editBtn.onclick = function () {
-      var data = window.PCC.store.get();
-      var projectRequirements = data.project_document_requirements.filter(function (r) {
-        return r.project_id === p.id;
-      });
-      uiState.formSelectedDocTypeIds = projectRequirements.map(function (r) {
-        return r.document_type_id;
-      });
-      uiState.formDueDates = {};
-      uiState.formVendorIds = {};
-      uiState.formActivityIds = {};
-      uiState.formLeadTimes = {};
-      projectRequirements.forEach(function (r) {
-        if (r.planned_submission_date) uiState.formDueDates[r.document_type_id] = r.planned_submission_date;
-        if (r.vendor_id) uiState.formVendorIds[r.document_type_id] = r.vendor_id;
-        if (r.activity_id) uiState.formActivityIds[r.document_type_id] = r.activity_id;
-        if (r.lead_time_days) uiState.formLeadTimes[r.document_type_id] = r.lead_time_days;
-      });
-      uiState.formDocTemplateKey = "";
-      uiState.editingId = p.id;
-      onChanged();
-    };
-
-    var archiveBtn = document.createElement("button");
-    archiveBtn.className = "btn btn--ghost";
-    archiveBtn.textContent = p.archived ? "Unarchive" : "Archive";
-    archiveBtn.onclick = function () {
-      var wasArchived = p.archived;
-      window.PCC.store.update(function (data) {
-        var existing = data.projects.find(function (proj) {
-          return proj.id === p.id;
-        });
-        if (existing) {
-          existing.archived = !existing.archived;
-          existing.updated_at = new Date().toISOString();
-        }
-      });
-      window.PCC.notify(wasArchived ? "Project unarchived." : "Project archived.", "info");
-      onChanged();
-    };
-
     actions.appendChild(execCenterBtn);
     actions.appendChild(detailsBtn);
-    actions.appendChild(editBtn);
-    actions.appendChild(archiveBtn);
+
+    var menuWrap = document.createElement("div");
+    menuWrap.className = "card-menu";
+
+    var menuBtn = document.createElement("button");
+    menuBtn.className = "icon-btn";
+    menuBtn.setAttribute("aria-label", "More actions");
+    menuBtn.textContent = "\u22ef";
+    menuBtn.onclick = function () {
+      uiState.openMenuId = uiState.openMenuId === p.id ? null : p.id;
+      onChanged();
+    };
+    menuWrap.appendChild(menuBtn);
+
+    if (uiState.openMenuId === p.id) {
+      var overlay = document.createElement("button");
+      overlay.className = "card-menu__overlay";
+      overlay.setAttribute("aria-label", "Close menu");
+      overlay.onclick = function () {
+        uiState.openMenuId = null;
+        onChanged();
+      };
+      menuWrap.appendChild(overlay);
+
+      var dropdown = document.createElement("div");
+      dropdown.className = "card-menu__dropdown";
+
+      var editItem = document.createElement("button");
+      editItem.className = "card-menu__item";
+      editItem.textContent = "Edit";
+      editItem.onclick = function () {
+        var projectRequirements = data.project_document_requirements.filter(function (r) {
+          return r.project_id === p.id;
+        });
+        uiState.formSelectedDocTypeIds = projectRequirements.map(function (r) {
+          return r.document_type_id;
+        });
+        uiState.formDueDates = {};
+        uiState.formVendorIds = {};
+        uiState.formActivityIds = {};
+        uiState.formLeadTimes = {};
+        projectRequirements.forEach(function (r) {
+          if (r.planned_submission_date) uiState.formDueDates[r.document_type_id] = r.planned_submission_date;
+          if (r.vendor_id) uiState.formVendorIds[r.document_type_id] = r.vendor_id;
+          if (r.activity_id) uiState.formActivityIds[r.document_type_id] = r.activity_id;
+          if (r.lead_time_days) uiState.formLeadTimes[r.document_type_id] = r.lead_time_days;
+        });
+        uiState.formDocTemplateKey = "";
+        uiState.editingId = p.id;
+        uiState.openMenuId = null;
+        onChanged();
+      };
+
+      var archiveItem = document.createElement("button");
+      archiveItem.className = "card-menu__item";
+      archiveItem.textContent = p.archived ? "Unarchive" : "Archive";
+      archiveItem.onclick = function () {
+        var wasArchived = p.archived;
+        window.PCC.store.update(function (updateData) {
+          var existing = updateData.projects.find(function (proj) {
+            return proj.id === p.id;
+          });
+          if (existing) {
+            existing.archived = !existing.archived;
+            existing.updated_at = new Date().toISOString();
+          }
+        });
+        window.PCC.notify(wasArchived ? "Project unarchived." : "Project archived.", "info");
+        uiState.openMenuId = null;
+        onChanged();
+      };
+
+      dropdown.appendChild(editItem);
+      dropdown.appendChild(archiveItem);
+      menuWrap.appendChild(dropdown);
+    }
+
+    actions.appendChild(menuWrap);
 
     card.appendChild(main);
     card.appendChild(badge);
     card.appendChild(progress);
     card.appendChild(figures);
+    card.appendChild(statsRow);
     card.appendChild(actions);
     return card;
   }

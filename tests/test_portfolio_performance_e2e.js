@@ -198,6 +198,13 @@ function selectByDefaultOptionText(dom, text) {
     win.PCC.router.go("portfolio");
     win.PCC.router.render();
     findButtonByText(dom, "Compare"); // no-op, just ensure page loaded
+    // Gate 3 (UI/UX Overhaul, Portfolio): Edit/Archive moved behind each card's "..."
+    // contextual menu — open the first card's menu before looking for Edit.
+    var menuButtons = Array.from(outlet().querySelectorAll("button.icon-btn")).filter(
+      (b) => b.getAttribute("aria-label") === "More actions"
+    );
+    assert.ok(menuButtons.length > 0, "no card contextual menu button found");
+    menuButtons[0].click();
     var editButtons = Array.from(outlet().querySelectorAll("button")).filter((b) => b.textContent.trim() === "Edit");
     assert.ok(editButtons.length > 0, "no Edit button found on any project card");
     editButtons[0].click();
