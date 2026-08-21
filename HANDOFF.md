@@ -63,9 +63,9 @@ that override default behavior).
 
 ## NEW INITIATIVE: UI/UX Overhaul (started 2026-08-20) — a THIRD, separate roadmap
 
-`main` is up to date through **UI/UX Overhaul Gate 5 (Executive Center redesign)**, `schema_version`
-**52** (unchanged since Gate 2 — Gates 3, 4, and 5 are all pure display/computed-stats/reorganization
-work, no schema touch). Gate 2 included its
+`main` is up to date through **UI/UX Overhaul Gate 6 (Documents — first Existing-Modules gate)**,
+`schema_version` **52** (unchanged since Gate 2 — Gates 3-6 are all pure display/computed-stats/
+reorganization work, no schema touch). Gate 2 included its
 post-ship nav revision (an Outlook-Online-style hidden overlay with accordion groups, replacing
 Gate 2's original persistent/collapsible sidebar — see that gate's own write-up below for detail).
 With Tiers A-F, Tiers 1-2, and Tier 3 all complete/closed out (see below), Aditya started an
@@ -523,15 +523,86 @@ Chromium pass (Summary/Schedule/Cost & Commitments/Risk & Compliance sub-tabs, e
 shorter than the old single ~3650px page) confirmed everything renders correctly — zero console
 errors. Zip verified separately post-merge (fresh extraction, real Chromium) — clean.
 
-**Next step for a fresh session: ask Aditya what's next (Gate 6 — Existing Modules, one at a time,
-per the brief's own 8-gate breakdown) rather than assuming approval to continue automatically** —
-this initiative's own standing rule (inspect, propose, wait for explicit approval, build exactly
-that, stop) applies to every gate, including the next one. Gate 6 is explicitly "one module at a
-time," not a single big gate — the brief names Documents/Schedule/Vendors/Risks/Issues/RFIs/
-Meetings/Changes/"other modules actually present" as candidates; a fresh session should ask Aditya
-which module to start with rather than picking one unilaterally. Documents has a known, disclosed
-gap worth considering first: no project-filter hook at all (flagged during Gate 4's build, still
-true) — Workspace's Documents nav tab lands unfiltered because of it.
+**UI/UX Overhaul Gate 6 — Documents (first "Existing Modules, one at a time" gate)** (merge
+`d00348e`). Gate 6 has no single scope of its own — the brief explicitly wants it built one module
+at a time, not as one big gate — so a fresh session asked Aditya which module to start with via
+`AskUserQuestion` (Documents/Schedule/Risk Register/other, Documents recommended for its known
+disclosed gap). Aditya picked **Documents**.
+
+Inspection before scoping found Documents was the only register in the app with **no filter
+toolbar at all** — `render()` showed every document across every project in one flat list, no
+search/project/category/status narrowing (every other register — Risk Register, Portfolio, RFI/
+TQ — already has one), and no `filterByProject()` hook (the exact gap flagged during Gate 4's
+build, which had to special-case Documents to land unfiltered from Workspace). Two forks
+confirmed via `AskUserQuestion` before building:
+- **Add the filter toolbar + Workspace hook** (uncontested baseline).
+- **Also include the brief's own "Document Experience" two-panel register+preview layout in this
+  same gate**, rather than deferring it to a follow-up — Aditya's explicit choice over the
+  smaller filters-only option, since the module needed both anyway.
+
+What shipped, zero changes to any business logic (upload/extraction/duplicate-detection/
+versioning) — only presentation and the one new hook:
+- **Filter toolbar**: search (filename/document number) + category/status/project selects,
+  mirroring `risks.js`'s own toolbar pattern field-for-field. "+ Add Document" now defaults to
+  the currently active project filter.
+- **`documents.js` gains `filterByProject()`** — the last register missing this hand-off
+  convention hook; `projectWorkspace.js`'s Documents nav tab lands pre-filtered now instead of
+  needing its own special-case (that branch's comment was updated, not removed — `window.PCC.files`
+  is a different export name than `window.PCC.documents`, so it still needs its own branch, just
+  a real one now instead of a documented gap).
+- **Two-panel register + preview**: the old `renderDocumentRow()`/`renderDocumentEntry()` pair (one
+  dense meta line crammed with ~10 fields — project/size/date/meeting/activity/type/discipline/
+  number+revision/vendor/package/revision-number — plus up to 7 action buttons on every row) split
+  into a compact `renderDocumentListItem()` (left pane: filename, project, category/status badges,
+  click to select) and a full-detail `renderDocumentPreviewPanel()` (right pane: a `.detail-grid`
+  of every field, the status editor, all actions, extraction preview, revision history) — same
+  "summary first, detail on demand" pattern Workspace/Executive Center already established. New
+  `.doc-register`/`.doc-register-list`/`.doc-register-preview`/`.doc-register-item*` CSS, stacking
+  on narrow viewports via plain `flex-wrap` (no new breakpoint rule — same approach Gates 3-5 use
+  throughout). Selection self-corrects to the first filtered document whenever the current
+  selection is stale or filtered out, same convention `schedule.js`'s own project/schedule
+  `<select>`s already use.
+
+**One bug self-caught before shipping, via the existing test suite (not written new)**: the first
+draft added a `return` right after rendering the open upload form — which silently changed
+pre-existing behavior. Before this gate, the page always kept the document list visible *below* an
+open upload form (never hid it); the new code hid everything else whenever the form was open. Two
+checks in `test_document_classification_e2e.js` that looked unrelated (one about a document's Type
+field, one about a "View Vendor" button) both failed for the same real reason — an earlier check in
+that file leaves `uiState.formOpen` true and never closes it, so by the time these ran, the page was
+showing the form and nothing else. Fixed by removing the `return` and restoring the original
+"form renders above, register still renders below" layout — same behavior as before, now with
+filters. **General lesson**: any `if (formOpen) { ...; return; }` refactor of an existing page needs
+to check what the ORIGINAL code did after that branch, not assume early-return is safe just because
+it reads cleaner — a page that used to layer state on top of each other can silently start hiding
+things once a `return` is added.
+
+**Second thing caught via the test suite**: a pre-existing test that grabbed "the first `<select>`
+on the page with an `under_review` option" to test the row's status editor started grabbing the
+NEW filter toolbar's own status-filter `<select>` instead (same option values) once the toolbar was
+added — scoped to `.doc-register-preview select` specifically to fix. **General lesson for any
+future toolbar-filter addition to an existing page**: check whether existing tests do a bare
+"first matching element" query for something the new filter select could also match.
+
+Tests: `test_document_classification_e2e.js` and `test_document_revision_status_e2e.js` updated —
+the old single-line `"Label: Value"` text format is now separate `detail-grid` label/value elements
+with no colon between them (e.g. `"Type: RFIs"` → `"TypeRFIs"`, `"Revision 1"` → `"Revision1"`),
+mechanical text-format fixes only, no behavior assertions changed. New
+`tests/test_uiux_gate6_documents_e2e.js` (41 checks, including a 27-route smoke test) — the filter
+toolbar's four controls each narrowing the register correctly (and composing), the empty-filter-
+match state, auto-selection into the preview pane, clicking a different row re-selecting it, the
+"+ Add Document" project-filter prefill, the form-stays-above-the-list behavior, and the Workspace
+hand-off landing pre-filtered. Full suite: **64 files, 1818 checks**, zero regressions. Real-
+Chromium pass (desktop two-panel layout, 820px tablet stacking, 390px mobile stacking, the
+Workspace hand-off landing pre-filtered) confirmed everything renders correctly — zero console
+errors. Zip verified separately post-merge (fresh extraction, real Chromium) — clean.
+
+**Next step for a fresh session: ask Aditya what's next (another Gate 6 module — Schedule/Vendors/
+Risks/Issues/RFIs/Meetings/Changes/"other modules actually present" per the brief — or a different
+initiative entirely) rather than assuming approval to continue automatically** — this initiative's
+own standing rule (inspect, propose, wait for explicit approval, build exactly that, stop) applies
+to every gate, including the next one, and Gate 6 stays "one module at a time" until every module
+has had its own pass. Ask which module before picking one unilaterally.
 
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
