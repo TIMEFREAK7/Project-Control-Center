@@ -63,10 +63,11 @@ that override default behavior).
 
 ## NEW INITIATIVE: UI/UX Overhaul (started 2026-08-20) — a THIRD, separate roadmap
 
-`main` is up to date through **UI/UX Overhaul Gate 2**, including its post-ship nav revision (an
-Outlook-Online-style hidden overlay with accordion groups, replacing Gate 2's original persistent/
-collapsible sidebar — see that gate's own write-up below for detail), `schema_version` **52**. With
-Tiers A-F, Tiers 1-2, and Tier 3 all complete/closed out (see below), Aditya started an
+`main` is up to date through **UI/UX Overhaul Gate 3 (Portfolio)**, `schema_version` **52**
+(unchanged — Gate 3 was pure display/computed-stats work, no schema touch). Gate 2 included its
+post-ship nav revision (an Outlook-Online-style hidden overlay with accordion groups, replacing
+Gate 2's original persistent/collapsible sidebar — see that gate's own write-up below for detail).
+With Tiers A-F, Tiers 1-2, and Tier 3 all complete/closed out (see below), Aditya started an
 entirely new, large initiative right after: a **complete UI/UX overhaul** — desktop, laptop,
 tablet, mobile — turning PCC's look into a "professional Project Controls / PMO application"
 while explicitly preserving all existing business logic, data, schema, and module behavior. This
@@ -301,21 +302,75 @@ header, and the identical pattern at a 390px mobile viewport) confirmed the over
 left, accordion groups expand/collapse correctly, and navigating via a link closes the overlay —
 zero console errors. Zip verified separately post-merge (fresh extraction, real Chromium) — clean.
 
-**Next step for a fresh session: propose UI/UX Overhaul Gate 3 (Portfolio) to Aditya and wait for
-approval before building.** Per the brief's own plan and this session's own earlier Portfolio
-inspection (see the "Inspection findings before Gate 1" notes above, still accurate): redesign
-`portfolio.js`'s `renderProjectCard()` toward the brief's health-focused example (Progress bar,
-Finish date, Schedule status, Documents %, Open Risks/RFIs counts) instead of the current flat
-name/client/company/country + budget/finish + Executive Center/Details/Edit/Archive button row —
-move Edit/Archive into a contextual menu, keep Executive Center and a Details/Open action as the
-primary actions. Gate 1's new `.progress-bar`/`.attention-list` primitives and `--status-warning`
-token are natural fits here — first real adoption of either. Inspect what health-relevant figures
-`renderProjectCard()` can actually compute from real data before designing the card (open risks
-count, open RFI count, and document submission % all likely already exist somewhere in the store —
-verify per-field rather than assuming the brief's mockup maps 1:1 onto available data, same
-discipline as every gate). Search/filter toolbar and the Cards/Compare view toggle are Gate 16
-work already shipped — don't rebuild them, just fit the new card design into that existing
-structure.
+**UI/UX Overhaul Gate 3 — Portfolio card redesign** (merge `cac3549`). Scope confirmed via
+`AskUserQuestion` (three questions) before building, per this initiative's own "inspect, propose,
+wait for approval" discipline:
+- **Card redesign approved as scoped** — `portfolio.js`'s `renderProjectCard()` + `styles.css`
+  only, no schema change. Gate 1's `.progress-bar` primitive (labeled, heavier variant) replaces
+  the old plain inline progress bar; three new stat chips (Open Risks/Issues, Open RFIs/TQs,
+  Document Availability) computed directly and cheaply from the store.
+- **Schedule status: reuse the existing status badge, no new figure** — the brief's mockup wanted a
+  separate "Schedule status" line, but the only real per-project Schedule Performance Score lives
+  behind Executive Center's `buildProjectContext()`, which runs the full CPM engine and would be far
+  too expensive to call once per card in a portfolio list. Aditya's call: the card's existing
+  On Track/At Risk/Critical badge already carries that signal — skip a duplicate/approximate figure
+  rather than build one.
+- **Edit/Archive: build a small new contextual menu** — PCC's first dropdown/menu component
+  (`.card-menu`/`.card-menu__dropdown`/`.card-menu__item`, plus a transparent `.card-menu__overlay`
+  that closes it on outside click, same "backdrop click closes it" convention Gate 1's modal/drawer
+  primitives already established). Deliberately small and scoped to this need, not a general menu
+  system.
+
+What shipped:
+- **`projectCardStats(data, projectId)`** (new, `portfolio.js`) — Open Risks/Issues and Open
+  RFIs/TQs reuse the exact same `status !== "closed"` filters `renderProjectDetails()` already used
+  for its own Details-panel sections; Document Availability mirrors Executive Center's Gate 27
+  Executive Summary logic (`available = data.documents.some(project_id + document_type_id match)`
+  against `project_document_requirements`), scoped to just the counts. All three are cheap, direct
+  store filters — deliberately NOT routed through `buildProjectContext()`.
+- **Card layout**: name/client/company/country meta and the status badge are unchanged; the plain
+  progress bar became a labeled `.progress-bar` (Progress / NN%) colored by the project's status via
+  the same `progress-fill--<status>` modifier classes Gate 1 already defined (applied alongside
+  `.progress-bar__fill` — no new CSS needed for the color, since a class only needs to match a rule,
+  not a specific base element); Budget/Finish stay in `.project-card__figures`; the three new stat
+  chips sit in a new `.project-card__stats` row. Executive Center and Details remain the primary
+  visible action buttons; Edit/Archive moved into the new "⋯" `.card-menu` at the end of the actions
+  row.
+- **New CSS**: `.project-card__stats`/`.card-stat`/`.card-stat__label`/`.card-stat__value` (stat
+  chips) and `.card-menu`/`.card-menu__overlay`/`.card-menu__dropdown`/`.card-menu__item` (PCC's
+  first menu component) — all additive in `styles.css`, no existing rule touched beyond the
+  `renderProjectCard()` markup itself.
+
+**No bugs self-caught this gate.** Two pre-existing tests broke as an EXPECTED consequence of moving
+Edit/Archive behind the new menu (not a regression — the button they looked for now needs the menu
+opened first): `test_portfolio_performance_e2e.js` ("Project Type is now editable...") and
+`test_my_work_e2e.js` ("Vendor's Next Follow-up Date round-trips and Portfolio's edit form...") both
+now click the card's `.icon-btn[aria-label="More actions"]` before looking for the `Edit` button.
+**General note for any future test that clicks a project card's Edit/Archive**: open the "⋯" menu
+first, same pattern.
+
+Tests: full suite **61 files, 1695 checks**, zero regressions beyond the two expected menu-related
+updates above. Real-Chromium pass (two seeded projects with risks/RFIs/document requirements —
+desktop cards showing the labeled progress bar and stat chips including a "1/2" Documents figure,
+the "⋯" menu open showing Edit/Archive, and a 390px mobile viewport confirming the card's existing
+flex-wrap layout stacks the new elements cleanly) confirmed everything renders correctly — zero
+console errors.
+
+**Process note for future sessions, not a code issue**: this session's local `main` branch was
+stale — created early in the container's life from an old `origin/main` tip (`2998eb9`, back around
+Gate 7), and `origin/main` had since moved ~76 commits ahead (through Gate 8 onward, all of Tiers
+A-F/1-3, and UI/UX Gates 1-2) while local `main` still carried its own 17 old commits not reachable
+from the new tip — `git merge` refused with "refusing to merge unrelated histories." Fixed safely
+(no work lost — the actual Gate 3 change was already committed and pushed to the feature branch
+before this was discovered) via `git checkout main && git reset --hard origin/main`, then re-merging
+the feature branch cleanly. **General lesson**: before merging a working branch into `main` in any
+future session, check `git log main --oneline -1` against `git log origin/main --oneline -1` first
+— a local `main` that predates the container's most recent `git fetch` can silently be very stale.
+
+**Next step for a fresh session: ask Aditya what's next (Gate 4 — Project Workspace, per the
+brief's own 8-gate breakdown) rather than assuming approval to continue automatically** — this
+initiative's own standing rule (inspect, propose, wait for explicit approval, build exactly that,
+stop) applies to every gate, including the next one.
 
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
