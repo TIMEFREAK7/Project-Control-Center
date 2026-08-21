@@ -1595,6 +1595,52 @@ a:focus-visible {
   }
 }
 
+/* ===== Responsive: Tablet tier (<= 1023px) — touch targets =====
+   UI/UX Overhaul Gate 8. The first rule targeting this tier specifically (768-1023px
+   per the brief; written as max-width:1023px since it also covers mobile, where these
+   same controls need the same enlarging). Every icon-btn/menu-item/checkbox row in the
+   app was sized for a mouse pointer — 32px icon buttons, tightly-padded menu rows —
+   comfortably clickable but noticeably below the ~44px touch target platforms
+   recommend. Scoped to this tier only: desktop/laptop keep their current, denser
+   sizing untouched, since a mouse doesn't need the extra padding a fingertip does. */
+@media (max-width: 1023px) {
+  .icon-btn {
+    width: 44px;
+    height: 44px;
+    font-size: 17px;
+  }
+
+  .btn {
+    padding: 12px 18px;
+  }
+
+  .btn--sm {
+    padding: 9px 14px;
+  }
+
+  .card-menu__item,
+  .card-menu__checkbox-item {
+    padding: 11px 14px;
+  }
+}
+
+/* UI/UX Overhaul Gate 8: Schedule Activities' mobile card fallback (see
+   buildActivityMobileCard() in schedule.js) is always built, alongside the real
+   <table> data grid — this rule is what actually keeps it hidden above the phone
+   breakpoint below, matching .doc-register-resize-handle's own "always built, CSS
+   decides which one shows" approach a few rules up. */
+.activities-mobile-cards {
+  display: none;
+}
+
+/* UI/UX Overhaul Gate 8: same "always built, CSS decides which one shows" split for
+   the Gantt tab — .gantt-mobile-timeline (see the end of renderGanttTab() in
+   schedule.js) stays hidden until the phone breakpoint below takes over from the
+   interactive chart. */
+.gantt-mobile-timeline {
+  display: none;
+}
+
 /* ===== Responsive: narrow / phone widths =====
    Navigation itself (the hamburger + overlay) is already identical at every screen size
    — nothing sidebar-related left to adjust here. Below ~780px the title block still
@@ -1603,6 +1649,35 @@ a:focus-visible {
 @media (max-width: 780px) {
   body {
     overflow-x: hidden;
+  }
+
+  /* UI/UX Overhaul Gate 8: swap the Schedule Activities data grid (Gate 7) for its
+     stacked-card fallback — a many-column table has nowhere to go at phone widths but
+     a fight with horizontal scroll, exactly what the brief's "avoid tiny tables"
+     guidance warns against. */
+  .activities-table-wrap {
+    display: none;
+  }
+  .activities-mobile-cards {
+    display: flex;
+  }
+
+  /* UI/UX Overhaul Gate 8: swap the interactive Gantt chart for a read-only, tap-to-
+     open-details timeline at phone widths — dragging a bar to reschedule needs a mouse
+     (or at least a lot more precision than a fingertip on a 2px-tall handle), and the
+     chart's own toolbar already fills the screen before any bar would be visible.
+     !important is required here specifically because these elements set their own
+     inline display (flex, for their internal layout) — the same reason .panel's
+     max-width override a few rules below needs it too; a plain class rule can't win
+     against an inline style otherwise. */
+  .gantt-chart-panel,
+  .gantt-chart-only-control {
+    display: none !important;
+  }
+  /* .gantt-mobile-timeline is also .project-list, which already sets flex-direction/gap
+     — only display needs overriding here. */
+  .gantt-mobile-timeline {
+    display: flex;
   }
 
   /* One control per row instead of the desktop's wrapped multi-filter row — easier
@@ -25039,6 +25114,125 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       return th;
     }
 
+    // UI/UX Overhaul Gate 8 (Tablet/Mobile Optimization): the row-level "\u22ef" Edit/Delete
+    // menu is identical between the desktop table and the mobile card fallback below \u2014
+    // extracted once so the two representations can't silently drift apart.
+    function buildActivityRowMenu(a) {
+      var rowMenuWrap = document.createElement("div");
+      rowMenuWrap.className = "card-menu";
+
+      var rowMenuBtn = document.createElement("button");
+      rowMenuBtn.className = "icon-btn";
+      rowMenuBtn.setAttribute("aria-label", "More actions");
+      rowMenuBtn.textContent = "\u22ef";
+      rowMenuBtn.onclick = function () {
+        uiState.activityRowMenuId = uiState.activityRowMenuId === a.id ? null : a.id;
+        rerender();
+      };
+      rowMenuWrap.appendChild(rowMenuBtn);
+
+      if (uiState.activityRowMenuId === a.id) {
+        var rowOverlay = document.createElement("button");
+        rowOverlay.className = "card-menu__overlay";
+        rowOverlay.setAttribute("aria-label", "Close menu");
+        rowOverlay.onclick = function () {
+          uiState.activityRowMenuId = null;
+          rerender();
+        };
+        rowMenuWrap.appendChild(rowOverlay);
+
+        var rowDropdown = document.createElement("div");
+        rowDropdown.className = "card-menu__dropdown";
+
+        var editItem = document.createElement("button");
+        editItem.className = "card-menu__item";
+        editItem.textContent = "Edit";
+        editItem.onclick = function () {
+          uiState.editingActivityId = a.id;
+          uiState.activityRowMenuId = null;
+          rerender();
+        };
+
+        var deleteItem = document.createElement("button");
+        deleteItem.className = "card-menu__item";
+        deleteItem.textContent = "Delete";
+        deleteItem.onclick = function () {
+          deleteActivityWithConfirm(a, function () {
+            uiState.activityRowMenuId = null;
+            rerender();
+          });
+        };
+
+        rowDropdown.appendChild(editItem);
+        rowDropdown.appendChild(deleteItem);
+        rowMenuWrap.appendChild(rowDropdown);
+      }
+
+      return rowMenuWrap;
+    }
+
+    // UI/UX Overhaul Gate 8: the real <table> data grid (Gate 7) genuinely doesn't work
+    // on a phone \u2014 seven-plus columns has nowhere to go at 390px but a fight with
+    // horizontal scroll, exactly the "tiny tables" anti-pattern the brief warns against.
+    // Rather than shrink the table further, mobile gets its own stacked-card
+    // representation of the SAME filtered/sorted data \u2014 reusing the .project-card
+    // family this tab used before Gate 7's grid conversion. Both are always built; a
+    // CSS breakpoint (not a JS resize listener) shows exactly one, the same
+    // declarative "let CSS own the reflow" approach every other responsive layout in
+    // this app already uses (.doc-register's flex-wrap, .gantt-layout-row, etc.).
+    function buildActivityMobileCard(a) {
+      var card = document.createElement("div");
+      card.className = "project-card";
+
+      var main = document.createElement("div");
+      main.className = "project-card__main";
+      var metaBits = [
+        wbsName(wbsItems, a.wbs_id),
+        ACTIVITY_TYPE_LABELS[a.activity_type],
+      ];
+      if (a.planned_start || a.planned_finish) {
+        metaBits.push((a.planned_start || "\u2014") + " \u2192 " + (a.planned_finish || "\u2014"));
+      }
+      metaBits.push((a.percent_complete || 0) + "% complete");
+      main.innerHTML =
+        "<div class='project-card__name'>" + (a.name || "(unnamed activity)") +
+        (a.is_out_of_sequence ? " \u26a0" : "") + "</div>" +
+        "<div class='project-card__meta'>" + metaBits.join(" \u00b7 ") + "</div>";
+      card.appendChild(main);
+
+      var badgeWrap = document.createElement("div");
+      badgeWrap.style.display = "flex";
+      badgeWrap.style.gap = "6px";
+      badgeWrap.style.flexWrap = "wrap";
+
+      var statusBadge = document.createElement("span");
+      statusBadge.className =
+        "status-badge " +
+        (a.status === "complete" ? "status-badge--complete" : a.status === "on_hold" ? "status-badge--at_risk" : "status-badge--info");
+      statusBadge.textContent = ACTIVITY_STATUS_LABELS[a.status];
+      badgeWrap.appendChild(statusBadge);
+
+      if (a.total_float != null) {
+        var floatBadge = document.createElement("span");
+        if (a.total_float <= 0) {
+          floatBadge.className = "status-badge status-badge--critical";
+          floatBadge.textContent = "Critical";
+        } else {
+          floatBadge.className = "status-badge status-badge--info";
+          floatBadge.textContent = a.total_float + "d float";
+        }
+        badgeWrap.appendChild(floatBadge);
+      }
+      card.appendChild(badgeWrap);
+
+      var actions = document.createElement("div");
+      actions.className = "project-card__actions";
+      actions.appendChild(buildActivityRowMenu(a));
+      card.appendChild(actions);
+
+      return card;
+    }
+
     function renderList() {
       listWrap.innerHTML = "";
       var filtered = sortActivitiesForGrid(scheduleActivities.filter(activityMatchesActivitiesTabFilter), wbsItems);
@@ -25055,8 +25249,15 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         return;
       }
 
+      var mobileCards = document.createElement("div");
+      mobileCards.className = "project-list activities-mobile-cards";
+      filtered.forEach(function (a) {
+        mobileCards.appendChild(buildActivityMobileCard(a));
+      });
+      listWrap.appendChild(mobileCards);
+
       var panel = document.createElement("div");
-      panel.className = "panel";
+      panel.className = "panel activities-table-wrap";
 
       // Horizontal scroll lives on its own wrapper, not the .panel itself, so the
       // panel's own border/shadow/padding don't visually break mid-scroll \u2014 same split
@@ -25157,58 +25358,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         // Row-level "\u22ef" menu (Edit/Delete), same .card-menu pattern established for
         // Portfolio/Risk Register cards \u2014 a table row's Actions cell is too narrow for
         // two full-width text buttons the way the old flex-card layout had room for.
+        // Shared with the mobile card fallback via buildActivityRowMenu() above.
         var actionsTd = document.createElement("td");
-        var rowMenuWrap = document.createElement("div");
-        rowMenuWrap.className = "card-menu";
-
-        var rowMenuBtn = document.createElement("button");
-        rowMenuBtn.className = "icon-btn";
-        rowMenuBtn.setAttribute("aria-label", "More actions");
-        rowMenuBtn.textContent = "\u22ef";
-        rowMenuBtn.onclick = function () {
-          uiState.activityRowMenuId = uiState.activityRowMenuId === a.id ? null : a.id;
-          rerender();
-        };
-        rowMenuWrap.appendChild(rowMenuBtn);
-
-        if (uiState.activityRowMenuId === a.id) {
-          var rowOverlay = document.createElement("button");
-          rowOverlay.className = "card-menu__overlay";
-          rowOverlay.setAttribute("aria-label", "Close menu");
-          rowOverlay.onclick = function () {
-            uiState.activityRowMenuId = null;
-            rerender();
-          };
-          rowMenuWrap.appendChild(rowOverlay);
-
-          var rowDropdown = document.createElement("div");
-          rowDropdown.className = "card-menu__dropdown";
-
-          var editItem = document.createElement("button");
-          editItem.className = "card-menu__item";
-          editItem.textContent = "Edit";
-          editItem.onclick = function () {
-            uiState.editingActivityId = a.id;
-            uiState.activityRowMenuId = null;
-            rerender();
-          };
-
-          var deleteItem = document.createElement("button");
-          deleteItem.className = "card-menu__item";
-          deleteItem.textContent = "Delete";
-          deleteItem.onclick = function () {
-            deleteActivityWithConfirm(a, function () {
-              uiState.activityRowMenuId = null;
-              rerender();
-            });
-          };
-
-          rowDropdown.appendChild(editItem);
-          rowDropdown.appendChild(deleteItem);
-          rowMenuWrap.appendChild(rowDropdown);
-        }
-
-        actionsTd.appendChild(rowMenuWrap);
+        actionsTd.appendChild(buildActivityRowMenu(a));
         row.appendChild(actionsTd);
 
         tbody.appendChild(row);
@@ -25977,12 +26129,23 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     bar2.style.flexWrap = "wrap";
     bar2.style.marginTop = "8px";
 
+    // UI/UX Overhaul Gate 8: only the zoom controls specifically are chart-only — Add
+    // Activity/Add Milestone below stay useful (and stay unwrapped in bar2 directly) at
+    // every width. display:contents makes this wrapper invisible to bar2's own flex
+    // layout (its children lay out as if they were bar2's own direct children,
+    // preserving the existing gap/wrap behavior) while still being one element the
+    // mobile breakpoint can hide as a unit.
+    var zoomGroup = document.createElement("span");
+    zoomGroup.className = "gantt-chart-only-control";
+    zoomGroup.style.display = "contents";
+    bar2.appendChild(zoomGroup);
+
     var zoomLabel = document.createElement("span");
     zoomLabel.className = "text-secondary";
     zoomLabel.style.fontSize = "12px";
     zoomLabel.style.alignSelf = "center";
     zoomLabel.textContent = "Zoom:";
-    bar2.appendChild(zoomLabel);
+    zoomGroup.appendChild(zoomLabel);
 
     ["auto", "day", "week", "month", "quarter", "year"].forEach(function (z) {
       var zBtn = document.createElement("button");
@@ -25992,7 +26155,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         uiState.ganttZoom = z;
         rerender();
       };
-      bar2.appendChild(zBtn);
+      zoomGroup.appendChild(zBtn);
     });
 
     var spacer2 = document.createElement("div");
@@ -26027,7 +26190,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     });
     if (projectBaselines.length > 0) {
       var bar3 = document.createElement("div");
-      bar3.className = "toolbar";
+      // UI/UX Overhaul Gate 8: entirely baseline-overlay controls for the interactive
+      // chart — nothing here applies to the mobile timeline, so the whole row hides.
+      bar3.className = "toolbar gantt-chart-only-control";
       bar3.style.flexWrap = "wrap";
       bar3.style.marginTop = "8px";
 
@@ -27181,7 +27346,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     }
 
     var wrap = document.createElement("div");
-    wrap.className = "panel";
+    // UI/UX Overhaul Gate 8: gantt-chart-panel is a stable hook for hiding just the
+    // interactive SVG chart at mobile widths (see the CSS's own comment) — a separate
+    // .gantt-mobile-timeline (built below, once the chart itself is ready) takes over
+    // at that breakpoint instead, same "always build both, let CSS pick" approach as
+    // the Activities tab's mobile card fallback.
+    wrap.className = "panel gantt-chart-panel";
     wrap.style.overflowX = "auto";
     wrap.style.overflowY = "auto";
     wrap.style.maxHeight = "70vh";
@@ -27459,8 +27629,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     // Jump controls — scroll the chart's own container to a meaningful date. Built
     // after the chart so xForDate/wrap are already in scope; appended to the toolbar
-    // area visually via being placed right above the chart panel.
+    // area visually via being placed right above the chart panel. gantt-chart-only-
+    // control (UI/UX Overhaul Gate 8): only meaningful alongside the interactive chart
+    // it scrolls, so it's hidden at mobile widths same as gantt-chart-panel itself.
     var jumpBar = document.createElement("div");
+    jumpBar.className = "gantt-chart-only-control";
     jumpBar.style.display = "flex";
     jumpBar.style.gap = "8px";
     jumpBar.style.marginTop = "10px";
@@ -27485,6 +27658,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     container.insertBefore(jumpBar, chartRowEl);
 
     var legend = document.createElement("div");
+    legend.className = "gantt-chart-only-control";
     legend.style.display = "flex";
     legend.style.flexWrap = "wrap";
     legend.style.gap = "16px";
@@ -27524,11 +27698,81 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     container.appendChild(legend);
 
     var dragHint = document.createElement("p");
-    dragHint.className = "text-secondary";
+    dragHint.className = "text-secondary gantt-chart-only-control";
     dragHint.style.fontSize = "11px";
     dragHint.style.marginTop = "6px";
     dragHint.textContent = "Drag a bar to move it, drag its right edge to resize, or click a bar/milestone/label to open its details. Every edit recalculates the schedule automatically.";
     container.appendChild(dragHint);
+
+    // UI/UX Overhaul Gate 8 (Tablet/Mobile Optimization): the brief's own "Gantt
+    // alternative" requirement for mobile — dragging a 2px-wide SVG bar with a
+    // fingertip doesn't work, and the toolbar above already consumes a full phone
+    // screen before any chart would even be visible. Read-only, sorted by whichever
+    // date each row actually has (planned, falling back to calculated), reusing the
+    // exact same toolbar filters as the chart it stands in for (activities is already
+    // filtered above) so the two views never disagree about what's in scope. Tapping a
+    // card opens the same Activity Detail Panel the chart itself uses — no separate
+    // mobile-only detail view to keep in sync.
+    //
+    // Gated on window.innerWidth (not built-always + CSS-hidden like the Activities
+    // tab's mobile cards) for a real reason, not just consistency: unlike that table,
+    // this list has no virtualization at all — building one .project-card per activity
+    // is fine for a normal-sized schedule but genuinely expensive at the thousands-of-
+    // activities scale Tier 3 Gate 4's own virtualization work specifically exists to
+    // handle. Checked once per render, not on a resize listener — this app has no
+    // JS-driven resize reactivity anywhere else either, matching the existing
+    // "CSS reflows, JS doesn't re-render on resize" convention. matchMedia isn't used
+    // here since jsdom (this project's whole test suite) doesn't implement it at all.
+    if (window.innerWidth <= 780) {
+      var mobileTimeline = document.createElement("div");
+      mobileTimeline.className = "project-list gantt-mobile-timeline";
+      var timelineActivities = activities.slice().sort(function (a, b) {
+        var da = a.planned_start || a.early_start || "";
+        var db = b.planned_start || b.early_start || "";
+        return da < db ? -1 : da > db ? 1 : 0;
+      });
+      timelineActivities.forEach(function (a) {
+        var card = document.createElement("div");
+        card.className = "project-card";
+        card.style.cursor = "pointer";
+        card.onclick = function () {
+          uiState.ganttDetailActivityId = a.id;
+          rerender();
+        };
+
+        var main = document.createElement("div");
+        main.className = "project-card__main";
+        var metaBits = [wbsName(wbsItems, a.wbs_id), ACTIVITY_TYPE_LABELS[a.activity_type]];
+        var start = a.planned_start || a.early_start;
+        var finish = a.planned_finish || a.early_finish;
+        if (start || finish) metaBits.push((start || "—") + " → " + (finish || "—"));
+        main.innerHTML =
+          "<div class='project-card__name'>" + (a.name || "(unnamed activity)") + "</div>" +
+          "<div class='project-card__meta'>" + metaBits.join(" · ") + "</div>";
+        card.appendChild(main);
+
+        var badgeWrap = document.createElement("div");
+        badgeWrap.style.display = "flex";
+        badgeWrap.style.gap = "6px";
+        badgeWrap.style.flexWrap = "wrap";
+        var statusBadge = document.createElement("span");
+        statusBadge.className =
+          "status-badge " +
+          (a.status === "complete" ? "status-badge--complete" : a.status === "on_hold" ? "status-badge--at_risk" : "status-badge--info");
+        statusBadge.textContent = ACTIVITY_STATUS_LABELS[a.status];
+        badgeWrap.appendChild(statusBadge);
+        if (a.total_float != null && a.total_float <= 0) {
+          var criticalBadge = document.createElement("span");
+          criticalBadge.className = "status-badge status-badge--critical";
+          criticalBadge.textContent = "Critical";
+          badgeWrap.appendChild(criticalBadge);
+        }
+        card.appendChild(badgeWrap);
+
+        mobileTimeline.appendChild(card);
+      });
+      container.appendChild(mobileTimeline);
+    }
   }
 
   /** Gate 8 drag interaction. `targetEl` is the element being visually transformed
