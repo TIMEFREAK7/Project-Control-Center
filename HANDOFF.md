@@ -63,8 +63,10 @@ that override default behavior).
 
 ## NEW INITIATIVE: UI/UX Overhaul (started 2026-08-20) — a THIRD, separate roadmap
 
-`main` is up to date through **UI/UX Overhaul Gate 2** (Global Navigation), `schema_version`
-**52**. With Tiers A-F, Tiers 1-2, and Tier 3 all complete/closed out (see below), Aditya started an
+`main` is up to date through **UI/UX Overhaul Gate 2**, including its post-ship nav revision (an
+Outlook-Online-style hidden overlay with accordion groups, replacing Gate 2's original persistent/
+collapsible sidebar — see that gate's own write-up below for detail), `schema_version` **52**. With
+Tiers A-F, Tiers 1-2, and Tier 3 all complete/closed out (see below), Aditya started an
 entirely new, large initiative right after: a **complete UI/UX overhaul** — desktop, laptop,
 tablet, mobile — turning PCC's look into a "professional Project Controls / PMO application"
 while explicitly preserving all existing business logic, data, schema, and module behavior. This
@@ -240,6 +242,64 @@ Caught immediately via `git status` right after committing (routine practice, no
 check), fixed with an honest follow-up commit rather than amending. Worth remembering: after any
 `git add` invocation that touches a rename/move alongside plain edits, check `git status` before
 trusting the commit is complete, not just after.
+
+**UI/UX Overhaul Gate 2 revision — Outlook-Online-style hidden nav with accordion groups**
+(merge `818bdf2`). Right after Gate 2 shipped, Aditya asked for a different nav paradigm than what
+was just built: instead of a persistent, manually-collapsible sidebar, the nav should be hidden
+entirely at every screen size until the hamburger button is clicked (Outlook Web's own pattern),
+and each group (OVERVIEW/REGISTERS/PLANNING/OUTPUT) should be its own click-to-expand accordion
+instead of an always-visible flat list. This REPLACES the collapse-toggle behavior Gate 2 had just
+shipped, not a new gate on top of it — no schema change, no new gate number.
+
+- **No more persistent `.sidebar` element, at any tier.** `buildSidebar()` and
+  `setCollapseBtnState()` are gone from `layout.js`; `mount()` no longer appends a sidebar to the
+  shell at all. `main-column` no longer reserves a sidebar-width gutter (`margin-left` dropped
+  entirely, not just at mobile). The hamburger (`.icon-btn--menu`) is now visible at every screen
+  size, not CSS-hidden above 780px — it's the only way to reach navigation anywhere now.
+- **`openMobileNav`/`closeMobileNav` renamed to `openNav`/`closeNav`** since they're no longer
+  mobile-specific — same overlay+drawer mechanics Gate 2 already built (backdrop click, Escape,
+  link click, or any other route change all still close it via `setActiveNav()`), just the only nav
+  surface now instead of one of two. The drawer slides in from the LEFT now (new `.drawer--left`
+  modifier on Gate 1's originally-right-anchored `.drawer` primitive), matching the top-left
+  hamburger it opens from — the base `.drawer` class keeps its own right-anchored default for any
+  future non-nav drawer use (e.g. a document-preview panel).
+- **Accordion groups**: `buildNavList()` renders each group as a `<button>` (label + chevron)
+  followed by its items in a `<ul>` that CSS-transitions `max-height` open/closed. A module-level
+  `expandedGroups` map (not store-backed — resets on an actual page reload, same as the nav itself
+  always starting closed) tracks which groups are open: the group containing the CURRENT route is
+  lazily defaulted to expanded the first time it's ever built, every other group defaults to
+  collapsed; a manual expand/collapse persists across closing and reopening the nav within the same
+  page load. Groups toggle independently — opening one doesn't close another.
+- **`settings.sidebar_collapsed`** (added in Gate 2 for the collapse-toggle version,
+  `schema_version` 51 → 52) **is now unused** — nothing reads or writes it any more, since there's
+  no persistent collapsed/expanded state left to persist under this model. Left untouched in the
+  schema, no migration change, no data loss — same "retire in place, don't remove" precedent this
+  app already has (`schedule.is_baseline`, Gate 22). Flagged to Aditya before building per his
+  "STOP and explain" rule for anything schema-adjacent, even though this specific case needed no
+  actual migration work.
+
+**Test-writing note**: `test_uiux_gate2_navigation_e2e.js` was rewritten (not just patched) since
+the old collapse-toggle assertions target DOM that no longer exists. One self-caught bug in the
+NEW test itself, not the app: the "clicking a nav link navigates and closes" check unconditionally
+clicked the REGISTERS group's toggle to "expand it before clicking the link inside," without
+checking whether an EARLIER check in the same file had already left it expanded — so it sometimes
+collapsed a group that was supposed to stay open, failing a LATER assertion in a different check.
+Fixed by only clicking the toggle if the group isn't already expanded. **General lesson for any
+future accordion/toggle test**: don't assume a fresh collapsed/expanded state at the start of a
+check — either read the current state first, or make the check independent of what earlier checks
+in the same file left behind.
+
+Tests: `test_uiux_gate2_navigation_e2e.js` rewritten, 37 checks (was 39 for the collapse-toggle
+version) — no persistent sidebar in the DOM; hamburger opens the overlay with all four groups
+present, correct one auto-expanded; clicking a collapsed group's header expands it and vice versa;
+a manually expanded group survives closing and reopening the nav; backdrop click/Escape/link
+click/any other route change all close it; reopening on a different active route highlights the
+right link and keeps the (still-manually-expanded) group open. Full suite: **61 files**, clean,
+zero regressions. Real-Chromium pass (4 screenshots: nav closed showing the full-width reclaimed
+layout, nav open with only OVERVIEW expanded, REGISTERS expanded alongside it after clicking its
+header, and the identical pattern at a 390px mobile viewport) confirmed the overlay slides from the
+left, accordion groups expand/collapse correctly, and navigating via a link closes the overlay —
+zero console errors. Zip verified separately post-merge (fresh extraction, real Chromium) — clean.
 
 **Next step for a fresh session: propose UI/UX Overhaul Gate 3 (Portfolio) to Aditya and wait for
 approval before building.** Per the brief's own plan and this session's own earlier Portfolio
