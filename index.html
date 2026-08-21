@@ -22670,6 +22670,16 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     excelEditorError: null,
     excelEditorSaving: false,
     excelEditorNextNewSeq: 1, // suggested "NEW-N" external_id for rows added via "+ Add Row"
+    // UI/UX Overhaul Gate 6 (Schedule): the Activities tab used to only offer text
+    // search, even though the Gantt tab a few clicks away already computes WBS/status/
+    // critical-path filtering over the exact same activity list — see
+    // renderActivitiesTab()'s own comment for the gap this closes. Deliberately its own
+    // small filter state (not shared with uiState.ganttFilter above) since Gantt's own
+    // filter also carries chart-specific fields (discipline/contractor/responsiblePerson/
+    // the "quick" bucket) that don't apply to this flat list view.
+    activityFilterWbsId: "",
+    activityFilterStatus: "",
+    activityFilterCritical: false,
   };
 
   function projectName(projects, projectId) {
@@ -24370,6 +24380,21 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     container.appendChild(panel);
   }
 
+  // UI/UX Overhaul Gate 6 (Schedule): activityMatchesGanttFilter() (above) is
+  // deliberately not reused here \u2014 it carries chart-only fields (discipline/
+  // contractor/responsiblePerson/the referenceDate-driven "quick" bucket) this flat
+  // list doesn't surface. WBS/status/critical are the three dimensions the Gantt tab
+  // already computes that this predicate closes the gap on.
+  function activityMatchesActivitiesTabFilter(a) {
+    if (uiState.activityFilter) {
+      if (a.name.toLowerCase().indexOf(uiState.activityFilter.toLowerCase()) === -1) return false;
+    }
+    if (uiState.activityFilterWbsId && a.wbs_id !== uiState.activityFilterWbsId) return false;
+    if (uiState.activityFilterStatus && a.status !== uiState.activityFilterStatus) return false;
+    if (uiState.activityFilterCritical && !(a.total_float != null && a.total_float <= 0)) return false;
+    return true;
+  }
+
   function renderActivitiesTab(container, data, rerender) {
     var scheduleActivities = data.activities.filter(function (a) {
       return a.schedule_id === uiState.scheduleId;
@@ -24391,6 +24416,22 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     var toolbar = document.createElement("div");
     toolbar.className = "toolbar";
+    toolbar.style.flexWrap = "wrap";
+
+    // "Clear Filters" is always in the DOM (visibility toggled via style.display, not
+    // conditionally created) so the search input's oninput handler \u2014 which deliberately
+    // calls the lighter renderList() rather than a full rerender(), to preserve the
+    // input's focus/cursor position while typing, this app's usual convention \u2014 can
+    // still keep it in sync without needing to rebuild the toolbar it lives in. The
+    // WBS/status/critical controls have no such focus concern (selects/checkboxes don't
+    // lose anything on a full rerender), so they call rerender() directly and get this
+    // for free, same as clicking the button itself.
+    function updateClearBtnVisibility() {
+      clearBtn.style.display =
+        uiState.activityFilter || uiState.activityFilterWbsId || uiState.activityFilterStatus || uiState.activityFilterCritical
+          ? ""
+          : "none";
+    }
 
     var searchInput = document.createElement("input");
     searchInput.type = "text";
@@ -24399,8 +24440,74 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     searchInput.oninput = function () {
       uiState.activityFilter = searchInput.value;
       renderList();
+      updateClearBtnVisibility();
     };
     toolbar.appendChild(searchInput);
+
+    var wbsSelect = document.createElement("select");
+    var allWbsOpt = document.createElement("option");
+    allWbsOpt.value = "";
+    allWbsOpt.textContent = "WBS: All";
+    wbsSelect.appendChild(allWbsOpt);
+    wbsItems.forEach(function (w) {
+      var opt = document.createElement("option");
+      opt.value = w.id;
+      opt.textContent = w.code ? w.code + " \u2014 " + w.name : w.name;
+      wbsSelect.appendChild(opt);
+    });
+    wbsSelect.value = uiState.activityFilterWbsId;
+    wbsSelect.onchange = function () {
+      uiState.activityFilterWbsId = wbsSelect.value;
+      rerender();
+    };
+    toolbar.appendChild(wbsSelect);
+
+    var statusSelect = document.createElement("select");
+    var allStatusOpt = document.createElement("option");
+    allStatusOpt.value = "";
+    allStatusOpt.textContent = "Status: All";
+    statusSelect.appendChild(allStatusOpt);
+    Object.keys(ACTIVITY_STATUS_LABELS).forEach(function (s) {
+      var opt = document.createElement("option");
+      opt.value = s;
+      opt.textContent = ACTIVITY_STATUS_LABELS[s];
+      statusSelect.appendChild(opt);
+    });
+    statusSelect.value = uiState.activityFilterStatus;
+    statusSelect.onchange = function () {
+      uiState.activityFilterStatus = statusSelect.value;
+      rerender();
+    };
+    toolbar.appendChild(statusSelect);
+
+    var criticalToggle = document.createElement("label");
+    criticalToggle.style.display = "flex";
+    criticalToggle.style.alignItems = "center";
+    criticalToggle.style.gap = "6px";
+    criticalToggle.style.fontSize = "13px";
+    var criticalCheckbox = document.createElement("input");
+    criticalCheckbox.type = "checkbox";
+    criticalCheckbox.checked = uiState.activityFilterCritical;
+    criticalCheckbox.onchange = function () {
+      uiState.activityFilterCritical = criticalCheckbox.checked;
+      rerender();
+    };
+    criticalToggle.appendChild(criticalCheckbox);
+    criticalToggle.appendChild(document.createTextNode("Critical only"));
+    toolbar.appendChild(criticalToggle);
+
+    var clearBtn = document.createElement("button");
+    clearBtn.className = "btn btn--ghost";
+    clearBtn.textContent = "Clear Filters";
+    clearBtn.onclick = function () {
+      uiState.activityFilter = "";
+      uiState.activityFilterWbsId = "";
+      uiState.activityFilterStatus = "";
+      uiState.activityFilterCritical = false;
+      rerender();
+    };
+    toolbar.appendChild(clearBtn);
+    updateClearBtnVisibility();
 
     var spacer = document.createElement("div");
     spacer.className = "toolbar__spacer";
@@ -24422,10 +24529,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     function renderList() {
       listWrap.innerHTML = "";
-      var filtered = scheduleActivities.filter(function (a) {
-        if (!uiState.activityFilter) return true;
-        return a.name.toLowerCase().indexOf(uiState.activityFilter.toLowerCase()) !== -1;
-      });
+      var filtered = scheduleActivities.filter(activityMatchesActivitiesTabFilter);
 
       if (filtered.length === 0) {
         var empty = document.createElement("div");
@@ -24433,7 +24537,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         empty.textContent = uiState.scheduleId
           ? scheduleActivities.length === 0
             ? "No activities yet. Click \u201c+ Add Activity\u201d to add the first one."
-            : "No activities match this search."
+            : "No activities match this search/filter."
           : "Create a schedule first.";
         listWrap.appendChild(empty);
         return;
