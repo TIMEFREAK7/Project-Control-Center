@@ -63,9 +63,9 @@ that override default behavior).
 
 ## NEW INITIATIVE: UI/UX Overhaul (started 2026-08-20) — a THIRD, separate roadmap
 
-`main` is up to date through **UI/UX Overhaul Gate 4 (Project Workspace)**, `schema_version` **52**
-(unchanged since Gate 2 — Gates 3 and 4 are both pure display/computed-stats work, no schema
-touch). Gate 2 included its
+`main` is up to date through **UI/UX Overhaul Gate 5 (Executive Center redesign)**, `schema_version`
+**52** (unchanged since Gate 2 — Gates 3, 4, and 5 are all pure display/computed-stats/reorganization
+work, no schema touch). Gate 2 included its
 post-ship nav revision (an Outlook-Online-style hidden overlay with accordion groups, replacing
 Gate 2's original persistent/collapsible sidebar — see that gate's own write-up below for detail).
 With Tiers A-F, Tiers 1-2, and Tier 3 all complete/closed out (see below), Aditya started an
@@ -453,14 +453,85 @@ separately post-merge (fresh extraction, real Chromium) — clean.
 matched, so the merge went through cleanly on the first attempt with no reset needed. Confirms the
 general lesson from Gate 3's write-up above is the right habit to keep.
 
-**Next step for a fresh session: ask Aditya what's next (Gate 5 — Executive Center, per the
-brief's own 8-gate breakdown) rather than assuming approval to continue automatically** — this
-initiative's own standing rule (inspect, propose, wait for explicit approval, build exactly that,
-stop) applies to every gate, including the next one. Executive Center is a redesign of something
-substantial already built (160KB, the largest file in the app) — the brief wants it to become "a
-major professional feature" with charts, a management-attention pattern, and an export-ready
-structure; re-inspect its current tab structure (Overview/Weekly Reviews/Output) fresh rather than
-assuming this session's notes still apply verbatim.
+**UI/UX Overhaul Gate 5 — Executive Center redesign** (merge `9f447f5`). Inspection before scoping
+found the Overview tab was one flat vertical stack of 13 KPI sections (Progress/Schedule/Status
+Date/Cost/Commitments/EVM/Schedule Performance/Delay & Recovery/Risks/Issues/RFIs/Changes/
+Resources) followed by Health Score, Diagnostics, Executive Summary, 7 charts, Recent Activity/
+Upcoming, and Management Action List — a real-Chromium screenshot confirmed ~3650px of scroll even
+on a near-empty seeded project. The good news: almost everything the brief's own Executive Center
+wishlist wants (S-curve, milestone timeline, risk heat map, RFI/CO charts) already existed as real
+computed data — this was a **layout problem, not a missing-feature problem**, confirmed with
+Aditya via `AskUserQuestion` (three questions) before building:
+- **Sub-tab reorganization** (not a collapsible-accordion alternative) — group the 13 KPI sections
+  by topic under a Summary landing view, reusing the same tab-row pattern Gate 4's Workspace
+  already established.
+- **Retrofit Diagnostics and Management Action List onto Gate 1's `.attention-list`/
+  `.attention-item` primitive** (first adopted by Workspace's own Management Attention, Gate 4) —
+  same computed alerts, different (consistent) markup.
+- **Also retrofit Dashboard's own Management Attention panel** onto the same primitive while the
+  pattern was fresh, even though `dashboard.js` is a separate file outside "Executive Center" per
+  se — Aditya's explicit call over keeping this gate strictly file-scoped.
+
+What shipped, zero changes to `buildProjectContext()`/`projectHealthEngine.js`/the CPM engine —
+this gate only decided WHERE each already-computed figure renders, never recomputed anything:
+- **Always-visible hero**: name/client/sector/type + RAG badge, then 5 condensed at-a-glance
+  `.kpi-grid` tiles (Progress, Schedule Variance, Cost Variance, Open Risks, Overdue RFIs) — so
+  switching sub-tabs never loses "which project, how healthy" context. Every figure here already
+  existed somewhere in the old flat stack; this surfaces a SUBSET first, nothing new computed.
+- **Sub-tab row** (`uiState.overviewSubTab`, module-level, resets on reload same as the existing
+  `uiState.tab`): **Summary** (default) — Project Details, Health Score, Diagnostics, Executive
+  Summary, Recent Activity/Upcoming, Management Action List. **Schedule** — Progress/Schedule/
+  Status Date/Schedule Performance/Delay & Recovery KPIs + their own detail panels + a new
+  `renderScheduleCharts()` (S-Curve, Critical vs Non-Critical, Float Distribution, Milestone
+  Timeline — split out of the old single `renderChartsSection()`). **Cost & Commitments** — Cost/
+  Commitments/EVM. **Risk & Compliance** — Risks/Issues/RFIs/Changes + a new `renderRiskCharts()`
+  (Risk Heat Map, RFI Open/Closed, Change Orders Status). **Resources** — only offered once
+  `data.resources.length > 0`, same "only show when the module exists" rule the old always-on
+  section already used; a stale `overviewSubTab` pointing at a since-removed Resources tab falls
+  back to Summary automatically.
+- **Diagnostics/Management Action List retrofit**: each alert is now an `.attention-item` (colored
+  severity dot + text, whole row clickable) instead of a `.status-badge` + separate "View" button
+  on a `.detail-card` row. `SEVERITY_BADGE_CLASS` (now-dead code after the retrofit) removed.
+- **Dashboard's Management Attention panel retrofit**: same primitive, per-project grouping
+  unchanged (heading + "View Project" button stays outside the list), only the alert rows
+  themselves changed from hand-built badge markup to `.attention-item`.
+
+**No bugs self-caught this gate** — the reorganization is pure UI, and the new test file's checks
+passed on the first standalone run. **13 pre-existing test files needed mechanical updates**, all
+the same shape: a check that used to find KPI/chart text directly on Executive Center's default
+view now needs to click into the sub-tab that content moved to first (`test_executive_center_e2e.js`,
+`test_resources_e2e.js`, `test_activity_physical_progress_e2e.js`,
+`test_advanced_schedule_performance_e2e.js`, `test_baseline_revision_control_e2e.js`,
+`test_commitment_management_e2e.js`, `test_commitment_schedule_integration_e2e.js`,
+`test_integrated_project_controls_e2e.js`, `test_status_date_control_e2e.js`,
+`test_status_date_reforecasting_e2e.js`), plus two files checking the old badge-text/`.detail-card`
+markup that needed updating to the new `.attention-item` shape (`test_management_attention_e2e.js`
+for Dashboard, `test_recovery_decision_reporting_e2e.js` for Executive Center's Diagnostics —
+including one check that used to click a separate "View" button and now clicks the row itself).
+**General lesson for any future test that reads Executive Center Overview content**: check which
+sub-tab (Summary/Schedule/Cost & Commitments/Risk & Compliance/Resources) that content now lives
+on and click into it first — `Array.from(outlet().querySelectorAll(".toolbar button")).find(b =>
+b.textContent.trim() === "<tab label>").click()` — before asserting on KPI cards or charts.
+
+Tests: new `tests/test_uiux_gate5_executive_center_e2e.js` (40 checks, including a 27-route smoke
+test) — the hero row's figures, Summary-vs-Schedule-vs-Cost-vs-Risk content isolation (each sub-tab
+proven to show its own content and NOT leak another sub-tab's), the Diagnostics/Management Action
+List `.attention-item` retrofit including severity classes and click-to-navigate, the Resources
+sub-tab appearing/disappearing based on real data, Dashboard's own retrofit, and a "writes nothing
+back" record-count sanity check. Full suite: **63 files, 1777 checks**, zero regressions. Real-
+Chromium pass (Summary/Schedule/Cost & Commitments/Risk & Compliance sub-tabs, each dramatically
+shorter than the old single ~3650px page) confirmed everything renders correctly — zero console
+errors. Zip verified separately post-merge (fresh extraction, real Chromium) — clean.
+
+**Next step for a fresh session: ask Aditya what's next (Gate 6 — Existing Modules, one at a time,
+per the brief's own 8-gate breakdown) rather than assuming approval to continue automatically** —
+this initiative's own standing rule (inspect, propose, wait for explicit approval, build exactly
+that, stop) applies to every gate, including the next one. Gate 6 is explicitly "one module at a
+time," not a single big gate — the brief names Documents/Schedule/Vendors/Risks/Issues/RFIs/
+Meetings/Changes/"other modules actually present" as candidates; a fresh session should ask Aditya
+which module to start with rather than picking one unilaterally. Documents has a known, disclosed
+gap worth considering first: no project-filter hook at all (flagged during Gate 4's build, still
+true) — Workspace's Documents nav tab lands unfiltered because of it.
 
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
