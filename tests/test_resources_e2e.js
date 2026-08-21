@@ -226,6 +226,13 @@ function findButtonByText(dom, text) {
     win.PCC.executiveCenter.viewProject(projectAId);
     win.PCC.router.go("executiveCenter");
     win.PCC.router.render();
+    // UI/UX Overhaul Gate 5: the old flat KPI stack is now grouped into sub-tabs; a
+    // Resources sub-tab only appears (and needs clicking into) once data.resources has
+    // real rows, same "only show when the module exists" condition the old always-on
+    // RESOURCES section used to gate itself with.
+    var resourcesTab = Array.from(win.document.querySelectorAll(".toolbar button")).find((b) => b.textContent.trim() === "Resources");
+    assert.ok(resourcesTab, "Resources sub-tab not found");
+    resourcesTab.click();
     var outlet = win.document.getElementById("page-outlet");
     assert.ok(outlet.textContent.indexOf("RESOURCES") !== -1);
     assert.ok(outlet.textContent.indexOf("Resources Assigned") !== -1);
@@ -245,6 +252,9 @@ function findButtonByText(dom, text) {
     win.PCC.executiveCenter.viewProject(win.PCC.store.get().projects.find((p) => p.name === "Empty Project").id);
     win.PCC.router.go("executiveCenter");
     win.PCC.router.render();
+    var resourcesTab = Array.from(win.document.querySelectorAll(".toolbar button")).find((b) => b.textContent.trim() === "Resources");
+    assert.ok(resourcesTab, "Resources sub-tab still shows since resources exist in the app");
+    resourcesTab.click();
     var outlet = win.document.getElementById("page-outlet");
     assert.ok(outlet.textContent.indexOf("RESOURCES") !== -1, "section still shows since resources exist in the app");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));

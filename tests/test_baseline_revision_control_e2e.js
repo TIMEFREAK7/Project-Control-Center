@@ -195,6 +195,10 @@ function findButtonsByText(dom, text) {
     win.PCC.executiveCenter.viewProject(projectId);
     win.PCC.router.go("executiveCenter");
     win.PCC.router.render();
+    // UI/UX Overhaul Gate 5: Schedule Variance now lives on the Schedule sub-tab.
+    var scheduleTab = Array.from(outlet().querySelectorAll(".toolbar button")).find((b) => b.textContent.trim() === "Schedule");
+    assert.ok(scheduleTab, "Schedule sub-tab not found");
+    scheduleTab.click();
 
     var kpiCards = Array.from(outlet().querySelectorAll(".kpi-card"));
     var varianceCard = kpiCards.find((c) => c.textContent.indexOf("Schedule Variance") !== -1);

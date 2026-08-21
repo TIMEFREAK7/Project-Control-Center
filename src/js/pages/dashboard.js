@@ -212,27 +212,33 @@
 
       group.appendChild(groupHeader);
 
+      // UI/UX Overhaul Gate 5: retrofitted onto Gate 1's .attention-list/.attention-item
+      // primitive (Workspace's own Management Attention, Gate 4, and Executive Center's
+      // Diagnostics/Management Action List, this same gate) instead of this panel's own
+      // hand-built badge+row markup — no change to which alerts appear, only how. This
+      // panel only ever carries "critical"/"warning" severities (filtered upstream in
+      // computeManagementAttention above), never "info".
+      var list = document.createElement("div");
+      list.className = "attention-list";
       g.alerts.forEach(function (a) {
         var row = document.createElement("div");
-        row.style.display = "flex";
-        row.style.alignItems = "center";
-        row.style.gap = "8px";
-        row.style.fontSize = "13px";
-        row.style.padding = "4px 0";
+        row.className = "attention-item";
 
-        var badge = document.createElement("span");
-        badge.className = "status-badge status-badge--" + (a.severity === "critical" ? "critical" : "at_risk");
-        badge.style.fontSize = "11px";
-        badge.style.flexShrink = "0";
-        badge.textContent = a.severity === "critical" ? "Critical" : "Warning";
-        row.appendChild(badge);
+        var icon = document.createElement("span");
+        icon.className = "attention-item__icon attention-item__icon--" + (a.severity === "critical" ? "critical" : "warning");
+        row.appendChild(icon);
 
-        var text = document.createElement("span");
+        var body = document.createElement("div");
+        body.className = "attention-item__body";
+        var text = document.createElement("div");
+        text.className = "attention-item__text";
         text.textContent = a.description;
-        row.appendChild(text);
+        body.appendChild(text);
+        row.appendChild(body);
 
-        group.appendChild(row);
+        list.appendChild(row);
       });
+      group.appendChild(list);
 
       panel.appendChild(group);
     });

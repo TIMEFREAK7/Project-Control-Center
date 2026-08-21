@@ -168,6 +168,10 @@ function addDaysIso(days) {
     win.PCC.executiveCenter.viewProject(projectId);
     win.PCC.router.go("executiveCenter");
     win.PCC.router.render();
+    // UI/UX Overhaul Gate 5: COMMITMENTS now lives on the Cost & Commitments sub-tab.
+    var costTab = Array.from(outlet().querySelectorAll(".toolbar button")).find((b) => b.textContent.trim() === "Cost & Commitments");
+    assert.ok(costTab, "Cost & Commitments sub-tab not found");
+    costTab.click();
     var kpiCards = Array.from(outlet().querySelectorAll(".kpi-card"));
     var atRiskCard = kpiCards.find((c) => c.textContent.indexOf("At Risk") !== -1);
     assert.ok(atRiskCard, "At Risk KPI card not found in Executive Center");

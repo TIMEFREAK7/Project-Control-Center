@@ -105,6 +105,11 @@ function findButtonByText(dom, text) {
     win.PCC.executiveCenter.viewProject(projectId);
     win.PCC.router.go("executiveCenter");
     win.PCC.router.render();
+    // UI/UX Overhaul Gate 5: the PROGRESS KPI section now lives on the Schedule
+    // sub-tab, not the default Summary landing view.
+    var scheduleTab = Array.from(outlet().querySelectorAll(".toolbar button")).find((b) => b.textContent.trim() === "Schedule");
+    assert.ok(scheduleTab, "Schedule sub-tab not found");
+    scheduleTab.click();
     var text = outlet().textContent;
     assert.ok(text.indexOf("Schedule Progress") !== -1);
     assert.ok(text.indexOf("Physical Progress") !== -1);
@@ -152,6 +157,9 @@ function findButtonByText(dom, text) {
     win.PCC.executiveCenter.viewProject(projectId);
     win.PCC.router.go("executiveCenter");
     win.PCC.router.render();
+    var scheduleTab = Array.from(outlet().querySelectorAll(".toolbar button")).find((b) => b.textContent.trim() === "Schedule");
+    assert.ok(scheduleTab, "Schedule sub-tab not found");
+    scheduleTab.click();
     var kpiValues = Array.from(outlet().querySelectorAll(".kpi-card")).map((c) => c.textContent);
     assert.ok(kpiValues.some((t) => t.indexOf("Schedule Progress") !== -1 && t.indexOf("40%") !== -1), "expected Schedule Progress at 40%, got: " + kpiValues.join(" | "));
     assert.ok(kpiValues.some((t) => t.indexOf("Physical Progress") !== -1 && t.indexOf("65%") !== -1), "expected Physical Progress at 65%, got: " + kpiValues.join(" | "));

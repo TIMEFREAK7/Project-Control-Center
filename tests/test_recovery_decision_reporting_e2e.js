@@ -109,17 +109,20 @@ function findButtonByText(dom, text) {
     var text = outlet().textContent;
     assert.ok(text.indexOf("Recovery action overdue: Add night shift crew") !== -1, "got: " + text.slice(0, 400));
     assert.ok(text.indexOf("Decision pending: “Confirm precast vendor”.") !== -1);
-    var badges = Array.from(outlet().querySelectorAll(".status-badge")).map((b) => b.textContent.trim());
-    assert.ok(badges.filter((b) => b === "Warning").length >= 2, "expected at least 2 Warning badges (recovery + decision), got: " + badges.join(", "));
+    // UI/UX Overhaul Gate 5: Diagnostics is now built on Gate 1's .attention-list/
+    // .attention-item primitive (a colored dot + a "Severity · Source" meta line)
+    // instead of its own status-badge rows.
+    var warningIcons = outlet().querySelectorAll(".attention-item__icon--warning");
+    assert.ok(warningIcons.length >= 2, "expected at least 2 warning-severity items (recovery + decision), got: " + warningIcons.length);
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("clicking 'View' on the pending-decision alert navigates to the Decision Register with that decision expanded", () => {
-    var rows = Array.from(outlet().querySelectorAll(".detail-card")).filter((r) => r.textContent.indexOf("Confirm precast vendor") !== -1);
+  await check("clicking the pending-decision alert navigates to the Decision Register with that decision expanded", () => {
+    // UI/UX Overhaul Gate 5: each diagnostics row is now the whole .attention-item
+    // (clickable), not a separate "View" button on a .detail-card row.
+    var rows = Array.from(outlet().querySelectorAll(".attention-item")).filter((r) => r.textContent.indexOf("Confirm precast vendor") !== -1);
     assert.strictEqual(rows.length, 1, "expected exactly one diagnostics row for the pending decision");
-    var viewBtn = Array.from(rows[0].querySelectorAll("button")).find((b) => b.textContent.trim() === "View");
-    assert.ok(viewBtn, "View button not found on the decision diagnostics row");
-    viewBtn.click();
+    rows[0].click();
     win.PCC.router.render();
     assert.strictEqual(win.PCC.router.currentRouteName(), "decisionRegister");
     assert.ok(outlet().textContent.indexOf("Confirm precast vendor") !== -1);

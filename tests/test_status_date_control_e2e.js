@@ -124,6 +124,11 @@ function diffDays(fromIso, toIso) {
     win.PCC.executiveCenter.viewProject(projectId);
     win.PCC.router.go("executiveCenter");
     win.PCC.router.render();
+    // UI/UX Overhaul Gate 5: STATUS DATE now lives on the Schedule sub-tab. Every check
+    // after this one stays on the Schedule sub-tab too, since nothing here navigates away.
+    var scheduleTab = Array.from(outlet().querySelectorAll(".toolbar button")).find((b) => b.textContent.trim() === "Schedule");
+    assert.ok(scheduleTab, "Schedule sub-tab not found");
+    scheduleTab.click();
 
     var text = outlet().textContent;
     assert.ok(text.indexOf("STATUS DATE (2026-06-01)") !== -1, "section header must show the schedule's own data_date as the status date");

@@ -167,6 +167,11 @@ function findButtonByText(dom, text) {
     win.PCC.executiveCenter.viewProject(projectId);
     win.PCC.router.go("executiveCenter");
     win.PCC.router.render();
+    // UI/UX Overhaul Gate 5: STATUS DATE now lives on the Schedule sub-tab. The next
+    // check stays on it too, since nothing here navigates away.
+    var scheduleTab = Array.from(outlet().querySelectorAll(".toolbar button")).find((b) => b.textContent.trim() === "Schedule");
+    assert.ok(scheduleTab, "Schedule sub-tab not found");
+    scheduleTab.click();
 
     var text = outlet().textContent;
     var kpiCards = Array.from(outlet().querySelectorAll(".kpi-card"));
