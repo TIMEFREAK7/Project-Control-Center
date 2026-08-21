@@ -1330,7 +1330,7 @@
 
   function renderScheduleBar(container, data, rerender) {
     var bar = document.createElement("div");
-    bar.className = "toolbar";
+    bar.className = "toolbar focus-mode-hide";
 
     var projSelect = document.createElement("select");
     var activeProjects = data.projects.filter(function (p) {
@@ -4176,10 +4176,16 @@
 
     renderGanttToolbar(container, data, allActivities, wbsItems, rerender);
 
+    // UI/UX Overhaul Gate 7 (Side-by-Side Views): captured rather than appended
+    // straight to container — see the appendChild(wrap) site below for why (it moves
+    // this into a side-by-side row with the chart once the chart itself is ready).
+    var detailPanelEl = null;
     if (uiState.ganttDetailActivityId) {
       var detailActivity = allActivities.find(function (a) { return a.id === uiState.ganttDetailActivityId; });
       if (detailActivity) {
-        renderActivityDetailPanel(container, detailActivity, data, wbsItems, allActivities, relationships, rerender);
+        detailPanelEl = document.createElement("div");
+        renderActivityDetailPanel(detailPanelEl, detailActivity, data, wbsItems, allActivities, relationships, rerender);
+        container.appendChild(detailPanelEl);
       } else {
         uiState.ganttDetailActivityId = null;
       }
@@ -4472,7 +4478,35 @@
     }
 
     wrap.appendChild(svg);
-    container.appendChild(wrap);
+
+    // UI/UX Overhaul Gate 7 (Side-by-Side Views): once the chart itself is ready to
+    // render, move the Activity Detail Panel (if open) out of its earlier full-width
+    // position and into a side-by-side row with the chart — same two-panel pattern
+    // Documents' register+preview already established. Deferred to here (rather than
+    // building the row from the start) so every early-return path above this point
+    // (the "no dated activities" empty state, etc.) keeps its EXISTING behavior of
+    // showing the detail panel full-width regardless of whether the chart itself can
+    // render — DOM surgery (detach + re-wrap), not a rebuild, so nothing about the
+    // panel's own already-rendered content/listeners is disturbed.
+    // chartRowEl is whatever actually ends up as container's own direct child here —
+    // wrap itself when there's no detail panel, or the new row wrapping both when
+    // there is. Everything below that needs to position something relative to "the
+    // chart" (the jump-controls bar) must use THIS, not wrap directly — wrap stops
+    // being a direct child of container the moment it's nested inside the row.
+    var chartRowEl;
+    if (detailPanelEl) {
+      container.removeChild(detailPanelEl);
+      detailPanelEl.classList.add("gantt-detail-pane");
+      var ganttLayoutRow = document.createElement("div");
+      ganttLayoutRow.className = "gantt-layout-row";
+      ganttLayoutRow.appendChild(wrap);
+      ganttLayoutRow.appendChild(detailPanelEl);
+      container.appendChild(ganttLayoutRow);
+      chartRowEl = ganttLayoutRow;
+    } else {
+      container.appendChild(wrap);
+      chartRowEl = wrap;
+    }
 
     renderRowsLayer();
     var ganttScrollRafPending = false;
@@ -4511,7 +4545,7 @@
     jumpBar.appendChild(jumpButton("Project Start", layout.rangeStart));
     jumpBar.appendChild(jumpButton("Project Finish", layout.rangeEnd));
     if (layout.dataDate) jumpBar.appendChild(jumpButton("Data Date", layout.dataDate));
-    container.insertBefore(jumpBar, wrap);
+    container.insertBefore(jumpBar, chartRowEl);
 
     var legend = document.createElement("div");
     legend.style.display = "flex";
@@ -5292,12 +5326,13 @@
     var data = window.PCC.store.get();
 
     var h1 = document.createElement("h2");
+    h1.className = "focus-mode-hide";
     h1.textContent = "Schedule";
     h1.style.marginBottom = "6px";
     outlet.appendChild(h1);
 
     var gateNote = document.createElement("p");
-    gateNote.className = "text-secondary";
+    gateNote.className = "text-secondary focus-mode-hide";
     gateNote.style.fontSize = "12px";
     gateNote.style.marginBottom = "16px";
     gateNote.textContent =
@@ -5305,6 +5340,12 @@
       "View the Gantt tab for a timeline, and save/compare baselines from the Baselines tab.";
     outlet.appendChild(gateNote);
 
+    // UI/UX Overhaul Gate 7 (Focus Mode): the schedule-picker bar (project/schedule
+    // select + Edit/New/Import/Calculate/Save Baseline) is real chrome, not core
+    // Activities/Gantt/filters content — matches the brief's own Schedule Focus Mode
+    // example verbatim ("hide unnecessary navigation... maximum workspace to Activities
+    // + Gantt + filters"). Applies to every Schedule tab, not just Gantt, since focus
+    // mode is a global declutter state, not per-tab.
     renderScheduleBar(outlet, data, rerender);
 
     if (uiState.importPanelOpen) {

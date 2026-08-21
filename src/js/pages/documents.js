@@ -57,6 +57,11 @@
     // selected/previewed at a time; reset whenever the selection changes (see
     // selectDocument() below).
     previewExtractionExpanded: false,
+    // UI/UX Overhaul Gate 7 (Resizable Panels): the register list pane's width in px
+    // once the user has dragged the handle at least once, or null to use the default
+    // CSS flex-basis split. Module-level, not persisted — same "resets on reload"
+    // treatment every other per-page display preference in this app already gets.
+    docRegisterListWidth: null,
     duplicateMatches: [], // [{ record, reason, strength }] for the current pendingFile, or []
     duplicateAcknowledged: false, // true once the user clicks "Continue Anyway" on a warning
     // Gate 16 (Document Control 3): classification fields, all optional, additive on top
@@ -1574,12 +1579,16 @@
     var data = window.PCC.store.get();
 
     var h1 = document.createElement("h2");
+    h1.className = "focus-mode-hide";
     h1.textContent = "Documents";
     h1.style.marginBottom = "16px";
     outlet.appendChild(h1);
 
+    // UI/UX Overhaul Gate 7 (Focus Mode): matches the brief's own Documents Focus Mode
+    // example verbatim ("Document register + preview") — this explanatory panel is
+    // useful once, not on every visit, so it's the first thing to go for more workspace.
     var infoPanel = document.createElement("div");
-    infoPanel.className = "panel";
+    infoPanel.className = "panel focus-mode-hide";
     infoPanel.style.marginBottom = "16px";
     infoPanel.innerHTML =
       "<p class='text-secondary' style='margin:0; font-size:13px;'>Excel, Word, and PDF files are read " +
@@ -1744,6 +1753,14 @@
 
     var listPane = document.createElement("div");
     listPane.className = "doc-register-list";
+    // UI/UX Overhaul Gate 7 (Resizable Panels): a custom width overrides the default
+    // CSS flex-basis (1 1 340px, capped at max-width: 420px) entirely — flex:0 0 Npx
+    // pins an exact width regardless of grow/shrink, and max-width:none lifts the CSS
+    // cap that would otherwise clip a wider drag result.
+    if (uiState.docRegisterListWidth != null) {
+      listPane.style.flex = "0 0 " + uiState.docRegisterListWidth + "px";
+      listPane.style.maxWidth = "none";
+    }
     filtered.forEach(function (doc) {
       listPane.appendChild(
         renderDocumentListItem(doc, data, doc.id === uiState.selectedDocId, function () {
@@ -1753,6 +1770,50 @@
       );
     });
     register.appendChild(listPane);
+
+    // UI/UX Overhaul Gate 7 (Resizable Panels): a drag handle between the register list
+    // and the preview pane. Deliberately mutates listPane's own inline style directly
+    // during the drag rather than calling rerender() on every mousemove (which would be
+    // both slow and would tear down/rebuild the very listeners driving the drag) —
+    // uiState is only written once, on mouseup, so a LATER rerender (selecting a
+    // different document, changing a filter) still preserves the chosen width.
+    var resizeHandle = document.createElement("div");
+    resizeHandle.className = "doc-register-resize-handle";
+    resizeHandle.setAttribute("role", "separator");
+    resizeHandle.setAttribute("aria-label", "Resize document list");
+    resizeHandle.title = "Drag to resize, double-click to reset";
+    resizeHandle.onmousedown = function (downEvent) {
+      downEvent.preventDefault();
+      var registerRect = register.getBoundingClientRect();
+      // Tracks the last width the drag itself computed and applied, so mouseup commits
+      // exactly what was visually shown — not a fresh getBoundingClientRect() read,
+      // which would mean re-deriving the same number through actual layout a second
+      // time for no reason (and isn't meaningfully measurable in a no-layout-engine
+      // test environment at all).
+      var lastWidth = null;
+      resizeHandle.classList.add("doc-register-resize-handle--dragging");
+
+      function onMouseMove(moveEvent) {
+        var raw = moveEvent.clientX - registerRect.left;
+        var clamped = Math.max(240, Math.min(640, raw));
+        lastWidth = clamped;
+        listPane.style.flex = "0 0 " + clamped + "px";
+        listPane.style.maxWidth = "none";
+      }
+      function onMouseUp() {
+        document.removeEventListener("mousemove", onMouseMove);
+        document.removeEventListener("mouseup", onMouseUp);
+        resizeHandle.classList.remove("doc-register-resize-handle--dragging");
+        if (lastWidth != null) uiState.docRegisterListWidth = Math.round(lastWidth);
+      }
+      document.addEventListener("mousemove", onMouseMove);
+      document.addEventListener("mouseup", onMouseUp);
+    };
+    resizeHandle.ondblclick = function () {
+      uiState.docRegisterListWidth = null;
+      rerender();
+    };
+    register.appendChild(resizeHandle);
 
     register.appendChild(renderDocumentPreviewPanel(selectedDoc, data, rerender));
 

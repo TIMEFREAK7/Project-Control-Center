@@ -970,12 +970,13 @@
     var activeProjects = data.projects.filter(function (p) { return !p.archived; });
 
     var h1 = document.createElement("h2");
+    h1.className = "focus-mode-hide";
     h1.textContent = "Project Executive Center";
     h1.style.marginBottom = "6px";
     outlet.appendChild(h1);
 
     var sub = document.createElement("p");
-    sub.className = "text-secondary";
+    sub.className = "text-secondary focus-mode-hide";
     sub.style.fontSize = "12px";
     sub.style.marginBottom = "16px";
     sub.textContent = "Management rollup for one project — every number reads live from Portfolio, Schedule, Cost Tracking, Risk Register, RFI/TQ, Change Management, and Meetings.";

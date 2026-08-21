@@ -355,6 +355,30 @@ button {
   flex-shrink: 0;
 }
 
+/* UI/UX Overhaul Gate 7 (Focus Mode): visual "this toggle is currently on" state,
+   shared by any icon-btn that's a binary on/off toggle rather than a momentary action —
+   today just the Focus Mode button, but written generically since density/theme could
+   adopt the same treatment later instead of only changing their own glyph. */
+.icon-btn--active {
+  color: var(--signal-amber);
+  background-color: var(--bg-paper-raised);
+}
+
+/* UI/UX Overhaul Gate 7 (Focus Mode). body.focus-mode is toggled by layout.js's
+   toggleFocusMode() — global, not per-page, so leaving one focused page for another
+   stays decluttered rather than snapping back. The footer is always safe to hide (pure
+   status text, nothing interactive). .focus-mode-hide is the per-page opt-in: each page
+   tags its OWN non-essential heading/description/picker-bar chrome with this class in
+   its own markup — never a toolbar's actual filter/search/action controls, which every
+   page keeps working normally in focus mode. */
+body.focus-mode footer.app-footer {
+  display: none;
+}
+
+body.focus-mode .focus-mode-hide {
+  display: none;
+}
+
 main.page {
   flex-grow: 1;
   padding: 24px;
@@ -804,6 +828,65 @@ a:focus-visible {
 .doc-register-preview {
   flex: 2 1 480px;
   min-width: 320px;
+}
+
+/* UI/UX Overhaul Gate 7 (Resizable Panels). A thin drag handle between the register
+   list and the preview pane — align-self:stretch so it spans the full row height
+   regardless of which pane is taller. The visible line is a pseudo-element, not the
+   handle's own background, so the actual (generous, easy-to-grab) hit target can stay
+   wider than what's drawn. Hidden below 780px: .doc-register already stacks its two
+   panes into one column there (existing flex-wrap behavior, no new breakpoint rule),
+   where a horizontal-drag handle between two STACKED panes would be a stray sliver
+   with nothing meaningful to do. */
+.doc-register-resize-handle {
+  width: 10px;
+  flex-shrink: 0;
+  align-self: stretch;
+  cursor: col-resize;
+  position: relative;
+}
+.doc-register-resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 2px;
+  background-color: var(--divider);
+}
+.doc-register-resize-handle:hover::after,
+.doc-register-resize-handle--dragging::after {
+  background-color: var(--signal-amber);
+}
+@media (max-width: 780px) {
+  .doc-register-resize-handle {
+    display: none;
+  }
+}
+
+/* UI/UX Overhaul Gate 7 (Side-by-Side Views). Same two-panel spirit as
+   .doc-register/.doc-register-list/.doc-register-preview above — chart on the left,
+   Activity Detail Panel on the right, flex-wrap stacking them on narrow viewports
+   rather than a dedicated breakpoint rule, matching this app's usual responsive
+   approach. The chart pane gets min-width:0 so its own overflow-x:auto scroll
+   container (set inline by schedule.js) can still shrink below its natural content
+   width instead of forcing the row to overflow. */
+.gantt-layout-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.gantt-layout-row > .panel {
+  flex: 1 1 480px;
+  min-width: 0;
+}
+
+.gantt-detail-pane {
+  flex: 1 1 360px;
+  max-width: 420px;
+  min-width: 300px;
 }
 
 .project-card {
