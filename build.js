@@ -35,6 +35,7 @@ const JS_ORDER = [
   "js/pages/myWork.js",
   "js/pages/projectLookahead.js",
   "js/pages/portfolio.js",
+  "js/pages/projectWorkspace.js",
   "js/pages/executiveCenter.js",
   "js/pages/vendors.js",
   "js/pages/vendorPerformanceCentre.js",
