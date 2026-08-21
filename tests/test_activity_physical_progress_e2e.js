@@ -169,9 +169,12 @@ function findButtonByText(dom, text) {
     win.PCC.router.go("schedule");
     win.PCC.router.render();
     findButtonByText(dom, "Activities").click();
+    // UI/UX Overhaul Gate 7 (Better Data Grids) split this row into real <table> cells —
+    // "% Complete" and "% Physical" are now separate cell contents ("40%" / "65%
+    // physical"), not one "40% complete" sentence.
     var text = outlet().textContent;
-    assert.ok(text.indexOf("40% complete") !== -1, "expected '40% complete' in the activities list, got: " + text);
-    assert.ok(text.indexOf("65% physical") !== -1, "expected '65% physical' in the activities list, got: " + text);
+    assert.ok(text.indexOf("40%") !== -1, "expected '40%' in the activities grid, got: " + text);
+    assert.ok(text.indexOf("65% physical") !== -1, "expected '65% physical' in the activities grid, got: " + text);
   });
 
   await check("this gate writes nothing back beyond the deliberate physical_progress edit above — record counts unchanged", () => {
