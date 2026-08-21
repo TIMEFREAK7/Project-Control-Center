@@ -63,13 +63,14 @@ that override default behavior).
 
 ## NEW INITIATIVE: UI/UX Overhaul (started 2026-08-20) — a THIRD, separate roadmap
 
-`main` is up to date through **UI/UX Overhaul Gate 7 — Density Control** (the first of Gate 7's
-five brief-listed capabilities; Gate 6 "Existing Modules" is ON HOLD after Documents/Risk
-Register/Schedule — see below), plus a standalone bug fix for the Gantt chart's Today/Data Date
-label overlap (shipped between the Documents and Risk Register Gate 6 passes — see the "Recently
-fixed bugs / notable gotchas" section near the end of this file). `schema_version` **53** (Gate 7
-Density Control's `settings.density` field — see its own write-up below; unchanged from 52 through
-all of Gates 3-6, which were pure display/computed-stats/reorganization work). Gate 2 included its
+`main` is up to date through **UI/UX Overhaul Gate 7 — Better Data Grids** (the second of Gate 7's
+five brief-listed capabilities, after Density Control; Gate 6 "Existing Modules" is ON HOLD after
+Documents/Risk Register/Schedule — see below), plus a standalone bug fix for the Gantt chart's
+Today/Data Date label overlap (shipped between the Documents and Risk Register Gate 6 passes — see
+the "Recently fixed bugs / notable gotchas" section near the end of this file). `schema_version`
+**53** (Gate 7 Density Control's `settings.density` field — see its own write-up below; Better Data
+Grids needed no schema change; unchanged from 52 through all of Gates 3-6, which were pure display/
+computed-stats/reorganization work). Gate 2 included its
 post-ship nav revision (an Outlook-Online-style hidden overlay with accordion groups, replacing
 Gate 2's original persistent/collapsible sidebar — see that gate's own write-up below for detail).
 With Tiers A-F, Tiers 1-2, and Tier 3 all complete/closed out (see below), Aditya started an
@@ -809,12 +810,96 @@ first verification attempt mistakenly outran and initially misread as a bug) —
 errors. Zip verified separately post-merge (fresh extraction, real Chromium, toggle exercised) —
 clean.
 
+**UI/UX Overhaul Gate 7 — Desktop/Laptop Productivity, Better Data Grids** (merge `4088637`).
+Aditya asked to scope the second Gate 7 capability. Inspection found `.data-table`/
+`.data-table--sticky-header` (the CSS reserved for "better data grids") had exactly **one** real
+caller in the whole app — Portfolio's Compare view — with none of sorting/column-visibility/
+frozen-columns actually built anywhere, not even there. Every other dense list, including Schedule
+Activities (already touched in Gate 6 for its filter toolbar), was still the `.detail-card`
+flex-row pattern, not a real `<table>`.
+
+Two `AskUserQuestion` rounds before building:
+- **Which module becomes the first real data grid: Schedule Activities, chosen over Cost Budget
+  Items or enhancing Portfolio's existing Compare table.** The brief's own literal example table
+  ("ID | Activity | Start | Finish | Duration | Progress | Float | Status") maps almost
+  field-for-field onto Schedule Activities.
+- **Feature scope: the fuller set (sorting + sticky header + horizontal scroll + column
+  visibility + a frozen first column), chosen over a smaller core-three-only slice.**
+
+What shipped, `schedule.js` + `styles.css`, no schema change:
+- **A real `<table class="data-table data-table--sticky-header data-table--frozen-first-col">`**
+  replaces the old `.project-list`/`.project-card` flex rows entirely. Columns: Activity (frozen
+  first column, via `position: sticky; left: 0` — new `.data-table--frozen-first-col` CSS, paired
+  with the pre-existing `.data-table--sticky-header`'s `position: sticky; top: 0`; the corner cell
+  that's sticky on both axes needs a higher `z-index` to paint above the other sticky cells, see
+  the CSS's own comment) + WBS/Type/Start/Finish/% Complete/Float/Status + a row-level Actions
+  column.
+- **Row actions moved from two direct Edit/Delete buttons into a "⋯" `.card-menu`** — the same
+  Risk Register/Portfolio pattern, adopted here for a structural reason (a table row's Actions
+  cell is too narrow for two full-width text buttons the way the old flex-card layout had room
+  for), not a re-litigation of Gate 6 Schedule's own earlier "2 actions doesn't need a menu"
+  finding, which was about the flex-card layout specifically.
+- **Click-to-sort column headers** (`.data-table__sort-btn`/`.data-table__sort-arrow`, new CSS) —
+  one active sort column at a time, click again to reverse direction, arrow indicator shows the
+  current direction. Unlinked/not-yet-calculated float (`total_float == null`) sorts to the
+  "least urgent" end regardless of direction, same convention the Gate 6 "Critical only" filter
+  already established for that same field.
+- **"Columns" toggle** — a `.card-menu` checklist (new `.card-menu__checkbox-item` CSS, a
+  checkbox-row variant of the existing `.card-menu__item` action-button rows) for the seven
+  optional columns; Activity and Actions are never offered as hideable. Column visibility is
+  module-level `uiState`, not persisted — same "resets on reload" treatment every other per-page
+  display preference in this app already gets, deliberately not a schema change.
+
+**No bugs shipped uncaught** — sorting, column hiding, and the frozen-column scroll behavior were
+all verified visually in real Chromium (including forcing real horizontal overflow at a 420px
+viewport to confirm the Activity column visibly stays pinned while WBS/Type/Start/Finish scroll
+away underneath it) before any test was written.
+
+**Two pre-existing test files needed mechanical updates, both expected consequences of the
+flex-row-to-real-table conversion, not regressions**: `test_uiux_gate6_schedule_e2e.js`'s row-count
+assertions moved from `.project-entry` to `".data-table tbody tr"`; `test_activity_physical_
+progress_e2e.js`'s text assertion moved from the one-sentence `"40% complete"` to separate `"40%"` +
+`"65% physical"` cell contents. **General lesson for any future test that reads Schedule
+Activities' row content**: query `.data-table tbody tr`, not `.project-entry`/`.project-card` —
+this tab is a real grid now, the flex-row pattern is gone.
+
+**Test-writing note, two self-caught bugs in the NEW test file itself, not the app**: (1) a stale
+DOM reference — `renderList()` rebuilds the table on every sort click, so a `<th>` reference taken
+before a click can't be reused to check the post-click sort-arrow indicator; had to re-query the
+live header after each click, same "detached node after rerender" trap this project's test suite
+has hit before. (2) A test that opened the Columns menu, toggled a column, and then clicked
+"Columns" a second time to "reopen" it for a follow-up assertion — but the menu never actually
+closes when a checkbox is toggled (only `rerender()` runs, `activityColumnsMenuOpen` is untouched),
+so the second click actually CLOSED it, and that same leaked-open state then made a LATER,
+unrelated check accidentally match the Columns checklist instead of a row's own "⋯" dropdown
+(`outlet().querySelector(".card-menu__dropdown")` found whichever menu happened to still be open,
+not necessarily the one the check meant to target). Fixed by not re-clicking a toggle button that
+was never closed, explicitly closing the Columns menu via its own overlay at the end of that check,
+and scoping later dropdown lookups to the specific row element rather than the whole outlet.
+**General lesson for any future test involving more than one `.card-menu` on the same page**: don't
+assume a menu is closed just because the check moved on to something else — either close it
+explicitly or scope every subsequent query to the specific menu/row under test, not the page as a
+whole.
+
+Tests: new `tests/test_uiux_gate7_data_grid_e2e.js` (39 checks, including a 27-route smoke test) —
+grid structure/classes, the frozen/sortable/optional column set, sorting both directions with the
+unset-float tiebreak proven explicitly, the Gate 6 WBS/status/critical filters still narrowing the
+grid correctly, the Columns checklist hiding/showing a column and never offering Activity/Actions,
+the row-level menu's Edit (opens the form, closes the menu) and Delete (including a declined-
+confirm case that changes nothing), and the zero-match empty state. Full suite: **69 files, 1973
+checks**, zero regressions beyond the two expected mechanical fixes above. Real-Chromium pass
+(default grid view showing all seven columns plus the Out-of-Sequence marker, ascending vs.
+descending Float sort, the row "⋯" menu open, the Columns checklist open, a column hidden, and the
+frozen-column behavior at a narrow 420px viewport with real horizontal overflow) confirmed
+everything renders and behaves correctly — zero console errors. Zip verified separately post-merge
+(fresh extraction, real Chromium, sort + grid classes exercised) — clean.
+
 **Next step for a fresh session**: with Gate 6 still on hold, ask Aditya which of Gate 7's
-remaining four capabilities (Focus Mode / Resizable Panels / Better Data Grids / Side-by-Side
-Views) to scope next, or whether to move to Gate 8 (Tablet/Mobile Optimization) instead — same
-standing rule as every other gate (inspect real code first, propose scope, wait for explicit
-approval, build exactly that, stop). Don't assume which one without asking, and don't assume Gate 6
-resumes before Gate 7 finishes.
+remaining three capabilities (Focus Mode / Resizable Panels / Side-by-Side Views) to scope next, or
+whether to move to Gate 8 (Tablet/Mobile Optimization) instead — same standing rule as every other
+gate (inspect real code first, propose scope, wait for explicit approval, build exactly that,
+stop). Don't assume which one without asking, and don't assume Gate 6 resumes before Gate 7
+finishes.
 
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
