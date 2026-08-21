@@ -2300,6 +2300,20 @@ breakdown from Aditya directly, the same way Tier D's came, rather than guessing
   `buildField()` itself updated to prepend a blank "Not set" option — the pre-Gate-17 `buildField()`
   implementations in `rfis.js`/`decisionRegister.js` had no such option since every prior select
   field was required-with-a-sensible-default (e.g. `status`).
+- **(2026-08-21, standalone fix, not a gate, merge `eda6f91`)** The Gantt chart's Today/Data Date
+  marker labels used fixed y-coordinates regardless of proximity — Today's label shared the exact
+  same y as the axis date-tick row above it (always a latent bug, triggered whenever "today"
+  landed near a tick, which is common), and when Today and Data Date fell within a day or two of
+  each other (typical — a data date is usually close to today), the two labels themselves could
+  also overlap. Reported by Aditya with a screenshot showing garbled overlapping text. Fixed in
+  `schedule.js`'s Gantt renderer: `headerHeight` bumped 28 → 44 to give the axis-tick row and the
+  marker-label row clearly separated vertical bands (every row position already derives from
+  `headerHeight`, so nothing else needed to change), and Today/Data Date now only stagger into two
+  rows when their lines are within 60px of each other (wider than either label can ever be) —
+  otherwise both sit on one row, which reads better when they're genuinely far apart. New
+  regression checks in `test_schedule_gantt_e2e.js` (self-contained, dates computed relative to
+  the real "today" at test-run time, not the file's other fixed 2026 dates) confirm both labels
+  stay clear of the tick row and stagger correctly when close. Full suite: 64 files, 1820 checks.
 
 ## Repo/branch state
 
