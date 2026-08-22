@@ -340,6 +340,14 @@ button {
   transition: background-color var(--transition-fast);
 }
 
+/* Gate E (UI Modernization): icon-btn glyphs are inline SVG now, not Unicode text — font-size
+   above is inert for them (harmless to leave; still sizes any button that legitimately shows
+   text, like the export/import spinner swap) but SVG needs its own explicit size. */
+.icon-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
 .icon-btn:hover:not(:disabled) {
   background-color: var(--hover-bg);
 }
@@ -1648,6 +1656,11 @@ a:focus-visible {
     width: 44px;
     height: 44px;
     font-size: 17px;
+  }
+
+  .icon-btn svg {
+    width: 20px;
+    height: 20px;
   }
 
   .btn {

@@ -1791,6 +1791,52 @@ calls needed since every value encountered matched a pattern already established
   is the real evidence here, not the screenshot).
 - **Not started**: Gates E-F (icon system, empty-state/motion polish) — pending Aditya's call.
 
+**Gate E — Icon System, done, 2026-08-22.** Aditya asked for this directly (no separate scoping
+round this time — investigated the actual current icon usage first, same discipline as every prior
+gate, then built).
+
+- **Scoped correctly on inspection**: replaced the seven Unicode glyphs in the shell chrome's
+  title-block/nav icon buttons (close ✕, menu ☰, export ⤓, import ⤒, theme ☀/☾, density ▁▄█, focus
+  mode ⛶) with inline SVG — `src/js/layout.js` only, plus a small CSS sizing addition. The nav
+  list's 25+ per-page two-letter codes (`DB`, `PF`, `SC`, etc.) were confirmed still out of scope,
+  same "not a page-by-page icon rollout" boundary set when Gate E was first sketched in the original
+  6-gate plan — converting those would mean designing 25+ distinct meaningful icons, a separate,
+  much bigger effort.
+- **Icons are `stroke="currentColor"`** (fill-based for the density bars, see below) so they inherit
+  `.icon-btn`'s `color` automatically, including the amber `.icon-btn--active` tint — no new color
+  rules needed, exactly how the old text glyphs worked via the button's own `color` property.
+  `aria-hidden="true"` on each `<svg>` plus the pre-existing `title` attribute (every one of these
+  buttons already had one) keeps accessibility at parity — a screen reader still announces the
+  button's name from `title`, same mechanism as before.
+- **A real design mistake, caught by testing rather than assumed away**: the first density icon
+  (3 equal-length stroked lines, "comfortable" state) looked nearly identical to the hamburger menu
+  icon in an actual real-Chromium screenshot — both were 3 stroked horizontal lines with similar
+  gaps. Not something a code read would have caught; only visual verification did. Fixed by
+  redesigning the three density icons as filled rounded bars (`fill="currentColor"`, no stroke)
+  instead of stroked lines — reads as "rows of content," stays visually distinct from the menu
+  icon's thin outlined strokes. Re-verified with a 4x-device-scale zoomed screenshot of both icons
+  side by side to confirm the fix actually worked, not just assumed.
+- **Small tie-in to Gate D**: the export button's brief "still working" state (previously a swapped
+  `…` text glyph) now reuses Gate D's `.spinner` class directly rather than
+  `loadingIndicator.buildInline()`, since that API's inline form always renders a text label and
+  there's no room for one in a 32px icon button — a deliberate, narrow reuse of the CSS class only,
+  not the full component API.
+- **Test-risk-aware from the start**: before touching anything, confirmed via grep that no test
+  asserts on the literal glyph content (`✕`/`☰`/etc.) — every test keys off class names
+  (`.icon-btn`, `.icon-btn--menu`, `.icon-btn--active`) or `aria-label`, never rendered glyph text.
+  The one real risk was `test_uiux_gate8_tablet_mobile_e2e.js`'s regex checks against the raw CSS
+  text for `.icon-btn`'s exact `width`/`height` rules at both breakpoints — handled by adding the
+  new `.icon-btn svg { width/height }` sizing as a sibling rule, never modifying the existing
+  `.icon-btn { width: 32px/44px }` rules those regexes depend on.
+- **Verified**: ran the three most icon-btn-sensitive test files individually first
+  (`test_uiux_gate8_tablet_mobile_e2e.js`, `test_uiux_gate2_navigation_e2e.js`,
+  `test_uiux_gate7_focus_resize_sidebyside_e2e.js`) before the full suite — full 78-file suite: 2090
+  checks, 0 failures. Real-Chromium pass across both themes, all three density states (cycled and
+  screenshotted each), the focus-mode active tint (confirmed via `classList.contains` check, not
+  just visually), and the tablet breakpoint — zero console errors.
+- **Not started**: Gate F (empty-state copy + motion polish) — the last gate of the original 6-gate
+  UI Modernization plan, pending Aditya's call.
+
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
 `main` is fully up to date through **Tier 3, "final polish," Gate 4** (Gantt virtualization for

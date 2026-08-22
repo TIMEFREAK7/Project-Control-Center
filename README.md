@@ -3168,6 +3168,33 @@ checks, 0 failures. Also confirmed in real Chromium via a click-and-check done i
 overlay, since real IndexedDB resolves a tiny test blob in under a millisecond) — overlay present
 immediately after click, gone once settled, zero console errors.
 
+## UI Modernization — Gate E: Icon System (2026-08-22)
+
+Replaced the seven Unicode glyphs in the app shell's title-block/nav icon buttons (close, menu,
+export, import, theme sun/moon, density, focus mode) with inline SVG, scoped deliberately to just
+those — the nav list's own 25+ page codes (`DB`, `PF`, `SC`, etc.) are a separate, much bigger
+design effort and stay untouched. Each icon is `stroke="currentColor"` so it inherits `.icon-btn`'s
+color automatically, including the amber active-state tint — no new color rules needed, same as how
+the text glyphs worked before. Accessibility preserved via `aria-hidden` on the SVG plus each
+button's pre-existing `title` attribute, which screen readers already used as the accessible name.
+
+**One real design catch from testing, not assumed correct on the first pass:** the initial
+stroked-line density icon (3 equal-length lines) looked almost identical to the hamburger menu icon
+in a real-Chromium screenshot at "comfortable" spacing — both were 3 stroked horizontal lines.
+Redesigned as filled rounded bars instead of stroked lines, which reads clearly as "rows of content"
+and stays visually distinct from the menu icon's thin outlined strokes; verified with a zoomed,
+high-DPI screenshot comparing both side by side after the fix.
+
+**Verified:** full 78-file test suite, 2090 checks, 0 failures — including the three test files most
+likely to break from an icon-btn change (`test_uiux_gate8_tablet_mobile_e2e.js`'s CSS regex checks
+on `.icon-btn`'s width/height rules, `test_uiux_gate2_navigation_e2e.js`, `test_uiux_gate7_focus_
+resize_sidebyside_e2e.js`) run individually first before the full suite. Real-Chromium pass across
+both themes, all three density states, the focus-mode active tint, and the tablet breakpoint — zero
+console errors, all icons render correctly and centered.
+
+With Gate E done, only **Gate F** (empty-state copy + motion polish) remains of the original 6-gate
+UI Modernization plan.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →

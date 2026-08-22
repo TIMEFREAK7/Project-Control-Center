@@ -347,6 +347,14 @@ button {
   transition: background-color var(--transition-fast);
 }
 
+/* Gate E (UI Modernization): icon-btn glyphs are inline SVG now, not Unicode text — font-size
+   above is inert for them (harmless to leave; still sizes any button that legitimately shows
+   text, like the export/import spinner swap) but SVG needs its own explicit size. */
+.icon-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
 .icon-btn:hover:not(:disabled) {
   background-color: var(--hover-bg);
 }
@@ -1655,6 +1663,11 @@ a:focus-visible {
     width: 44px;
     height: 44px;
     font-size: 17px;
+  }
+
+  .icon-btn svg {
+    width: 20px;
+    height: 20px;
   }
 
   .btn {
@@ -8050,6 +8063,39 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     notfound: "Not Found",
   };
 
+  // UI Modernization, Gate E. Replaces the shell chrome's Unicode glyphs (close, menu,
+  // export, import, theme, density, focus mode) with inline SVG — scoped deliberately to
+  // just these seven title-block/nav icon-btns, not a page-by-page icon rollout (the nav
+  // list's own two-letter .sidebar__icon codes above are a separate, much bigger design
+  // effort — 25+ distinct pages needing real per-page icons — and stay untouched here).
+  // stroke="currentColor" is the reason these need no color rule of their own: they
+  // inherit .icon-btn's `color` (including the amber .icon-btn--active state) exactly the
+  // way the old text glyphs did via `color` on the button itself. aria-hidden on the <svg>
+  // plus the button's own pre-existing `title` attribute (every one of these buttons
+  // already sets one) keeps this at least as accessible as the Unicode glyphs were, not
+  // less — a screen reader announces the button's accessible name from `title`, same as
+  // before, rather than trying to read a Unicode symbol aloud.
+  var ICON_SVG_ATTRS = 'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+    'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
+  var ICONS = {
+    close: '<svg ' + ICON_SVG_ATTRS + '><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+    menu: '<svg ' + ICON_SVG_ATTRS + '><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>',
+    export: '<svg ' + ICON_SVG_ATTRS + '><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
+    import: '<svg ' + ICON_SVG_ATTRS + '><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
+    sun: '<svg ' + ICON_SVG_ATTRS + '><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="4" y1="12" x2="2" y2="12"/><line x1="22" y1="12" x2="20" y2="12"/><line x1="5" y1="5" x2="6.5" y2="6.5"/><line x1="17.5" y1="17.5" x2="19" y2="19"/><line x1="5" y1="19" x2="6.5" y2="17.5"/><line x1="17.5" y1="6.5" x2="19" y2="5"/></svg>',
+    moon: '<svg ' + ICON_SVG_ATTRS + '><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z"/></svg>',
+    // Filled bars, not stroked lines like ICON_SVG_ATTRS's other icons — a first
+    // real-Chromium check caught the stroked version reading as a near-duplicate of the
+    // hamburger menu icon at "comfortable" spacing (3 equal-length stroked lines is what
+    // both were). Filled rounded bars read as "rows of content" instead, and the
+    // increasing vertical gap between bars (unchanged across this fix) still carries the
+    // actual "amount of space" meaning between the three states.
+    densityCompact: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="4" y="8" width="16" height="2" rx="1"/><rect x="4" y="11" width="16" height="2" rx="1"/><rect x="4" y="14" width="16" height="2" rx="1"/></svg>',
+    densityComfortable: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="4" y="6" width="16" height="2" rx="1"/><rect x="4" y="11" width="16" height="2" rx="1"/><rect x="4" y="16" width="16" height="2" rx="1"/></svg>',
+    densitySpacious: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="4" y="3" width="16" height="2" rx="1"/><rect x="4" y="11" width="16" height="2" rx="1"/><rect x="4" y="19" width="16" height="2" rx="1"/></svg>',
+    focus: '<svg ' + ICON_SVG_ATTRS + '><polyline points="8 3 3 3 3 8"/><polyline points="16 3 21 3 21 8"/><polyline points="3 16 3 21 8 21"/><polyline points="21 16 21 21 16 21"/></svg>',
+  };
+
   function applyTheme(theme) {
     document.documentElement.setAttribute("data-theme", theme);
   }
@@ -8062,17 +8108,18 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     });
     applyTheme(current);
     var icon = document.getElementById("theme-toggle-icon");
-    if (icon) icon.textContent = current === "dark" ? "\u2600" : "\u263D";
+    if (icon) icon.innerHTML = current === "dark" ? ICONS.sun : ICONS.moon;
   }
 
   // UI/UX Overhaul, Gate 7 (Desktop/Laptop Productivity \u2014 Density Control). Same
   // pattern as applyTheme/toggleTheme above: a persisted settings.density value, a
   // data-attribute the CSS in styles.css keys off of, and an icon-btn whose glyph
   // reflects the CURRENT state (not the next one), same as the theme toggle's sun/moon.
-  // Block-height glyphs (short/medium/tall) read as "amount of space" at a glance
-  // without needing a label.
+  // Three-line icons with progressively wider gaps (see ICONS.density* above) read as
+  // "amount of space" at a glance without needing a label — same idea as the original
+  // block-height Unicode glyphs this replaced in Gate E, just as SVG now.
   var DENSITY_CYCLE = ["compact", "comfortable", "spacious"];
-  var DENSITY_ICONS = { compact: "\u2581", comfortable: "\u2584", spacious: "\u2588" };
+  var DENSITY_ICONS = { compact: ICONS.densityCompact, comfortable: ICONS.densityComfortable, spacious: ICONS.densitySpacious };
   var DENSITY_LABELS = { compact: "Compact", comfortable: "Comfortable", spacious: "Spacious" };
 
   function applyDensity(density) {
@@ -8088,7 +8135,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     });
     applyDensity(next);
     var icon = document.getElementById("density-toggle-icon");
-    if (icon) icon.textContent = DENSITY_ICONS[next];
+    if (icon) icon.innerHTML = DENSITY_ICONS[next];
     var btn = document.getElementById("density-toggle-btn");
     if (btn) btn.title = "Spacing density: " + DENSITY_LABELS[next] + " (click to cycle)";
   }
@@ -8238,7 +8285,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var closeBtn = document.createElement("button");
     closeBtn.className = "icon-btn";
     closeBtn.title = "Close menu";
-    closeBtn.textContent = "✕";
+    closeBtn.innerHTML = ICONS.close;
     closeBtn.onclick = closeNav;
     header.appendChild(title);
     header.appendChild(closeBtn);
@@ -8284,7 +8331,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var menuBtn = document.createElement("button");
     menuBtn.className = "icon-btn icon-btn--menu";
     menuBtn.title = "Open navigation menu";
-    menuBtn.textContent = "☰";
+    menuBtn.innerHTML = ICONS.menu;
     menuBtn.onclick = openNav;
     header.appendChild(menuBtn);
 
@@ -8300,11 +8347,13 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var exportBtn = document.createElement("button");
     exportBtn.className = "icon-btn";
     exportBtn.title = "Export all data to a single file";
-    exportBtn.textContent = "\u2913"; // down arrow into tray-ish glyph
+    exportBtn.innerHTML = ICONS.export;
     exportBtn.onclick = function () {
       exportBtn.disabled = true;
-      var originalGlyph = exportBtn.textContent;
-      exportBtn.textContent = "\u2026";
+      // Reuses Gate D's .spinner class directly (not loadingIndicator.buildInline(), which
+      // also renders a text label with no room for one in a 32px icon button) for the same
+      // "still working" feedback during the export write.
+      exportBtn.innerHTML = '<span class="spinner"></span>';
       window.PCC.store
         .exportToFile()
         .then(function () {
@@ -8316,7 +8365,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         })
         .then(function () {
           exportBtn.disabled = false;
-          exportBtn.textContent = originalGlyph;
+          exportBtn.innerHTML = ICONS.export;
         });
     };
 
@@ -8352,7 +8401,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var importBtn = document.createElement("button");
     importBtn.className = "icon-btn";
     importBtn.title = "Import data from a file";
-    importBtn.textContent = "\u2912";
+    importBtn.innerHTML = ICONS.import;
     importBtn.onclick = function () {
       importInput.click();
     };
@@ -8362,7 +8411,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     themeBtn.title = "Toggle light / dark theme";
     themeBtn.innerHTML =
       '<span id="theme-toggle-icon">' +
-      (window.PCC.store.get().settings.theme === "dark" ? "\u2600" : "\u263D") +
+      (window.PCC.store.get().settings.theme === "dark" ? ICONS.sun : ICONS.moon) +
       "</span>";
     themeBtn.onclick = toggleTheme;
 
@@ -8378,7 +8427,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     focusModeBtn.className = "icon-btn" + (focusModeOn ? " icon-btn--active" : "");
     focusModeBtn.id = "focus-mode-toggle-btn";
     focusModeBtn.title = focusModeOn ? "Exit Focus Mode" : "Enter Focus Mode (hide non-essential chrome)";
-    focusModeBtn.textContent = "⛶";
+    focusModeBtn.innerHTML = ICONS.focus;
     focusModeBtn.onclick = toggleFocusMode;
 
     actions.appendChild(exportBtn);
