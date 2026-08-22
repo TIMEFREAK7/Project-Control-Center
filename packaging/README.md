@@ -36,10 +36,31 @@ automatically go through LFS. Don't reach for this as the default path: GitHub's
 1GB storage + 1GB bandwidth/month, and a single desktop installer is already 100MB+, so routine
 use here would exhaust it in a handful of builds.
 
-## Android (Capacitor) — not yet built
+## Android (Capacitor)
 
-Flagged during planning as needing real work beyond `npx cap add android`: a bare Android WebView
-doesn't implement `window.print()` (Reports/Executive Center depend on it) or handle
-Blob-download/`window.open()` the way a full browser does (Export/Import/Open File currently rely
-on both) — both need native plugin wiring (`@capacitor/filesystem`, `@capacitor/share`, a print
-plugin), not just wrapping the existing web code.
+```
+node build.js                    # from the repo root — rebuild index.html first
+cd packaging/android
+npm run assets:generate          # regenerate icon/splash from packaging/icons/pcc-icon-source.png
+npm run android:build:debug      # produce android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+Needs a JDK and the Android SDK (`compileSdkVersion`/`platforms;android-36` +
+`build-tools;36.0.0` — check `android/variables.gradle` if Capacitor bumps this) with
+`ANDROID_HOME` set and `android/local.properties` pointing at it. `scripts/copy-app.js` copies the
+repo root's `index.html` into `www/` and the shared icon into `assets/` before each
+sync/build — never hand-edit those, they're overwritten every time.
+
+**Gate 1 (bare wrapper) is done.** `window.print()` (Reports/Executive Center) and
+Export/Import/"Open File" (currently `Blob`/`window.open()`) both still need real native plugin
+work (`@capacitor/filesystem`, `@capacitor/share`, a print plugin) that a bare Android WebView
+doesn't give you for free — **both are known-broken in the current APK**, deferred to their own
+gates rather than bundled into the base wrapper.
+
+Release signing isn't set up yet — Gate 1 only produces a debug build (signed with the standard
+Android debug key, not for distribution). When that gate happens: generate a **dedicated** keystore
+for this app specifically (`com.pcc.projectcontrolcenter`) — don't reuse a keystore from an
+unrelated app; there's no benefit to sharing one across different `applicationId`s, and it only
+adds cross-app blast radius if it's ever compromised. Treat it exactly like the Electron section
+above treats secrets: generate once, guard forever, hand it off immediately since it's not safe to
+leave sitting only in an ephemeral container.

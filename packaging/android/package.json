@@ -1,0 +1,19 @@
+{
+  "name": "pcc-android",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Android packaging (Capacitor) for Project Control Center. Wraps the self-contained index.html built by ../../build.js in a native WebView shell — dev-only tooling, not part of the shipped single-file app.",
+  "scripts": {
+    "assets:generate": "node scripts/copy-app.js && npx @capacitor/assets generate --android",
+    "android:sync": "node scripts/copy-app.js && npx cap sync android",
+    "android:build:debug": "npm run android:sync && cd android && ./gradlew assembleDebug"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/cli": "^8.4.2",
+    "@capacitor/core": "^8.5.0"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5"
+  }
+}

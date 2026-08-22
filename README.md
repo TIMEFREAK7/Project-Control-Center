@@ -2797,6 +2797,40 @@ work (`@capacitor/filesystem`/`share` for Export/Import/Open File, a native prin
 does), not just wrapping. macOS `.dmg` needs a macOS host. No custom app icon yet. Code signing
 (both platforms) is a deliberate later decision, not needed for personal/internal use.
 
+## Mobile & Desktop Packaging — App identity, icon, and Android Gate 1 (2026-08-22)
+
+**App id changed** from the placeholder `com.aditya.projectcontrolcenter` to
+`com.pcc.projectcontrolcenter` — worth fixing before anything actually shipped, since a personal
+name in the permanent package id was a bad default for something that might go public. No domain
+owned yet, so this is based on the icon's own "PCC" branding rather than a reversed domain.
+Electron's Linux/Windows builds were rebuilt under the new id with a real app icon (provided
+directly, a flat square "PCC / Plan · Control · Deliver" mark) — both re-verified the same way as
+before (Linux: real launch + CDP; Windows: structural — extracted the NSIS payload, confirmed the
+embedded `index.html` byte-identical).
+
+**Android Gate 1 (bare Capacitor wrapper), done.** `packaging/android/` — isolated the same way as
+the Electron half, own `package.json`, Capacitor pointed at the repo's real built `index.html`.
+This container had no Android SDK, so it was bootstrapped the same way the original packaging
+playbook described (`cmdline-tools`, `platforms;android-36`, `build-tools;36.0.0` — Capacitor 8's
+own `compileSdkVersion`), and it worked cleanly. Icon/splash generated via `@capacitor/assets` from
+the same source image used for desktop. Produced a real debug APK
+(`app-debug.apk`, ~11.9MB).
+
+**Verification here looks different from desktop**, worth being upfront about: this container has
+no `/dev/kvm` and no VMX/SVM CPU flags, so there's no Android emulator, and no physical device to
+`adb install` onto either — nothing to actually launch it in. Verified structurally instead:
+`aapt dump badging` confirmed the correct package id and manifest, `apksigner verify` confirmed a
+valid (debug-key) signature, and unzipping the APK and diffing `assets/public/index.html` against
+the real build confirmed it's byte-identical — the same technique used to verify the Windows build
+when Wine's execution proved unreliable. A real device/emulator launch is still unverified and
+should happen before trusting this beyond "it's structurally correct."
+
+**Print (Reports/Executive Center) and Export/Import/"Open File" are known-broken in this APK** —
+deliberately deferred to their own gates (a bare Android WebView doesn't implement `window.print()`
+or handle the app's Blob-download pattern the way a full browser does; both need real Capacitor
+plugin work: `@capacitor/filesystem`, `@capacitor/share`, a print plugin). Release signing is also
+not set up — this is a debug build only, signed with the standard Android debug key.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →

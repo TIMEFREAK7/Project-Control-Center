@@ -14,9 +14,10 @@
     "electron-builder": "^26.15.3"
   },
   "build": {
-    "appId": "com.aditya.projectcontrolcenter",
+    "appId": "com.pcc.projectcontrolcenter",
     "productName": "Project Control Center",
     "publish": null,
+    "icon": "icons/pcc-icon-source.png",
     "files": [
       "electron/**/*"
     ],

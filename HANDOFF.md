@@ -1206,14 +1206,83 @@ delivery — the file exceeds the 30MB chat upload limit) with a sha256 checksum
 (`b80443bd...7bc7a349`) to verify reassembly, and a note that it's unsigned so Windows SmartScreen
 will show an "unknown publisher" warning on first run (expected, not a bug).
 
-**Not done yet**: Android (Capacitor) — Part A of the adapted plan, with the two flagged gaps
-(`window.print()`, Export/Import/Open File under a bare WebView) still needing real plugin work,
-not just `npx cap add android`. No custom app icon/splash for Electron yet (using electron-builder's
-default). macOS `.dmg` needs a macOS host (or cross-build tooling) — not attempted. Code signing
-(both platforms) is an explicit later decision per the playbook, not needed for personal/internal
-use. This sandbox now has `wine`/`wine32:i386`/`wine64` installed persistently for the session —
-a fresh session/container won't have them; the install commands above are the reference if a
-Windows build is needed again.
+This sandbox now has `wine`/`wine32:i386`/`wine64` installed persistently for the session — a
+fresh session/container won't have them; the install commands above are the reference if a Windows
+build is needed again.
+
+**App id changed and a real icon applied, 2026-08-22.** Aditya flagged (correctly) that
+`com.aditya.projectcontrolcenter` was a bad permanent id if this ever goes public — a personal
+name baked into a package identity you can never change post-release. No domain owned, so settled
+on `com.pcc.projectcontrolcenter`, based on the icon's own "PCC" branding rather than a reversed
+domain (confirmed via `AskUserQuestion` rather than defaulted). Aditya also supplied a real app
+icon directly (flat square, white card, "PCC" wordmark, "Plan · Control · Deliver" tagline, teal→
+navy bar chart mark) — saved to `packaging/icons/pcc-icon-source.png` (1254×1254), now the single
+source for both platforms' icons.
+
+Electron's `packaging/package.json` `build.appId`/`build.icon` updated; both Linux and Windows
+rebuilt and **re-verified the same way as their original builds**, not just assumed to still work:
+Linux — real launch under `xvfb-run` + live CDP inspection (title/URL correct), plus the AppImage's
+own embedded icon extracted and read back to confirm it's the real PCC mark, not corrupted or
+swapped. Windows — same structural technique as the original build (NSIS payload extracted,
+`app.asar`'s `index.html` diffed byte-identical against the real build) since a full Wine
+install-flow run isn't worth repeating for a config-only change.
+
+**Android Gate 1 (bare Capacitor wrapper) built and structurally verified, 2026-08-22.** Scoped in
+a short paragraph and confirmed before building, per this project's standing gate discipline —
+Aditya specifically asked whether Gates 2/3 (the two deferred fixes) could be built *before* Gate 1;
+answered directly: no, they're genuinely dependent on Gate 1's existence (Capacitor plugins bridge
+web JS to native Android code that only exists once `cap add android` creates the native project;
+there'd also be nothing to verify them against).
+
+Set up `packaging/android/` — isolated the same way as `packaging/electron/`, own `package.json`
+(`@capacitor/core`/`cli`/`android` — all pinned to matching major version 8; a moderate `uuid`
+advisory via `xcode`/`@capacitor/cli`'s (irrelevant, iOS-only) tooling was cleared with
+`npm audit fix --force` since nothing depended on the old API yet). `capacitor.config.json`:
+appId `com.pcc.projectcontrolcenter`, `webDir: www`. `scripts/copy-app.js` mirrors the Electron
+one — copies the repo's real built `index.html` into `www/` and the shared icon into `assets/`
+before each sync/build.
+
+**Bootstrapping the Android SDK worked exactly as the original playbook described** — this
+container had no `ANDROID_HOME`, no existing SDK, but did have Java 21 and reachable
+`dl.google.com`. Downloaded `commandlinetools-linux-11076708_latest.zip`, then
+`sdkmanager --sdk_root=... "platform-tools" "platforms;android-36" "build-tools;36.0.0"`
+(Capacitor 8's `variables.gradle` wants SDK 36, not the playbook's generic `<N>` placeholder),
+accepted licenses, wrote `android/local.properties`. Icon/splash generated via
+`npx @capacitor/assets generate --android` from the shared source image — pulled in real
+vulnerabilities this time (`sharp` high, `tar` critical, the same `uuid` moderate), all inside
+`@capacitor/assets` itself with no non-breaking fix available; accepted as a low-risk, dev-tooling-
+only gap (one-time local run against a trusted image I created this session, never shipped) rather
+than force a possibly-breaking upgrade for no real benefit — documented rather than silently
+ignored. Visually confirmed the generated `mipmap-xxxhdpi/ic_launcher.png` is the real icon, not
+corrupted, before building.
+
+`./gradlew assembleDebug` succeeded clean (93 tasks, ~1m37s) — `app-debug.apk`, ~11.9MB (much
+smaller than the Electron builds, as expected — no bundled Chromium, just a WebView wrapper).
+
+**Verification here looks different from every other packaging gate this session, worth being
+explicit about**: this container has no `/dev/kvm` and no VMX/SVM CPU flags — no Android emulator
+possible, and no physical device to `adb install` onto either, so there was no way to actually
+launch this one and watch it render, unlike Linux (real CDP-driven launch) or even Windows
+(structural, but at least a complete real-world artifact). Verified instead with `aapt dump
+badging` (correct package id `com.pcc.projectcontrolcenter`, manifest sane), `apksigner verify`
+(valid signature, standard Android debug cert), and unzipping the APK to diff
+`assets/public/index.html` against the real build — byte-identical. That's solid evidence the APK
+is well-formed and contains the right content, but **an actual device/emulator launch is still
+unverified** — flagged to Aditya directly when the APK was delivered, not glossed over.
+
+Delivered `app-debug.apk` directly (11.9MB, under the 30MB chat limit — no splitting needed this
+time, unlike the Electron builds) with its sha256 and an explicit note that Print and Export/
+Import/Open File are known-broken in this build (Gates 2/3, not yet built).
+
+**Not done yet**: Android Gates 2 (`@capacitor/filesystem`/`@capacitor/share` for Export/Import/
+Open File) and 3 (a native print plugin for `window.print()`) — both scoped, both genuinely
+depend on Gate 1's native project now existing, neither started. Android release signing (a
+dedicated keystore for this app specifically — Aditya has a keystore from a different Capacitor
+app already, confirmed it should NOT be reused: no benefit across unrelated `applicationId`s, only
+added blast radius). No custom app icon/splash situation left for Electron (done this round). macOS
+`.dmg` still needs a macOS host (or cross-build tooling) — not attempted. Code signing for
+Windows/Android real releases is still an explicit later decision, not needed for personal/
+internal use.
 
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
