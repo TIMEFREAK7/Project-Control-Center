@@ -78,37 +78,35 @@
     return groups;
   }
 
-  function renderComplianceRow(label, group, viewBtn) {
+  // Redesign Gate 10 (Module Consistency Pass): retrofitted onto the same
+  // .attention-list/.attention-item primitive every other panel-turned-list in this app
+  // now uses, replacing the original hand-built row + status-badge + separate "View
+  // Project" ghost button. Whole row is the click target only when onClick is given
+  // (the by-project panel passes one; the by-document-type panel passes null, since
+  // document types have no dedicated page to link to — same as before this gate).
+  function renderComplianceRow(label, group, onClick) {
     var row = document.createElement("div");
-    row.style.display = "flex";
-    row.style.justifyContent = "space-between";
-    row.style.alignItems = "center";
-    row.style.fontSize = "13px";
-    row.style.gap = "8px";
-    row.style.padding = "6px 0";
-    row.style.borderBottom = "1px solid var(--divider)";
+    row.className = "attention-item" + (onClick ? " attention-item--clickable" : "");
+    if (onClick) row.onclick = onClick;
 
-    var left = document.createElement("span");
-    left.textContent = label + " — " + group.available + " of " + group.total + " available (" + group.pctAvailable + "%)";
-    row.appendChild(left);
+    var icon = document.createElement("span");
+    icon.className = "attention-item__icon attention-item__icon--" + (group.overdue > 0 ? "critical" : group.pctAvailable < 100 ? "at_risk" : "on_track");
+    row.appendChild(icon);
 
-    var right = document.createElement("div");
-    right.style.display = "flex";
-    right.style.alignItems = "center";
-    right.style.gap = "8px";
-    right.style.flexShrink = "0";
+    var body = document.createElement("div");
+    body.className = "attention-item__body";
+    var text = document.createElement("div");
+    text.className = "attention-item__text";
+    text.textContent = label;
+    body.appendChild(text);
+    var meta = document.createElement("div");
+    meta.className = "attention-item__meta";
+    meta.textContent =
+      group.available + " of " + group.total + " available (" + group.pctAvailable + "%)" +
+      (group.overdue > 0 ? " · " + group.overdue + " overdue" : "");
+    body.appendChild(meta);
+    row.appendChild(body);
 
-    if (group.overdue > 0) {
-      var overdueBadge = document.createElement("span");
-      overdueBadge.className = "status-badge status-badge--critical";
-      overdueBadge.style.fontSize = "11px";
-      overdueBadge.textContent = group.overdue + " overdue";
-      right.appendChild(overdueBadge);
-    }
-
-    if (viewBtn) right.appendChild(viewBtn);
-
-    row.appendChild(right);
     return row;
   }
 
@@ -191,21 +189,21 @@
     projectHeading.style.marginBottom = "8px";
     projectHeading.textContent = "Compliance by Project (worst first)";
     projectPanel.appendChild(projectHeading);
+    var projectList = document.createElement("div");
+    projectList.className = "attention-list";
     projectGroups.forEach(function (g) {
       var project = projectsById[g.key];
-      var viewBtn = null;
+      var onClick = null;
       if (project && window.PCC.portfolio) {
-        viewBtn = document.createElement("button");
-        viewBtn.className = "btn btn--ghost";
-        viewBtn.textContent = "View Project";
-        viewBtn.onclick = function () {
+        onClick = function () {
           window.PCC.portfolio.viewProject(project.id);
           window.PCC.router.go("portfolio");
           window.PCC.router.render();
         };
       }
-      projectPanel.appendChild(renderComplianceRow(project ? project.name || "(unnamed project)" : "(deleted project)", g, viewBtn));
+      projectList.appendChild(renderComplianceRow(project ? project.name || "(unnamed project)" : "(deleted project)", g, onClick));
     });
+    projectPanel.appendChild(projectList);
     wrap.appendChild(projectPanel);
 
     var typeGroups = groupCompliance(rows, function (r) {
@@ -218,11 +216,14 @@
     typeHeading.style.marginBottom = "8px";
     typeHeading.textContent = "Compliance by Document Type (worst first)";
     typePanel.appendChild(typeHeading);
+    var typeList = document.createElement("div");
+    typeList.className = "attention-list";
     typeGroups.forEach(function (g) {
       var t = typesById[g.key];
       var label = t ? t.name + (t.code ? " (" + t.code + ")" : "") : "(deleted type)";
-      typePanel.appendChild(renderComplianceRow(label, g, null));
+      typeList.appendChild(renderComplianceRow(label, g, null));
     });
+    typePanel.appendChild(typeList);
     wrap.appendChild(typePanel);
 
     outlet.appendChild(wrap);

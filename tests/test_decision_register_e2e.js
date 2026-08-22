@@ -139,13 +139,17 @@ function findButtonByText(dom, text) {
     assert.ok(badges.indexOf("Decided") !== -1, "expected a Decided badge; got: " + badges.join(", "));
   });
 
-  await check("Details shows the linked activity and its 'View in Gantt' button navigates to the Schedule module", () => {
+  await check("Details shows the linked activity and clicking its row navigates to the Schedule module", () => {
     findButtonByText(dom, "Details").click();
     var text = outlet().textContent;
     assert.ok(text.indexOf("LINKED ACTIVITY") !== -1);
     assert.ok(text.indexOf("Foundation Design") !== -1);
 
-    findButtonByText(dom, "View in Gantt").click();
+    // Redesign Gate 10: retrofitted onto .attention-list/.attention-item — the whole
+    // row is the click target now, no separate "View in Gantt" button.
+    var row = Array.from(outlet().querySelectorAll(".attention-item--clickable")).find((r) => r.textContent.indexOf("Foundation Design") !== -1);
+    assert.ok(row, "clickable row for the linked activity not found");
+    row.click();
     assert.strictEqual(win.PCC.router.currentRouteName(), "schedule");
     assert.ok(outlet().textContent.indexOf("Foundation Design") !== -1, "must land with the linked activity's own Detail Panel open");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));

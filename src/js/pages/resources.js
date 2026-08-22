@@ -1244,26 +1244,39 @@
       okP.textContent = "No resources are currently over-allocated on any dated assignment.";
       summaryPanel.appendChild(okP);
     } else {
+      // Redesign Gate 10 (Module Consistency Pass): retrofitted onto the same
+      // .attention-list/.attention-item primitive every other panel-turned-list in this
+      // app now uses, replacing the original hand-built row + separate "View" ghost
+      // button. Whole row is the click target now.
+      var list = document.createElement("div");
+      list.className = "attention-list";
       portfolioSummary.forEach(function (s) {
         var row = document.createElement("div");
-        row.style.display = "flex";
-        row.style.justifyContent = "space-between";
-        row.style.alignItems = "center";
-        row.style.fontSize = "var(--text-sm)";
-        row.style.marginBottom = "var(--space-1)";
-        var text = document.createElement("span");
-        text.innerHTML = "<strong>" + esc(s.resourceName) + "</strong> — " + s.overAllocatedDayCount + " over-allocated day(s), worst +" + s.maxOverBy;
-        row.appendChild(text);
-        var btn = document.createElement("button");
-        btn.className = "btn btn--ghost";
-        btn.textContent = "View";
-        btn.onclick = function () {
+        row.className = "attention-item attention-item--clickable";
+        row.onclick = function () {
           uiState.levelingResourceId = s.resourceId;
           rerender();
         };
-        row.appendChild(btn);
-        summaryPanel.appendChild(row);
+
+        var icon = document.createElement("span");
+        icon.className = "attention-item__icon attention-item__icon--at_risk";
+        row.appendChild(icon);
+
+        var body = document.createElement("div");
+        body.className = "attention-item__body";
+        var text = document.createElement("div");
+        text.className = "attention-item__text";
+        text.textContent = s.resourceName;
+        body.appendChild(text);
+        var meta = document.createElement("div");
+        meta.className = "attention-item__meta";
+        meta.textContent = s.overAllocatedDayCount + " over-allocated day(s), worst +" + s.maxOverBy;
+        body.appendChild(meta);
+        row.appendChild(body);
+
+        list.appendChild(row);
       });
+      summaryPanel.appendChild(list);
     }
     container.appendChild(summaryPanel);
 

@@ -106,7 +106,6 @@
           owner: a.responsible_person || a.contractor || "—",
           date: date,
           badgeClass: critical ? "critical" : nearCritical ? "at_risk" : "on_track",
-          badgeLabel: critical ? "Critical" : nearCritical ? "Near-Critical" : "On Track",
           view: (function (pId, schedId, actId) {
             return function () {
               window.PCC.schedule.viewActivity(pId, schedId, actId);
@@ -128,7 +127,6 @@
           owner: "—",
           date: m.meeting_date,
           badgeClass: "info",
-          badgeLabel: "Scheduled",
           view: (function (id) {
             return function () {
               window.PCC.meetings.expandMeeting(id);
@@ -148,7 +146,6 @@
           owner: a.owner || "—",
           date: a.due_date,
           badgeClass: "info",
-          badgeLabel: "Open",
           view: (function (id) {
             return function () {
               window.PCC.meetings.expandMeeting(id);
@@ -171,7 +168,6 @@
         owner: r.assigned_to || "—",
         date: r.date_required,
         badgeClass: "info",
-        badgeLabel: "Open",
         view: (function (id) {
           return function () {
             window.PCC.rfis.expandRfi(id);
@@ -205,7 +201,6 @@
         owner: vendor ? vendor.vendor_name || "(unnamed vendor)" : "—",
         date: req.planned_submission_date,
         badgeClass: "at_risk",
-        badgeLabel: "Required",
         view: (function (pId) {
           return function () {
             window.PCC.portfolio.viewProject(pId);
@@ -239,49 +234,38 @@
     return wrap;
   }
 
+  // Redesign Gate 10 (Module Consistency Pass): retrofitted onto the same
+  // .attention-list/.attention-item primitive Action Centre's own itemRow() (Gate 7)
+  // already moved to — same hand-built row + status-badge + separate "View" ghost
+  // button shape, same fix. Whole row is the click target now, only when a linked
+  // project still exists (a deleted project's items stay listed but non-clickable,
+  // same as before this gate).
   function itemRow(item, projectsById) {
     var project = projectsById[item.projectId];
 
     var row = document.createElement("div");
-    row.style.display = "flex";
-    row.style.justifyContent = "space-between";
-    row.style.alignItems = "center";
-    row.style.fontSize = "13px";
-    row.style.gap = "8px";
-    row.style.padding = "6px 0";
-    row.style.borderBottom = "1px solid var(--divider)";
+    row.className = "attention-item" + (project ? " attention-item--clickable" : "");
+    if (project) row.onclick = item.view;
 
-    var text = document.createElement("span");
-    text.textContent =
-      item.date + " — [" + item.kind + "] " +
-      item.title +
-      " — " +
+    var icon = document.createElement("span");
+    icon.className = "attention-item__icon attention-item__icon--" + item.badgeClass;
+    row.appendChild(icon);
+
+    var body = document.createElement("div");
+    body.className = "attention-item__body";
+    var text = document.createElement("div");
+    text.className = "attention-item__text";
+    text.textContent = "[" + item.kind + "] " + item.title;
+    body.appendChild(text);
+    var meta = document.createElement("div");
+    meta.className = "attention-item__meta";
+    meta.textContent =
+      item.date + " · " +
       (project ? project.name || "(unnamed project)" : "(deleted project)") +
-      " — " +
-      item.owner;
-    row.appendChild(text);
+      " · " + item.owner;
+    body.appendChild(meta);
+    row.appendChild(body);
 
-    var right = document.createElement("div");
-    right.style.display = "flex";
-    right.style.alignItems = "center";
-    right.style.gap = "8px";
-    right.style.flexShrink = "0";
-
-    var badge = document.createElement("span");
-    badge.className = "status-badge status-badge--" + item.badgeClass;
-    badge.style.fontSize = "11px";
-    badge.textContent = item.badgeLabel;
-    right.appendChild(badge);
-
-    if (project) {
-      var viewBtn = document.createElement("button");
-      viewBtn.className = "btn btn--ghost";
-      viewBtn.textContent = "View";
-      viewBtn.onclick = item.view;
-      right.appendChild(viewBtn);
-    }
-
-    row.appendChild(right);
     return row;
   }
 
@@ -341,9 +325,12 @@
       empty.textContent = "Nothing scheduled, due, or required in the next " + uiState.windowDays + " days across the active portfolio.";
       panel.appendChild(empty);
     } else {
+      var list = document.createElement("div");
+      list.className = "attention-list";
       items.forEach(function (item) {
-        panel.appendChild(itemRow(item, projectsById));
+        list.appendChild(itemRow(item, projectsById));
       });
+      panel.appendChild(list);
     }
 
     wrap.appendChild(panel);

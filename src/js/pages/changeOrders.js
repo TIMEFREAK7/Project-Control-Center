@@ -551,52 +551,69 @@
       if (m) links.push({ label: "RAISED IN MEETING", text: m.title + " (" + m.meeting_date + ")", go: function () {
         if (window.PCC.meetings) window.PCC.meetings.expandMeeting(m.id);
         window.PCC.router.go("meetings");
-      }, btn: "View Meeting" });
+      } });
     }
     if (co.source_rfi_id) {
       var r = data.rfis.find(function (x) { return x.id === co.source_rfi_id; });
       if (r) links.push({ label: "SOURCE RFI / TQ", text: r.number + " \u2014 " + (r.subject || "(untitled)"), go: function () {
         if (window.PCC.rfis) window.PCC.rfis.expandRfi(r.id);
         window.PCC.router.go("rfis");
-      }, btn: "View Entry" });
+      } });
     }
     if (co.source_risk_id) {
       var risk = data.risks.find(function (x) { return x.id === co.source_risk_id; });
       if (risk) links.push({ label: "SOURCE RISK / ISSUE", text: risk.title || "(untitled)", go: function () {
         if (window.PCC.risks && window.PCC.risks.expandRisk) window.PCC.risks.expandRisk(risk.id);
         window.PCC.router.go("risks");
-      }, btn: "View Entry" });
+      } });
     }
     if (co.activity_id) {
       var linkedActivity = data.activities.find(function (x) { return x.id === co.activity_id; });
       if (linkedActivity) links.push({ label: "LINKED ACTIVITY", text: linkedActivity.name, go: function () {
         if (window.PCC.schedule) window.PCC.schedule.viewActivity(co.project_id, linkedActivity.schedule_id, linkedActivity.id);
         window.PCC.router.go("schedule");
-      }, btn: "View in Gantt" });
+      } });
     }
 
-    links.forEach(function (link) {
-      var row = document.createElement("div");
-      row.style.marginTop = "12px";
-      row.style.paddingTop = "10px";
-      row.style.borderTop = "1px solid var(--divider)";
-      row.style.display = "flex";
-      row.style.justifyContent = "space-between";
-      row.style.alignItems = "center";
-      row.style.fontSize = "13px";
+    if (links.length > 0) {
+      // Redesign Gate 10 (Module Consistency Pass): retrofitted onto the same
+      // .attention-list/.attention-item primitive every other panel-turned-list in this
+      // app now uses — "info" icon color since these are plain cross-references, not
+      // severity alerts. Whole row is the click target now, replacing the separate
+      // per-link ghost button (link.btn's label text is no longer shown — the row
+      // itself no longer needs to announce what clicking it does differently per link).
+      var linksWrap = document.createElement("div");
+      linksWrap.style.marginTop = "12px";
+      linksWrap.style.paddingTop = "10px";
+      linksWrap.style.borderTop = "1px solid var(--divider)";
+      var linksList = document.createElement("div");
+      linksList.className = "attention-list";
+      links.forEach(function (link) {
+        var row = document.createElement("div");
+        row.className = "attention-item attention-item--clickable";
+        row.onclick = link.go;
 
-      var label = document.createElement("span");
-      label.innerHTML = "<span class='detail-item__label'>" + link.label + "</span>" + link.text;
+        var icon = document.createElement("span");
+        icon.className = "attention-item__icon attention-item__icon--info";
+        row.appendChild(icon);
 
-      var btn = document.createElement("button");
-      btn.className = "btn btn--ghost";
-      btn.textContent = link.btn;
-      btn.onclick = link.go;
+        var body = document.createElement("div");
+        body.className = "attention-item__body";
+        var text = document.createElement("div");
+        text.className = "attention-item__text";
+        text.textContent = link.text;
+        body.appendChild(text);
+        var meta = document.createElement("div");
+        meta.className = "attention-item__meta";
+        meta.textContent = link.label;
+        body.appendChild(meta);
+        row.appendChild(body);
 
-      row.appendChild(label);
-      row.appendChild(btn);
-      wrap.appendChild(row);
-    });
+        linksList.appendChild(row);
+      });
+      linksWrap.appendChild(linksList);
+      wrap.appendChild(linksWrap);
+    }
 
     // Approval / decision history log
     var revisionsWrap = document.createElement("div");

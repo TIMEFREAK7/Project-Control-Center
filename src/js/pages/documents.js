@@ -507,7 +507,7 @@
     box.style.borderRadius = "var(--radius-md)";
     box.style.padding = "var(--space-3)";
     box.style.marginTop = "var(--space-3)";
-    box.style.background = "rgba(230, 162, 60, 0.08)";
+    box.style.background = "rgba(214, 158, 46, 0.08)";
 
     var title = document.createElement("p");
     title.style.fontWeight = "600";
@@ -521,7 +521,7 @@
       var row = document.createElement("div");
       row.style.fontSize = "var(--text-sm)";
       row.style.padding = "var(--space-2) 0";
-      row.style.borderTop = "1px solid var(--border-subtle, rgba(255,255,255,0.08))";
+      row.style.borderTop = "1px solid var(--divider)";
 
       var meta = document.createElement("div");
       meta.innerHTML =
@@ -625,11 +625,11 @@
 
     if (result.matches) {
       box.style.border = "1px solid var(--status-on_track, #3fa66a)";
-      box.style.background = "rgba(63, 166, 106, 0.08)";
+      box.style.background = "rgba(31, 157, 108, 0.08)";
       box.textContent = "Filename matches the configured naming convention.";
     } else {
       box.style.border = "1px solid var(--status-at-risk)";
-      box.style.background = "rgba(230, 162, 60, 0.08)";
+      box.style.background = "rgba(214, 158, 46, 0.08)";
       box.textContent =
         "Filename doesn't match the configured naming convention. Expected: “" +
         result.expected +
@@ -1519,33 +1519,39 @@
       histHeading.style.marginBottom = "var(--space-2)";
       histHeading.textContent = "Revision History";
       histWrap.appendChild(histHeading);
+      // Redesign Gate 10 (Module Consistency Pass): retrofitted onto the same
+      // .attention-list/.attention-item primitive every other panel-turned-list in this
+      // app now uses, replacing the original hand-built row + separate "Open File"
+      // ghost button. Whole row is the click target now.
       // allRevisions[0] is doc itself (already shown above) — only older ones here.
+      var revList = document.createElement("div");
+      revList.className = "attention-list";
       allRevisions.slice(1).forEach(function (rev) {
         var revRow = document.createElement("div");
-        revRow.style.display = "flex";
-        revRow.style.justifyContent = "space-between";
-        revRow.style.alignItems = "center";
-        revRow.style.fontSize = "var(--text-sm)";
-        revRow.style.gap = "var(--space-2)";
-        revRow.style.marginBottom = "var(--space-1)";
-
-        var revLabel = document.createElement("span");
-        revLabel.textContent =
-          "Rev " + rev.revision_number + " — " + rev.filename + " · " +
-          (STATUS_LABELS[rev.status] || rev.status) + " · " +
-          new Date(rev.uploaded_at).toLocaleDateString();
-        revRow.appendChild(revLabel);
-
-        var revViewBtn = document.createElement("button");
-        revViewBtn.className = "btn btn--ghost";
-        revViewBtn.textContent = "Open File";
-        revViewBtn.onclick = function () {
+        revRow.className = "attention-item attention-item--clickable";
+        revRow.onclick = function () {
           openStoredFile(rev);
         };
-        revRow.appendChild(revViewBtn);
 
-        histWrap.appendChild(revRow);
+        var icon = document.createElement("span");
+        icon.className = "attention-item__icon attention-item__icon--info";
+        revRow.appendChild(icon);
+
+        var body = document.createElement("div");
+        body.className = "attention-item__body";
+        var text = document.createElement("div");
+        text.className = "attention-item__text";
+        text.textContent = "Rev " + rev.revision_number + " — " + rev.filename;
+        body.appendChild(text);
+        var meta = document.createElement("div");
+        meta.className = "attention-item__meta";
+        meta.textContent = (STATUS_LABELS[rev.status] || rev.status) + " · " + new Date(rev.uploaded_at).toLocaleDateString();
+        body.appendChild(meta);
+        revRow.appendChild(body);
+
+        revList.appendChild(revRow);
       });
+      histWrap.appendChild(revList);
       panel.appendChild(histWrap);
     }
 

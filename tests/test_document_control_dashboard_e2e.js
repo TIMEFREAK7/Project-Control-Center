@@ -157,11 +157,12 @@ function kpiValue(dom, label) {
     assert.ok(text.indexOf("0 of 1 available (0%)") !== -1, "ITP's own line: 0 of 1 available");
   });
 
-  await check("'View Project' navigates to Portfolio with that project's Details expanded", () => {
-    var viewButtons = Array.from(outlet().querySelectorAll("button")).filter((b) => b.textContent.trim() === "View Project");
-    var projectBBtn = viewButtons.find((b) => b.parentElement.parentElement.textContent.indexOf("Compliance Project B") !== -1);
-    assert.ok(projectBBtn, "View Project button for Compliance Project B not found");
-    projectBBtn.click();
+  await check("clicking a project's compliance row navigates to Portfolio with that project's Details expanded", () => {
+    // Redesign Gate 10: retrofitted onto .attention-list/.attention-item — the whole
+    // row is the click target now, no separate "View Project" button.
+    var projectBRow = Array.from(outlet().querySelectorAll(".attention-item--clickable")).find((r) => r.textContent.indexOf("Compliance Project B") !== -1);
+    assert.ok(projectBRow, "clickable compliance row for Compliance Project B not found");
+    projectBRow.click();
 
     assert.strictEqual(win.PCC.router.currentRouteName(), "portfolio");
     var text = outlet().textContent;

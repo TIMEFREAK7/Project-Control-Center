@@ -382,29 +382,42 @@
         return m.id === l.source_meeting_id;
       });
       if (sourceMeeting) {
+        // Redesign Gate 10 (Module Consistency Pass): retrofitted onto the same
+        // .attention-list/.attention-item primitive every other panel-turned-list in
+        // this app now uses — "info" icon color since this is a plain cross-reference,
+        // not a severity alert. Whole row is the click target now, replacing the
+        // separate "View Meeting" ghost button.
+        var sourceList = document.createElement("div");
+        sourceList.className = "attention-list";
+        sourceList.style.marginTop = "12px";
+        sourceList.style.paddingTop = "10px";
+        sourceList.style.borderTop = "1px solid var(--divider)";
+
         var sourceRow = document.createElement("div");
-        sourceRow.style.marginTop = "12px";
-        sourceRow.style.paddingTop = "10px";
-        sourceRow.style.borderTop = "1px solid var(--divider)";
-        sourceRow.style.display = "flex";
-        sourceRow.style.justifyContent = "space-between";
-        sourceRow.style.alignItems = "center";
-        sourceRow.style.fontSize = "13px";
-
-        var sourceLabel = document.createElement("span");
-        sourceLabel.innerHTML = "<span class='detail-item__label'>RAISED IN MEETING</span>" + sourceMeeting.title + " (" + sourceMeeting.meeting_date + ")";
-
-        var viewMeetingBtn = document.createElement("button");
-        viewMeetingBtn.className = "btn btn--ghost";
-        viewMeetingBtn.textContent = "View Meeting";
-        viewMeetingBtn.onclick = function () {
+        sourceRow.className = "attention-item attention-item--clickable";
+        sourceRow.onclick = function () {
           if (window.PCC.meetings) window.PCC.meetings.expandMeeting(sourceMeeting.id);
           window.PCC.router.go("meetings");
         };
 
-        sourceRow.appendChild(sourceLabel);
-        sourceRow.appendChild(viewMeetingBtn);
-        wrap.appendChild(sourceRow);
+        var sourceIcon = document.createElement("span");
+        sourceIcon.className = "attention-item__icon attention-item__icon--info";
+        sourceRow.appendChild(sourceIcon);
+
+        var sourceBody = document.createElement("div");
+        sourceBody.className = "attention-item__body";
+        var sourceText = document.createElement("div");
+        sourceText.className = "attention-item__text";
+        sourceText.textContent = sourceMeeting.title + " (" + sourceMeeting.meeting_date + ")";
+        sourceBody.appendChild(sourceText);
+        var sourceMeta = document.createElement("div");
+        sourceMeta.className = "attention-item__meta";
+        sourceMeta.textContent = "RAISED IN MEETING";
+        sourceBody.appendChild(sourceMeta);
+        sourceRow.appendChild(sourceBody);
+
+        sourceList.appendChild(sourceRow);
+        wrap.appendChild(sourceList);
       }
     }
 
@@ -413,29 +426,42 @@
         return a.id === l.activity_id;
       });
       if (linkedActivity) {
+        // Redesign Gate 10 (Module Consistency Pass): retrofitted onto the same
+        // .attention-list/.attention-item primitive every other panel-turned-list in
+        // this app now uses — "info" icon color since this is a plain cross-reference,
+        // not a severity alert. Whole row is the click target now, replacing the
+        // separate "View in Gantt" ghost button.
+        var activityList = document.createElement("div");
+        activityList.className = "attention-list";
+        activityList.style.marginTop = "12px";
+        activityList.style.paddingTop = "10px";
+        activityList.style.borderTop = "1px solid var(--divider)";
+
         var activityRow = document.createElement("div");
-        activityRow.style.marginTop = "12px";
-        activityRow.style.paddingTop = "10px";
-        activityRow.style.borderTop = "1px solid var(--divider)";
-        activityRow.style.display = "flex";
-        activityRow.style.justifyContent = "space-between";
-        activityRow.style.alignItems = "center";
-        activityRow.style.fontSize = "13px";
-
-        var activityLabel = document.createElement("span");
-        activityLabel.innerHTML = "<span class='detail-item__label'>LINKED ACTIVITY</span>" + linkedActivity.name;
-
-        var viewActivityBtn = document.createElement("button");
-        viewActivityBtn.className = "btn btn--ghost";
-        viewActivityBtn.textContent = "View in Gantt";
-        viewActivityBtn.onclick = function () {
+        activityRow.className = "attention-item attention-item--clickable";
+        activityRow.onclick = function () {
           if (window.PCC.schedule) window.PCC.schedule.viewActivity(l.project_id, linkedActivity.schedule_id, linkedActivity.id);
           window.PCC.router.go("schedule");
         };
 
-        activityRow.appendChild(activityLabel);
-        activityRow.appendChild(viewActivityBtn);
-        wrap.appendChild(activityRow);
+        var activityIcon = document.createElement("span");
+        activityIcon.className = "attention-item__icon attention-item__icon--info";
+        activityRow.appendChild(activityIcon);
+
+        var activityBody = document.createElement("div");
+        activityBody.className = "attention-item__body";
+        var activityText = document.createElement("div");
+        activityText.className = "attention-item__text";
+        activityText.textContent = linkedActivity.name;
+        activityBody.appendChild(activityText);
+        var activityMeta = document.createElement("div");
+        activityMeta.className = "attention-item__meta";
+        activityMeta.textContent = "LINKED ACTIVITY";
+        activityBody.appendChild(activityMeta);
+        activityRow.appendChild(activityBody);
+
+        activityList.appendChild(activityRow);
+        wrap.appendChild(activityList);
       }
     }
 

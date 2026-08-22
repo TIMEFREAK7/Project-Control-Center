@@ -202,14 +202,18 @@ function todayPlusDays(days) {
   });
 
   await check("badges reflect float-derived criticality correctly", () => {
-    var text = outlet().textContent;
-    var critRow = Array.from(outlet().querySelectorAll("span")).find((s) => s.textContent.indexOf("Critical foundation pour") !== -1);
+    // Redesign Gate 10: retrofitted onto .attention-list/.attention-item — criticality
+    // is now the row's icon color (attention-item__icon--<class>), not a visible text
+    // badge, so this checks the icon class rather than a "Critical"/"Near-Critical"/
+    // "On Track" text label.
+    var rows = Array.from(outlet().querySelectorAll(".attention-item"));
+    var critRow = rows.find((r) => r.textContent.indexOf("Critical foundation pour") !== -1);
     assert.ok(critRow, "critical activity row not found");
-    assert.ok(critRow.parentElement.textContent.indexOf("Critical") !== -1);
-    var nearRow = Array.from(outlet().querySelectorAll("span")).find((s) => s.textContent.indexOf("Near critical steel erection") !== -1);
-    assert.ok(nearRow.parentElement.textContent.indexOf("Near-Critical") !== -1);
-    var onTrackRow = Array.from(outlet().querySelectorAll("span")).find((s) => s.textContent.indexOf("On track cabling") !== -1);
-    assert.ok(onTrackRow.parentElement.textContent.indexOf("On Track") !== -1);
+    assert.ok(critRow.querySelector(".attention-item__icon--critical"), "expected a critical-severity icon");
+    var nearRow = rows.find((r) => r.textContent.indexOf("Near critical steel erection") !== -1);
+    assert.ok(nearRow.querySelector(".attention-item__icon--at_risk"), "expected an at_risk-severity icon for the near-critical activity");
+    var onTrackRow = rows.find((r) => r.textContent.indexOf("On track cabling") !== -1);
+    assert.ok(onTrackRow.querySelector(".attention-item__icon--on_track"), "expected an on_track-severity icon");
   });
 
   await check("items are sorted ascending by date (RFI day 1 before the near-critical activity on day 5)", () => {
@@ -243,21 +247,23 @@ function todayPlusDays(days) {
     assert.ok(text.indexOf("Coming Up (11)") !== -1, "expected 11 items at the 60-day window; got: " + text.match(/Coming Up \(\d+\)/));
   });
 
-  await check("'View' on the critical schedule activity navigates to Schedule with that activity's detail panel open", () => {
-    var btn = findButtonInRowByText(dom, "Critical foundation pour", "View");
-    assert.ok(btn, "View button not found for the critical activity row");
-    btn.click();
+  await check("clicking the critical schedule activity row navigates to Schedule with that activity's detail panel open", () => {
+    // Redesign Gate 10: retrofitted onto .attention-list/.attention-item — the whole
+    // row is the click target now, no separate "View" button.
+    var row = Array.from(outlet().querySelectorAll(".attention-item--clickable")).find((r) => r.textContent.indexOf("Critical foundation pour") !== -1);
+    assert.ok(row, "clickable row not found for the critical activity");
+    row.click();
     assert.strictEqual(win.PCC.router.currentRouteName(), "schedule");
     assert.ok(outlet().textContent.indexOf("Critical foundation pour") !== -1, "the activity detail panel must show the activity's own name");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("'View' on the meeting navigates to Meetings with that meeting expanded", () => {
+  await check("clicking the meeting row navigates to Meetings with that meeting expanded", () => {
     win.PCC.router.go("projectLookahead");
     win.PCC.router.render();
-    var btn = findButtonInRowByText(dom, "Weekly Coordination", "View");
-    assert.ok(btn, "View button not found for the meeting row");
-    btn.click();
+    var row = Array.from(outlet().querySelectorAll(".attention-item--clickable")).find((r) => r.textContent.indexOf("Weekly Coordination") !== -1);
+    assert.ok(row, "clickable row not found for the meeting");
+    row.click();
     assert.strictEqual(win.PCC.router.currentRouteName(), "meetings");
     assert.ok(outlet().textContent.indexOf("Hide") !== -1, "the linked meeting must land already expanded");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));

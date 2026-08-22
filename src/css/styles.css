@@ -1549,6 +1549,10 @@ a:focus-visible {
 .attention-item__icon--warning { background-color: var(--status-warning); }
 .attention-item__icon--at_risk { background-color: var(--status-at-risk); }
 .attention-item__icon--info { background-color: var(--status-info); }
+/* Redesign Gate 10 (Module Consistency Pass): the first attention-item consumer with a
+   genuinely positive severity (Vendor Performance Centre's "On Track" rating band) — the
+   four modifiers above are all attention-worthy by design, none fit a good outcome. */
+.attention-item__icon--on_track { background-color: var(--status-on-track); }
 
 .attention-item__body {
   min-width: 0;

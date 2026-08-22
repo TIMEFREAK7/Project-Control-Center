@@ -1556,6 +1556,10 @@ a:focus-visible {
 .attention-item__icon--warning { background-color: var(--status-warning); }
 .attention-item__icon--at_risk { background-color: var(--status-at-risk); }
 .attention-item__icon--info { background-color: var(--status-info); }
+/* Redesign Gate 10 (Module Consistency Pass): the first attention-item consumer with a
+   genuinely positive severity (Vendor Performance Centre's "On Track" rating band) — the
+   four modifiers above are all attention-worthy by design, none fit a good outcome. */
+.attention-item__icon--on_track { background-color: var(--status-on-track); }
 
 .attention-item__body {
   min-width: 0;
@@ -11429,7 +11433,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           owner: a.responsible_person || a.contractor || "—",
           date: date,
           badgeClass: critical ? "critical" : nearCritical ? "at_risk" : "on_track",
-          badgeLabel: critical ? "Critical" : nearCritical ? "Near-Critical" : "On Track",
           view: (function (pId, schedId, actId) {
             return function () {
               window.PCC.schedule.viewActivity(pId, schedId, actId);
@@ -11451,7 +11454,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           owner: "—",
           date: m.meeting_date,
           badgeClass: "info",
-          badgeLabel: "Scheduled",
           view: (function (id) {
             return function () {
               window.PCC.meetings.expandMeeting(id);
@@ -11471,7 +11473,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           owner: a.owner || "—",
           date: a.due_date,
           badgeClass: "info",
-          badgeLabel: "Open",
           view: (function (id) {
             return function () {
               window.PCC.meetings.expandMeeting(id);
@@ -11494,7 +11495,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         owner: r.assigned_to || "—",
         date: r.date_required,
         badgeClass: "info",
-        badgeLabel: "Open",
         view: (function (id) {
           return function () {
             window.PCC.rfis.expandRfi(id);
@@ -11528,7 +11528,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         owner: vendor ? vendor.vendor_name || "(unnamed vendor)" : "—",
         date: req.planned_submission_date,
         badgeClass: "at_risk",
-        badgeLabel: "Required",
         view: (function (pId) {
           return function () {
             window.PCC.portfolio.viewProject(pId);
@@ -11562,49 +11561,38 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     return wrap;
   }
 
+  // Redesign Gate 10 (Module Consistency Pass): retrofitted onto the same
+  // .attention-list/.attention-item primitive Action Centre's own itemRow() (Gate 7)
+  // already moved to — same hand-built row + status-badge + separate "View" ghost
+  // button shape, same fix. Whole row is the click target now, only when a linked
+  // project still exists (a deleted project's items stay listed but non-clickable,
+  // same as before this gate).
   function itemRow(item, projectsById) {
     var project = projectsById[item.projectId];
 
     var row = document.createElement("div");
-    row.style.display = "flex";
-    row.style.justifyContent = "space-between";
-    row.style.alignItems = "center";
-    row.style.fontSize = "13px";
-    row.style.gap = "8px";
-    row.style.padding = "6px 0";
-    row.style.borderBottom = "1px solid var(--divider)";
+    row.className = "attention-item" + (project ? " attention-item--clickable" : "");
+    if (project) row.onclick = item.view;
 
-    var text = document.createElement("span");
-    text.textContent =
-      item.date + " — [" + item.kind + "] " +
-      item.title +
-      " — " +
+    var icon = document.createElement("span");
+    icon.className = "attention-item__icon attention-item__icon--" + item.badgeClass;
+    row.appendChild(icon);
+
+    var body = document.createElement("div");
+    body.className = "attention-item__body";
+    var text = document.createElement("div");
+    text.className = "attention-item__text";
+    text.textContent = "[" + item.kind + "] " + item.title;
+    body.appendChild(text);
+    var meta = document.createElement("div");
+    meta.className = "attention-item__meta";
+    meta.textContent =
+      item.date + " · " +
       (project ? project.name || "(unnamed project)" : "(deleted project)") +
-      " — " +
-      item.owner;
-    row.appendChild(text);
+      " · " + item.owner;
+    body.appendChild(meta);
+    row.appendChild(body);
 
-    var right = document.createElement("div");
-    right.style.display = "flex";
-    right.style.alignItems = "center";
-    right.style.gap = "8px";
-    right.style.flexShrink = "0";
-
-    var badge = document.createElement("span");
-    badge.className = "status-badge status-badge--" + item.badgeClass;
-    badge.style.fontSize = "11px";
-    badge.textContent = item.badgeLabel;
-    right.appendChild(badge);
-
-    if (project) {
-      var viewBtn = document.createElement("button");
-      viewBtn.className = "btn btn--ghost";
-      viewBtn.textContent = "View";
-      viewBtn.onclick = item.view;
-      right.appendChild(viewBtn);
-    }
-
-    row.appendChild(right);
     return row;
   }
 
@@ -11664,9 +11652,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       empty.textContent = "Nothing scheduled, due, or required in the next " + uiState.windowDays + " days across the active portfolio.";
       panel.appendChild(empty);
     } else {
+      var list = document.createElement("div");
+      list.className = "attention-list";
       items.forEach(function (item) {
-        panel.appendChild(itemRow(item, projectsById));
+        list.appendChild(itemRow(item, projectsById));
       });
+      panel.appendChild(list);
     }
 
     wrap.appendChild(panel);
@@ -21164,18 +21155,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     return card;
   }
 
-  function viewProfileBtn(vendorId) {
-    var btn = document.createElement("button");
-    btn.className = "btn btn--ghost";
-    btn.textContent = "View Profile";
-    btn.onclick = function () {
-      window.PCC.vendors.openProfile(vendorId, "performance");
-      window.PCC.router.go("vendors");
-      window.PCC.router.render();
-    };
-    return btn;
-  }
-
   function render(outlet) {
     var data = window.PCC.store.get();
     var vendors = data.vendors;
@@ -21253,43 +21232,42 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       noReviews.textContent = "No performance reviews yet across the portfolio.";
       rankedPanel.appendChild(noReviews);
     } else {
+      // Redesign Gate 10 (Module Consistency Pass): retrofitted onto the same
+      // .attention-list/.attention-item primitive every other panel-turned-list in this
+      // app now uses, replacing the original hand-built row + status-badge + separate
+      // "View Profile" ghost button. Whole row is the click target now.
+      var rankedList = document.createElement("div");
+      rankedList.className = "attention-list";
       reviewed.forEach(function (s) {
         var row = document.createElement("div");
-        row.style.display = "flex";
-        row.style.justifyContent = "space-between";
-        row.style.alignItems = "center";
-        row.style.gap = "8px";
-        row.style.padding = "8px 0";
-        row.style.borderBottom = "1px solid var(--divider)";
+        row.className = "attention-item attention-item--clickable";
+        row.onclick = function () {
+          window.PCC.vendors.openProfile(s.vendor.id, "performance");
+          window.PCC.router.go("vendors");
+          window.PCC.router.render();
+        };
 
-        var left = document.createElement("div");
-        left.innerHTML =
-          "<strong>" + (s.vendor.vendor_name || "(unnamed vendor)") + "</strong>" +
-          "<p style='font-size:12px;margin:4px 0 0'>" +
-          ratingText(s.overall) + " overall (" + s.reviewCount + " review" + (s.reviewCount === 1 ? "" : "s") + ")" +
-          "</p>" +
-          "<p class='text-secondary' style='font-size:12px;margin:4px 0 0'>" +
+        var icon = document.createElement("span");
+        icon.className = "attention-item__icon attention-item__icon--" + ratingBand(s.overall);
+        row.appendChild(icon);
+
+        var body = document.createElement("div");
+        body.className = "attention-item__body";
+        var text = document.createElement("div");
+        text.className = "attention-item__text";
+        text.textContent = (s.vendor.vendor_name || "(unnamed vendor)") + " — " + ratingText(s.overall) + " overall (" + s.reviewCount + " review" + (s.reviewCount === 1 ? "" : "s") + ")";
+        body.appendChild(text);
+        var meta = document.createElement("div");
+        meta.className = "attention-item__meta";
+        meta.textContent =
           "Quality: " + ratingText(s.quality) + " · Delivery: " + ratingText(s.delivery) +
-          " · Communication: " + ratingText(s.communication) + " · Safety: " + ratingText(s.safety) +
-          "</p>";
-        row.appendChild(left);
+          " · Communication: " + ratingText(s.communication) + " · Safety: " + ratingText(s.safety);
+        body.appendChild(meta);
+        row.appendChild(body);
 
-        var right = document.createElement("div");
-        right.style.display = "flex";
-        right.style.alignItems = "center";
-        right.style.gap = "8px";
-        right.style.flexShrink = "0";
-
-        var badge = document.createElement("span");
-        badge.className = "status-badge status-badge--" + ratingBand(s.overall);
-        badge.textContent =
-          ratingBand(s.overall) === "on_track" ? "On Track" : ratingBand(s.overall) === "at_risk" ? "At Risk" : "Critical";
-        right.appendChild(badge);
-        right.appendChild(viewProfileBtn(s.vendor.id));
-
-        row.appendChild(right);
-        rankedPanel.appendChild(row);
+        rankedList.appendChild(row);
       });
+      rankedPanel.appendChild(rankedList);
     }
     wrap.appendChild(rankedPanel);
 
@@ -21308,23 +21286,33 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       allReviewed.textContent = "Every vendor has at least one performance review.";
       unreviewedPanel.appendChild(allReviewed);
     } else {
+      // Redesign Gate 10: same retrofit as the ranked panel above.
+      var unreviewedList = document.createElement("div");
+      unreviewedList.className = "attention-list";
       unreviewed.forEach(function (s) {
         var row = document.createElement("div");
-        row.style.display = "flex";
-        row.style.justifyContent = "space-between";
-        row.style.alignItems = "center";
-        row.style.gap = "8px";
-        row.style.padding = "6px 0";
-        row.style.borderBottom = "1px solid var(--divider)";
-        row.style.fontSize = "13px";
+        row.className = "attention-item attention-item--clickable";
+        row.onclick = function () {
+          window.PCC.vendors.openProfile(s.vendor.id, "performance");
+          window.PCC.router.go("vendors");
+          window.PCC.router.render();
+        };
 
-        var name = document.createElement("span");
-        name.textContent = s.vendor.vendor_name || "(unnamed vendor)";
-        row.appendChild(name);
-        row.appendChild(viewProfileBtn(s.vendor.id));
+        var icon = document.createElement("span");
+        icon.className = "attention-item__icon attention-item__icon--info";
+        row.appendChild(icon);
 
-        unreviewedPanel.appendChild(row);
+        var body = document.createElement("div");
+        body.className = "attention-item__body";
+        var text = document.createElement("div");
+        text.className = "attention-item__text";
+        text.textContent = s.vendor.vendor_name || "(unnamed vendor)";
+        body.appendChild(text);
+        row.appendChild(body);
+
+        unreviewedList.appendChild(row);
       });
+      unreviewedPanel.appendChild(unreviewedList);
     }
     wrap.appendChild(unreviewedPanel);
 
@@ -21845,7 +21833,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     box.style.borderRadius = "var(--radius-md)";
     box.style.padding = "var(--space-3)";
     box.style.marginTop = "var(--space-3)";
-    box.style.background = "rgba(230, 162, 60, 0.08)";
+    box.style.background = "rgba(214, 158, 46, 0.08)";
 
     var title = document.createElement("p");
     title.style.fontWeight = "600";
@@ -21859,7 +21847,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       var row = document.createElement("div");
       row.style.fontSize = "var(--text-sm)";
       row.style.padding = "var(--space-2) 0";
-      row.style.borderTop = "1px solid var(--border-subtle, rgba(255,255,255,0.08))";
+      row.style.borderTop = "1px solid var(--divider)";
 
       var meta = document.createElement("div");
       meta.innerHTML =
@@ -21963,11 +21951,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     if (result.matches) {
       box.style.border = "1px solid var(--status-on_track, #3fa66a)";
-      box.style.background = "rgba(63, 166, 106, 0.08)";
+      box.style.background = "rgba(31, 157, 108, 0.08)";
       box.textContent = "Filename matches the configured naming convention.";
     } else {
       box.style.border = "1px solid var(--status-at-risk)";
-      box.style.background = "rgba(230, 162, 60, 0.08)";
+      box.style.background = "rgba(214, 158, 46, 0.08)";
       box.textContent =
         "Filename doesn't match the configured naming convention. Expected: “" +
         result.expected +
@@ -22857,33 +22845,39 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       histHeading.style.marginBottom = "var(--space-2)";
       histHeading.textContent = "Revision History";
       histWrap.appendChild(histHeading);
+      // Redesign Gate 10 (Module Consistency Pass): retrofitted onto the same
+      // .attention-list/.attention-item primitive every other panel-turned-list in this
+      // app now uses, replacing the original hand-built row + separate "Open File"
+      // ghost button. Whole row is the click target now.
       // allRevisions[0] is doc itself (already shown above) — only older ones here.
+      var revList = document.createElement("div");
+      revList.className = "attention-list";
       allRevisions.slice(1).forEach(function (rev) {
         var revRow = document.createElement("div");
-        revRow.style.display = "flex";
-        revRow.style.justifyContent = "space-between";
-        revRow.style.alignItems = "center";
-        revRow.style.fontSize = "var(--text-sm)";
-        revRow.style.gap = "var(--space-2)";
-        revRow.style.marginBottom = "var(--space-1)";
-
-        var revLabel = document.createElement("span");
-        revLabel.textContent =
-          "Rev " + rev.revision_number + " — " + rev.filename + " · " +
-          (STATUS_LABELS[rev.status] || rev.status) + " · " +
-          new Date(rev.uploaded_at).toLocaleDateString();
-        revRow.appendChild(revLabel);
-
-        var revViewBtn = document.createElement("button");
-        revViewBtn.className = "btn btn--ghost";
-        revViewBtn.textContent = "Open File";
-        revViewBtn.onclick = function () {
+        revRow.className = "attention-item attention-item--clickable";
+        revRow.onclick = function () {
           openStoredFile(rev);
         };
-        revRow.appendChild(revViewBtn);
 
-        histWrap.appendChild(revRow);
+        var icon = document.createElement("span");
+        icon.className = "attention-item__icon attention-item__icon--info";
+        revRow.appendChild(icon);
+
+        var body = document.createElement("div");
+        body.className = "attention-item__body";
+        var text = document.createElement("div");
+        text.className = "attention-item__text";
+        text.textContent = "Rev " + rev.revision_number + " — " + rev.filename;
+        body.appendChild(text);
+        var meta = document.createElement("div");
+        meta.className = "attention-item__meta";
+        meta.textContent = (STATUS_LABELS[rev.status] || rev.status) + " · " + new Date(rev.uploaded_at).toLocaleDateString();
+        body.appendChild(meta);
+        revRow.appendChild(body);
+
+        revList.appendChild(revRow);
       });
+      histWrap.appendChild(revList);
       panel.appendChild(histWrap);
     }
 
@@ -23712,37 +23706,35 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     return groups;
   }
 
-  function renderComplianceRow(label, group, viewBtn) {
+  // Redesign Gate 10 (Module Consistency Pass): retrofitted onto the same
+  // .attention-list/.attention-item primitive every other panel-turned-list in this app
+  // now uses, replacing the original hand-built row + status-badge + separate "View
+  // Project" ghost button. Whole row is the click target only when onClick is given
+  // (the by-project panel passes one; the by-document-type panel passes null, since
+  // document types have no dedicated page to link to — same as before this gate).
+  function renderComplianceRow(label, group, onClick) {
     var row = document.createElement("div");
-    row.style.display = "flex";
-    row.style.justifyContent = "space-between";
-    row.style.alignItems = "center";
-    row.style.fontSize = "13px";
-    row.style.gap = "8px";
-    row.style.padding = "6px 0";
-    row.style.borderBottom = "1px solid var(--divider)";
+    row.className = "attention-item" + (onClick ? " attention-item--clickable" : "");
+    if (onClick) row.onclick = onClick;
 
-    var left = document.createElement("span");
-    left.textContent = label + " — " + group.available + " of " + group.total + " available (" + group.pctAvailable + "%)";
-    row.appendChild(left);
+    var icon = document.createElement("span");
+    icon.className = "attention-item__icon attention-item__icon--" + (group.overdue > 0 ? "critical" : group.pctAvailable < 100 ? "at_risk" : "on_track");
+    row.appendChild(icon);
 
-    var right = document.createElement("div");
-    right.style.display = "flex";
-    right.style.alignItems = "center";
-    right.style.gap = "8px";
-    right.style.flexShrink = "0";
+    var body = document.createElement("div");
+    body.className = "attention-item__body";
+    var text = document.createElement("div");
+    text.className = "attention-item__text";
+    text.textContent = label;
+    body.appendChild(text);
+    var meta = document.createElement("div");
+    meta.className = "attention-item__meta";
+    meta.textContent =
+      group.available + " of " + group.total + " available (" + group.pctAvailable + "%)" +
+      (group.overdue > 0 ? " · " + group.overdue + " overdue" : "");
+    body.appendChild(meta);
+    row.appendChild(body);
 
-    if (group.overdue > 0) {
-      var overdueBadge = document.createElement("span");
-      overdueBadge.className = "status-badge status-badge--critical";
-      overdueBadge.style.fontSize = "11px";
-      overdueBadge.textContent = group.overdue + " overdue";
-      right.appendChild(overdueBadge);
-    }
-
-    if (viewBtn) right.appendChild(viewBtn);
-
-    row.appendChild(right);
     return row;
   }
 
@@ -23825,21 +23817,21 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     projectHeading.style.marginBottom = "8px";
     projectHeading.textContent = "Compliance by Project (worst first)";
     projectPanel.appendChild(projectHeading);
+    var projectList = document.createElement("div");
+    projectList.className = "attention-list";
     projectGroups.forEach(function (g) {
       var project = projectsById[g.key];
-      var viewBtn = null;
+      var onClick = null;
       if (project && window.PCC.portfolio) {
-        viewBtn = document.createElement("button");
-        viewBtn.className = "btn btn--ghost";
-        viewBtn.textContent = "View Project";
-        viewBtn.onclick = function () {
+        onClick = function () {
           window.PCC.portfolio.viewProject(project.id);
           window.PCC.router.go("portfolio");
           window.PCC.router.render();
         };
       }
-      projectPanel.appendChild(renderComplianceRow(project ? project.name || "(unnamed project)" : "(deleted project)", g, viewBtn));
+      projectList.appendChild(renderComplianceRow(project ? project.name || "(unnamed project)" : "(deleted project)", g, onClick));
     });
+    projectPanel.appendChild(projectList);
     wrap.appendChild(projectPanel);
 
     var typeGroups = groupCompliance(rows, function (r) {
@@ -23852,11 +23844,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     typeHeading.style.marginBottom = "8px";
     typeHeading.textContent = "Compliance by Document Type (worst first)";
     typePanel.appendChild(typeHeading);
+    var typeList = document.createElement("div");
+    typeList.className = "attention-list";
     typeGroups.forEach(function (g) {
       var t = typesById[g.key];
       var label = t ? t.name + (t.code ? " (" + t.code + ")" : "") : "(deleted type)";
-      typePanel.appendChild(renderComplianceRow(label, g, null));
+      typeList.appendChild(renderComplianceRow(label, g, null));
     });
+    typePanel.appendChild(typeList);
     wrap.appendChild(typePanel);
 
     outlet.appendChild(wrap);
@@ -24451,29 +24446,42 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         return a.id === log.activity_id;
       });
       if (linkedActivity) {
+        // Redesign Gate 10 (Module Consistency Pass): retrofitted onto the same
+        // .attention-list/.attention-item primitive every other panel-turned-list in
+        // this app now uses — "info" icon color since this is a plain cross-reference,
+        // not a severity alert. Whole row is the click target now, replacing the
+        // separate "View in Gantt" ghost button.
+        var activityList = document.createElement("div");
+        activityList.className = "attention-list";
+        activityList.style.marginTop = "12px";
+        activityList.style.paddingTop = "10px";
+        activityList.style.borderTop = "1px solid var(--divider)";
+
         var activityRow = document.createElement("div");
-        activityRow.style.marginTop = "12px";
-        activityRow.style.paddingTop = "10px";
-        activityRow.style.borderTop = "1px solid var(--divider)";
-        activityRow.style.display = "flex";
-        activityRow.style.justifyContent = "space-between";
-        activityRow.style.alignItems = "center";
-        activityRow.style.fontSize = "13px";
-
-        var activityLabel = document.createElement("span");
-        activityLabel.innerHTML = "<span class='detail-item__label'>LINKED ACTIVITY</span>" + linkedActivity.name;
-
-        var viewActivityBtn = document.createElement("button");
-        viewActivityBtn.className = "btn btn--ghost";
-        viewActivityBtn.textContent = "View in Gantt";
-        viewActivityBtn.onclick = function () {
+        activityRow.className = "attention-item attention-item--clickable";
+        activityRow.onclick = function () {
           if (window.PCC.schedule) window.PCC.schedule.viewActivity(log.project_id, linkedActivity.schedule_id, linkedActivity.id);
           window.PCC.router.go("schedule");
         };
 
-        activityRow.appendChild(activityLabel);
-        activityRow.appendChild(viewActivityBtn);
-        wrap.appendChild(activityRow);
+        var activityIcon = document.createElement("span");
+        activityIcon.className = "attention-item__icon attention-item__icon--info";
+        activityRow.appendChild(activityIcon);
+
+        var activityBody = document.createElement("div");
+        activityBody.className = "attention-item__body";
+        var activityText = document.createElement("div");
+        activityText.className = "attention-item__text";
+        activityText.textContent = linkedActivity.name;
+        activityBody.appendChild(activityText);
+        var activityMeta = document.createElement("div");
+        activityMeta.className = "attention-item__meta";
+        activityMeta.textContent = "LINKED ACTIVITY";
+        activityBody.appendChild(activityMeta);
+        activityRow.appendChild(activityBody);
+
+        activityList.appendChild(activityRow);
+        wrap.appendChild(activityList);
       }
     }
 
@@ -25301,7 +25309,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         dupBox.style.borderRadius = "var(--radius-md)";
         dupBox.style.padding = "var(--space-3)";
         dupBox.style.marginBottom = "var(--space-4)";
-        dupBox.style.background = "rgba(230, 162, 60, 0.08)";
+        dupBox.style.background = "rgba(214, 158, 46, 0.08)";
         var dupTitle = document.createElement("p");
         dupTitle.style.fontWeight = "600";
         dupTitle.style.fontSize = "var(--text-sm)";
@@ -25754,7 +25762,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       warnBox.style.borderRadius = "var(--radius-md)";
       warnBox.style.padding = "var(--space-3)";
       warnBox.style.marginBottom = "var(--space-4)";
-      warnBox.style.background = "rgba(230, 162, 60, 0.08)";
+      warnBox.style.background = "rgba(214, 158, 46, 0.08)";
       var warnTitle = document.createElement("p");
       warnTitle.style.fontWeight = "600";
       warnTitle.style.fontSize = "var(--text-sm)";
@@ -28188,36 +28196,40 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       empty.textContent = "No Risks/Issues, RFIs, Meetings, Documents, Daily Log entries, or Change Orders are linked to this activity yet — link one from that record's own Add/Edit form.";
       wrap.appendChild(empty);
     } else {
+      // Redesign Gate 10 (Module Consistency Pass): retrofitted onto the same
+      // .attention-list/.attention-item primitive every other panel-turned-list in this
+      // app now uses, replacing the original hand-built row + optional status-badge +
+      // separate "View" ghost button. Whole row is the click target now; the optional
+      // per-source badge (Resources' availability, Commitments' procurement risk) moves
+      // into the icon color plus the meta line rather than a separate badge element.
+      var list = document.createElement("div");
+      list.className = "attention-list";
       rows.forEach(function (row) {
         var rowEl = document.createElement("div");
-        rowEl.style.display = "flex";
-        rowEl.style.justifyContent = "space-between";
-        rowEl.style.alignItems = "center";
-        rowEl.style.fontSize = "var(--text-sm)";
-        rowEl.style.marginBottom = "var(--space-1)";
+        rowEl.className = "attention-item attention-item--clickable";
+        rowEl.onclick = row.view;
 
-        var text = document.createElement("span");
+        var icon = document.createElement("span");
+        icon.className = "attention-item__icon attention-item__icon--" + (row.badge ? row.badge.className : "info");
+        rowEl.appendChild(icon);
+
+        var body = document.createElement("div");
+        body.className = "attention-item__body";
+        var text = document.createElement("div");
+        text.className = "attention-item__text";
         text.textContent = row.text;
-        text.style.flex = "1";
-        rowEl.appendChild(text);
-
+        body.appendChild(text);
         if (row.badge) {
-          var badge = document.createElement("span");
-          badge.className = "status-badge status-badge--" + row.badge.className;
-          badge.style.fontSize = "var(--text-xs)";
-          badge.style.marginRight = "var(--space-2)";
-          badge.textContent = row.badge.label;
-          rowEl.appendChild(badge);
+          var meta = document.createElement("div");
+          meta.className = "attention-item__meta";
+          meta.textContent = row.badge.label;
+          body.appendChild(meta);
         }
+        rowEl.appendChild(body);
 
-        var viewBtn = document.createElement("button");
-        viewBtn.className = "btn btn--ghost";
-        viewBtn.textContent = "View";
-        viewBtn.onclick = row.view;
-        rowEl.appendChild(viewBtn);
-
-        wrap.appendChild(rowEl);
+        list.appendChild(rowEl);
       });
+      wrap.appendChild(list);
     }
 
     return wrap;
@@ -31245,29 +31257,42 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         return m.id === r.source_meeting_id;
       });
       if (sourceMeeting) {
+        // Redesign Gate 10 (Module Consistency Pass): retrofitted onto the same
+        // .attention-list/.attention-item primitive every other panel-turned-list in
+        // this app now uses — "info" icon color since this is a plain cross-reference,
+        // not a severity alert. Whole row is the click target now, replacing the
+        // separate "View Meeting" ghost button.
+        var sourceList = document.createElement("div");
+        sourceList.className = "attention-list";
+        sourceList.style.marginTop = "12px";
+        sourceList.style.paddingTop = "10px";
+        sourceList.style.borderTop = "1px solid var(--divider)";
+
         var sourceRow = document.createElement("div");
-        sourceRow.style.marginTop = "12px";
-        sourceRow.style.paddingTop = "10px";
-        sourceRow.style.borderTop = "1px solid var(--divider)";
-        sourceRow.style.display = "flex";
-        sourceRow.style.justifyContent = "space-between";
-        sourceRow.style.alignItems = "center";
-        sourceRow.style.fontSize = "13px";
-
-        var sourceLabel = document.createElement("span");
-        sourceLabel.innerHTML = "<span class='detail-item__label'>RAISED IN MEETING</span>" + sourceMeeting.title + " (" + sourceMeeting.meeting_date + ")";
-
-        var viewMeetingBtn = document.createElement("button");
-        viewMeetingBtn.className = "btn btn--ghost";
-        viewMeetingBtn.textContent = "View Meeting";
-        viewMeetingBtn.onclick = function () {
+        sourceRow.className = "attention-item attention-item--clickable";
+        sourceRow.onclick = function () {
           if (window.PCC.meetings) window.PCC.meetings.expandMeeting(sourceMeeting.id);
           window.PCC.router.go("meetings");
         };
 
-        sourceRow.appendChild(sourceLabel);
-        sourceRow.appendChild(viewMeetingBtn);
-        wrap.appendChild(sourceRow);
+        var sourceIcon = document.createElement("span");
+        sourceIcon.className = "attention-item__icon attention-item__icon--info";
+        sourceRow.appendChild(sourceIcon);
+
+        var sourceBody = document.createElement("div");
+        sourceBody.className = "attention-item__body";
+        var sourceText = document.createElement("div");
+        sourceText.className = "attention-item__text";
+        sourceText.textContent = sourceMeeting.title + " (" + sourceMeeting.meeting_date + ")";
+        sourceBody.appendChild(sourceText);
+        var sourceMeta = document.createElement("div");
+        sourceMeta.className = "attention-item__meta";
+        sourceMeta.textContent = "RAISED IN MEETING";
+        sourceBody.appendChild(sourceMeta);
+        sourceRow.appendChild(sourceBody);
+
+        sourceList.appendChild(sourceRow);
+        wrap.appendChild(sourceList);
       }
     }
 
@@ -31279,29 +31304,39 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         var schedule = window.PCC.store.get().schedules.find(function (s) {
           return s.id === linkedActivity.schedule_id;
         });
+        // Redesign Gate 10 (Module Consistency Pass): same retrofit as the source-
+        // meeting row above.
+        var activityList = document.createElement("div");
+        activityList.className = "attention-list";
+        activityList.style.marginTop = "12px";
+        activityList.style.paddingTop = "10px";
+        activityList.style.borderTop = "1px solid var(--divider)";
+
         var activityRow = document.createElement("div");
-        activityRow.style.marginTop = "12px";
-        activityRow.style.paddingTop = "10px";
-        activityRow.style.borderTop = "1px solid var(--divider)";
-        activityRow.style.display = "flex";
-        activityRow.style.justifyContent = "space-between";
-        activityRow.style.alignItems = "center";
-        activityRow.style.fontSize = "13px";
-
-        var activityLabel = document.createElement("span");
-        activityLabel.innerHTML = "<span class='detail-item__label'>LINKED ACTIVITY</span>" + linkedActivity.name;
-
-        var viewActivityBtn = document.createElement("button");
-        viewActivityBtn.className = "btn btn--ghost";
-        viewActivityBtn.textContent = "View in Gantt";
-        viewActivityBtn.onclick = function () {
+        activityRow.className = "attention-item attention-item--clickable";
+        activityRow.onclick = function () {
           if (window.PCC.schedule) window.PCC.schedule.viewActivity(r.project_id, linkedActivity.schedule_id, linkedActivity.id);
           window.PCC.router.go("schedule");
         };
 
-        activityRow.appendChild(activityLabel);
-        activityRow.appendChild(viewActivityBtn);
-        wrap.appendChild(activityRow);
+        var activityIcon = document.createElement("span");
+        activityIcon.className = "attention-item__icon attention-item__icon--info";
+        activityRow.appendChild(activityIcon);
+
+        var activityBody = document.createElement("div");
+        activityBody.className = "attention-item__body";
+        var activityText = document.createElement("div");
+        activityText.className = "attention-item__text";
+        activityText.textContent = linkedActivity.name;
+        activityBody.appendChild(activityText);
+        var activityMeta = document.createElement("div");
+        activityMeta.className = "attention-item__meta";
+        activityMeta.textContent = "LINKED ACTIVITY";
+        activityBody.appendChild(activityMeta);
+        activityRow.appendChild(activityBody);
+
+        activityList.appendChild(activityRow);
+        wrap.appendChild(activityList);
       }
     }
 
@@ -32225,29 +32260,42 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         return a.id === m.activity_id;
       });
       if (linkedActivity) {
+        // Redesign Gate 10 (Module Consistency Pass): retrofitted onto the same
+        // .attention-list/.attention-item primitive every other panel-turned-list in
+        // this app now uses — "info" icon color since this is a plain cross-reference,
+        // not a severity alert. Whole row is the click target now, replacing the
+        // separate "View in Gantt" ghost button.
+        var activityList = document.createElement("div");
+        activityList.className = "attention-list";
+        activityList.style.marginTop = "var(--space-3)";
+        activityList.style.paddingTop = "var(--space-3)";
+        activityList.style.borderTop = "1px solid var(--divider)";
+
         var activityRow = document.createElement("div");
-        activityRow.style.marginTop = "var(--space-3)";
-        activityRow.style.paddingTop = "var(--space-3)";
-        activityRow.style.borderTop = "1px solid var(--divider)";
-        activityRow.style.display = "flex";
-        activityRow.style.justifyContent = "space-between";
-        activityRow.style.alignItems = "center";
-        activityRow.style.fontSize = "var(--text-sm)";
-
-        var activityLabel = document.createElement("span");
-        activityLabel.innerHTML = "<span class='detail-item__label'>LINKED ACTIVITY</span>" + linkedActivity.name;
-
-        var viewActivityBtn = document.createElement("button");
-        viewActivityBtn.className = "btn btn--ghost";
-        viewActivityBtn.textContent = "View in Gantt";
-        viewActivityBtn.onclick = function () {
+        activityRow.className = "attention-item attention-item--clickable";
+        activityRow.onclick = function () {
           if (window.PCC.schedule) window.PCC.schedule.viewActivity(m.project_id, linkedActivity.schedule_id, linkedActivity.id);
           window.PCC.router.go("schedule");
         };
 
-        activityRow.appendChild(activityLabel);
-        activityRow.appendChild(viewActivityBtn);
-        wrap.appendChild(activityRow);
+        var activityIcon = document.createElement("span");
+        activityIcon.className = "attention-item__icon attention-item__icon--info";
+        activityRow.appendChild(activityIcon);
+
+        var activityBody = document.createElement("div");
+        activityBody.className = "attention-item__body";
+        var activityText = document.createElement("div");
+        activityText.className = "attention-item__text";
+        activityText.textContent = linkedActivity.name;
+        activityBody.appendChild(activityText);
+        var activityMeta = document.createElement("div");
+        activityMeta.className = "attention-item__meta";
+        activityMeta.textContent = "LINKED ACTIVITY";
+        activityBody.appendChild(activityMeta);
+        activityRow.appendChild(activityBody);
+
+        activityList.appendChild(activityRow);
+        wrap.appendChild(activityList);
       }
     }
 
@@ -33203,29 +33251,42 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         return m.id === r.source_meeting_id;
       });
       if (sourceMeeting) {
+        // Redesign Gate 10 (Module Consistency Pass): retrofitted onto the same
+        // .attention-list/.attention-item primitive every other panel-turned-list in
+        // this app now uses — "info" icon color since this is a plain cross-reference,
+        // not a severity alert. Whole row is the click target now, replacing the
+        // separate "View Meeting" ghost button.
+        var sourceList = document.createElement("div");
+        sourceList.className = "attention-list";
+        sourceList.style.marginTop = "var(--space-3)";
+        sourceList.style.paddingTop = "var(--space-3)";
+        sourceList.style.borderTop = "1px solid var(--divider)";
+
         var sourceRow = document.createElement("div");
-        sourceRow.style.marginTop = "var(--space-3)";
-        sourceRow.style.paddingTop = "var(--space-3)";
-        sourceRow.style.borderTop = "1px solid var(--divider)";
-        sourceRow.style.display = "flex";
-        sourceRow.style.justifyContent = "space-between";
-        sourceRow.style.alignItems = "center";
-        sourceRow.style.fontSize = "var(--text-sm)";
-
-        var sourceLabel = document.createElement("span");
-        sourceLabel.innerHTML = "<span class='detail-item__label'>RAISED IN MEETING</span>" + sourceMeeting.title + " (" + sourceMeeting.meeting_date + ")";
-
-        var viewMeetingBtn = document.createElement("button");
-        viewMeetingBtn.className = "btn btn--ghost";
-        viewMeetingBtn.textContent = "View Meeting";
-        viewMeetingBtn.onclick = function () {
+        sourceRow.className = "attention-item attention-item--clickable";
+        sourceRow.onclick = function () {
           if (window.PCC.meetings) window.PCC.meetings.expandMeeting(sourceMeeting.id);
           window.PCC.router.go("meetings");
         };
 
-        sourceRow.appendChild(sourceLabel);
-        sourceRow.appendChild(viewMeetingBtn);
-        wrap.appendChild(sourceRow);
+        var sourceIcon = document.createElement("span");
+        sourceIcon.className = "attention-item__icon attention-item__icon--info";
+        sourceRow.appendChild(sourceIcon);
+
+        var sourceBody = document.createElement("div");
+        sourceBody.className = "attention-item__body";
+        var sourceText = document.createElement("div");
+        sourceText.className = "attention-item__text";
+        sourceText.textContent = sourceMeeting.title + " (" + sourceMeeting.meeting_date + ")";
+        sourceBody.appendChild(sourceText);
+        var sourceMeta = document.createElement("div");
+        sourceMeta.className = "attention-item__meta";
+        sourceMeta.textContent = "RAISED IN MEETING";
+        sourceBody.appendChild(sourceMeta);
+        sourceRow.appendChild(sourceBody);
+
+        sourceList.appendChild(sourceRow);
+        wrap.appendChild(sourceList);
       }
     }
 
@@ -33234,29 +33295,38 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         return a.id === r.activity_id;
       });
       if (linkedActivity) {
+        // Redesign Gate 10 (Module Consistency Pass): same retrofit as the source-
+        // meeting row above.
+        var activityList = document.createElement("div");
+        activityList.className = "attention-list";
+        activityList.style.marginTop = "var(--space-3)";
+        activityList.style.paddingTop = "var(--space-3)";
+        activityList.style.borderTop = "1px solid var(--divider)";
+
         var activityRow = document.createElement("div");
-        activityRow.style.marginTop = "var(--space-3)";
-        activityRow.style.paddingTop = "var(--space-3)";
-        activityRow.style.borderTop = "1px solid var(--divider)";
-        activityRow.style.display = "flex";
-        activityRow.style.justifyContent = "space-between";
-        activityRow.style.alignItems = "center";
-        activityRow.style.fontSize = "var(--text-sm)";
-
-        var activityLabel = document.createElement("span");
-        activityLabel.innerHTML = "<span class='detail-item__label'>LINKED ACTIVITY</span>" + linkedActivity.name;
-
-        var viewActivityBtn = document.createElement("button");
-        viewActivityBtn.className = "btn btn--ghost";
-        viewActivityBtn.textContent = "View in Gantt";
-        viewActivityBtn.onclick = function () {
+        activityRow.className = "attention-item attention-item--clickable";
+        activityRow.onclick = function () {
           if (window.PCC.schedule) window.PCC.schedule.viewActivity(r.project_id, linkedActivity.schedule_id, linkedActivity.id);
           window.PCC.router.go("schedule");
         };
 
-        activityRow.appendChild(activityLabel);
-        activityRow.appendChild(viewActivityBtn);
-        wrap.appendChild(activityRow);
+        var activityIcon = document.createElement("span");
+        activityIcon.className = "attention-item__icon attention-item__icon--info";
+        activityRow.appendChild(activityIcon);
+
+        var activityBody = document.createElement("div");
+        activityBody.className = "attention-item__body";
+        var activityText = document.createElement("div");
+        activityText.className = "attention-item__text";
+        activityText.textContent = linkedActivity.name;
+        activityBody.appendChild(activityText);
+        var activityMeta = document.createElement("div");
+        activityMeta.className = "attention-item__meta";
+        activityMeta.textContent = "LINKED ACTIVITY";
+        activityBody.appendChild(activityMeta);
+        activityRow.appendChild(activityBody);
+        activityList.appendChild(activityRow);
+        wrap.appendChild(activityList);
       }
     }
 
@@ -34168,52 +34238,69 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       if (m) links.push({ label: "RAISED IN MEETING", text: m.title + " (" + m.meeting_date + ")", go: function () {
         if (window.PCC.meetings) window.PCC.meetings.expandMeeting(m.id);
         window.PCC.router.go("meetings");
-      }, btn: "View Meeting" });
+      } });
     }
     if (co.source_rfi_id) {
       var r = data.rfis.find(function (x) { return x.id === co.source_rfi_id; });
       if (r) links.push({ label: "SOURCE RFI / TQ", text: r.number + " \u2014 " + (r.subject || "(untitled)"), go: function () {
         if (window.PCC.rfis) window.PCC.rfis.expandRfi(r.id);
         window.PCC.router.go("rfis");
-      }, btn: "View Entry" });
+      } });
     }
     if (co.source_risk_id) {
       var risk = data.risks.find(function (x) { return x.id === co.source_risk_id; });
       if (risk) links.push({ label: "SOURCE RISK / ISSUE", text: risk.title || "(untitled)", go: function () {
         if (window.PCC.risks && window.PCC.risks.expandRisk) window.PCC.risks.expandRisk(risk.id);
         window.PCC.router.go("risks");
-      }, btn: "View Entry" });
+      } });
     }
     if (co.activity_id) {
       var linkedActivity = data.activities.find(function (x) { return x.id === co.activity_id; });
       if (linkedActivity) links.push({ label: "LINKED ACTIVITY", text: linkedActivity.name, go: function () {
         if (window.PCC.schedule) window.PCC.schedule.viewActivity(co.project_id, linkedActivity.schedule_id, linkedActivity.id);
         window.PCC.router.go("schedule");
-      }, btn: "View in Gantt" });
+      } });
     }
 
-    links.forEach(function (link) {
-      var row = document.createElement("div");
-      row.style.marginTop = "12px";
-      row.style.paddingTop = "10px";
-      row.style.borderTop = "1px solid var(--divider)";
-      row.style.display = "flex";
-      row.style.justifyContent = "space-between";
-      row.style.alignItems = "center";
-      row.style.fontSize = "13px";
+    if (links.length > 0) {
+      // Redesign Gate 10 (Module Consistency Pass): retrofitted onto the same
+      // .attention-list/.attention-item primitive every other panel-turned-list in this
+      // app now uses — "info" icon color since these are plain cross-references, not
+      // severity alerts. Whole row is the click target now, replacing the separate
+      // per-link ghost button (link.btn's label text is no longer shown — the row
+      // itself no longer needs to announce what clicking it does differently per link).
+      var linksWrap = document.createElement("div");
+      linksWrap.style.marginTop = "12px";
+      linksWrap.style.paddingTop = "10px";
+      linksWrap.style.borderTop = "1px solid var(--divider)";
+      var linksList = document.createElement("div");
+      linksList.className = "attention-list";
+      links.forEach(function (link) {
+        var row = document.createElement("div");
+        row.className = "attention-item attention-item--clickable";
+        row.onclick = link.go;
 
-      var label = document.createElement("span");
-      label.innerHTML = "<span class='detail-item__label'>" + link.label + "</span>" + link.text;
+        var icon = document.createElement("span");
+        icon.className = "attention-item__icon attention-item__icon--info";
+        row.appendChild(icon);
 
-      var btn = document.createElement("button");
-      btn.className = "btn btn--ghost";
-      btn.textContent = link.btn;
-      btn.onclick = link.go;
+        var body = document.createElement("div");
+        body.className = "attention-item__body";
+        var text = document.createElement("div");
+        text.className = "attention-item__text";
+        text.textContent = link.text;
+        body.appendChild(text);
+        var meta = document.createElement("div");
+        meta.className = "attention-item__meta";
+        meta.textContent = link.label;
+        body.appendChild(meta);
+        row.appendChild(body);
 
-      row.appendChild(label);
-      row.appendChild(btn);
-      wrap.appendChild(row);
-    });
+        linksList.appendChild(row);
+      });
+      linksWrap.appendChild(linksList);
+      wrap.appendChild(linksWrap);
+    }
 
     // Approval / decision history log
     var revisionsWrap = document.createElement("div");
@@ -34858,29 +34945,43 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         return m.id === d.source_meeting_id;
       });
       if (sourceMeeting) {
+        // Redesign Gate 10 (Module Consistency Pass): retrofitted onto the same
+        // .attention-list/.attention-item primitive every other panel-turned-list in
+        // this app now uses — "info" icon color since this is a plain cross-reference,
+        // not a severity alert, same convention My Work's own "Recently Updated"
+        // sections already use for non-alert informational rows. Whole row is the click
+        // target now, replacing the separate "View Meeting" ghost button.
+        var sourceList = document.createElement("div");
+        sourceList.className = "attention-list";
+        sourceList.style.marginTop = "12px";
+        sourceList.style.paddingTop = "10px";
+        sourceList.style.borderTop = "1px solid var(--divider)";
+
         var sourceRow = document.createElement("div");
-        sourceRow.style.marginTop = "12px";
-        sourceRow.style.paddingTop = "10px";
-        sourceRow.style.borderTop = "1px solid var(--divider)";
-        sourceRow.style.display = "flex";
-        sourceRow.style.justifyContent = "space-between";
-        sourceRow.style.alignItems = "center";
-        sourceRow.style.fontSize = "13px";
-
-        var sourceLabel = document.createElement("span");
-        sourceLabel.innerHTML = "<span class='detail-item__label'>RAISED IN MEETING</span>" + sourceMeeting.title + " (" + sourceMeeting.meeting_date + ")";
-
-        var viewMeetingBtn = document.createElement("button");
-        viewMeetingBtn.className = "btn btn--ghost";
-        viewMeetingBtn.textContent = "View Meeting";
-        viewMeetingBtn.onclick = function () {
+        sourceRow.className = "attention-item attention-item--clickable";
+        sourceRow.onclick = function () {
           if (window.PCC.meetings) window.PCC.meetings.expandMeeting(sourceMeeting.id);
           window.PCC.router.go("meetings");
         };
 
-        sourceRow.appendChild(sourceLabel);
-        sourceRow.appendChild(viewMeetingBtn);
-        wrap.appendChild(sourceRow);
+        var sourceIcon = document.createElement("span");
+        sourceIcon.className = "attention-item__icon attention-item__icon--info";
+        sourceRow.appendChild(sourceIcon);
+
+        var sourceBody = document.createElement("div");
+        sourceBody.className = "attention-item__body";
+        var sourceText = document.createElement("div");
+        sourceText.className = "attention-item__text";
+        sourceText.textContent = sourceMeeting.title + " (" + sourceMeeting.meeting_date + ")";
+        sourceBody.appendChild(sourceText);
+        var sourceMeta = document.createElement("div");
+        sourceMeta.className = "attention-item__meta";
+        sourceMeta.textContent = "RAISED IN MEETING";
+        sourceBody.appendChild(sourceMeta);
+        sourceRow.appendChild(sourceBody);
+
+        sourceList.appendChild(sourceRow);
+        wrap.appendChild(sourceList);
       }
     }
 
@@ -34889,29 +34990,39 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         return a.id === d.activity_id;
       });
       if (linkedActivity) {
+        // Redesign Gate 10 (Module Consistency Pass): same retrofit as the source-
+        // meeting row above.
+        var activityList = document.createElement("div");
+        activityList.className = "attention-list";
+        activityList.style.marginTop = "12px";
+        activityList.style.paddingTop = "10px";
+        activityList.style.borderTop = "1px solid var(--divider)";
+
         var activityRow = document.createElement("div");
-        activityRow.style.marginTop = "12px";
-        activityRow.style.paddingTop = "10px";
-        activityRow.style.borderTop = "1px solid var(--divider)";
-        activityRow.style.display = "flex";
-        activityRow.style.justifyContent = "space-between";
-        activityRow.style.alignItems = "center";
-        activityRow.style.fontSize = "13px";
-
-        var activityLabel = document.createElement("span");
-        activityLabel.innerHTML = "<span class='detail-item__label'>LINKED ACTIVITY</span>" + linkedActivity.name;
-
-        var viewActivityBtn = document.createElement("button");
-        viewActivityBtn.className = "btn btn--ghost";
-        viewActivityBtn.textContent = "View in Gantt";
-        viewActivityBtn.onclick = function () {
+        activityRow.className = "attention-item attention-item--clickable";
+        activityRow.onclick = function () {
           if (window.PCC.schedule) window.PCC.schedule.viewActivity(d.project_id, linkedActivity.schedule_id, linkedActivity.id);
           window.PCC.router.go("schedule");
         };
 
-        activityRow.appendChild(activityLabel);
-        activityRow.appendChild(viewActivityBtn);
-        wrap.appendChild(activityRow);
+        var activityIcon = document.createElement("span");
+        activityIcon.className = "attention-item__icon attention-item__icon--info";
+        activityRow.appendChild(activityIcon);
+
+        var activityBody = document.createElement("div");
+        activityBody.className = "attention-item__body";
+        var activityText = document.createElement("div");
+        activityText.className = "attention-item__text";
+        activityText.textContent = linkedActivity.name;
+        activityBody.appendChild(activityText);
+        var activityMeta = document.createElement("div");
+        activityMeta.className = "attention-item__meta";
+        activityMeta.textContent = "LINKED ACTIVITY";
+        activityBody.appendChild(activityMeta);
+        activityRow.appendChild(activityBody);
+
+        activityList.appendChild(activityRow);
+        wrap.appendChild(activityList);
       }
     }
 
@@ -35467,29 +35578,42 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         return m.id === l.source_meeting_id;
       });
       if (sourceMeeting) {
+        // Redesign Gate 10 (Module Consistency Pass): retrofitted onto the same
+        // .attention-list/.attention-item primitive every other panel-turned-list in
+        // this app now uses — "info" icon color since this is a plain cross-reference,
+        // not a severity alert. Whole row is the click target now, replacing the
+        // separate "View Meeting" ghost button.
+        var sourceList = document.createElement("div");
+        sourceList.className = "attention-list";
+        sourceList.style.marginTop = "12px";
+        sourceList.style.paddingTop = "10px";
+        sourceList.style.borderTop = "1px solid var(--divider)";
+
         var sourceRow = document.createElement("div");
-        sourceRow.style.marginTop = "12px";
-        sourceRow.style.paddingTop = "10px";
-        sourceRow.style.borderTop = "1px solid var(--divider)";
-        sourceRow.style.display = "flex";
-        sourceRow.style.justifyContent = "space-between";
-        sourceRow.style.alignItems = "center";
-        sourceRow.style.fontSize = "13px";
-
-        var sourceLabel = document.createElement("span");
-        sourceLabel.innerHTML = "<span class='detail-item__label'>RAISED IN MEETING</span>" + sourceMeeting.title + " (" + sourceMeeting.meeting_date + ")";
-
-        var viewMeetingBtn = document.createElement("button");
-        viewMeetingBtn.className = "btn btn--ghost";
-        viewMeetingBtn.textContent = "View Meeting";
-        viewMeetingBtn.onclick = function () {
+        sourceRow.className = "attention-item attention-item--clickable";
+        sourceRow.onclick = function () {
           if (window.PCC.meetings) window.PCC.meetings.expandMeeting(sourceMeeting.id);
           window.PCC.router.go("meetings");
         };
 
-        sourceRow.appendChild(sourceLabel);
-        sourceRow.appendChild(viewMeetingBtn);
-        wrap.appendChild(sourceRow);
+        var sourceIcon = document.createElement("span");
+        sourceIcon.className = "attention-item__icon attention-item__icon--info";
+        sourceRow.appendChild(sourceIcon);
+
+        var sourceBody = document.createElement("div");
+        sourceBody.className = "attention-item__body";
+        var sourceText = document.createElement("div");
+        sourceText.className = "attention-item__text";
+        sourceText.textContent = sourceMeeting.title + " (" + sourceMeeting.meeting_date + ")";
+        sourceBody.appendChild(sourceText);
+        var sourceMeta = document.createElement("div");
+        sourceMeta.className = "attention-item__meta";
+        sourceMeta.textContent = "RAISED IN MEETING";
+        sourceBody.appendChild(sourceMeta);
+        sourceRow.appendChild(sourceBody);
+
+        sourceList.appendChild(sourceRow);
+        wrap.appendChild(sourceList);
       }
     }
 
@@ -35498,29 +35622,42 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         return a.id === l.activity_id;
       });
       if (linkedActivity) {
+        // Redesign Gate 10 (Module Consistency Pass): retrofitted onto the same
+        // .attention-list/.attention-item primitive every other panel-turned-list in
+        // this app now uses — "info" icon color since this is a plain cross-reference,
+        // not a severity alert. Whole row is the click target now, replacing the
+        // separate "View in Gantt" ghost button.
+        var activityList = document.createElement("div");
+        activityList.className = "attention-list";
+        activityList.style.marginTop = "12px";
+        activityList.style.paddingTop = "10px";
+        activityList.style.borderTop = "1px solid var(--divider)";
+
         var activityRow = document.createElement("div");
-        activityRow.style.marginTop = "12px";
-        activityRow.style.paddingTop = "10px";
-        activityRow.style.borderTop = "1px solid var(--divider)";
-        activityRow.style.display = "flex";
-        activityRow.style.justifyContent = "space-between";
-        activityRow.style.alignItems = "center";
-        activityRow.style.fontSize = "13px";
-
-        var activityLabel = document.createElement("span");
-        activityLabel.innerHTML = "<span class='detail-item__label'>LINKED ACTIVITY</span>" + linkedActivity.name;
-
-        var viewActivityBtn = document.createElement("button");
-        viewActivityBtn.className = "btn btn--ghost";
-        viewActivityBtn.textContent = "View in Gantt";
-        viewActivityBtn.onclick = function () {
+        activityRow.className = "attention-item attention-item--clickable";
+        activityRow.onclick = function () {
           if (window.PCC.schedule) window.PCC.schedule.viewActivity(l.project_id, linkedActivity.schedule_id, linkedActivity.id);
           window.PCC.router.go("schedule");
         };
 
-        activityRow.appendChild(activityLabel);
-        activityRow.appendChild(viewActivityBtn);
-        wrap.appendChild(activityRow);
+        var activityIcon = document.createElement("span");
+        activityIcon.className = "attention-item__icon attention-item__icon--info";
+        activityRow.appendChild(activityIcon);
+
+        var activityBody = document.createElement("div");
+        activityBody.className = "attention-item__body";
+        var activityText = document.createElement("div");
+        activityText.className = "attention-item__text";
+        activityText.textContent = linkedActivity.name;
+        activityBody.appendChild(activityText);
+        var activityMeta = document.createElement("div");
+        activityMeta.className = "attention-item__meta";
+        activityMeta.textContent = "LINKED ACTIVITY";
+        activityBody.appendChild(activityMeta);
+        activityRow.appendChild(activityBody);
+
+        activityList.appendChild(activityRow);
+        wrap.appendChild(activityList);
       }
     }
 
@@ -36184,28 +36321,43 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     wrap.appendChild(grid);
 
     if (a.filename) {
+      // Redesign Gate 10 (Module Consistency Pass): retrofitted onto the same
+      // .attention-list/.attention-item primitive every other panel-turned-list in this
+      // app now uses — "info" icon color since this is a plain file reference, not a
+      // severity alert. Whole row is the click target now, replacing the separate
+      // "Open File" ghost button.
+      var fileWrap = document.createElement("div");
+      fileWrap.style.marginTop = "12px";
+      fileWrap.style.paddingTop = "10px";
+      fileWrap.style.borderTop = "1px solid var(--divider)";
+      var fileList = document.createElement("div");
+      fileList.className = "attention-list";
+
       var fileRow = document.createElement("div");
-      fileRow.style.marginTop = "12px";
-      fileRow.style.paddingTop = "10px";
-      fileRow.style.borderTop = "1px solid var(--divider)";
-      fileRow.style.display = "flex";
-      fileRow.style.justifyContent = "space-between";
-      fileRow.style.alignItems = "center";
-      fileRow.style.fontSize = "13px";
-
-      var fileLabel = document.createElement("span");
-      fileLabel.innerHTML = "<span class='detail-item__label'>ATTACHED FILE</span>" + esc(a.filename) + (a.file_size ? " (" + fmtSize(a.file_size) + ")" : "");
-
-      var openBtn = document.createElement("button");
-      openBtn.className = "btn btn--ghost";
-      openBtn.textContent = "Open File";
-      openBtn.onclick = function () {
+      fileRow.className = "attention-item attention-item--clickable";
+      fileRow.onclick = function () {
         openArticleFile(a);
       };
 
-      fileRow.appendChild(fileLabel);
-      fileRow.appendChild(openBtn);
-      wrap.appendChild(fileRow);
+      var fileIcon = document.createElement("span");
+      fileIcon.className = "attention-item__icon attention-item__icon--info";
+      fileRow.appendChild(fileIcon);
+
+      var fileBody = document.createElement("div");
+      fileBody.className = "attention-item__body";
+      var fileText = document.createElement("div");
+      fileText.className = "attention-item__text";
+      fileText.textContent = a.filename + (a.file_size ? " (" + fmtSize(a.file_size) + ")" : "");
+      fileBody.appendChild(fileText);
+      var fileMeta = document.createElement("div");
+      fileMeta.className = "attention-item__meta";
+      fileMeta.textContent = "ATTACHED FILE";
+      fileBody.appendChild(fileMeta);
+      fileRow.appendChild(fileBody);
+
+      fileList.appendChild(fileRow);
+      fileWrap.appendChild(fileList);
+      wrap.appendChild(fileWrap);
     }
 
     return wrap;
@@ -39836,26 +39988,39 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       okP.textContent = "No resources are currently over-allocated on any dated assignment.";
       summaryPanel.appendChild(okP);
     } else {
+      // Redesign Gate 10 (Module Consistency Pass): retrofitted onto the same
+      // .attention-list/.attention-item primitive every other panel-turned-list in this
+      // app now uses, replacing the original hand-built row + separate "View" ghost
+      // button. Whole row is the click target now.
+      var list = document.createElement("div");
+      list.className = "attention-list";
       portfolioSummary.forEach(function (s) {
         var row = document.createElement("div");
-        row.style.display = "flex";
-        row.style.justifyContent = "space-between";
-        row.style.alignItems = "center";
-        row.style.fontSize = "var(--text-sm)";
-        row.style.marginBottom = "var(--space-1)";
-        var text = document.createElement("span");
-        text.innerHTML = "<strong>" + esc(s.resourceName) + "</strong> — " + s.overAllocatedDayCount + " over-allocated day(s), worst +" + s.maxOverBy;
-        row.appendChild(text);
-        var btn = document.createElement("button");
-        btn.className = "btn btn--ghost";
-        btn.textContent = "View";
-        btn.onclick = function () {
+        row.className = "attention-item attention-item--clickable";
+        row.onclick = function () {
           uiState.levelingResourceId = s.resourceId;
           rerender();
         };
-        row.appendChild(btn);
-        summaryPanel.appendChild(row);
+
+        var icon = document.createElement("span");
+        icon.className = "attention-item__icon attention-item__icon--at_risk";
+        row.appendChild(icon);
+
+        var body = document.createElement("div");
+        body.className = "attention-item__body";
+        var text = document.createElement("div");
+        text.className = "attention-item__text";
+        text.textContent = s.resourceName;
+        body.appendChild(text);
+        var meta = document.createElement("div");
+        meta.className = "attention-item__meta";
+        meta.textContent = s.overAllocatedDayCount + " over-allocated day(s), worst +" + s.maxOverBy;
+        body.appendChild(meta);
+        row.appendChild(body);
+
+        list.appendChild(row);
       });
+      summaryPanel.appendChild(list);
     }
     container.appendChild(summaryPanel);
 

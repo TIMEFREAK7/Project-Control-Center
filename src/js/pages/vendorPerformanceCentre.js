@@ -60,18 +60,6 @@
     return card;
   }
 
-  function viewProfileBtn(vendorId) {
-    var btn = document.createElement("button");
-    btn.className = "btn btn--ghost";
-    btn.textContent = "View Profile";
-    btn.onclick = function () {
-      window.PCC.vendors.openProfile(vendorId, "performance");
-      window.PCC.router.go("vendors");
-      window.PCC.router.render();
-    };
-    return btn;
-  }
-
   function render(outlet) {
     var data = window.PCC.store.get();
     var vendors = data.vendors;
@@ -149,43 +137,42 @@
       noReviews.textContent = "No performance reviews yet across the portfolio.";
       rankedPanel.appendChild(noReviews);
     } else {
+      // Redesign Gate 10 (Module Consistency Pass): retrofitted onto the same
+      // .attention-list/.attention-item primitive every other panel-turned-list in this
+      // app now uses, replacing the original hand-built row + status-badge + separate
+      // "View Profile" ghost button. Whole row is the click target now.
+      var rankedList = document.createElement("div");
+      rankedList.className = "attention-list";
       reviewed.forEach(function (s) {
         var row = document.createElement("div");
-        row.style.display = "flex";
-        row.style.justifyContent = "space-between";
-        row.style.alignItems = "center";
-        row.style.gap = "8px";
-        row.style.padding = "8px 0";
-        row.style.borderBottom = "1px solid var(--divider)";
+        row.className = "attention-item attention-item--clickable";
+        row.onclick = function () {
+          window.PCC.vendors.openProfile(s.vendor.id, "performance");
+          window.PCC.router.go("vendors");
+          window.PCC.router.render();
+        };
 
-        var left = document.createElement("div");
-        left.innerHTML =
-          "<strong>" + (s.vendor.vendor_name || "(unnamed vendor)") + "</strong>" +
-          "<p style='font-size:12px;margin:4px 0 0'>" +
-          ratingText(s.overall) + " overall (" + s.reviewCount + " review" + (s.reviewCount === 1 ? "" : "s") + ")" +
-          "</p>" +
-          "<p class='text-secondary' style='font-size:12px;margin:4px 0 0'>" +
+        var icon = document.createElement("span");
+        icon.className = "attention-item__icon attention-item__icon--" + ratingBand(s.overall);
+        row.appendChild(icon);
+
+        var body = document.createElement("div");
+        body.className = "attention-item__body";
+        var text = document.createElement("div");
+        text.className = "attention-item__text";
+        text.textContent = (s.vendor.vendor_name || "(unnamed vendor)") + " — " + ratingText(s.overall) + " overall (" + s.reviewCount + " review" + (s.reviewCount === 1 ? "" : "s") + ")";
+        body.appendChild(text);
+        var meta = document.createElement("div");
+        meta.className = "attention-item__meta";
+        meta.textContent =
           "Quality: " + ratingText(s.quality) + " · Delivery: " + ratingText(s.delivery) +
-          " · Communication: " + ratingText(s.communication) + " · Safety: " + ratingText(s.safety) +
-          "</p>";
-        row.appendChild(left);
+          " · Communication: " + ratingText(s.communication) + " · Safety: " + ratingText(s.safety);
+        body.appendChild(meta);
+        row.appendChild(body);
 
-        var right = document.createElement("div");
-        right.style.display = "flex";
-        right.style.alignItems = "center";
-        right.style.gap = "8px";
-        right.style.flexShrink = "0";
-
-        var badge = document.createElement("span");
-        badge.className = "status-badge status-badge--" + ratingBand(s.overall);
-        badge.textContent =
-          ratingBand(s.overall) === "on_track" ? "On Track" : ratingBand(s.overall) === "at_risk" ? "At Risk" : "Critical";
-        right.appendChild(badge);
-        right.appendChild(viewProfileBtn(s.vendor.id));
-
-        row.appendChild(right);
-        rankedPanel.appendChild(row);
+        rankedList.appendChild(row);
       });
+      rankedPanel.appendChild(rankedList);
     }
     wrap.appendChild(rankedPanel);
 
@@ -204,23 +191,33 @@
       allReviewed.textContent = "Every vendor has at least one performance review.";
       unreviewedPanel.appendChild(allReviewed);
     } else {
+      // Redesign Gate 10: same retrofit as the ranked panel above.
+      var unreviewedList = document.createElement("div");
+      unreviewedList.className = "attention-list";
       unreviewed.forEach(function (s) {
         var row = document.createElement("div");
-        row.style.display = "flex";
-        row.style.justifyContent = "space-between";
-        row.style.alignItems = "center";
-        row.style.gap = "8px";
-        row.style.padding = "6px 0";
-        row.style.borderBottom = "1px solid var(--divider)";
-        row.style.fontSize = "13px";
+        row.className = "attention-item attention-item--clickable";
+        row.onclick = function () {
+          window.PCC.vendors.openProfile(s.vendor.id, "performance");
+          window.PCC.router.go("vendors");
+          window.PCC.router.render();
+        };
 
-        var name = document.createElement("span");
-        name.textContent = s.vendor.vendor_name || "(unnamed vendor)";
-        row.appendChild(name);
-        row.appendChild(viewProfileBtn(s.vendor.id));
+        var icon = document.createElement("span");
+        icon.className = "attention-item__icon attention-item__icon--info";
+        row.appendChild(icon);
 
-        unreviewedPanel.appendChild(row);
+        var body = document.createElement("div");
+        body.className = "attention-item__body";
+        var text = document.createElement("div");
+        text.className = "attention-item__text";
+        text.textContent = s.vendor.vendor_name || "(unnamed vendor)";
+        body.appendChild(text);
+        row.appendChild(body);
+
+        unreviewedList.appendChild(row);
       });
+      unreviewedPanel.appendChild(unreviewedList);
     }
     wrap.appendChild(unreviewedPanel);
 

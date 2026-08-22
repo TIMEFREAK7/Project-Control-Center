@@ -187,9 +187,11 @@ function findButtonByText(dom, text) {
     assert.ok(outlet.textContent.indexOf("LINKED RECORDS") !== -1);
     assert.ok(outlet.textContent.indexOf("Tower Crane #1") !== -1, "the resource assignment should be listed by resource name");
 
-    var viewBtn = findButtonByText(dom, "View");
-    assert.ok(viewBtn, "View button for the resource assignment not found");
-    viewBtn.click();
+    // Redesign Gate 10: retrofitted onto .attention-list/.attention-item — the whole
+    // row is the click target now, no separate "View" button.
+    var viewRow = Array.from(outlet.querySelectorAll(".attention-item--clickable")).find((r) => r.textContent.indexOf("Tower Crane #1") !== -1);
+    assert.ok(viewRow, "row for the resource assignment not found");
+    viewRow.click();
     win.PCC.router.render();
     assert.strictEqual(win.PCC.router.currentRouteName(), "resources");
     var outlet2 = win.document.getElementById("page-outlet");

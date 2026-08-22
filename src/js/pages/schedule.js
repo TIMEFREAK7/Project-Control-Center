@@ -666,7 +666,7 @@
         dupBox.style.borderRadius = "var(--radius-md)";
         dupBox.style.padding = "var(--space-3)";
         dupBox.style.marginBottom = "var(--space-4)";
-        dupBox.style.background = "rgba(230, 162, 60, 0.08)";
+        dupBox.style.background = "rgba(214, 158, 46, 0.08)";
         var dupTitle = document.createElement("p");
         dupTitle.style.fontWeight = "600";
         dupTitle.style.fontSize = "var(--text-sm)";
@@ -1119,7 +1119,7 @@
       warnBox.style.borderRadius = "var(--radius-md)";
       warnBox.style.padding = "var(--space-3)";
       warnBox.style.marginBottom = "var(--space-4)";
-      warnBox.style.background = "rgba(230, 162, 60, 0.08)";
+      warnBox.style.background = "rgba(214, 158, 46, 0.08)";
       var warnTitle = document.createElement("p");
       warnTitle.style.fontWeight = "600";
       warnTitle.style.fontSize = "var(--text-sm)";
@@ -3553,36 +3553,40 @@
       empty.textContent = "No Risks/Issues, RFIs, Meetings, Documents, Daily Log entries, or Change Orders are linked to this activity yet — link one from that record's own Add/Edit form.";
       wrap.appendChild(empty);
     } else {
+      // Redesign Gate 10 (Module Consistency Pass): retrofitted onto the same
+      // .attention-list/.attention-item primitive every other panel-turned-list in this
+      // app now uses, replacing the original hand-built row + optional status-badge +
+      // separate "View" ghost button. Whole row is the click target now; the optional
+      // per-source badge (Resources' availability, Commitments' procurement risk) moves
+      // into the icon color plus the meta line rather than a separate badge element.
+      var list = document.createElement("div");
+      list.className = "attention-list";
       rows.forEach(function (row) {
         var rowEl = document.createElement("div");
-        rowEl.style.display = "flex";
-        rowEl.style.justifyContent = "space-between";
-        rowEl.style.alignItems = "center";
-        rowEl.style.fontSize = "var(--text-sm)";
-        rowEl.style.marginBottom = "var(--space-1)";
+        rowEl.className = "attention-item attention-item--clickable";
+        rowEl.onclick = row.view;
 
-        var text = document.createElement("span");
+        var icon = document.createElement("span");
+        icon.className = "attention-item__icon attention-item__icon--" + (row.badge ? row.badge.className : "info");
+        rowEl.appendChild(icon);
+
+        var body = document.createElement("div");
+        body.className = "attention-item__body";
+        var text = document.createElement("div");
+        text.className = "attention-item__text";
         text.textContent = row.text;
-        text.style.flex = "1";
-        rowEl.appendChild(text);
-
+        body.appendChild(text);
         if (row.badge) {
-          var badge = document.createElement("span");
-          badge.className = "status-badge status-badge--" + row.badge.className;
-          badge.style.fontSize = "var(--text-xs)";
-          badge.style.marginRight = "var(--space-2)";
-          badge.textContent = row.badge.label;
-          rowEl.appendChild(badge);
+          var meta = document.createElement("div");
+          meta.className = "attention-item__meta";
+          meta.textContent = row.badge.label;
+          body.appendChild(meta);
         }
+        rowEl.appendChild(body);
 
-        var viewBtn = document.createElement("button");
-        viewBtn.className = "btn btn--ghost";
-        viewBtn.textContent = "View";
-        viewBtn.onclick = row.view;
-        rowEl.appendChild(viewBtn);
-
-        wrap.appendChild(rowEl);
+        list.appendChild(rowEl);
       });
+      wrap.appendChild(list);
     }
 
     return wrap;

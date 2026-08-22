@@ -3724,6 +3724,59 @@ new read-only display/filter surface to these two pages. Resource concerns, Cost
 Commitment position, and the other Executive Center items the brief lists were already fully built
 in earlier gates (see the audit above) and untouched here.
 
+### Gate 10 — Module Consistency Pass, done, 2026-08-22
+
+By Gate 9 the shared component vocabulary (`.attention-list`/`.attention-item`, design-token
+colors, whole-row-clickable list items) was well established across the modules Gates 1–9 touched
+directly, but a lot of the app's smaller registers and cross-reference rows were never revisited.
+This gate is a sweep for exactly one smell: a hand-built row (text + a separate ghost "View"/"View
+in Gantt"/"View Profile" button) instead of the shared `.attention-item` pattern, plus any leftover
+hardcoded color literal that predates the current design tokens. Delegated a read-only Explore
+audit describing the exact pattern to search for; it found 11 of the eventual 14 instances. A
+follow-up `grep -rln "LINKED ACTIVITY"` I ran myself after finishing the audited batch turned up
+3 more the audit had missed (`dailyLog.js`, `meetings.js`, `lessonsLearned.js` all had the identical
+row pattern) — fixed identically, then a final `grep -rn "detail-item__label'>[A-Z]"` sweep across
+every page file returned zero further hits.
+
+**14 files retrofitted from row+button to `.attention-item`** (icon color `info` for plain
+cross-references — "RAISED IN MEETING"/"LINKED ACTIVITY" rows in `risks.js`, `rfis.js`,
+`decisionRegister.js`, `dailyLog.js`, `meetings.js`, `lessonsLearned.js`, `changeOrders.js`,
+`knowledgeBase.js` — and severity-derived colors elsewhere: `documents.js`'s Revision History,
+`schedule.js`'s Linked Records panel, `vendorPerformanceCentre.js`'s ranked/not-yet-reviewed
+panels, `projectLookahead.js`'s item rows, `documentControlDashboard.js`'s compliance rows,
+`resources.js`'s over-allocation summary). Added a new `.attention-item__icon--on_track` CSS
+modifier — Vendor Performance Centre's "On Track" rating band is the first `.attention-item`
+consumer with a genuinely positive severity; the four existing modifiers were all attention-worthy
+by design and none fit a good outcome. Former badge label text either moved into
+`.attention-item__meta` (where it carried real information, e.g. document compliance's "X
+overdue") or was dropped (where the row's own micro-label already explained it, e.g. "RAISED IN
+MEETING").
+
+**Two real bugs caught along the way, not just cosmetic tidying**:
+- `documents.js` line 524 fell back to `var(--border-subtle, rgba(255,255,255,0.08))` —
+  `--border-subtle` was never defined anywhere in `styles.css`, so that hardcoded white rgba was
+  *always* the active value, meaning the border was rendering wrong (near-invisible) in light
+  theme this whole time. Replaced with the correct theme-aware `var(--divider)` token.
+- `documents.js` and `schedule.js` both had stale `rgba()` warning/success tints (from before the
+  current palette's Gate 2 token pass) that no longer matched `--status-at-risk`/`--status-on-track`'s
+  actual RGB decomposition. Corrected to the current values.
+
+**Verified**: `node --check` on every touched file; rebuilt; full 73-file jsdom suite run fresh
+(exit code 0, zero failures) after fixing every test broken by the row→whole-row-click conversion —
+mostly `findButtonByText`/`.status-badge` text-content lookups for buttons/badges that no longer
+exist, re-scoped to `.attention-item--clickable` row lookups by content text or
+`.attention-item__icon--<class>` presence checks (`test_activity_linking_e2e.js`,
+`test_resources_e2e.js`, `test_project_lookahead_e2e.js`, `test_document_control_dashboard_e2e.js`,
+`test_vendor_performance_centre_e2e.js`, `test_knowledge_base_e2e.js`,
+`test_decision_register_e2e.js`, `test_lessons_learned_e2e.js`, `test_resource_control_e2e.js`,
+`test_commitment_schedule_integration_e2e.js`). Real-Chromium pass with a seeded project (an
+activity, a meeting, a linked risk, a vendor): Risk Register's Details panel, Project Lookahead, and
+Vendor Performance Centre all render the new `.attention-item` rows correctly — colored dot, clean
+row typography, whole row clickable, no leftover ghost buttons.
+
+**Not done**: no change to any module's underlying data/business logic — this gate is markup and
+stale-color cleanup only, on modules Gates 1–9 didn't already touch.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
