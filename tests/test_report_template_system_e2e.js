@@ -60,6 +60,11 @@ function findSelectWithOption(dom, optionText) {
     pretendToBeVisual: true,
   });
   dom.window.indexedDB = new FDBFactory();
+  // jsdom doesn't implement CompressionStream/DecompressionStream/Response — needed since
+  // Gate 4 (blobStore.js compression). Reuse Node's own, the real implementation.
+  dom.window.CompressionStream = CompressionStream;
+  dom.window.DecompressionStream = DecompressionStream;
+  dom.window.Response = Response;
   dom.window.onerror = function (msg) {
     thrownErrors.push(msg);
   };

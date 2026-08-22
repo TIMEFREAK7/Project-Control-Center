@@ -1391,14 +1391,72 @@ Skipped a fresh Electron relaunch for this gate too (same reasoning as Gate 2, d
 since the shim's own web/Electron path — "leave `window.print` untouched" — is exactly what the
 jsdom test already confirmed directly, with nothing platform-specific left to verify live).
 
-**Not done yet**: Gate 4 (blob storage format/compression, cross-platform, scoped but not
-started). Android release signing (a dedicated keystore, not reusing Aditya's existing one from a
-different app — confirmed no benefit to reuse across unrelated `applicationId`s). macOS `.dmg`
-still needs a macOS host. Code signing for Windows/Android real releases remains an explicit later
-decision, not needed for personal/internal use. With Gates 1-3 done, Android now has the same
-feature set as the desktop builds except printable reports haven't been confirmed live on-device
-and release signing hasn't happened — the packaging initiative's original scope (desktop + mobile)
-is functionally complete pending that on-device confirmation.
+**Aditya confirmed both the desktop app and the Android APK install and work**, closing out the
+"unverified live" gap Gates 2-3 flagged repeatedly — the first real on-device confirmation this
+whole packaging initiative has had.
+
+**Gate 4 (blob storage efficiency, cross-platform) done, 2026-08-22.** Measured real compression
+gains before building anything, since the value here is genuinely format-dependent, not a given:
+gzip on the repo's own real PNG icon (already-compressed format) saved only 1.3%; on a ZIP-based
+container (tested as a stand-in for `.docx`/`.xlsx`'s internal structure) it saved 23% — real, but
+unpredictable per file. The bigger, *guaranteed* win had nothing to do with compression at all:
+`blobStore.js` stored every blob as a base64 **string** in IndexedDB, which inflates size by
+exactly 1/3 over raw bytes regardless of content. Switched to storing raw bytes directly (IndexedDB
+supports this natively) with gzip layered on top via `CompressionStream`/`DecompressionStream` — a
+native Web API, zero new dependencies, confirmed available in every target environment (Node 22
+for the test harness, real Chromium, and — per Chrome/WebView version history, this app already
+needing `pdf.js`-level Chromium features per Aditya's on-device confirmation above — Android's
+WebView too, though not directly tested on-device the way Gates 1-3's own features were).
+
+**Scope stayed exactly where planned**: `putBlob()`/`getBlob()`/`resolve()` keep their exact
+external signatures (still take/return a plain base64 data URI string) — `documents.js`,
+`dailyLog.js`, `vendors.js`, `fileViewer.js`, `nativeFile.js`, and `store.js`'s export/import/
+legacy-migration call sites needed **zero changes**. Only `blobStore.js`'s internal on-disk shape
+changed. No bulk migration, same "never a risky bulk rewrite" discipline `store.js`'s own
+`schema_version` chain follows: `getBlob()` detects the old `{id, data: <string>}` shape at read
+time and returns it completely unchanged — never rewrites it in place. A record only migrates to
+the new `{id, mime, gz: <compressed bytes>}` shape the next time it's genuinely re-saved (a new
+revision uploaded, etc.).
+
+**This is the first packaging gate fully testable end-to-end in jsdom** — no native plugin, no
+platform branching, nothing needing a "structural only" caveat. New 9-check
+`tests/test_blob_compression_gate4_e2e.js` covers real compress/decompress round-trip integrity
+(byte-for-byte against a real PNG, not just "didn't throw"), confirms the actual on-disk record
+shape, backward compatibility with a directly-seeded legacy-shaped record (returned untouched, not
+rewritten), opportunistic migration on re-save, and the real "Open File" UI flow reading a
+now-compressed blob correctly. One real gotcha hit along the way: jsdom doesn't implement
+`CompressionStream`/`DecompressionStream`/`Response` on `window` (confirmed missing, unlike Node's
+own global scope which has them) — assigned Node's real implementations onto `dom.window`
+directly in the 5 affected test files (this new one plus `test_knowledge_base_e2e.js`,
+`test_report_template_system_e2e.js`, `test_schedule_excel_editor_e2e.js`, `test_vendors_e2e.js` —
+found by grepping every test file for `putBlob`/`getBlob`/`blobStore.resolve`), same convention as
+stubbing jsdom's missing `URL.createObjectURL`. Also hit a genuine flaky-test bug of its own: a
+few UI-click-triggered blob reads (Gate 2's "Open File"/"View / Download"/photo-link tests, plus
+this gate's own new one) asserted after a fixed-count `flush()`, which was reliable when
+compress/decompress was fast but flaked once under a long, resource-contended full-suite run now
+that real stream processing is involved, not just promise-chain microtasks. Fixed by polling
+(`waitFor()`) instead of guessing a tick count — confirmed stable across 3 full-suite reruns
+afterward, 0 failures each time. Full suite is now 45 files.
+
+Rebuilt and structurally re-verified all three packaging artifacts against the new `blobStore.js`
+(this touches every platform, not just one): Android APK — signature valid, embedded `index.html`
+byte-identical; Windows/Linux Electron — same structural technique as prior rebuilds. Then went
+further with **real Chromium** (Playwright, not just jsdom): seeded a document with the repo's
+real PNG icon, confirmed the actual on-disk IndexedDB record uses the new compressed shape, did a
+byte-for-byte round-trip check, then opened it through the real "Open File" UI and confirmed it
+rendered correctly — zero console errors, screenshot taken. This matters here specifically because
+jsdom's `CompressionStream` in the test suite is literally Node's own implementation, not
+Chromium's — real Chromium verification confirms the actual browser implementation round-trips
+correctly too, not just Node's.
+
+**Not done yet**: Android release signing (a dedicated keystore, not reusing Aditya's existing one
+from a different app — confirmed no benefit to reuse across unrelated `applicationId`s). macOS
+`.dmg` still needs a macOS host. Code signing for Windows/Android real releases remains an explicit
+later decision, not needed for personal/internal use. With Gates 1-4 done and confirmed on-device,
+the packaging initiative's originally-scoped work (desktop + Android, matching feature parity, plus
+the storage-efficiency follow-on) is complete — anything further (release signing, code signing,
+macOS) is a new, explicit decision for whenever Aditya wants to actually distribute beyond
+sideloading/direct installs.
 
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 

@@ -25,6 +25,17 @@ function sleep(ms) {
 async function flush() {
   for (let i = 0; i < 10; i++) await sleep(0);
 }
+// Since Gate 4, blobStore reads involve real CompressionStream/DecompressionStream work,
+// not just promise-chain microtasks — duration varies with system load. Poll instead of
+// guessing a tick count for anything that reads a blob after a UI click.
+async function waitFor(conditionFn, timeoutMs) {
+  const deadline = Date.now() + (timeoutMs || 5000);
+  while (Date.now() < deadline) {
+    if (conditionFn()) return;
+    await sleep(10);
+  }
+  throw new Error("waitFor() timed out after " + timeoutMs + "ms");
+}
 
 let passed = 0;
 let failed = 0;
@@ -54,6 +65,11 @@ function findButtonByText(dom, text) {
     pretendToBeVisual: true,
   });
   dom.window.indexedDB = new FDBFactory();
+  // jsdom doesn't implement CompressionStream/DecompressionStream/Response — needed since
+  // Gate 4 (blobStore.js compression). Reuse Node's own, the real implementation.
+  dom.window.CompressionStream = CompressionStream;
+  dom.window.DecompressionStream = DecompressionStream;
+  dom.window.Response = Response;
   dom.window.onerror = function (msg) {
     thrownErrors.push(String(msg));
   };
@@ -206,7 +222,7 @@ function findButtonByText(dom, text) {
     const openBtn = findButtonByText(dom, "Open File");
     assert.ok(openBtn, "expected an Open File button for the seeded document");
     openBtn.click();
-    await flush();
+    await waitFor(() => openedWith !== null, 5000);
 
     win.PCC.fileViewer.open = realOpen;
     assert.ok(openedWith, "expected fileViewer.open to have been called");
@@ -249,7 +265,7 @@ function findButtonByText(dom, text) {
     const viewBtn = findButtonByText(dom, "View / Download");
     assert.ok(viewBtn, "expected a View / Download button for the seeded vendor document");
     viewBtn.click();
-    await flush();
+    await waitFor(() => openedWith !== null, 5000);
 
     win.PCC.fileViewer.open = realOpen;
     assert.ok(openedWith, "expected fileViewer.open to have been called");
@@ -284,7 +300,7 @@ function findButtonByText(dom, text) {
     const photoLink = win.document.querySelector('a[title="Open full size"]');
     assert.ok(photoLink, "expected an 'Open full size' link for the seeded photo");
     photoLink.dispatchEvent(new win.MouseEvent("click", { bubbles: true, cancelable: true }));
-    await flush();
+    await waitFor(() => openedWith !== null, 5000);
 
     win.PCC.fileViewer.open = realOpen;
     assert.ok(openedWith, "expected fileViewer.open to have been called");

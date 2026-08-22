@@ -2888,6 +2888,39 @@ the new plugin class confirmed compiled into the APK's dex files) — but this i
 gate on live verification of the three: there's no structural proxy for "the system print dialog
 actually opens," so the real print flow still needs confirming on an actual device.
 
+## Mobile & Desktop Packaging — Gate 4: Blob Storage Efficiency (2026-08-22)
+
+Both the desktop app and the Android APK were confirmed installed and working — the first real
+on-device confirmation of the whole packaging initiative, closing out what Gates 2-3 had flagged
+as unverified.
+
+Measured real compression gains before building anything, since the value is genuinely
+format-dependent: gzip on a real (already-compressed) PNG saved only 1.3%; on a ZIP-based
+container (a stand-in for `.docx`/`.xlsx`'s structure) it saved 23% — real, but unpredictable per
+file. The bigger, guaranteed win was unrelated to compression: `blobStore.js` stored every blob as
+a base64 *string*, which inflates size by exactly 1/3 over raw bytes regardless of content.
+Switched to storing raw bytes directly with gzip layered on top (`CompressionStream`/
+`DecompressionStream` — native, no new dependency).
+
+**Scope stayed exactly where planned**: `blobStore.js`'s external API is unchanged, so
+`documents.js`, `dailyLog.js`, `vendors.js`, `fileViewer.js`, `nativeFile.js`, and `store.js`'s
+export/import needed zero changes. No bulk migration — old records are detected and returned
+as-is, migrating to the new format only when genuinely re-saved.
+
+**The first packaging gate fully testable end-to-end in jsdom** — no native plugin, no platform
+branching. A new 9-check suite covers real byte-for-byte compress/decompress round-trips, backward
+compatibility, and opportunistic migration. Found and fixed a real flaky-test bug along the way
+(a few UI-click tests needed to poll for async completion instead of a fixed tick count, now that
+real stream compression is involved) — confirmed stable across repeated full-suite runs
+afterward. Rebuilt and re-verified all three packaging artifacts (Android, Windows, Linux) against
+the new storage format, including a real-Chromium pass confirming the actual browser
+implementation of `CompressionStream` round-trips correctly, not just Node's.
+
+With Gates 1-4 done and Gates 1-3 now confirmed working on a real device, the packaging
+initiative's originally-scoped work — desktop and Android, feature parity, plus this storage
+follow-on — is complete. What's left (release signing, code signing, macOS) is new, explicit scope
+for whenever actual distribution beyond sideloading/direct installs is wanted.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
