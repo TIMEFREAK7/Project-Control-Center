@@ -416,12 +416,17 @@ footer.app-footer {
 }
 
 /* ===== Shared components ===== */
+/* Redesign Gate 2 (Component Restyling): dropped box-shadow from every resting/static card
+   (.panel/.kpi-card/.project-card/.detail-card below) — border+shadow together on every single
+   card read as visually heavy/busy, one of the "excessive borders" cues the redesign brief flags.
+   Shadow now means genuine elevation only (.modal/.drawer/.card-menu__dropdown/the loading
+   overlay), a standard modern-design-system convention; static content stays flat with a border
+   alone to define its edge. */
 .panel {
   background-color: var(--bg-paper);
   border: 1px solid var(--divider);
   border-radius: var(--radius-md);
   padding: 20px;
-  box-shadow: var(--shadow-sm);
 }
 
 .panel + .panel {
@@ -440,7 +445,6 @@ footer.app-footer {
   border: 1px solid var(--divider);
   border-radius: var(--radius-md);
   padding: 18px;
-  box-shadow: var(--shadow-sm);
   transition: border-color var(--transition-base);
 }
 
@@ -611,7 +615,7 @@ a:focus-visible {
 }
 
 .btn--danger:hover:not(:disabled) {
-  background-color: rgba(214, 69, 69, 0.12);
+  background-color: rgba(229, 62, 62, 0.12);
 }
 
 .field {
@@ -965,7 +969,6 @@ a:focus-visible {
   align-items: center;
   gap: var(--space-4);
   flex-wrap: wrap;
-  box-shadow: var(--shadow-sm);
   transition: border-color var(--transition-base);
 }
 
@@ -1172,7 +1175,8 @@ a:focus-visible {
 .status-badge {
   display: inline-flex;
   align-items: center;
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
+  font-weight: 600;
   font-size: 10.5px;
   padding: 3px 9px;
   border-radius: var(--radius-lg);
@@ -1182,27 +1186,27 @@ a:focus-visible {
 }
 
 .status-badge--on_track {
-  background-color: rgba(46, 158, 131, 0.15);
+  background-color: rgba(31, 157, 108, 0.15);
   color: var(--status-on-track);
 }
 .status-badge--at_risk {
-  background-color: rgba(217, 164, 65, 0.15);
+  background-color: rgba(214, 158, 46, 0.15);
   color: var(--status-at-risk);
 }
 .status-badge--warning {
-  background-color: rgba(217, 130, 43, 0.15);
+  background-color: rgba(221, 107, 32, 0.15);
   color: var(--status-warning);
 }
 .status-badge--critical {
-  background-color: rgba(214, 69, 69, 0.15);
+  background-color: rgba(229, 62, 62, 0.15);
   color: var(--status-critical);
 }
 .status-badge--complete {
-  background-color: rgba(76, 126, 168, 0.15);
+  background-color: rgba(14, 154, 167, 0.15);
   color: var(--status-info);
 }
 .status-badge--info {
-  background-color: rgba(76, 126, 168, 0.15);
+  background-color: rgba(14, 154, 167, 0.15);
   color: var(--status-info);
 }
 
@@ -1233,7 +1237,6 @@ a:focus-visible {
   border: 1px solid var(--divider);
   border-radius: var(--radius-md);
   padding: var(--space-3) 14px;
-  box-shadow: var(--shadow-sm);
   transition: border-color var(--transition-base);
 }
 
@@ -1342,15 +1345,15 @@ a:focus-visible {
 }
 
 .heatmap-cell--low {
-  background-color: rgba(46, 158, 131, 0.18);
+  background-color: rgba(31, 157, 108, 0.18);
   color: var(--status-on-track);
 }
 .heatmap-cell--medium {
-  background-color: rgba(217, 164, 65, 0.2);
+  background-color: rgba(214, 158, 46, 0.2);
   color: var(--status-at-risk);
 }
 .heatmap-cell--high {
-  background-color: rgba(214, 69, 69, 0.22);
+  background-color: rgba(229, 62, 62, 0.22);
   color: var(--status-critical);
 }
 
@@ -8556,7 +8559,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     banner.style.gap = "10px";
     banner.style.flexWrap = "wrap";
     banner.style.borderBottom = "1px solid var(--divider)";
-    banner.style.background = "rgba(217, 164, 65, 0.15)";
+    banner.style.background = "rgba(214, 158, 46, 0.15)";
     return banner;
   }
 
@@ -8579,7 +8582,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     banner.style.gap = "10px";
     banner.style.flexWrap = "wrap";
     banner.style.borderBottom = "1px solid var(--divider)";
-    banner.style.background = "rgba(214, 69, 69, 0.15)";
+    banner.style.background = "rgba(229, 62, 62, 0.15)";
 
     if (rec) {
       var msg = document.createElement("span");

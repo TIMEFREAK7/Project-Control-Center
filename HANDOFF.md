@@ -1973,6 +1973,36 @@ only source file touched.
   clearly despite the calmer palette.
 - **Not started**: Gates 2-12.
 
+**Gate 2 — Component Restyling, done, 2026-08-22.** Aditya said "start gate 2" directly, no
+separate scoping round — audited the shared component layer first (same discipline as every
+gate), then built.
+
+- **Real bug found and fixed, not just cosmetic restyling**: five `.status-badge--*` rules, three
+  `.heatmap-cell--*` rules, `.btn--danger:hover`, and two banner backgrounds in `layout.js`
+  (backup-reminder, corruption-recovery) all used hardcoded `rgba()` tints hand-matched to the old
+  pre-Gate-1 status colors — never tokenized, so Gate 1 updated their *text* color via
+  `var(--status-*)` but silently left the *background tint* on the old shade. A real latent gap
+  from Gate 1's own scope (its screenshots didn't happen to render populated badges/heatmap data),
+  found here by grepping literal `rgba(N, N, N` patterns across every CSS and JS file and cross-
+  referencing old vs. new hex. All fixed to the new palette's exact RGB equivalents. Also switched
+  `.status-badge` from mono to body font (bold) — the same de-emphasis Gate 1 did for title-block/
+  footer/sidebar labels, just missed here since badges weren't in that gate's own audit.
+- **"Excessive borders" (brief's own language) addressed**: `.panel`/`.kpi-card`/`.project-card`/
+  `.detail-card` all had both a border *and* a shadow on every resting card. Removed `box-shadow`
+  from all four — shadow now means genuine elevation only (`.modal`/`.drawer`/
+  `.card-menu__dropdown`/the loading overlay), not decoration on every static card. `--shadow-sm`
+  is now unreferenced in `styles.css` — left the token defined (still a valid part of the shadow
+  scale, just not currently consumed by anything) rather than deleting it.
+- **Verified**: `node --check` on `layout.js`; full 78-file suite, 2090 checks, 0 failures.
+  Real-Chromium pass across Dashboard/Portfolio/Risk Register with a seeded project — confirmed a
+  status badge's background tint now actually matches its text color (previously silently
+  mismatched — this was the concrete, visible proof the bug was real, not theoretical), the
+  heat-map's three severity tiers render with correctly paired cell/digit colors, and cards read
+  flatter without looking bare.
+- **Deferred, not urgent**: the title-block DOM-level split (distinct treatment for the page-title
+  cell vs. metadata cells) — no call site needed it pulled forward from later gates yet.
+- **Not started**: Gates 3-12.
+
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
 `main` is fully up to date through **Tier 3, "final polish," Gate 4** (Gantt virtualization for

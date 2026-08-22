@@ -3320,6 +3320,41 @@ files, not bundled into this gate).
   clean against both themes, and the risk heat-map's red/amber/green severity coding still reads
   clearly despite the calmer palette.
 
+### Gate 2 — Component Restyling, done, 2026-08-22
+
+Two parts: a real bug found and fixed, and the "excessive borders" cue from the brief addressed.
+
+**Bug found while auditing components for restyling**: five `.status-badge--*` rules, three
+`.heatmap-cell--*` rules, `.btn--danger:hover`, and two banner backgrounds in `layout.js`
+(backup-reminder, corruption-recovery) all used **hardcoded `rgba()` tints hand-matched to the
+old pre-Gate-1 status colors** — never tokenized, so Gate 1's color changes updated the *text*
+color (`var(--status-critical)` etc.) on these elements but silently left their *background tints*
+on the old red/amber/green shades. Not caught by Gate 1's own verification since the screenshots
+taken then didn't happen to render populated status badges or the heatmap with real data. Found by
+grepping for literal `rgba(N, N, N` patterns across both `styles.css` and every page/shell JS file,
+cross-referencing each against the old vs. new hex values. Fixed all of them to the new palette's
+RGB equivalents. Also switched `.status-badge` from mono to body font (bold) — same "technical
+readout" de-emphasis as Gate 1's title-block/footer work, just missed there since badges weren't
+in that gate's own audit scope.
+
+**"Excessive borders" addressed**: `.panel`/`.kpi-card`/`.project-card`/`.detail-card` all had both
+a border *and* a shadow on every single resting card — visually heavy, the brief's own "excessive
+borders" complaint. Removed `box-shadow` from all four, keeping the border alone to define the
+edge; shadow now means genuine elevation only (`.modal`, `.drawer`, `.card-menu__dropdown`, the
+loading overlay) — a standard modern-design-system convention (shadow = elevation signal, not
+decoration), not just an arbitrary stylistic choice.
+
+**Verified**: `node --check` on `layout.js`; full 78-file suite, 2090 checks, 0 failures (pure
+color-value and CSS-property changes, no functional risk). Real-Chromium pass across Dashboard/
+Portfolio/Risk Register with a seeded project and its status badge visible — confirmed the badge's
+background tint now actually matches its text color (previously silently mismatched), the risk
+heat-map's three severity tiers render with correctly paired cell-background/digit colors, and
+cards read visibly flatter without looking bare.
+
+**Not done**: the title-block DOM-level split (giving the page-title cell distinct typographic
+treatment from the metadata cells) — still deferred, no call site needed it urgently enough to pull
+forward from later gates.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →

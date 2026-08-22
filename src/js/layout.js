@@ -564,7 +564,7 @@
     banner.style.gap = "10px";
     banner.style.flexWrap = "wrap";
     banner.style.borderBottom = "1px solid var(--divider)";
-    banner.style.background = "rgba(217, 164, 65, 0.15)";
+    banner.style.background = "rgba(214, 158, 46, 0.15)";
     return banner;
   }
 
@@ -587,7 +587,7 @@
     banner.style.gap = "10px";
     banner.style.flexWrap = "wrap";
     banner.style.borderBottom = "1px solid var(--divider)";
-    banner.style.background = "rgba(214, 69, 69, 0.15)";
+    banner.style.background = "rgba(229, 62, 62, 0.15)";
 
     if (rec) {
       var msg = document.createElement("span");
