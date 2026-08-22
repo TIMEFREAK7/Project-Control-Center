@@ -220,12 +220,11 @@ function addDaysIso(days) {
     assert.ok(recentMeetings && (recentMeetings.textContent.indexOf("Site Progress Meeting") !== -1 || recentMeetings.textContent.indexOf("Design Kickoff Review") !== -1));
   });
 
-  await check("clicking View on an Approvals item navigates to the Decision Register with that decision expanded", () => {
+  await check("clicking an Approvals item (the whole row, Redesign Gate 7's clickable-row style) navigates to the Decision Register with that decision expanded", () => {
     const approvals = panelByHeading(dom, "TODAY", "Approvals");
-    const rows = Array.from(approvals.querySelectorAll("div")).filter((r) => r.textContent.indexOf("Consultant Sign-off") !== -1);
-    const viewBtn = rows[0] && Array.from(rows[0].querySelectorAll("button")).find((b) => b.textContent.trim() === "View");
-    assert.ok(viewBtn, "View button not found on the Consultant Sign-off row");
-    viewBtn.click();
+    const row = Array.from(approvals.querySelectorAll(".attention-item--clickable")).find((r) => r.textContent.indexOf("Consultant Sign-off") !== -1);
+    assert.ok(row, "clickable row not found for the Consultant Sign-off item");
+    row.click();
     assert.strictEqual(win.PCC.router.currentRouteName(), "decisionRegister");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
     win.PCC.router.go("myWork");

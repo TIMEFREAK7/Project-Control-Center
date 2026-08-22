@@ -2,8 +2,11 @@
 // Centre — Gate 1 of the PCC evolution roadmap (2026-08-19, Tier A: Daily Planner Value).
 // A new page aggregating every record type that carries a real due date (Meeting Actions,
 // RFI/TQ, Document Requirements) into OVERDUE/DUE TODAY/DUE THIS WEEK/UPCOMING buckets,
-// plus a dateless WAITING FOR bucket for Change Orders pending decision. No schema
-// changes; everything computed at render time from existing store data.
+// plus a dateless NO DUE DATE bucket for Change Orders pending decision (relabeled from
+// "Waiting For" in Redesign Gate 7 — that label collided with My Work's own "WAITING
+// FOR" section, which means something different there: items with an explicit
+// waiting_on_party set, grouped by who). No schema changes; everything computed at
+// render time from existing store data.
 "use strict";
 const fs = require("fs");
 const path = require("path");
@@ -40,9 +43,14 @@ function kpiValue(dom, label) {
   const valueEl = card.querySelector(".kpi-card__value");
   return valueEl ? Number(valueEl.textContent) : undefined;
 }
-function findButtonInRowByText(dom, rowText, buttonText) {
-  const buttons = Array.from(dom.window.document.querySelectorAll("button")).filter((b) => b.textContent.trim() === buttonText);
-  return buttons.find((b) => b.parentElement.parentElement.textContent.indexOf(rowText) !== -1);
+// Redesign Gate 7: rows are the whole click target now (.attention-item--clickable),
+// not a separate "View" button inside them — see itemRow()'s own comment in
+// actionCentre.js. Finds the clickable row containing rowText and returns it directly;
+// callers click the row itself instead of a nested button.
+function findClickableRowByText(dom, rowText) {
+  return Array.from(dom.window.document.querySelectorAll(".attention-item--clickable")).find(
+    (r) => r.textContent.indexOf(rowText) !== -1
+  );
 }
 function todayPlusDays(days) {
   const d = new Date();
@@ -131,7 +139,7 @@ function todayPlusDays(days) {
     assert.ok(text.indexOf("Upcoming action near") !== -1 && text.indexOf("Upcoming action far") !== -1, "day-8 and day-30 both belong in Upcoming");
     assert.ok(text.indexOf("Upcoming (8") !== -1);
     assert.ok(text.indexOf("Beyond window action") === -1, "day-31 is outside the 30-day upcoming window and must not appear anywhere");
-    assert.ok(text.indexOf("No due date action") !== -1, "an open action with no due date must land in Waiting For");
+    assert.ok(text.indexOf("No due date action") !== -1, "an open action with no due date must land in No Due Date");
     assert.ok(text.indexOf("Already done action") === -1, "a done action must never appear");
     assert.ok(text.indexOf("Archived project action") === -1, "an action on an archived project must never appear");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
@@ -154,7 +162,7 @@ function todayPlusDays(days) {
   await check("RFIs land in the correct buckets, answered RFIs are excluded", () => {
     var text = outlet().textContent;
     assert.ok(text.indexOf("Foundation detail clarification") !== -1, "the overdue open RFI must appear");
-    assert.ok(text.indexOf("Undated open query") !== -1, "the undated open RFI must land in Waiting For");
+    assert.ok(text.indexOf("Undated open query") !== -1, "the undated open RFI must land in No Due Date");
     assert.ok(text.indexOf("Already answered query") === -1, "an answered RFI must never appear");
   });
 
@@ -170,11 +178,11 @@ function todayPlusDays(days) {
     win.PCC.router.render();
   });
 
-  await check("document requirements land correctly: overdue shows, available (despite past date) is excluded, undated required lands in Waiting For", () => {
+  await check("document requirements land correctly: overdue shows, available (despite past date) is excluded, undated required lands in No Due Date", () => {
     var text = outlet().textContent;
     assert.ok(text.indexOf("[Document] BOQ") !== -1, "the overdue BOQ requirement must appear");
     assert.ok(text.indexOf("ITP") === -1, "the ITP requirement has a matching document (Available) and must never appear, even with a past due date");
-    assert.ok(text.indexOf("Method Statement") !== -1, "the undated Method Statement requirement must land in Waiting For");
+    assert.ok(text.indexOf("Method Statement") !== -1, "the undated Method Statement requirement must land in No Due Date");
   });
 
   var pendingCoId;
@@ -188,9 +196,9 @@ function todayPlusDays(days) {
     win.PCC.router.render();
   });
 
-  await check("the pending Change Order lands in Waiting For, the approved one is excluded, and Waiting For has no due date shown", () => {
+  await check("the pending Change Order lands in No Due Date, the approved one is excluded, and No Due Date has no due date shown", () => {
     var text = outlet().textContent;
-    assert.ok(text.indexOf("Additional scope for site access") !== -1, "the pending Change Order must appear in Waiting For");
+    assert.ok(text.indexOf("Additional scope for site access") !== -1, "the pending Change Order must appear in No Due Date");
     assert.ok(text.indexOf("Already decided change") === -1, "an approved Change Order must never appear");
   });
 
@@ -198,7 +206,7 @@ function todayPlusDays(days) {
     assert.strictEqual(kpiValue(dom, "OVERDUE"), 3, "1 meeting action + 1 RFI + 1 document requirement (BOQ, day -1) all overdue");
     assert.strictEqual(kpiValue(dom, "DUE TODAY"), 1);
     assert.strictEqual(kpiValue(dom, "DUE THIS WEEK"), 1);
-    assert.strictEqual(kpiValue(dom, "WAITING FOR"), 4, "1 undated meeting action + 1 undated RFI + 1 undated document requirement + 1 pending change order");
+    assert.strictEqual(kpiValue(dom, "NO DUE DATE"), 4, "1 undated meeting action + 1 undated RFI + 1 undated document requirement + 1 pending change order");
   });
 
   await check("the Overdue bucket sorts ascending by due date (RFI day -3, meeting action day -2, document day -1)", () => {
@@ -210,32 +218,32 @@ function todayPlusDays(days) {
     assert.ok(posRfi < posMeeting && posMeeting < posDoc, "expected ascending date order: RFI (-3), meeting action (-2), document (-1)");
   });
 
-  await check("'View' on the overdue meeting action navigates to Meetings with that meeting expanded", () => {
-    var btn = findButtonInRowByText(dom, "Overdue action", "View");
-    assert.ok(btn, "View button not found for the overdue meeting action row");
-    btn.click();
+  await check("clicking the overdue meeting action row navigates to Meetings with that meeting expanded", () => {
+    var row = findClickableRowByText(dom, "Overdue action");
+    assert.ok(row, "clickable row not found for the overdue meeting action");
+    row.click();
     assert.strictEqual(win.PCC.router.currentRouteName(), "meetings");
     assert.ok(outlet().textContent.indexOf("Hide") !== -1, "the linked meeting must land already expanded");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("'View' on the overdue RFI navigates to RFI/TQ with that record expanded", () => {
+  await check("clicking the overdue RFI row navigates to RFI/TQ with that record expanded", () => {
     win.PCC.router.go("actionCentre");
     win.PCC.router.render();
-    var btn = findButtonInRowByText(dom, "Foundation detail clarification", "View");
-    assert.ok(btn, "View button not found for the overdue RFI row");
-    btn.click();
+    var row = findClickableRowByText(dom, "Foundation detail clarification");
+    assert.ok(row, "clickable row not found for the overdue RFI");
+    row.click();
     assert.strictEqual(win.PCC.router.currentRouteName(), "rfis");
     assert.ok(outlet().textContent.indexOf("Hide") !== -1, "the linked RFI must land already expanded");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("'View' on the Waiting For Change Order navigates to Change Mgmt with that record expanded", () => {
+  await check("clicking the No Due Date Change Order row navigates to Change Mgmt with that record expanded", () => {
     win.PCC.router.go("actionCentre");
     win.PCC.router.render();
-    var btn = findButtonInRowByText(dom, "Additional scope for site access", "View");
-    assert.ok(btn, "View button not found for the pending change order row");
-    btn.click();
+    var row = findClickableRowByText(dom, "Additional scope for site access");
+    assert.ok(row, "clickable row not found for the pending change order");
+    row.click();
     assert.strictEqual(win.PCC.router.currentRouteName(), "changeOrders");
     assert.ok(outlet().textContent.indexOf("Hide") !== -1, "the linked change order must land already expanded");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));

@@ -2142,6 +2142,50 @@ a shared module + the existing `store.onChange()` mechanism was enough, no route
   (marking which pages are portfolio-wide vs single-project) is separate, later scope.
 - **Not started**: Gates 7-12.
 
+**Gate 7 — Dashboard + My Work + Action Centre Redesign, done, 2026-08-22.** Aditya said "start
+gate 7" directly. Inspected all three pages in full first — My Work (614 lines) and Action Centre
+(347 lines) are already mature pages from earlier gates, not stubs, so this was closing real gaps
+against the brief's own list plus a restyling catch-up, not a rewrite.
+
+- **Dashboard — a real content gap**: the brief's own section explicitly lists Open Risks/Issues,
+  Pending RFIs, Pending Decisions, Delayed Projects, Upcoming Milestones — none visible on the page
+  before this gate. Added a **Portfolio Exceptions** panel with all six, using the smaller
+  `.card-stat` chip primitive (Portfolio's own Gate 3 project-card stats) rather than more full
+  `.kpi-card`s — six more full KPI cards on top of the existing six would have directly contradicted
+  the brief's own "do not turn everything into a card" instruction. Open Risks/Issues reuse
+  Portfolio's exact `status !== "closed"` convention; Delayed Projects reuses Executive Center's
+  exported `getSchedulePerformanceSummary()` (Gate 26's `unaddressedDelayDays`), not a new
+  heuristic. Each chip navigates to its source register. Cost/Resource/Vendor "Position" (also on
+  the brief's list) deliberately deferred — a shallow raw sum would risk being misleading next to
+  Executive Center/Portfolio Performance's own real per-project rollups, and a proper portfolio-wide
+  aggregation is meaningfully bigger scope than this gate's other additions.
+- **My Work vs Action Centre — confirmed distinct, kept both**: read both pages in full rather than
+  assuming overlap meant redundancy, per the brief's own "do not remove Action Centre functionality
+  without first understanding what it does" instruction. They're genuinely different in shape: My
+  Work is a broader personal cockpit (Approvals, Reviews, Recently Updated, Waiting-by-party); Action
+  Centre is a strict due-date exception view over a slightly different record set (Document
+  Requirements included; Approvals/Reviews/Recently-Updated excluded). Decision: keep both.
+- **A real UX collision fixed**: Action Centre's dateless bucket was labeled "Waiting For" — reading
+  as the same concept as My Work's own "WAITING FOR" section, which actually means something
+  different (items with `waiting_on_party` set, grouped by who). Relabeled to **"No Due Date"**
+  (bucket + KPI card) — zero behavior change, just stops colliding with My Work's own label.
+- **Component restyling catch-up**: both pages' item rows still used their original hand-built
+  flex-row-plus-ghost-button markup, never retrofitted onto the `.attention-list`/`.attention-item`
+  primitive Executive Center's Diagnostics/Management Action panels and Dashboard's own Management
+  Attention panel already use. Retrofitted both — rows are now the whole click target, record-type
+  badges moved into the meta line. No change to which items appear or what clicking them does.
+- **Verified**: `node --check` on all three page files; full 73-file suite, 2092 checks, 0 failures
+  — including updating `test_my_work_e2e.js`/`test_action_centre_e2e.js`'s row-interaction tests
+  (find the row itself, no nested "View" button any more) and the label rename, plus scoping one
+  `test_dashboard_reminders_e2e.js` assertion to the Document Reminders panel after the new
+  Portfolio Exceptions panel's "Pending RFIs / TQs" chip started colliding with a whole-page
+  substring check for "RFIs" (a document *type* literally named "RFIs" in that test's own seed data
+  — narrow test fragility, not a functional bug). Real-Chromium pass across all three pages with a
+  seeded project (risk, issue, RFI, pending decision, overdue meeting action, pending Change Order):
+  exception counts and chip navigation correct, rows whole-row-clickable, relabeled bucket renders
+  correctly. Zero console errors.
+- **Not started**: Gates 8-12.
+
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
 `main` is fully up to date through **Tier 3, "final polish," Gate 4** (Gantt virtualization for
