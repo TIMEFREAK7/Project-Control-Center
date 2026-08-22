@@ -1856,7 +1856,7 @@
       var row = document.createElement("div");
       row.className = "attention-item";
       if (a.link && a.link.module) {
-        row.style.cursor = "pointer";
+        row.className += " attention-item--clickable";
         row.onclick = function () { navigateToLink(a.link); };
       }
 
@@ -2329,8 +2329,7 @@
     list.className = "attention-list";
     items.forEach(function (i) {
       var row = document.createElement("div");
-      row.className = "attention-item";
-      row.style.cursor = "pointer";
+      row.className = "attention-item attention-item--clickable";
       row.onclick = function () { navigateToLink(i.link); };
 
       var icon = document.createElement("span");

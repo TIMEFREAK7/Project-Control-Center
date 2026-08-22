@@ -3195,6 +3195,31 @@ console errors, all icons render correctly and centered.
 With Gate E done, only **Gate F** (empty-state copy + motion polish) remains of the original 6-gate
 UI Modernization plan.
 
+## UI Modernization — Gate F: Empty-State Copy + Motion Polish (2026-08-22)
+
+The last gate of the original 6-gate UI Modernization plan. Investigated both halves concretely
+before touching anything — found the real gaps were much smaller than "ad hoc copy" and "missing
+hover states everywhere" implied.
+
+**Copy:** ~40+ empty-state messages across every register already follow four consistent,
+well-established micro-patterns ("No [X] yet. Click "+ Add [X]"…", "No [X] match this
+search/filter.", "Add a project in Portfolio first…", "Nothing to show yet…"). The only real
+inconsistency: 2 of 21 "Click "+ Add [X]"" messages (`documentTypes.js`, `vendors.js`) used straight
+quotes instead of the curly quotes the other 19 already used — fixed to match.
+
+**Motion:** every CSS class with `cursor: pointer` in the app already has hover/transition
+treatment, except one: `.attention-item` (used as a clickable, navigable row in Executive Center's
+Diagnostics panel and Management Attention list, and Project Workspace's attention list) had zero
+hover CSS. Added an opt-in `.attention-item--clickable` modifier class rather than a blanket
+`.attention-item:hover` — the Diagnostics panel version is only clickable *conditionally*, so a
+blanket rule would visually promise every row is clickable when some aren't.
+
+**Verified:** full 78-file suite, 2090 checks, 0 failures. Real-Chromium pass confirmed the CSS
+wiring directly — `.attention-item--clickable` gets `cursor: pointer` and the real `--hover-bg`
+background on actual mouse hover, while a plain `.attention-item` correctly stays `cursor: auto`.
+
+**With Gate F done, the full 6-gate UI Modernization initiative (A through F) is complete.**
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →

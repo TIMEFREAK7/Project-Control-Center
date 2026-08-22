@@ -1380,6 +1380,19 @@ a:focus-visible {
   border-bottom: none;
 }
 
+/* Gate F (UI Modernization): opt-in modifier, not a blanket .attention-item:hover — some
+   rows using this class aren't clickable (executiveCenter.js's Diagnostics panel only
+   wires an onclick when a.link.module exists), so a hover rule keyed to .attention-item
+   itself would visually promise every row is clickable when some aren't. */
+.attention-item--clickable {
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+}
+
+.attention-item--clickable:hover {
+  background-color: var(--hover-bg);
+}
+
 .attention-item__icon {
   flex-shrink: 0;
   width: 8px;

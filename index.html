@@ -1387,6 +1387,19 @@ a:focus-visible {
   border-bottom: none;
 }
 
+/* Gate F (UI Modernization): opt-in modifier, not a blanket .attention-item:hover — some
+   rows using this class aren't clickable (executiveCenter.js's Diagnostics panel only
+   wires an onclick when a.link.module exists), so a hover rule keyed to .attention-item
+   itself would visually promise every row is clickable when some aren't. */
+.attention-item--clickable {
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+}
+
+.attention-item--clickable:hover {
+  background-color: var(--hover-bg);
+}
+
 .attention-item__icon {
   flex-shrink: 0;
   width: 8px;
@@ -13756,8 +13769,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     list.className = "attention-list";
     items.forEach(function (i) {
       var row = document.createElement("div");
-      row.className = "attention-item";
-      row.style.cursor = "pointer";
+      row.className = "attention-item attention-item--clickable";
       row.onclick = function () {
         navigateToModule(i.nav, projectId);
       };
@@ -15957,7 +15969,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       var row = document.createElement("div");
       row.className = "attention-item";
       if (a.link && a.link.module) {
-        row.style.cursor = "pointer";
+        row.className += " attention-item--clickable";
         row.onclick = function () { navigateToLink(a.link); };
       }
 
@@ -16430,8 +16442,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     list.className = "attention-list";
     items.forEach(function (i) {
       var row = document.createElement("div");
-      row.className = "attention-item";
-      row.style.cursor = "pointer";
+      row.className = "attention-item attention-item--clickable";
       row.onclick = function () { navigateToLink(i.link); };
 
       var icon = document.createElement("span");
@@ -18110,7 +18121,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       if (filtered.length === 0) {
         var empty = document.createElement("div");
         empty.className = "panel empty-state";
-        empty.textContent = data.vendors.length === 0 ? 'No vendors yet. Click "+ Add Vendor" to create your first one.' : "No vendors match this search/filter.";
+        empty.textContent = data.vendors.length === 0 ? "No vendors yet. Click “+ Add Vendor” to create your first one." : "No vendors match this search/filter.";
         listWrap.appendChild(empty);
         return;
       }
@@ -22566,7 +22577,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         empty.className = "panel empty-state";
         empty.textContent =
           data.document_types.length === 0
-            ? 'No document types yet. Click "+ Add Document Type" to add the first one.'
+            ? "No document types yet. Click “+ Add Document Type” to add the first one."
             : "No document types match this search/filter.";
         listWrap.appendChild(empty);
         return;

@@ -248,8 +248,7 @@
     list.className = "attention-list";
     items.forEach(function (i) {
       var row = document.createElement("div");
-      row.className = "attention-item";
-      row.style.cursor = "pointer";
+      row.className = "attention-item attention-item--clickable";
       row.onclick = function () {
         navigateToModule(i.nav, projectId);
       };

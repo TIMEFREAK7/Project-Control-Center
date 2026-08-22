@@ -387,7 +387,7 @@
         empty.className = "panel empty-state";
         empty.textContent =
           data.document_types.length === 0
-            ? 'No document types yet. Click "+ Add Document Type" to add the first one.'
+            ? "No document types yet. Click “+ Add Document Type” to add the first one."
             : "No document types match this search/filter.";
         listWrap.appendChild(empty);
         return;

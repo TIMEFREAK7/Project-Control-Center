@@ -726,7 +726,7 @@
       if (filtered.length === 0) {
         var empty = document.createElement("div");
         empty.className = "panel empty-state";
-        empty.textContent = data.vendors.length === 0 ? 'No vendors yet. Click "+ Add Vendor" to create your first one.' : "No vendors match this search/filter.";
+        empty.textContent = data.vendors.length === 0 ? "No vendors yet. Click “+ Add Vendor” to create your first one." : "No vendors match this search/filter.";
         listWrap.appendChild(empty);
         return;
       }

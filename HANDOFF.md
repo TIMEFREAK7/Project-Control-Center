@@ -1837,6 +1837,43 @@ gate, then built).
 - **Not started**: Gate F (empty-state copy + motion polish) — the last gate of the original 6-gate
   UI Modernization plan, pending Aditya's call.
 
+**Gate F — Empty-State Copy + Motion Polish, done, 2026-08-22. The full 6-gate UI Modernization
+initiative (Gates A-F) is now complete.** Aditya asked to scope it, then confirmed proceeding.
+Investigated both halves concretely before touching anything, same discipline as every prior gate —
+found the real gaps were much smaller than "ad hoc copy" and "missing hover states everywhere" —
+the original 6-gate plan's brief impressions — actually suggested.
+
+- **Copy audit, real finding**: ~40+ empty-state messages across every register already follow four
+  consistent, well-established micro-patterns — `"No [X] yet. Click "+ Add [X]" to..."` (21
+  instances), `"No [X] match this search/filter."` (18 instances, word-for-word identical
+  structure), `"Add a project in Portfolio first, then..."` (24 instances), `"Nothing to show yet.
+  Once [X], this [page] will [Y]."` (4 dashboard/rollup pages) — not ad hoc at all. **The only real
+  inconsistency**: of the 21 "Click "+ Add [X]"" messages, 19 used curly quotes and 2
+  (`documentTypes.js:390`, `vendors.js:729`) used straight quotes — fixed to match the dominant
+  convention. Found by precise grep comparison, not a vague "some copy is inconsistent" claim.
+- **Motion audit, real finding**: checked every CSS class in the app with `cursor: pointer` (`.btn`,
+  `.icon-btn`, `.sidebar__link`, `.sidebar__group-toggle`, `.tab-btn`, `.card-menu__item`,
+  `.card-menu__checkbox-item`, `.doc-register-item`, `.data-table__sort-btn`, `.heatmap-cell`,
+  `.project-card`, `.detail-card`, `.kpi-card`) — all already had `:hover`/`transition` treatment.
+  **The one real gap**: `.attention-item`, used as a clickable/navigable row in three call sites
+  (`executiveCenter.js`'s Diagnostics panel and Management Attention list, `projectWorkspace.js`'s
+  attention list), had zero hover CSS despite setting `cursor: pointer` inline via JS at all three.
+  Excluded two look-alike candidates after checking them specifically: `schedule.js`'s `<summary>`
+  (native HTML disclosure control, has its own browser-level affordance) and `dailyLog.js`'s
+  `<label class="btn btn--ghost">` (already covered by `.btn--ghost:hover`).
+- **Fix, not a blanket rule**: added an opt-in `.attention-item--clickable` modifier class (styles.css)
+  rather than `.attention-item:hover` directly — the Diagnostics panel version is only clickable
+  *conditionally* (`a.link && a.link.module`), so a blanket hover rule would visually promise every
+  row is clickable when some aren't. Replaced the inline `row.style.cursor = "pointer"` at all three
+  call sites with the modifier class instead.
+- **Verified**: all four changed JS files pass `node --check`; full 78-file suite — 2090 checks, 0
+  failures. Real-Chromium pass verified the CSS wiring directly rather than relying on a live-data
+  scenario that might not trigger reliably: constructed the exact markup pattern in the page,
+  confirmed `.attention-item--clickable` has `cursor: pointer` and gets the real `--hover-bg`
+  background color on an actual simulated mouse hover (`page.hover()`, not just a dispatched event),
+  while a plain `.attention-item` correctly stays `cursor: auto` — confirming the conditional
+  clickability distinction actually renders correctly, not just that the class exists in markup.
+
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
 `main` is fully up to date through **Tier 3, "final polish," Gate 4** (Gantt virtualization for
