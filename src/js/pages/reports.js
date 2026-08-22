@@ -597,11 +597,20 @@
       opt.textContent = p.name || "(unnamed project)";
       projSelect.appendChild(opt);
     });
-    if (!uiState.projectId && projects.length > 0) uiState.projectId = projects[0].id;
+    // Redesign Gate 6 (Global Project Context): follow the shared active project
+    // whenever it's valid — see schedule.js's own comment on why this can't be
+    // conditioned on "only when uiState.projectId is unset".
+    var ctxProjectId = window.PCC.projectContext.get();
+    if (ctxProjectId && projects.some(function (p) { return p.id === ctxProjectId; })) {
+      uiState.projectId = ctxProjectId;
+    } else if (!uiState.projectId && projects.length > 0) {
+      uiState.projectId = projects[0].id;
+    }
     projSelect.value = uiState.projectId;
     projSelect.style.display = uiState.reportType === "project" ? "" : "none";
     projSelect.onchange = function () {
       uiState.projectId = projSelect.value;
+      window.PCC.projectContext.set(uiState.projectId);
       rerender();
     };
     toolbar.appendChild(projSelect);

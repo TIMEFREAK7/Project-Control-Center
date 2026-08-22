@@ -28,6 +28,8 @@
     search: "",
     categoryFilter: "",
     projectFilter: "",
+    // Redesign Gate 6 (Global Project Context): see risks.js's own uiState comment.
+    projectFilterInitialized: false,
     editingBudgetId: null,
     editingActualId: null,
   };
@@ -821,6 +823,7 @@
     projSelect.value = uiState.projectFilter;
     projSelect.onchange = function () {
       uiState.projectFilter = projSelect.value;
+      if (uiState.projectFilter) window.PCC.projectContext.set(uiState.projectFilter);
       rerender();
     };
     toolbar.appendChild(projSelect);
@@ -1141,6 +1144,17 @@
 
     var data = window.PCC.store.get();
 
+    // Redesign Gate 6 (Global Project Context): see risks.js's own comment on this
+    // exact pattern. buildToolbar() (shared by the Budget and Actuals tabs) reads
+    // uiState.projectFilter directly, so seeding it here once covers both.
+    if (!uiState.projectFilterInitialized) {
+      uiState.projectFilterInitialized = true;
+      var ctxProjectId = window.PCC.projectContext.get();
+      if (ctxProjectId && data.projects.some(function (p) { return p.id === ctxProjectId; })) {
+        uiState.projectFilter = ctxProjectId;
+      }
+    }
+
     var h1 = document.createElement("h2");
     h1.textContent = "Cost Tracking";
     h1.style.marginBottom = "6px";
@@ -1191,8 +1205,10 @@
     filterByProject: function (projectId) {
       uiState.tab = "budget";
       uiState.projectFilter = projectId;
+      uiState.projectFilterInitialized = true;
       uiState.categoryFilter = "";
       uiState.search = "";
+      window.PCC.projectContext.set(projectId);
     },
     projectCostSummary: projectCostSummary,
   };

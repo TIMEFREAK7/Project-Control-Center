@@ -11,6 +11,8 @@
     search: "",
     statusFilter: "",
     projectFilter: "",
+    // Redesign Gate 6 (Global Project Context): see risks.js's own uiState comment.
+    projectFilterInitialized: false,
     editingId: null,
     expandedId: null,
     revisionDrafts: {},
@@ -705,6 +707,16 @@
     var data = window.PCC.store.get();
     var projects = data.projects;
 
+    // Redesign Gate 6 (Global Project Context): see risks.js's own comment on this
+    // exact pattern.
+    if (!uiState.projectFilterInitialized) {
+      uiState.projectFilterInitialized = true;
+      var ctxProjectId = window.PCC.projectContext.get();
+      if (ctxProjectId && projects.some(function (p) { return p.id === ctxProjectId; })) {
+        uiState.projectFilter = ctxProjectId;
+      }
+    }
+
     var h1 = document.createElement("h2");
     h1.textContent = "Change Management";
     h1.style.marginBottom = "16px";
@@ -772,6 +784,7 @@
     projSelectFilter.value = uiState.projectFilter;
     projSelectFilter.onchange = function () {
       uiState.projectFilter = projSelectFilter.value;
+      if (uiState.projectFilter) window.PCC.projectContext.set(uiState.projectFilter);
       renderList();
     };
 
@@ -833,8 +846,10 @@
   window.PCC.changeOrders = {
     filterByProject: function (projectId) {
       uiState.projectFilter = projectId;
+      uiState.projectFilterInitialized = true;
       uiState.statusFilter = "";
       uiState.search = "";
+      window.PCC.projectContext.set(projectId);
     },
     createFromMeeting: function (projectId, meetingId) {
       uiState.pendingPrefill = { project_id: projectId, source_meeting_id: meetingId };

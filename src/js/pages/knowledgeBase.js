@@ -28,6 +28,8 @@
     search: "",
     categoryFilter: "",
     projectFilter: "",
+    // Redesign Gate 6 (Global Project Context): see risks.js's own uiState comment.
+    projectFilterInitialized: false,
     editingId: null,
     expandedId: null,
     pendingFile: null, // { name, size, type, dataUri } set by handleFileSelected()
@@ -513,6 +515,17 @@
     var data = window.PCC.store.get();
     var projects = data.projects;
 
+    // Redesign Gate 6 (Global Project Context): see risks.js's own comment on this
+    // exact pattern. "__general__" (see articleMatchesFilters()'s own comment above) is
+    // a synthetic filter value, not a real project id, so it's never a valid seed here.
+    if (!uiState.projectFilterInitialized) {
+      uiState.projectFilterInitialized = true;
+      var ctxProjectId = window.PCC.projectContext.get();
+      if (ctxProjectId && projects.some(function (p) { return p.id === ctxProjectId; })) {
+        uiState.projectFilter = ctxProjectId;
+      }
+    }
+
     var h1 = document.createElement("h2");
     h1.textContent = "Knowledge Base";
     h1.style.marginBottom = "4px";
@@ -582,6 +595,11 @@
     projSelectFilter.value = uiState.projectFilter;
     projSelectFilter.onchange = function () {
       uiState.projectFilter = projSelectFilter.value;
+      // Redesign Gate 6: see risks.js's own comment on this pattern — "__general__" is a
+      // synthetic value (articles with no project tag), never a real project to share.
+      if (uiState.projectFilter && uiState.projectFilter !== "__general__") {
+        window.PCC.projectContext.set(uiState.projectFilter);
+      }
       renderList();
     };
 
@@ -639,8 +657,10 @@
   window.PCC.knowledgeBase = {
     filterByProject: function (projectId) {
       uiState.projectFilter = projectId;
+      uiState.projectFilterInitialized = true;
       uiState.categoryFilter = "";
       uiState.search = "";
+      window.PCC.projectContext.set(projectId);
     },
   };
 })();

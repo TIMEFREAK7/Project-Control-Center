@@ -39,6 +39,10 @@
     categoryFilter: "",
     statusFilter: "",
     projectFilter: "",
+    // Redesign Gate 6 (Global Project Context): see risks.js's own uiState comment —
+    // true once this page has ever checked window.PCC.projectContext for an initial
+    // filter value, so seeding only ever happens once per session.
+    projectFilterInitialized: false,
     // Which document is shown in the new two-panel register+preview layout's right-hand
     // pane, or null if none selected yet. Replaces the old per-row inline expand — the
     // preview pane now always shows full detail for whichever document is selected,
@@ -1573,6 +1577,17 @@
 
     var data = window.PCC.store.get();
 
+    // Redesign Gate 6 (Global Project Context): pre-fill the project filter from the
+    // shared active project on this page's first render only — see risks.js's own
+    // comment on this exact pattern.
+    if (!uiState.projectFilterInitialized) {
+      uiState.projectFilterInitialized = true;
+      var ctxProjectId = window.PCC.projectContext.get();
+      if (ctxProjectId && data.projects.some(function (p) { return p.id === ctxProjectId; })) {
+        uiState.projectFilter = ctxProjectId;
+      }
+    }
+
     var h1 = document.createElement("h2");
     h1.className = "focus-mode-hide";
     h1.textContent = "Documents";
@@ -1691,6 +1706,9 @@
     projectFilterSelect.value = uiState.projectFilter;
     projectFilterSelect.onchange = function () {
       uiState.projectFilter = projectFilterSelect.value;
+      // Redesign Gate 6: see risks.js's own comment on this exact pattern — clearing to
+      // "All projects" stays local to this register, doesn't clear the shared context.
+      if (uiState.projectFilter) window.PCC.projectContext.set(uiState.projectFilter);
       rerender();
     };
     toolbar.appendChild(projectFilterSelect);
@@ -1839,6 +1857,8 @@
     // pre-filtered instead of showing every project's documents unfiltered.
     filterByProject: function (projectId) {
       uiState.projectFilter = projectId;
+      uiState.projectFilterInitialized = true;
+      window.PCC.projectContext.set(projectId);
     },
     // Gate 17: latest-revision-per-group only — see latestDocuments()'s own header
     // comment. portfolio.js's ATTACHMENTS section uses this so a document with several

@@ -906,6 +906,7 @@
     viewProject: function (projectId, tab) {
       uiState.projectId = projectId;
       uiState.tab = tab || "overview";
+      window.PCC.projectContext.set(projectId);
     },
     /** Gate 31 (PCC Evolution Roadmap Gate 3: Management Attention) — the Dashboard's
      * portfolio-wide attention panel needs the same rule-based diagnostics this page's own
@@ -997,13 +998,22 @@
         opt.textContent = p.name || "(unnamed project)";
         projSelect.appendChild(opt);
       });
-      if (!uiState.projectId || !activeProjects.some(function (p) { return p.id === uiState.projectId; })) {
+      // Redesign Gate 6 (Global Project Context): follow the shared active project
+      // whenever it's valid — see schedule.js's own comment on why this can't be
+      // conditioned on "only when uiState.projectId is unset/invalid" (the shell
+      // switcher or another page can change the shared context while this page's own
+      // stale-but-still-valid local value would otherwise never notice).
+      var ctxProjectId = window.PCC.projectContext.get();
+      if (ctxProjectId && activeProjects.some(function (p) { return p.id === ctxProjectId; })) {
+        uiState.projectId = ctxProjectId;
+      } else if (!uiState.projectId || !activeProjects.some(function (p) { return p.id === uiState.projectId; })) {
         uiState.projectId = activeProjects[0].id;
       }
       projSelect.value = uiState.projectId;
     }
     projSelect.onchange = function () {
       uiState.projectId = projSelect.value;
+      window.PCC.projectContext.set(uiState.projectId);
       rerender();
     };
     toolbar.appendChild(projSelect);

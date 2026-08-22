@@ -67,6 +67,8 @@
     search: "",
     statusFilter: "",
     projectFilter: "",
+    // Redesign Gate 6 (Global Project Context): see risks.js's own uiState comment.
+    projectFilterInitialized: false,
     tradeFilter: "",
     docTypeFilter: "",
     editingVendorId: null, // vendor id, 'new', or null
@@ -644,6 +646,7 @@
     projSelect.value = uiState.projectFilter;
     projSelect.onchange = function () {
       uiState.projectFilter = projSelect.value;
+      if (uiState.projectFilter) window.PCC.projectContext.set(uiState.projectFilter);
       renderList();
     };
 
@@ -2642,6 +2645,17 @@
 
     var data = window.PCC.store.get();
 
+    // Redesign Gate 6 (Global Project Context): see risks.js's own comment on this
+    // exact pattern. renderVendorList()'s own project filter reads uiState.projectFilter
+    // directly, so seeding it here once covers it regardless of which view is active.
+    if (!uiState.projectFilterInitialized) {
+      uiState.projectFilterInitialized = true;
+      var ctxProjectId = window.PCC.projectContext.get();
+      if (ctxProjectId && data.projects.some(function (p) { return p.id === ctxProjectId; })) {
+        uiState.projectFilter = ctxProjectId;
+      }
+    }
+
     var h1 = document.createElement("h2");
     h1.textContent = "Vendor Management";
     h1.style.marginBottom = "var(--space-2)";
@@ -2698,10 +2712,12 @@
     filterByProject: function (projectId) {
       uiState.view = "list";
       uiState.projectFilter = projectId;
+      uiState.projectFilterInitialized = true;
       uiState.search = "";
       uiState.statusFilter = "";
       uiState.tradeFilter = "";
       uiState.docTypeFilter = "";
+      window.PCC.projectContext.set(projectId);
     },
   };
 })();

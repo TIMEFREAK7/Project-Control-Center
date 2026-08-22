@@ -2098,6 +2098,50 @@ directly.
   before, zero console errors.
 - **Not started**: Gates 6-12.
 
+**Gate 6 — Global Project Context, done, 2026-08-22.** Aditya said "start gate 6" directly. Resolves
+Phase A's finding #2 — the biggest non-visual piece of the 12-gate plan. Touched 16 page files plus
+`store.js`/`layout.js`/a new `projectContext.js`, exactly the "roughly 15 page files plus extending
+the router" scope Phase A's inspection predicted (router itself didn't need touching in the end —
+a shared module + the existing `store.onChange()` mechanism was enough, no route params needed).
+
+- **New shared module `src/js/projectContext.js`**: `get()`/`set()` backed by new
+  `settings.active_project_id` (schema v53→v54, migration backfills `""` — every existing install
+  already behaves this way, nothing changes on upgrade). No new pub/sub — `store.update()` already
+  synchronously fires every `onChange()` listener. New persistent "PROJECT" switcher in the shell
+  header (`layout.js`'s title-block, between SHEET and COMPANY), visible and changeable on every
+  page, refreshed via the same `onChange` listener that already updates the COMPANY cell.
+- **Two real project-scoping patterns, catalogued across all 27 pages before writing any code, not
+  assumed**: 4 pages (Schedule, Executive Center, Project Workspace, Reports) have a mandatory
+  "exactly one project" selector; 12 register pages (Risk Register, Documents, Daily Log, Meetings,
+  RFI/TQ, Change Mgmt, Decision Register, Lessons Learned, Knowledge Base, Cost Tracking,
+  Commitments, Vendors) have an optional filter defaulting to blank ("all projects"). Forcing both
+  into one shape would have silently changed the 12 filter pages' default behavior, so they're
+  handled differently: the 4 selector pages read/write the shared context directly (including their
+  `viewActivity()`/`viewProject()`/`viewBaselines()` cross-module nav entry points, not just their
+  on-page `<select>`); the 12 filter pages pre-fill from it **once** per page-load (a new
+  `projectFilterInitialized` flag), still fully overridable, and picking a specific project writes
+  back while clearing to "All projects" deliberately does NOT clear the shared context (a
+  selector page can't have "no project," so there's nothing sensible for it to fall back to).
+  Knowledge Base's synthetic `"__general__"` filter value is excluded from both seed and write-back.
+- **A real design gap, caught by end-to-end testing, not code review**: the first version only
+  re-checked the shared context when a page's own `uiState.projectId` was unset/invalid, so
+  switching projects via the new shell header did nothing on a page with some valid-but-stale
+  project already remembered. A Playwright script driving the actual cross-module flow (pick in
+  Schedule → confirm Executive Center/Risk Register follow → switch via the shell header → confirm
+  Schedule follows back) caught this directly — jsdom/unit tests wouldn't have, since each page's
+  render still "worked," it just never consulted the context once its own state was already valid.
+  Fixed by making the 4 selector pages always prefer a *valid* shared context value over their own
+  remembered one — safe because every write path already keeps both in agreement in the same tick,
+  so a mismatch on render can only mean the context changed elsewhere since this page last rendered.
+- **Verified**: `node --check` on every touched file; full 73-file suite, 2092 checks (2 new —
+  the v53→v54 migration backfill, same shape as the existing `sidebar_collapsed`/`density` tests),
+  0 failures. Real-Chromium end-to-end pass confirmed the full cross-module flow above, zero
+  console errors.
+- **Not done**: no change to any page's own filtering rules, business logic, or record shape — this
+  gate is purely about default project selection. The brief's GLOBAL vs PROJECT visual distinction
+  (marking which pages are portfolio-wide vs single-project) is separate, later scope.
+- **Not started**: Gates 7-12.
+
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
 `main` is fully up to date through **Tier 3, "final polish," Gate 4** (Gantt virtualization for

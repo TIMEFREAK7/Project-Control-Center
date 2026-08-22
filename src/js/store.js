@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 53;
+  var SCHEMA_VERSION = 54;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -74,6 +74,11 @@
         // want without a schema change. Warn-only, never enforced — see documents.js.
         document_nomenclature_pattern: "PROJECT-DISCIPLINE-DOCUMENTTYPE-NUMBER-REV",
         document_nomenclature_enabled: true,
+        // Redesign Gate 6 (Global Project Context): the one project every project-scoped
+        // page now shares by default, so picking a project in one module carries to the
+        // next instead of each page defaulting independently (see projectContext.js).
+        // "" means no active project (shows as "All Projects" in the shell header).
+        active_project_id: "",
       },
       projects: [],
       documents: [],
@@ -2588,6 +2593,15 @@
       // install looks identical on upgrade until the user actually changes it.
       if (loaded.settings.density == null) loaded.settings.density = "comfortable";
       loaded.schema_version = 53;
+    }
+
+    if (loaded.schema_version < 54) {
+      // Redesign Gate 6 (Global Project Context): new shared "current project" setting,
+      // same "explicit setting instead of the only option" shape as Gates 2/7 above. ""
+      // (no active project / "All Projects") is what every existing install already
+      // behaves as today, so nothing changes on upgrade until the user picks a project.
+      if (loaded.settings.active_project_id == null) loaded.settings.active_project_id = "";
+      loaded.schema_version = 54;
     }
 
     return loaded;
