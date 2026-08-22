@@ -3471,6 +3471,68 @@ Chromium pass: all 9 group labels present in the correct order, all 27 nav items
 navigating to Risk Register auto-expands PROJECT MANAGEMENT and collapses whichever group was open
 before, zero console errors.
 
+### Gate 6 — Global Project Context, done, 2026-08-22
+
+Resolves Phase A's finding #2 — "no cross-module project context exists" — the biggest non-visual
+piece of the 12-gate plan. Before this gate, every project-scoped page kept its own independent,
+module-local `uiState.projectId`/`uiState.projectFilter`; picking a project in Schedule had zero
+effect on Executive Center, Risk Register, Cost Tracking, or any of the other 21 project-aware pages.
+
+**New shared module, `src/js/projectContext.js`**: `get()`/`set()` backed by a new
+`settings.active_project_id` field (schema v53→v54, migration backfills `""` — every existing
+install already behaves as "no active project," so nothing changes on upgrade). `set()` just calls
+`store.update()`, which already synchronously notifies every `store.onChange()` listener — no new
+pub/sub mechanism needed. A persistent "PROJECT" switcher was added to the shell header
+(`layout.js`'s title-block, between SHEET and COMPANY) so the current project is visible and
+changeable from every page, survives route changes, and stays in sync via the same `onChange`
+listener that already refreshes the COMPANY cell.
+
+**Two real project-scoping patterns existed, confirmed by inspection before writing any code**
+(catalogued across all 27 page files, not assumed): 4 pages (Schedule, Executive Center, Project
+Workspace, Reports) have a mandatory "pick exactly one project" selector, always defaulting to some
+project; 12 register-style pages (Risk Register, Documents, Daily Log, Meetings, RFI/TQ, Change
+Mgmt, Decision Register, Lessons Learned, Knowledge Base, Cost Tracking, Commitments, Vendors) have
+an optional project *filter* that defaults to blank ("show every project's records"). Treating both
+identically would have been a real behavior change for the 12 filter-style pages (silently narrowing
+what's shown by default) — so they're handled differently, not forced into one shape:
+
+- The 4 mandatory-selector pages now read their default from the shared context instead of always
+  falling back to "first active project," and write back to it on every change — including their
+  existing `viewActivity()`/`viewProject()`/`viewBaselines()` cross-module navigation entry points,
+  not just their own on-page `<select>`.
+- The 12 filter pages pre-fill from the shared context **once**, on first render only, via a new
+  `projectFilterInitialized` flag — still fully overridable, including clearing back to "All
+  projects" at any time. Picking a *specific* project writes it back to the shared context; clearing
+  to "All projects" deliberately does **not** clear the shared context (a mandatory-selector page
+  can't have "no project" at all, so there's nothing sensible for it to fall back to if a filter page
+  cleared it out from under it). Knowledge Base's synthetic `"__general__"` filter value (articles
+  with no project tag) is excluded from both seeding and write-back — it was never a real project id.
+
+**A real design gap, caught by end-to-end testing, not by code review**: the first version only
+re-checked the shared context when a page's own `uiState.projectId` was unset or invalid — so
+switching projects via the new shell header did nothing on a page that already had *some* valid
+(just stale) project remembered from an earlier visit. A Playwright script driving the actual cross-
+module flow (pick a project in Schedule → confirm Executive Center and Risk Register pick it up →
+switch via the shell header → confirm Schedule follows) caught this directly; jsdom/unit tests alone
+would not have, since each page's own render function still "worked," it just didn't consult the
+context on every render. Fixed by making the 4 mandatory-selector pages always prefer a *valid*
+shared context value over their own remembered one — correct because every write path already keeps
+the two in agreement in the same tick, so a mismatch on render can only mean the context changed
+elsewhere since this page last rendered, which is exactly the behavior this gate exists to provide.
+
+**Verified**: `node --check` on every touched file; full 73-file suite, 2092 checks (2 new — the
+v53→v54 `active_project_id` migration backfill, mirroring the existing `sidebar_collapsed`/
+`density` migration tests), 0 failures. Real-Chromium end-to-end pass: picking a project in
+Schedule's own selector updates the shell header and Executive Center's default; navigating to Risk
+Register opens pre-filtered to it; clearing that filter to "All projects" leaves the shared context
+untouched; switching projects via the shell header itself then propagates back into Schedule. Zero
+console errors throughout.
+
+**Not done**: no change to any page's own business logic, filtering rules, or record shape — this
+gate is entirely about which project a page *defaults* to, never about restricting what a page can
+show. The GLOBAL vs PROJECT navigation distinction the brief also describes (visually marking which
+pages are portfolio-wide vs single-project) is a separate, later concern, not bundled into this gate.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →

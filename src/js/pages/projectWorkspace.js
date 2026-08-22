@@ -547,7 +547,13 @@
       return;
     }
 
-    if (!uiState.projectId || !activeProjects.some(function (p) { return p.id === uiState.projectId; })) {
+    // Redesign Gate 6 (Global Project Context): follow the shared active project
+    // whenever it's valid — see schedule.js's own comment on why this can't be
+    // conditioned on "only when uiState.projectId is unset/invalid".
+    var ctxProjectId = window.PCC.projectContext.get();
+    if (ctxProjectId && activeProjects.some(function (p) { return p.id === ctxProjectId; })) {
+      uiState.projectId = ctxProjectId;
+    } else if (!uiState.projectId || !activeProjects.some(function (p) { return p.id === uiState.projectId; })) {
       uiState.projectId = activeProjects[0].id;
     }
 
@@ -565,6 +571,7 @@
     projSelect.onchange = function () {
       uiState.projectId = projSelect.value;
       uiState.moreOpen = false;
+      window.PCC.projectContext.set(uiState.projectId);
       rerender();
     };
     switcher.appendChild(projSelect);
@@ -584,6 +591,7 @@
     viewProject: function (projectId) {
       uiState.projectId = projectId;
       uiState.moreOpen = false;
+      window.PCC.projectContext.set(projectId);
     },
   };
 })();

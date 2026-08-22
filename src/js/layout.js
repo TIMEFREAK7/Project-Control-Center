@@ -474,6 +474,54 @@
     return div;
   }
 
+  /** Redesign Gate 6 (Global Project Context): the persistent "which project am I in"
+   * indicator + switcher, shown in the shell header on every page so it survives route
+   * changes (built once in buildTitleBlock(), refreshed in place — never torn down).
+   * Picking a project here writes straight to window.PCC.projectContext, then re-renders
+   * the current route so whatever page is showing picks up the new project immediately;
+   * a page's own project selector (Schedule, Risk Register, etc.) writes to the same
+   * shared context, so this select's value here reflects that page's own selection too
+   * (kept in sync via the store.onChange listener registered in mount() below). */
+  function populateProjectContextSelect(select) {
+    var data = window.PCC.store.get();
+    var activeProjects = data.projects.filter(function (p) {
+      return !p.archived;
+    });
+    select.innerHTML = "";
+    var allOpt = document.createElement("option");
+    allOpt.value = "";
+    allOpt.textContent = "All Projects";
+    select.appendChild(allOpt);
+    activeProjects.forEach(function (p) {
+      var opt = document.createElement("option");
+      opt.value = p.id;
+      opt.textContent = p.name || "(unnamed project)";
+      select.appendChild(opt);
+    });
+    select.value = window.PCC.projectContext.get();
+  }
+
+  function buildProjectContextCell() {
+    var div = document.createElement("div");
+    div.className = "title-block__cell";
+    var lab = document.createElement("span");
+    lab.className = "title-block__label";
+    lab.textContent = "PROJECT";
+    div.appendChild(lab);
+
+    var select = document.createElement("select");
+    select.className = "title-block__project-select";
+    select.id = "title-block-project-select";
+    select.title = "Current project context — carries across every project-scoped page";
+    populateProjectContextSelect(select);
+    select.onchange = function () {
+      window.PCC.projectContext.set(select.value);
+      window.PCC.router.render();
+    };
+    div.appendChild(select);
+    return div;
+  }
+
   function buildTitleBlock() {
     var header = document.createElement("header");
     header.className = "title-block";
@@ -489,6 +537,7 @@
     header.appendChild(menuBtn);
 
     header.appendChild(cell("SHEET", "Dashboard", { grow: true, id: "title-block-sheet" }));
+    header.appendChild(buildProjectContextCell());
 
     var data = window.PCC.store.get();
     header.appendChild(cell("COMPANY", data.settings.company_name || "\u2014", { id: "title-block-company" }));
@@ -833,12 +882,16 @@
       if (status) status.textContent = "SAVED \u00b7 " + new Date().toLocaleTimeString();
       var companyEl = document.getElementById("title-block-company");
       if (companyEl) companyEl.textContent = window.PCC.store.get().settings.company_name || "\u2014";
+      var projectSelect = document.getElementById("title-block-project-select");
+      if (projectSelect) populateProjectContextSelect(projectSelect);
     });
   }
 
   function refreshTitleBlock() {
     var companyEl = document.getElementById("title-block-company");
     if (companyEl) companyEl.textContent = window.PCC.store.get().settings.company_name || "\u2014";
+    var projectSelect = document.getElementById("title-block-project-select");
+    if (projectSelect) populateProjectContextSelect(projectSelect);
     applyTheme(window.PCC.store.get().settings.theme || "dark");
     applyDensity(window.PCC.store.get().settings.density || "comfortable");
   }

@@ -26,6 +26,7 @@ const JS_ORDER = [
   "js/resourceLevelingEngine.js",
   "js/documentNomenclatureEngine.js",
   "js/store.js",
+  "js/projectContext.js",
   "js/notifications.js",
   "js/router.js",
   "js/layout.js",

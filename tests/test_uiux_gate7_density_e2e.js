@@ -137,7 +137,7 @@ async function check(label, fn) {
   await check("this gate writes nothing to the data model beyond the one settings.density field", () => {
     var data = win.PCC.store.get();
     assert.strictEqual(data.projects.length, 0);
-    assert.strictEqual(data.schema_version, 53);
+    assert.ok(data.schema_version >= 53, "schema_version must be at least 53 (this gate's own bump) — not pinned exactly, so later gates' own bumps don't break this assertion");
   });
 
   // ---- Route smoke test across every page ----

@@ -1349,7 +1349,20 @@
         opt.textContent = p.name || "(unnamed project)";
         projSelect.appendChild(opt);
       });
-      if (!uiState.projectId || !activeProjects.some(function (p) { return p.id === uiState.projectId; })) {
+      // Redesign Gate 6 (Global Project Context): follow the shared active project
+      // whenever it's valid here — not just when this page's own uiState.projectId is
+      // unset/invalid. uiState.projectId is only ever a same-tick mirror of the shared
+      // context (every write path below also calls projectContext.set()), so if they
+      // differ on render, the context changed elsewhere (the shell switcher, another
+      // page) since this page last rendered — that's exactly the "carries across
+      // modules" behavior this gate exists to provide, not a case to skip.
+      var ctxProjectId = window.PCC.projectContext.get();
+      if (ctxProjectId && activeProjects.some(function (p) { return p.id === ctxProjectId; })) {
+        if (uiState.projectId !== ctxProjectId) {
+          uiState.projectId = ctxProjectId;
+          uiState.scheduleId = "";
+        }
+      } else if (!uiState.projectId || !activeProjects.some(function (p) { return p.id === uiState.projectId; })) {
         uiState.projectId = activeProjects[0].id;
       }
       projSelect.value = uiState.projectId;
@@ -1357,6 +1370,7 @@
     projSelect.onchange = function () {
       uiState.projectId = projSelect.value;
       uiState.scheduleId = "";
+      window.PCC.projectContext.set(uiState.projectId);
       rerender();
     };
     bar.appendChild(projSelect);
@@ -5590,6 +5604,7 @@
       uiState.scheduleId = scheduleId;
       uiState.tab = "gantt";
       uiState.ganttDetailActivityId = activityId;
+      window.PCC.projectContext.set(projectId);
     },
     // PCC Evolution Roadmap, Tier F (Gate 20, Status-Date Control): Executive Center's
     // new Status Date panel points here for Float Changes/Milestone Variance rather
@@ -5599,6 +5614,7 @@
       uiState.projectId = projectId;
       uiState.scheduleId = scheduleId;
       uiState.tab = "baselines";
+      window.PCC.projectContext.set(projectId);
     },
     /** UI/UX Overhaul Gate 4 (Project Workspace): the one small, additive gap in this
      * page's own hand-off convention — viewActivity/viewBaselines above both require a
@@ -5611,6 +5627,7 @@
     viewProject: function (projectId) {
       uiState.projectId = projectId;
       uiState.tab = "gantt";
+      window.PCC.projectContext.set(projectId);
     },
   };
 })();

@@ -412,6 +412,30 @@ button {
   text-overflow: ellipsis;
 }
 
+/* Redesign Gate 6 (Global Project Context): the shell header's project switcher — a
+   real <select> (not a custom dropdown) so it behaves consistently with every other
+   project picker already in this app, just restyled to sit quietly inside a title-block
+   cell instead of looking like a form control. Blends in until hovered/focused. */
+.title-block__project-select {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 13.5px;
+  color: var(--text-primary);
+  background-color: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 2px 4px;
+  margin: -2px -4px;
+  max-width: 180px;
+  cursor: pointer;
+}
+
+.title-block__project-select:hover,
+.title-block__project-select:focus {
+  border-color: var(--divider);
+  background-color: var(--bg-default);
+}
+
 .title-block__actions {
   display: flex;
   align-items: center;
@@ -5049,7 +5073,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 53;
+  var SCHEMA_VERSION = 54;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -5114,6 +5138,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         // want without a schema change. Warn-only, never enforced — see documents.js.
         document_nomenclature_pattern: "PROJECT-DISCIPLINE-DOCUMENTTYPE-NUMBER-REV",
         document_nomenclature_enabled: true,
+        // Redesign Gate 6 (Global Project Context): the one project every project-scoped
+        // page now shares by default, so picking a project in one module carries to the
+        // next instead of each page defaulting independently (see projectContext.js).
+        // "" means no active project (shows as "All Projects" in the shell header).
+        active_project_id: "",
       },
       projects: [],
       documents: [],
@@ -7630,6 +7659,15 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       loaded.schema_version = 53;
     }
 
+    if (loaded.schema_version < 54) {
+      // Redesign Gate 6 (Global Project Context): new shared "current project" setting,
+      // same "explicit setting instead of the only option" shape as Gates 2/7 above. ""
+      // (no active project / "All Projects") is what every existing install already
+      // behaves as today, so nothing changes on upgrade until the user picks a project.
+      if (loaded.settings.active_project_id == null) loaded.settings.active_project_id = "";
+      loaded.schema_version = 54;
+    }
+
     return loaded;
   }
 
@@ -8001,6 +8039,66 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     newProjectDocumentRequirement: newProjectDocumentRequirement,
     PROJECT_TEMPLATES: PROJECT_TEMPLATES,
   };
+})();
+
+
+/* ---- js/projectContext.js ---- */
+/* Global Project Context — Redesign Gate 6.
+ *
+ * Before this gate, every project-scoped page module kept its own independent, module-
+ * local `uiState.projectId`/`uiState.projectFilter`, with no shared state between them:
+ * picking a project in Schedule had no effect on Executive Center, Risk Register, Cost
+ * Tracking, etc. This module is the single shared source of truth for "which project is
+ * the user currently working in" — backed by `settings.active_project_id` (schema v54)
+ * so it also persists across reloads, same as theme/density/sidebar_collapsed.
+ *
+ * Deliberately just two functions, no pub/sub of its own: `store.update()` already
+ * synchronously notifies every `store.onChange()` listener (see store.js's
+ * scheduleSave()), and layout.js's own onChange listener (registered in mount()) is
+ * where the shell header's project indicator refreshes — so any caller of set() below,
+ * whether the shell switcher or a page's own filter, keeps the header in sync for free.
+ * A caller changing the CURRENT page's own project selection already re-renders itself
+ * via its own local rerender(); only the shell-level switcher needs to explicitly call
+ * router.render() after set() to refresh the page underneath it.
+ */
+(function () {
+  "use strict";
+  window.PCC = window.PCC || {};
+
+  function activeProjects(data) {
+    return data.projects.filter(function (p) {
+      return !p.archived;
+    });
+  }
+
+  /** Returns the current active project id, or "" if none is set or the stored id no
+   * longer points at a live (non-archived) project — e.g. the project was archived or
+   * deleted since it was picked. Never throws, never auto-picks a fallback project;
+   * callers that need "some project, any project" (the existing Pattern-A pages) keep
+   * their own "first active project" fallback for when this returns "". */
+  function get() {
+    var data = window.PCC.store.get();
+    var id = data.settings.active_project_id;
+    if (!id) return "";
+    return activeProjects(data).some(function (p) {
+      return p.id === id;
+    })
+      ? id
+      : "";
+  }
+
+  /** Sets the active project ("" clears it, meaning "All Projects"). Does not validate
+   * the id against the project list — callers already only ever pass a value taken from
+   * a project `<select>` they just built off `data.projects`, so it's always valid at
+   * the moment of the call; get() re-validates on every read regardless (see above), so
+   * a project archived later is handled there, not here. */
+  function set(projectId) {
+    window.PCC.store.update(function (data) {
+      data.settings.active_project_id = projectId || "";
+    });
+  }
+
+  window.PCC.projectContext = { get: get, set: set };
 })();
 
 
@@ -8567,6 +8665,54 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     return div;
   }
 
+  /** Redesign Gate 6 (Global Project Context): the persistent "which project am I in"
+   * indicator + switcher, shown in the shell header on every page so it survives route
+   * changes (built once in buildTitleBlock(), refreshed in place — never torn down).
+   * Picking a project here writes straight to window.PCC.projectContext, then re-renders
+   * the current route so whatever page is showing picks up the new project immediately;
+   * a page's own project selector (Schedule, Risk Register, etc.) writes to the same
+   * shared context, so this select's value here reflects that page's own selection too
+   * (kept in sync via the store.onChange listener registered in mount() below). */
+  function populateProjectContextSelect(select) {
+    var data = window.PCC.store.get();
+    var activeProjects = data.projects.filter(function (p) {
+      return !p.archived;
+    });
+    select.innerHTML = "";
+    var allOpt = document.createElement("option");
+    allOpt.value = "";
+    allOpt.textContent = "All Projects";
+    select.appendChild(allOpt);
+    activeProjects.forEach(function (p) {
+      var opt = document.createElement("option");
+      opt.value = p.id;
+      opt.textContent = p.name || "(unnamed project)";
+      select.appendChild(opt);
+    });
+    select.value = window.PCC.projectContext.get();
+  }
+
+  function buildProjectContextCell() {
+    var div = document.createElement("div");
+    div.className = "title-block__cell";
+    var lab = document.createElement("span");
+    lab.className = "title-block__label";
+    lab.textContent = "PROJECT";
+    div.appendChild(lab);
+
+    var select = document.createElement("select");
+    select.className = "title-block__project-select";
+    select.id = "title-block-project-select";
+    select.title = "Current project context — carries across every project-scoped page";
+    populateProjectContextSelect(select);
+    select.onchange = function () {
+      window.PCC.projectContext.set(select.value);
+      window.PCC.router.render();
+    };
+    div.appendChild(select);
+    return div;
+  }
+
   function buildTitleBlock() {
     var header = document.createElement("header");
     header.className = "title-block";
@@ -8582,6 +8728,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     header.appendChild(menuBtn);
 
     header.appendChild(cell("SHEET", "Dashboard", { grow: true, id: "title-block-sheet" }));
+    header.appendChild(buildProjectContextCell());
 
     var data = window.PCC.store.get();
     header.appendChild(cell("COMPANY", data.settings.company_name || "\u2014", { id: "title-block-company" }));
@@ -8926,12 +9073,16 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       if (status) status.textContent = "SAVED \u00b7 " + new Date().toLocaleTimeString();
       var companyEl = document.getElementById("title-block-company");
       if (companyEl) companyEl.textContent = window.PCC.store.get().settings.company_name || "\u2014";
+      var projectSelect = document.getElementById("title-block-project-select");
+      if (projectSelect) populateProjectContextSelect(projectSelect);
     });
   }
 
   function refreshTitleBlock() {
     var companyEl = document.getElementById("title-block-company");
     if (companyEl) companyEl.textContent = window.PCC.store.get().settings.company_name || "\u2014";
+    var projectSelect = document.getElementById("title-block-project-select");
+    if (projectSelect) populateProjectContextSelect(projectSelect);
     applyTheme(window.PCC.store.get().settings.theme || "dark");
     applyDensity(window.PCC.store.get().settings.density || "comfortable");
   }
@@ -14352,7 +14503,13 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       return;
     }
 
-    if (!uiState.projectId || !activeProjects.some(function (p) { return p.id === uiState.projectId; })) {
+    // Redesign Gate 6 (Global Project Context): follow the shared active project
+    // whenever it's valid — see schedule.js's own comment on why this can't be
+    // conditioned on "only when uiState.projectId is unset/invalid".
+    var ctxProjectId = window.PCC.projectContext.get();
+    if (ctxProjectId && activeProjects.some(function (p) { return p.id === ctxProjectId; })) {
+      uiState.projectId = ctxProjectId;
+    } else if (!uiState.projectId || !activeProjects.some(function (p) { return p.id === uiState.projectId; })) {
       uiState.projectId = activeProjects[0].id;
     }
 
@@ -14370,6 +14527,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     projSelect.onchange = function () {
       uiState.projectId = projSelect.value;
       uiState.moreOpen = false;
+      window.PCC.projectContext.set(uiState.projectId);
       rerender();
     };
     switcher.appendChild(projSelect);
@@ -14389,6 +14547,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     viewProject: function (projectId) {
       uiState.projectId = projectId;
       uiState.moreOpen = false;
+      window.PCC.projectContext.set(projectId);
     },
   };
 })();
@@ -15303,6 +15462,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     viewProject: function (projectId, tab) {
       uiState.projectId = projectId;
       uiState.tab = tab || "overview";
+      window.PCC.projectContext.set(projectId);
     },
     /** Gate 31 (PCC Evolution Roadmap Gate 3: Management Attention) — the Dashboard's
      * portfolio-wide attention panel needs the same rule-based diagnostics this page's own
@@ -15394,13 +15554,22 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         opt.textContent = p.name || "(unnamed project)";
         projSelect.appendChild(opt);
       });
-      if (!uiState.projectId || !activeProjects.some(function (p) { return p.id === uiState.projectId; })) {
+      // Redesign Gate 6 (Global Project Context): follow the shared active project
+      // whenever it's valid — see schedule.js's own comment on why this can't be
+      // conditioned on "only when uiState.projectId is unset/invalid" (the shell
+      // switcher or another page can change the shared context while this page's own
+      // stale-but-still-valid local value would otherwise never notice).
+      var ctxProjectId = window.PCC.projectContext.get();
+      if (ctxProjectId && activeProjects.some(function (p) { return p.id === ctxProjectId; })) {
+        uiState.projectId = ctxProjectId;
+      } else if (!uiState.projectId || !activeProjects.some(function (p) { return p.id === uiState.projectId; })) {
         uiState.projectId = activeProjects[0].id;
       }
       projSelect.value = uiState.projectId;
     }
     projSelect.onchange = function () {
       uiState.projectId = projSelect.value;
+      window.PCC.projectContext.set(uiState.projectId);
       rerender();
     };
     toolbar.appendChild(projSelect);
@@ -17746,6 +17915,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     search: "",
     statusFilter: "",
     projectFilter: "",
+    // Redesign Gate 6 (Global Project Context): see risks.js's own uiState comment.
+    projectFilterInitialized: false,
     tradeFilter: "",
     docTypeFilter: "",
     editingVendorId: null, // vendor id, 'new', or null
@@ -18323,6 +18494,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     projSelect.value = uiState.projectFilter;
     projSelect.onchange = function () {
       uiState.projectFilter = projSelect.value;
+      if (uiState.projectFilter) window.PCC.projectContext.set(uiState.projectFilter);
       renderList();
     };
 
@@ -20321,6 +20493,17 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     var data = window.PCC.store.get();
 
+    // Redesign Gate 6 (Global Project Context): see risks.js's own comment on this
+    // exact pattern. renderVendorList()'s own project filter reads uiState.projectFilter
+    // directly, so seeding it here once covers it regardless of which view is active.
+    if (!uiState.projectFilterInitialized) {
+      uiState.projectFilterInitialized = true;
+      var ctxProjectId = window.PCC.projectContext.get();
+      if (ctxProjectId && data.projects.some(function (p) { return p.id === ctxProjectId; })) {
+        uiState.projectFilter = ctxProjectId;
+      }
+    }
+
     var h1 = document.createElement("h2");
     h1.textContent = "Vendor Management";
     h1.style.marginBottom = "var(--space-2)";
@@ -20377,10 +20560,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     filterByProject: function (projectId) {
       uiState.view = "list";
       uiState.projectFilter = projectId;
+      uiState.projectFilterInitialized = true;
       uiState.search = "";
       uiState.statusFilter = "";
       uiState.tradeFilter = "";
       uiState.docTypeFilter = "";
+      window.PCC.projectContext.set(projectId);
     },
   };
 })();
@@ -20662,6 +20847,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     categoryFilter: "",
     statusFilter: "",
     projectFilter: "",
+    // Redesign Gate 6 (Global Project Context): see risks.js's own uiState comment —
+    // true once this page has ever checked window.PCC.projectContext for an initial
+    // filter value, so seeding only ever happens once per session.
+    projectFilterInitialized: false,
     // Which document is shown in the new two-panel register+preview layout's right-hand
     // pane, or null if none selected yet. Replaces the old per-row inline expand — the
     // preview pane now always shows full detail for whichever document is selected,
@@ -22196,6 +22385,17 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     var data = window.PCC.store.get();
 
+    // Redesign Gate 6 (Global Project Context): pre-fill the project filter from the
+    // shared active project on this page's first render only — see risks.js's own
+    // comment on this exact pattern.
+    if (!uiState.projectFilterInitialized) {
+      uiState.projectFilterInitialized = true;
+      var ctxProjectId = window.PCC.projectContext.get();
+      if (ctxProjectId && data.projects.some(function (p) { return p.id === ctxProjectId; })) {
+        uiState.projectFilter = ctxProjectId;
+      }
+    }
+
     var h1 = document.createElement("h2");
     h1.className = "focus-mode-hide";
     h1.textContent = "Documents";
@@ -22314,6 +22514,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     projectFilterSelect.value = uiState.projectFilter;
     projectFilterSelect.onchange = function () {
       uiState.projectFilter = projectFilterSelect.value;
+      // Redesign Gate 6: see risks.js's own comment on this exact pattern — clearing to
+      // "All projects" stays local to this register, doesn't clear the shared context.
+      if (uiState.projectFilter) window.PCC.projectContext.set(uiState.projectFilter);
       rerender();
     };
     toolbar.appendChild(projectFilterSelect);
@@ -22462,6 +22665,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     // pre-filtered instead of showing every project's documents unfiltered.
     filterByProject: function (projectId) {
       uiState.projectFilter = projectId;
+      uiState.projectFilterInitialized = true;
+      window.PCC.projectContext.set(projectId);
     },
     // Gate 17: latest-revision-per-group only — see latestDocuments()'s own header
     // comment. portfolio.js's ATTACHMENTS section uses this so a document with several
@@ -23162,6 +23367,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   var uiState = {
     search: "",
     projectFilter: "",
+    // Redesign Gate 6 (Global Project Context): see risks.js's own uiState comment.
+    projectFilterInitialized: false,
     editingId: null, // null = closed, "new" = creating, otherwise an existing log id
     expandedId: null,
   };
@@ -23763,6 +23970,16 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var data = window.PCC.store.get();
     var projects = data.projects;
 
+    // Redesign Gate 6 (Global Project Context): see risks.js's own comment on this
+    // exact pattern.
+    if (!uiState.projectFilterInitialized) {
+      uiState.projectFilterInitialized = true;
+      var ctxProjectId = window.PCC.projectContext.get();
+      if (ctxProjectId && projects.some(function (p) { return p.id === ctxProjectId; })) {
+        uiState.projectFilter = ctxProjectId;
+      }
+    }
+
     var h1 = document.createElement("h2");
     h1.textContent = "Daily Log";
     h1.style.marginBottom = "4px";
@@ -23811,6 +24028,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     projSelect.value = uiState.projectFilter;
     projSelect.onchange = function () {
       uiState.projectFilter = projSelect.value;
+      if (uiState.projectFilter) window.PCC.projectContext.set(uiState.projectFilter);
       renderList();
     };
 
@@ -23873,7 +24091,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   window.PCC.dailyLog = {
     filterByProject: function (projectId) {
       uiState.projectFilter = projectId;
+      uiState.projectFilterInitialized = true;
       uiState.search = "";
+      window.PCC.projectContext.set(projectId);
     },
     expandLog: function (logId) {
       uiState.expandedId = logId;
@@ -25234,7 +25454,20 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         opt.textContent = p.name || "(unnamed project)";
         projSelect.appendChild(opt);
       });
-      if (!uiState.projectId || !activeProjects.some(function (p) { return p.id === uiState.projectId; })) {
+      // Redesign Gate 6 (Global Project Context): follow the shared active project
+      // whenever it's valid here — not just when this page's own uiState.projectId is
+      // unset/invalid. uiState.projectId is only ever a same-tick mirror of the shared
+      // context (every write path below also calls projectContext.set()), so if they
+      // differ on render, the context changed elsewhere (the shell switcher, another
+      // page) since this page last rendered — that's exactly the "carries across
+      // modules" behavior this gate exists to provide, not a case to skip.
+      var ctxProjectId = window.PCC.projectContext.get();
+      if (ctxProjectId && activeProjects.some(function (p) { return p.id === ctxProjectId; })) {
+        if (uiState.projectId !== ctxProjectId) {
+          uiState.projectId = ctxProjectId;
+          uiState.scheduleId = "";
+        }
+      } else if (!uiState.projectId || !activeProjects.some(function (p) { return p.id === uiState.projectId; })) {
         uiState.projectId = activeProjects[0].id;
       }
       projSelect.value = uiState.projectId;
@@ -25242,6 +25475,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     projSelect.onchange = function () {
       uiState.projectId = projSelect.value;
       uiState.scheduleId = "";
+      window.PCC.projectContext.set(uiState.projectId);
       rerender();
     };
     bar.appendChild(projSelect);
@@ -29475,6 +29709,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       uiState.scheduleId = scheduleId;
       uiState.tab = "gantt";
       uiState.ganttDetailActivityId = activityId;
+      window.PCC.projectContext.set(projectId);
     },
     // PCC Evolution Roadmap, Tier F (Gate 20, Status-Date Control): Executive Center's
     // new Status Date panel points here for Float Changes/Milestone Variance rather
@@ -29484,6 +29719,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       uiState.projectId = projectId;
       uiState.scheduleId = scheduleId;
       uiState.tab = "baselines";
+      window.PCC.projectContext.set(projectId);
     },
     /** UI/UX Overhaul Gate 4 (Project Workspace): the one small, additive gap in this
      * page's own hand-off convention — viewActivity/viewBaselines above both require a
@@ -29496,6 +29732,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     viewProject: function (projectId) {
       uiState.projectId = projectId;
       uiState.tab = "gantt";
+      window.PCC.projectContext.set(projectId);
     },
   };
 })();
@@ -30000,6 +30237,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     typeFilter: "",
     statusFilter: "open", // default to hiding closed items, matches how registers get used day to day
     projectFilter: "",
+    // Redesign Gate 6 (Global Project Context): true once this page has ever checked
+    // window.PCC.projectContext for an initial filter value, whether or not one applied
+    // — so seeding only ever happens once per session, never overwriting a user's own
+    // later choice (including deliberately clearing back to "All projects").
+    projectFilterInitialized: false,
     heatmapFilter: null, // { probability, impact } or null
     editingId: null,
     expandedId: null,
@@ -30582,6 +30824,17 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var data = window.PCC.store.get();
     var projects = data.projects;
 
+    // Redesign Gate 6 (Global Project Context): pre-fill the project filter from the
+    // shared active project on this page's first render only — still fully overridable
+    // (including clearing back to "All projects"), never re-applied after that.
+    if (!uiState.projectFilterInitialized) {
+      uiState.projectFilterInitialized = true;
+      var ctxProjectId = window.PCC.projectContext.get();
+      if (ctxProjectId && projects.some(function (p) { return p.id === ctxProjectId; })) {
+        uiState.projectFilter = ctxProjectId;
+      }
+    }
+
     var h1 = document.createElement("h2");
     h1.textContent = "Risk Register";
     h1.style.marginBottom = "16px";
@@ -30673,6 +30926,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     projSelectFilter.value = uiState.projectFilter;
     projSelectFilter.onchange = function () {
       uiState.projectFilter = projSelectFilter.value;
+      // Redesign Gate 6: picking a specific project carries it to every other module too
+      // (schedule.js/executiveCenter.js/etc. all read the same shared context); clearing
+      // back to "All projects" is just this register's own view and does NOT clear the
+      // shared context — a Pattern-A page (Schedule etc.) can't have "no project" at all,
+      // so there's nothing sensible for it to fall back to if this cleared it.
+      if (uiState.projectFilter) window.PCC.projectContext.set(uiState.projectFilter);
       refreshFilteredViews();
     };
 
@@ -30767,6 +31026,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   var uiState = {
     search: "",
     projectFilter: "",
+    // Redesign Gate 6 (Global Project Context): see risks.js's own uiState comment.
+    projectFilterInitialized: false,
     editingId: null,
     expandedId: null,
   };
@@ -31812,6 +32073,16 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var data = window.PCC.store.get();
     var projects = data.projects;
 
+    // Redesign Gate 6 (Global Project Context): see risks.js's own comment on this
+    // exact pattern.
+    if (!uiState.projectFilterInitialized) {
+      uiState.projectFilterInitialized = true;
+      var ctxProjectId = window.PCC.projectContext.get();
+      if (ctxProjectId && projects.some(function (p) { return p.id === ctxProjectId; })) {
+        uiState.projectFilter = ctxProjectId;
+      }
+    }
+
     var h1 = document.createElement("h2");
     h1.textContent = "Meetings";
     h1.style.marginBottom = "var(--space-4)";
@@ -31856,6 +32127,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     projSelectFilter.value = uiState.projectFilter;
     projSelectFilter.onchange = function () {
       uiState.projectFilter = projSelectFilter.value;
+      if (uiState.projectFilter) window.PCC.projectContext.set(uiState.projectFilter);
       renderList();
     };
 
@@ -31921,7 +32193,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   window.PCC.meetings = {
     filterByProject: function (projectId) {
       uiState.projectFilter = projectId;
+      uiState.projectFilterInitialized = true;
       uiState.search = "";
+      window.PCC.projectContext.set(projectId);
     },
     expandMeeting: function (meetingId) {
       uiState.projectFilter = "";
@@ -31961,6 +32235,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     typeFilter: "",
     statusFilter: "", // unlike Risk Register, closed RFIs stay useful reference (what was asked/answered), so default shows all
     projectFilter: "",
+    // Redesign Gate 6 (Global Project Context): see risks.js's own uiState comment.
+    projectFilterInitialized: false,
     editingId: null,
     expandedId: null,
     revisionDrafts: {}, // { [rfiId]: { author, note } } — in-progress "add revision" inputs, kept across rerenders
@@ -32640,6 +32916,16 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var data = window.PCC.store.get();
     var projects = data.projects;
 
+    // Redesign Gate 6 (Global Project Context): see risks.js's own comment on this
+    // exact pattern.
+    if (!uiState.projectFilterInitialized) {
+      uiState.projectFilterInitialized = true;
+      var ctxProjectId = window.PCC.projectContext.get();
+      if (ctxProjectId && projects.some(function (p) { return p.id === ctxProjectId; })) {
+        uiState.projectFilter = ctxProjectId;
+      }
+    }
+
     var h1 = document.createElement("h2");
     h1.textContent = "RFI / Technical Query Management";
     h1.style.marginBottom = "var(--space-4)";
@@ -32719,6 +33005,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     projSelectFilter.value = uiState.projectFilter;
     projSelectFilter.onchange = function () {
       uiState.projectFilter = projSelectFilter.value;
+      if (uiState.projectFilter) window.PCC.projectContext.set(uiState.projectFilter);
       renderList();
     };
 
@@ -32781,8 +33068,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   window.PCC.rfis = {
     filterByProject: function (projectId) {
       uiState.projectFilter = projectId;
+      uiState.projectFilterInitialized = true;
       uiState.statusFilter = "";
       uiState.search = "";
+      window.PCC.projectContext.set(projectId);
     },
     createFromMeeting: function (projectId, meetingId) {
       uiState.pendingPrefill = { project_id: projectId, source_meeting_id: meetingId };
@@ -32809,6 +33098,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     search: "",
     statusFilter: "",
     projectFilter: "",
+    // Redesign Gate 6 (Global Project Context): see risks.js's own uiState comment.
+    projectFilterInitialized: false,
     editingId: null,
     expandedId: null,
     revisionDrafts: {},
@@ -33503,6 +33794,16 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var data = window.PCC.store.get();
     var projects = data.projects;
 
+    // Redesign Gate 6 (Global Project Context): see risks.js's own comment on this
+    // exact pattern.
+    if (!uiState.projectFilterInitialized) {
+      uiState.projectFilterInitialized = true;
+      var ctxProjectId = window.PCC.projectContext.get();
+      if (ctxProjectId && projects.some(function (p) { return p.id === ctxProjectId; })) {
+        uiState.projectFilter = ctxProjectId;
+      }
+    }
+
     var h1 = document.createElement("h2");
     h1.textContent = "Change Management";
     h1.style.marginBottom = "16px";
@@ -33570,6 +33871,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     projSelectFilter.value = uiState.projectFilter;
     projSelectFilter.onchange = function () {
       uiState.projectFilter = projSelectFilter.value;
+      if (uiState.projectFilter) window.PCC.projectContext.set(uiState.projectFilter);
       renderList();
     };
 
@@ -33631,8 +33933,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   window.PCC.changeOrders = {
     filterByProject: function (projectId) {
       uiState.projectFilter = projectId;
+      uiState.projectFilterInitialized = true;
       uiState.statusFilter = "";
       uiState.search = "";
+      window.PCC.projectContext.set(projectId);
     },
     createFromMeeting: function (projectId, meetingId) {
       uiState.pendingPrefill = { project_id: projectId, source_meeting_id: meetingId };
@@ -33688,6 +33992,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     search: "",
     statusFilter: "",
     projectFilter: "",
+    // Redesign Gate 6 (Global Project Context): see risks.js's own uiState comment.
+    projectFilterInitialized: false,
     editingId: null,
     expandedId: null,
     pendingPrefill: null, // { project_id, source_meeting_id } set by createFromMeeting()
@@ -34099,6 +34405,16 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var data = window.PCC.store.get();
     var projects = data.projects;
 
+    // Redesign Gate 6 (Global Project Context): see risks.js's own comment on this
+    // exact pattern.
+    if (!uiState.projectFilterInitialized) {
+      uiState.projectFilterInitialized = true;
+      var ctxProjectId = window.PCC.projectContext.get();
+      if (ctxProjectId && projects.some(function (p) { return p.id === ctxProjectId; })) {
+        uiState.projectFilter = ctxProjectId;
+      }
+    }
+
     var h1 = document.createElement("h2");
     h1.textContent = "Decision Register";
     h1.style.marginBottom = "16px";
@@ -34158,6 +34474,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     projSelectFilter.value = uiState.projectFilter;
     projSelectFilter.onchange = function () {
       uiState.projectFilter = projSelectFilter.value;
+      if (uiState.projectFilter) window.PCC.projectContext.set(uiState.projectFilter);
       renderList();
     };
 
@@ -34219,8 +34536,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   window.PCC.decisionRegister = {
     filterByProject: function (projectId) {
       uiState.projectFilter = projectId;
+      uiState.projectFilterInitialized = true;
       uiState.statusFilter = "";
       uiState.search = "";
+      window.PCC.projectContext.set(projectId);
     },
     createFromMeeting: function (projectId, meetingId) {
       uiState.pendingPrefill = { project_id: projectId, source_meeting_id: meetingId };
@@ -34287,6 +34606,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     categoryFilter: "",
     impactFilter: "",
     projectFilter: "",
+    // Redesign Gate 6 (Global Project Context): see risks.js's own uiState comment.
+    projectFilterInitialized: false,
     editingId: null,
     expandedId: null,
     pendingPrefill: null, // { project_id, source_meeting_id } set by createFromMeeting()
@@ -34693,6 +35014,16 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var data = window.PCC.store.get();
     var projects = data.projects;
 
+    // Redesign Gate 6 (Global Project Context): see risks.js's own comment on this
+    // exact pattern.
+    if (!uiState.projectFilterInitialized) {
+      uiState.projectFilterInitialized = true;
+      var ctxProjectId = window.PCC.projectContext.get();
+      if (ctxProjectId && projects.some(function (p) { return p.id === ctxProjectId; })) {
+        uiState.projectFilter = ctxProjectId;
+      }
+    }
+
     var h1 = document.createElement("h2");
     h1.textContent = "Lessons Learned";
     h1.style.marginBottom = "16px";
@@ -34769,6 +35100,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     projSelectFilter.value = uiState.projectFilter;
     projSelectFilter.onchange = function () {
       uiState.projectFilter = projSelectFilter.value;
+      if (uiState.projectFilter) window.PCC.projectContext.set(uiState.projectFilter);
       renderList();
     };
 
@@ -34831,9 +35163,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   window.PCC.lessonsLearned = {
     filterByProject: function (projectId) {
       uiState.projectFilter = projectId;
+      uiState.projectFilterInitialized = true;
       uiState.categoryFilter = "";
       uiState.impactFilter = "";
       uiState.search = "";
+      window.PCC.projectContext.set(projectId);
     },
     createFromMeeting: function (projectId, meetingId) {
       uiState.pendingPrefill = { project_id: projectId, source_meeting_id: meetingId };
@@ -34877,6 +35211,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     search: "",
     categoryFilter: "",
     projectFilter: "",
+    // Redesign Gate 6 (Global Project Context): see risks.js's own uiState comment.
+    projectFilterInitialized: false,
     editingId: null,
     expandedId: null,
     pendingFile: null, // { name, size, type, dataUri } set by handleFileSelected()
@@ -35362,6 +35698,17 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var data = window.PCC.store.get();
     var projects = data.projects;
 
+    // Redesign Gate 6 (Global Project Context): see risks.js's own comment on this
+    // exact pattern. "__general__" (see articleMatchesFilters()'s own comment above) is
+    // a synthetic filter value, not a real project id, so it's never a valid seed here.
+    if (!uiState.projectFilterInitialized) {
+      uiState.projectFilterInitialized = true;
+      var ctxProjectId = window.PCC.projectContext.get();
+      if (ctxProjectId && projects.some(function (p) { return p.id === ctxProjectId; })) {
+        uiState.projectFilter = ctxProjectId;
+      }
+    }
+
     var h1 = document.createElement("h2");
     h1.textContent = "Knowledge Base";
     h1.style.marginBottom = "4px";
@@ -35431,6 +35778,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     projSelectFilter.value = uiState.projectFilter;
     projSelectFilter.onchange = function () {
       uiState.projectFilter = projSelectFilter.value;
+      // Redesign Gate 6: see risks.js's own comment on this pattern — "__general__" is a
+      // synthetic value (articles with no project tag), never a real project to share.
+      if (uiState.projectFilter && uiState.projectFilter !== "__general__") {
+        window.PCC.projectContext.set(uiState.projectFilter);
+      }
       renderList();
     };
 
@@ -35488,8 +35840,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   window.PCC.knowledgeBase = {
     filterByProject: function (projectId) {
       uiState.projectFilter = projectId;
+      uiState.projectFilterInitialized = true;
       uiState.categoryFilter = "";
       uiState.search = "";
+      window.PCC.projectContext.set(projectId);
     },
   };
 })();
@@ -35526,6 +35880,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     search: "",
     categoryFilter: "",
     projectFilter: "",
+    // Redesign Gate 6 (Global Project Context): see risks.js's own uiState comment.
+    projectFilterInitialized: false,
     editingBudgetId: null,
     editingActualId: null,
   };
@@ -36319,6 +36675,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     projSelect.value = uiState.projectFilter;
     projSelect.onchange = function () {
       uiState.projectFilter = projSelect.value;
+      if (uiState.projectFilter) window.PCC.projectContext.set(uiState.projectFilter);
       rerender();
     };
     toolbar.appendChild(projSelect);
@@ -36639,6 +36996,17 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     var data = window.PCC.store.get();
 
+    // Redesign Gate 6 (Global Project Context): see risks.js's own comment on this
+    // exact pattern. buildToolbar() (shared by the Budget and Actuals tabs) reads
+    // uiState.projectFilter directly, so seeding it here once covers both.
+    if (!uiState.projectFilterInitialized) {
+      uiState.projectFilterInitialized = true;
+      var ctxProjectId = window.PCC.projectContext.get();
+      if (ctxProjectId && data.projects.some(function (p) { return p.id === ctxProjectId; })) {
+        uiState.projectFilter = ctxProjectId;
+      }
+    }
+
     var h1 = document.createElement("h2");
     h1.textContent = "Cost Tracking";
     h1.style.marginBottom = "6px";
@@ -36689,8 +37057,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     filterByProject: function (projectId) {
       uiState.tab = "budget";
       uiState.projectFilter = projectId;
+      uiState.projectFilterInitialized = true;
       uiState.categoryFilter = "";
       uiState.search = "";
+      window.PCC.projectContext.set(projectId);
     },
     projectCostSummary: projectCostSummary,
   };
@@ -36746,6 +37116,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     editingPackageId: null,
     search: "",
     projectFilter: "",
+    // Redesign Gate 6 (Global Project Context): see risks.js's own uiState comment.
+    projectFilterInitialized: false,
     vendorFilter: "",
     packageFilter: "",
     typeFilter: "",
@@ -37220,7 +37592,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         "All Projects",
         data.projects.map(function (p) { return { value: p.id, label: p.name || "(unnamed project)" }; }),
         uiState.projectFilter,
-        function (v) { uiState.projectFilter = v; }
+        function (v) {
+          uiState.projectFilter = v;
+          // Redesign Gate 6: see risks.js's own comment on this exact pattern.
+          if (v) window.PCC.projectContext.set(v);
+        }
       )
     );
     toolbar.appendChild(
@@ -37616,6 +37992,16 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     var data = window.PCC.store.get();
 
+    // Redesign Gate 6 (Global Project Context): see risks.js's own comment on this
+    // exact pattern.
+    if (!uiState.projectFilterInitialized) {
+      uiState.projectFilterInitialized = true;
+      var ctxProjectId = window.PCC.projectContext.get();
+      if (ctxProjectId && data.projects.some(function (p) { return p.id === ctxProjectId; })) {
+        uiState.projectFilter = ctxProjectId;
+      }
+    }
+
     var h1 = document.createElement("h2");
     h1.textContent = "Commitment Management";
     h1.style.marginBottom = "6px";
@@ -37661,7 +38047,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     filterByProject: function (projectId) {
       uiState.tab = "commitments";
       uiState.projectFilter = projectId;
+      uiState.projectFilterInitialized = true;
       uiState.search = "";
+      window.PCC.projectContext.set(projectId);
     },
     expandCommitment: function (commitmentId) {
       uiState.tab = "commitments";
@@ -39777,11 +40165,20 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       opt.textContent = p.name || "(unnamed project)";
       projSelect.appendChild(opt);
     });
-    if (!uiState.projectId && projects.length > 0) uiState.projectId = projects[0].id;
+    // Redesign Gate 6 (Global Project Context): follow the shared active project
+    // whenever it's valid — see schedule.js's own comment on why this can't be
+    // conditioned on "only when uiState.projectId is unset".
+    var ctxProjectId = window.PCC.projectContext.get();
+    if (ctxProjectId && projects.some(function (p) { return p.id === ctxProjectId; })) {
+      uiState.projectId = ctxProjectId;
+    } else if (!uiState.projectId && projects.length > 0) {
+      uiState.projectId = projects[0].id;
+    }
     projSelect.value = uiState.projectId;
     projSelect.style.display = uiState.reportType === "project" ? "" : "none";
     projSelect.onchange = function () {
       uiState.projectId = projSelect.value;
+      window.PCC.projectContext.set(uiState.projectId);
       rerender();
     };
     toolbar.appendChild(projSelect);

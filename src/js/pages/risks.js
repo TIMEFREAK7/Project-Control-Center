@@ -30,6 +30,11 @@
     typeFilter: "",
     statusFilter: "open", // default to hiding closed items, matches how registers get used day to day
     projectFilter: "",
+    // Redesign Gate 6 (Global Project Context): true once this page has ever checked
+    // window.PCC.projectContext for an initial filter value, whether or not one applied
+    // — so seeding only ever happens once per session, never overwriting a user's own
+    // later choice (including deliberately clearing back to "All projects").
+    projectFilterInitialized: false,
     heatmapFilter: null, // { probability, impact } or null
     editingId: null,
     expandedId: null,
@@ -612,6 +617,17 @@
     var data = window.PCC.store.get();
     var projects = data.projects;
 
+    // Redesign Gate 6 (Global Project Context): pre-fill the project filter from the
+    // shared active project on this page's first render only — still fully overridable
+    // (including clearing back to "All projects"), never re-applied after that.
+    if (!uiState.projectFilterInitialized) {
+      uiState.projectFilterInitialized = true;
+      var ctxProjectId = window.PCC.projectContext.get();
+      if (ctxProjectId && projects.some(function (p) { return p.id === ctxProjectId; })) {
+        uiState.projectFilter = ctxProjectId;
+      }
+    }
+
     var h1 = document.createElement("h2");
     h1.textContent = "Risk Register";
     h1.style.marginBottom = "16px";
@@ -703,6 +719,12 @@
     projSelectFilter.value = uiState.projectFilter;
     projSelectFilter.onchange = function () {
       uiState.projectFilter = projSelectFilter.value;
+      // Redesign Gate 6: picking a specific project carries it to every other module too
+      // (schedule.js/executiveCenter.js/etc. all read the same shared context); clearing
+      // back to "All projects" is just this register's own view and does NOT clear the
+      // shared context — a Pattern-A page (Schedule etc.) can't have "no project" at all,
+      // so there's nothing sensible for it to fall back to if this cleared it.
+      if (uiState.projectFilter) window.PCC.projectContext.set(uiState.projectFilter);
       refreshFilteredViews();
     };
 
