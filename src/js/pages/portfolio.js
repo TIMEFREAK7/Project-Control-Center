@@ -274,7 +274,7 @@
     panel.style.marginBottom = "var(--space-4)";
 
     var heading = document.createElement("h3");
-    heading.style.marginBottom = "14px";
+    heading.style.marginBottom = "var(--space-4)";
     heading.textContent = isNew ? "Add Project" : "Edit Project";
     panel.appendChild(heading);
 
@@ -291,14 +291,14 @@
 
     var errorMsg = document.createElement("p");
     errorMsg.style.color = "var(--status-critical)";
-    errorMsg.style.fontSize = "13px";
+    errorMsg.style.fontSize = "var(--text-sm)";
     errorMsg.style.display = "none";
     errorMsg.textContent = "Project Name is required.";
     form.appendChild(errorMsg);
 
     var actions = document.createElement("div");
     actions.style.display = "flex";
-    actions.style.gap = "10px";
+    actions.style.gap = "var(--space-3)";
     actions.style.marginTop = "var(--space-3)";
 
     var saveBtn = document.createElement("button");
@@ -573,7 +573,7 @@
         var scoreSpan = document.createElement("span");
         scoreSpan.className = "text-secondary";
         scoreSpan.style.fontSize = "var(--text-xs)";
-        scoreSpan.style.marginLeft = "6px";
+        scoreSpan.style.marginLeft = "var(--space-2)";
         scoreSpan.textContent = summary.score;
         healthCell.appendChild(scoreSpan);
       }
@@ -585,7 +585,7 @@
         var schedPerfScoreSpan = document.createElement("span");
         schedPerfScoreSpan.className = "text-secondary";
         schedPerfScoreSpan.style.fontSize = "var(--text-xs)";
-        schedPerfScoreSpan.style.marginLeft = "6px";
+        schedPerfScoreSpan.style.marginLeft = "var(--space-2)";
         schedPerfScoreSpan.textContent = schedPerf.score;
         schedPerfCell.appendChild(schedPerfScoreSpan);
       }
@@ -835,8 +835,8 @@
    * explicit "Use" click, never automatically. All five are uncommitted until Save. */
   function renderDocumentRequirementsField(project) {
     var fieldWrap = document.createElement("div");
-    fieldWrap.style.marginTop = "18px";
-    fieldWrap.style.paddingTop = "14px";
+    fieldWrap.style.marginTop = "var(--space-4)";
+    fieldWrap.style.paddingTop = "var(--space-4)";
     fieldWrap.style.borderTop = "1px solid var(--divider)";
 
     function refresh() {
@@ -852,7 +852,7 @@
 
       var hint = document.createElement("p");
       hint.className = "text-secondary";
-      hint.style.fontSize = "12px";
+      hint.style.fontSize = "var(--text-sm)";
       hint.style.margin = "var(--space-1) 0 0";
       hint.textContent =
         "Select which document types this project needs. Status updates automatically once a matching document is attached.";
@@ -861,7 +861,7 @@
       if (activeTypes.length === 0) {
         var noneNote = document.createElement("p");
         noneNote.className = "text-secondary";
-        noneNote.style.fontSize = "13px";
+        noneNote.style.fontSize = "var(--text-sm)";
         noneNote.style.margin = "var(--space-2) 0 0";
         noneNote.textContent = "No active document types in the master repository yet — add some in Document Types first.";
         fieldWrap.appendChild(noneNote);
@@ -944,10 +944,10 @@
       categoryOrder.sort();
 
       var checklist = document.createElement("div");
-      checklist.style.marginTop = "10px";
+      checklist.style.marginTop = "var(--space-3)";
       checklist.style.display = "flex";
       checklist.style.flexDirection = "column";
-      checklist.style.gap = "10px";
+      checklist.style.gap = "var(--space-3)";
 
       categoryOrder.forEach(function (cat) {
         var group = document.createElement("div");
@@ -965,7 +965,7 @@
           row.style.display = "flex";
           row.style.alignItems = "center";
           row.style.gap = "var(--space-2)";
-          row.style.fontSize = "13px";
+          row.style.fontSize = "var(--text-sm)";
           row.style.padding = "2px 0";
 
           var checked = uiState.formSelectedDocTypeIds.indexOf(t.id) !== -1;
@@ -997,7 +997,7 @@
             var dueInput = document.createElement("input");
             dueInput.type = "date";
             dueInput.value = uiState.formDueDates[t.id] || "";
-            dueInput.style.fontSize = "12px";
+            dueInput.style.fontSize = "var(--text-sm)";
             dueInput.style.padding = "2px var(--space-1)";
             dueInput.title = "Planned submission date (optional)";
             dueInput.onchange = function () {
@@ -1014,7 +1014,7 @@
             // uncommitted until Save, reusing the existing Vendor Management vendor
             // list — no new register of its own.
             var vendorSelect = document.createElement("select");
-            vendorSelect.style.fontSize = "12px";
+            vendorSelect.style.fontSize = "var(--text-sm)";
             vendorSelect.style.padding = "2px var(--space-1)";
             vendorSelect.title = "Vendor expected to submit this document (optional)";
             var noVendorOpt = document.createElement("option");
@@ -1041,7 +1041,7 @@
             // one of this project's own Schedule activities, uncommitted until Save.
             // Purely a link — doesn't read or write formDueDates in either direction.
             var activitySelect = document.createElement("select");
-            activitySelect.style.fontSize = "12px";
+            activitySelect.style.fontSize = "var(--text-sm)";
             activitySelect.style.padding = "2px var(--space-1)";
             activitySelect.title = "Linked Schedule activity (optional)";
             activityOptionsFor(activitySelect, data, project.id, uiState.formActivityIds[t.id] || "");
@@ -1062,7 +1062,7 @@
             var leadTimeInput = document.createElement("input");
             leadTimeInput.type = "number";
             leadTimeInput.min = "0";
-            leadTimeInput.style.fontSize = "12px";
+            leadTimeInput.style.fontSize = "var(--text-sm)";
             leadTimeInput.style.padding = "2px var(--space-1)";
             leadTimeInput.style.width = "60px";
             leadTimeInput.title = "Lead time in days before the linked activity starts (optional)";
@@ -1172,7 +1172,7 @@
 
     var section = document.createElement("div");
     section.style.marginTop = "var(--space-4)";
-    section.style.paddingTop = "14px";
+    section.style.paddingTop = "var(--space-4)";
     section.style.borderTop = "1px solid var(--divider)";
 
     var header = document.createElement("div");
@@ -1222,7 +1222,7 @@
     if (projectRequirements.length === 0) {
       var noneNote = document.createElement("p");
       noneNote.className = "text-secondary";
-      noneNote.style.fontSize = "13px";
+      noneNote.style.fontSize = "var(--text-sm)";
       noneNote.style.margin = "var(--space-2) 0 0";
       noneNote.textContent = "No document requirements selected yet. Click “Edit Requirements” to choose which document types this project needs.";
       section.appendChild(noneNote);
@@ -1232,7 +1232,7 @@
     var list = document.createElement("div");
     list.style.display = "flex";
     list.style.flexDirection = "column";
-    list.style.gap = "6px";
+    list.style.gap = "var(--space-2)";
     list.style.marginTop = "var(--space-2)";
 
     projectRequirements
@@ -1248,7 +1248,7 @@
         row.style.display = "flex";
         row.style.justifyContent = "space-between";
         row.style.alignItems = "center";
-        row.style.fontSize = "13px";
+        row.style.fontSize = "var(--text-sm)";
 
         var vendor = r.vendor_id ? vendorsById[r.vendor_id] : null;
         var linkedActivity = r.activity_id ? activitiesById[r.activity_id] : null;
@@ -1317,7 +1317,7 @@
 
     var attachmentsSection = document.createElement("div");
     attachmentsSection.style.marginTop = "var(--space-4)";
-    attachmentsSection.style.paddingTop = "14px";
+    attachmentsSection.style.paddingTop = "var(--space-4)";
     attachmentsSection.style.borderTop = "1px solid var(--divider)";
 
     var attachmentsHeader = document.createElement("div");
@@ -1345,15 +1345,15 @@
     if (attachedDocs.length === 0) {
       var noneNote = document.createElement("p");
       noneNote.className = "text-secondary";
-      noneNote.style.fontSize = "13px";
-      noneNote.style.margin = "6px 0 0";
+      noneNote.style.fontSize = "var(--text-sm)";
+      noneNote.style.margin = "var(--space-2) 0 0";
       noneNote.textContent = "No documents attached to this project yet.";
       attachmentsSection.appendChild(noneNote);
     } else {
       var docList = document.createElement("div");
       docList.style.display = "flex";
       docList.style.flexDirection = "column";
-      docList.style.gap = "6px";
+      docList.style.gap = "var(--space-2)";
       docList.style.marginTop = "var(--space-2)";
 
       attachedDocs.forEach(function (doc) {
@@ -1361,7 +1361,7 @@
         row.style.display = "flex";
         row.style.justifyContent = "space-between";
         row.style.alignItems = "center";
-        row.style.fontSize = "13px";
+        row.style.fontSize = "var(--text-sm)";
 
         var label = document.createElement("span");
         label.textContent =
@@ -1398,7 +1398,7 @@
 
     var logsSection = document.createElement("div");
     logsSection.style.marginTop = "var(--space-4)";
-    logsSection.style.paddingTop = "14px";
+    logsSection.style.paddingTop = "var(--space-4)";
     logsSection.style.borderTop = "1px solid var(--divider)";
 
     var logsHeader = document.createElement("div");
@@ -1427,15 +1427,15 @@
     if (projectLogs.length === 0) {
       var noLogsNote = document.createElement("p");
       noLogsNote.className = "text-secondary";
-      noLogsNote.style.fontSize = "13px";
-      noLogsNote.style.margin = "6px 0 0";
+      noLogsNote.style.fontSize = "var(--text-sm)";
+      noLogsNote.style.margin = "var(--space-2) 0 0";
       noLogsNote.textContent = "No daily log entries yet for this project.";
       logsSection.appendChild(noLogsNote);
     } else {
       var logsList = document.createElement("div");
       logsList.style.display = "flex";
       logsList.style.flexDirection = "column";
-      logsList.style.gap = "6px";
+      logsList.style.gap = "var(--space-2)";
       logsList.style.marginTop = "var(--space-2)";
 
       projectLogs.slice(0, 5).forEach(function (log) {
@@ -1443,7 +1443,7 @@
         row.style.display = "flex";
         row.style.justifyContent = "space-between";
         row.style.alignItems = "center";
-        row.style.fontSize = "13px";
+        row.style.fontSize = "var(--text-sm)";
 
         var label = document.createElement("span");
         label.className = "mono";
@@ -1485,7 +1485,7 @@
 
     var risksSection = document.createElement("div");
     risksSection.style.marginTop = "var(--space-4)";
-    risksSection.style.paddingTop = "14px";
+    risksSection.style.paddingTop = "var(--space-4)";
     risksSection.style.borderTop = "1px solid var(--divider)";
 
     var risksHeader = document.createElement("div");
@@ -1514,15 +1514,15 @@
     if (projectRisks.length === 0) {
       var noRisksNote = document.createElement("p");
       noRisksNote.className = "text-secondary";
-      noRisksNote.style.fontSize = "13px";
-      noRisksNote.style.margin = "6px 0 0";
+      noRisksNote.style.fontSize = "var(--text-sm)";
+      noRisksNote.style.margin = "var(--space-2) 0 0";
       noRisksNote.textContent = "No open risks or issues for this project.";
       risksSection.appendChild(noRisksNote);
     } else {
       var risksList = document.createElement("div");
       risksList.style.display = "flex";
       risksList.style.flexDirection = "column";
-      risksList.style.gap = "6px";
+      risksList.style.gap = "var(--space-2)";
       risksList.style.marginTop = "var(--space-2)";
 
       projectRisks.slice(0, 5).forEach(function (r) {
@@ -1530,7 +1530,7 @@
         row.style.display = "flex";
         row.style.justifyContent = "space-between";
         row.style.alignItems = "center";
-        row.style.fontSize = "13px";
+        row.style.fontSize = "var(--text-sm)";
         row.style.gap = "var(--space-2)";
 
         var label = document.createElement("span");
@@ -1568,7 +1568,7 @@
 
     var meetingsSection = document.createElement("div");
     meetingsSection.style.marginTop = "var(--space-4)";
-    meetingsSection.style.paddingTop = "14px";
+    meetingsSection.style.paddingTop = "var(--space-4)";
     meetingsSection.style.borderTop = "1px solid var(--divider)";
 
     var meetingsHeader = document.createElement("div");
@@ -1597,15 +1597,15 @@
     if (projectMeetings.length === 0) {
       var noMeetingsNote = document.createElement("p");
       noMeetingsNote.className = "text-secondary";
-      noMeetingsNote.style.fontSize = "13px";
-      noMeetingsNote.style.margin = "6px 0 0";
+      noMeetingsNote.style.fontSize = "var(--text-sm)";
+      noMeetingsNote.style.margin = "var(--space-2) 0 0";
       noMeetingsNote.textContent = "No meetings logged yet for this project.";
       meetingsSection.appendChild(noMeetingsNote);
     } else {
       var meetingsList = document.createElement("div");
       meetingsList.style.display = "flex";
       meetingsList.style.flexDirection = "column";
-      meetingsList.style.gap = "6px";
+      meetingsList.style.gap = "var(--space-2)";
       meetingsList.style.marginTop = "var(--space-2)";
 
       projectMeetings.slice(0, 5).forEach(function (m) {
@@ -1618,7 +1618,7 @@
         row.style.display = "flex";
         row.style.justifyContent = "space-between";
         row.style.alignItems = "center";
-        row.style.fontSize = "13px";
+        row.style.fontSize = "var(--text-sm)";
         row.style.gap = "var(--space-2)";
 
         var label = document.createElement("span");
@@ -1661,7 +1661,7 @@
 
     var rfisSection = document.createElement("div");
     rfisSection.style.marginTop = "var(--space-4)";
-    rfisSection.style.paddingTop = "14px";
+    rfisSection.style.paddingTop = "var(--space-4)";
     rfisSection.style.borderTop = "1px solid var(--divider)";
 
     var rfisHeader = document.createElement("div");
@@ -1690,15 +1690,15 @@
     if (projectRfis.length === 0) {
       var noRfisNote = document.createElement("p");
       noRfisNote.className = "text-secondary";
-      noRfisNote.style.fontSize = "13px";
-      noRfisNote.style.margin = "6px 0 0";
+      noRfisNote.style.fontSize = "var(--text-sm)";
+      noRfisNote.style.margin = "var(--space-2) 0 0";
       noRfisNote.textContent = "No open RFIs or Technical Queries for this project.";
       rfisSection.appendChild(noRfisNote);
     } else {
       var rfisList = document.createElement("div");
       rfisList.style.display = "flex";
       rfisList.style.flexDirection = "column";
-      rfisList.style.gap = "6px";
+      rfisList.style.gap = "var(--space-2)";
       rfisList.style.marginTop = "var(--space-2)";
 
       var today = new Date().toISOString().slice(0, 10);
@@ -1708,7 +1708,7 @@
         row.style.display = "flex";
         row.style.justifyContent = "space-between";
         row.style.alignItems = "center";
-        row.style.fontSize = "13px";
+        row.style.fontSize = "var(--text-sm)";
         row.style.gap = "var(--space-2)";
 
         var label = document.createElement("span");
@@ -1751,7 +1751,7 @@
 
     var coSection = document.createElement("div");
     coSection.style.marginTop = "var(--space-4)";
-    coSection.style.paddingTop = "14px";
+    coSection.style.paddingTop = "var(--space-4)";
     coSection.style.borderTop = "1px solid var(--divider)";
 
     var coHeader = document.createElement("div");
@@ -1780,15 +1780,15 @@
     if (projectChangeOrders.length === 0) {
       var noCoNote = document.createElement("p");
       noCoNote.className = "text-secondary";
-      noCoNote.style.fontSize = "13px";
-      noCoNote.style.margin = "6px 0 0";
+      noCoNote.style.fontSize = "var(--text-sm)";
+      noCoNote.style.margin = "var(--space-2) 0 0";
       noCoNote.textContent = "No open Change Orders for this project.";
       coSection.appendChild(noCoNote);
     } else {
       var coList = document.createElement("div");
       coList.style.display = "flex";
       coList.style.flexDirection = "column";
-      coList.style.gap = "6px";
+      coList.style.gap = "var(--space-2)";
       coList.style.marginTop = "var(--space-2)";
 
       projectChangeOrders.slice(0, 5).forEach(function (co) {
@@ -1796,7 +1796,7 @@
         row.style.display = "flex";
         row.style.justifyContent = "space-between";
         row.style.alignItems = "center";
-        row.style.fontSize = "13px";
+        row.style.fontSize = "var(--text-sm)";
         row.style.gap = "var(--space-2)";
 
         var label = document.createElement("span");
@@ -1842,7 +1842,7 @@
 
     var vendorsSection = document.createElement("div");
     vendorsSection.style.marginTop = "var(--space-4)";
-    vendorsSection.style.paddingTop = "14px";
+    vendorsSection.style.paddingTop = "var(--space-4)";
     vendorsSection.style.borderTop = "1px solid var(--divider)";
 
     var vendorsHeader = document.createElement("div");
@@ -1933,15 +1933,15 @@
     if (projectVendorLinks.length === 0) {
       var noVendorsNote = document.createElement("p");
       noVendorsNote.className = "text-secondary";
-      noVendorsNote.style.fontSize = "13px";
-      noVendorsNote.style.margin = "6px 0 0";
+      noVendorsNote.style.fontSize = "var(--text-sm)";
+      noVendorsNote.style.margin = "var(--space-2) 0 0";
       noVendorsNote.textContent = "No vendors linked to this project yet.";
       vendorsSection.appendChild(noVendorsNote);
     } else {
       var vendorsList = document.createElement("div");
       vendorsList.style.display = "flex";
       vendorsList.style.flexDirection = "column";
-      vendorsList.style.gap = "6px";
+      vendorsList.style.gap = "var(--space-2)";
       vendorsList.style.marginTop = "var(--space-2)";
 
       projectVendorLinks.slice(0, 5).forEach(function (link) {
@@ -1953,7 +1953,7 @@
         row.style.display = "flex";
         row.style.justifyContent = "space-between";
         row.style.alignItems = "center";
-        row.style.fontSize = "13px";
+        row.style.fontSize = "var(--text-sm)";
         row.style.gap = "var(--space-2)";
 
         var nameBtn = document.createElement("button");
@@ -2015,7 +2015,7 @@
 
     var costSection = document.createElement("div");
     costSection.style.marginTop = "var(--space-4)";
-    costSection.style.paddingTop = "14px";
+    costSection.style.paddingTop = "var(--space-4)";
     costSection.style.borderTop = "1px solid var(--divider)";
 
     var costHeader = document.createElement("div");
@@ -2042,8 +2042,8 @@
     if (window.PCC.cost) {
       var costSummary = window.PCC.cost.projectCostSummary(window.PCC.store.get(), p.id);
       var costLine = document.createElement("p");
-      costLine.style.fontSize = "13px";
-      costLine.style.margin = "6px 0 0";
+      costLine.style.fontSize = "var(--text-sm)";
+      costLine.style.margin = "var(--space-2) 0 0";
       if (costSummary.budgeted === 0 && costSummary.actual === 0) {
         costLine.className = "text-secondary";
         costLine.textContent = "No budget items or actual costs logged for this project yet.";
@@ -2069,7 +2069,7 @@
 
       var resSection = document.createElement("div");
       resSection.style.marginTop = "var(--space-4)";
-      resSection.style.paddingTop = "14px";
+      resSection.style.paddingTop = "var(--space-4)";
       resSection.style.borderTop = "1px solid var(--divider)";
 
       var resHeader = document.createElement("div");
@@ -2093,8 +2093,8 @@
       if (projectAssignments.length === 0) {
         var noRes = document.createElement("p");
         noRes.className = "text-secondary";
-        noRes.style.fontSize = "13px";
-        noRes.style.margin = "6px 0 0";
+        noRes.style.fontSize = "var(--text-sm)";
+        noRes.style.margin = "var(--space-2) 0 0";
         noRes.textContent = "No resources assigned to this project's activities yet.";
         resSection.appendChild(noRes);
       } else {
@@ -2110,8 +2110,8 @@
           if (!resource) return;
           var overAlloc = overAllocById[resource.id];
           var line = document.createElement("p");
-          line.style.fontSize = "13px";
-          line.style.margin = "6px 0 0";
+          line.style.fontSize = "var(--text-sm)";
+          line.style.margin = "var(--space-2) 0 0";
           line.appendChild(document.createTextNode(resource.name || "(unnamed resource)"));
           if (overAlloc) {
             var overSpan = document.createElement("span");
@@ -2132,7 +2132,7 @@
       var data2 = window.PCC.store.get();
       var cmtSection = document.createElement("div");
       cmtSection.style.marginTop = "var(--space-4)";
-      cmtSection.style.paddingTop = "14px";
+      cmtSection.style.paddingTop = "var(--space-4)";
       cmtSection.style.borderTop = "1px solid var(--divider)";
 
       var cmtHeader = document.createElement("div");
@@ -2156,8 +2156,8 @@
       var totalCommitted = 0;
       projectCommitments.forEach(function (c) { totalCommitted += Number(c.committed_value) || 0; });
       var cmtLine = document.createElement("p");
-      cmtLine.style.fontSize = "13px";
-      cmtLine.style.margin = "6px 0 0";
+      cmtLine.style.fontSize = "var(--text-sm)";
+      cmtLine.style.margin = "var(--space-2) 0 0";
       cmtLine.textContent = "Total Committed " + formatMoney(totalCommitted) + " across " + projectCommitments.length + " commitment(s).";
       cmtSection.appendChild(cmtLine);
 
@@ -2235,8 +2235,8 @@
     var archivedLabel = document.createElement("label");
     archivedLabel.style.display = "flex";
     archivedLabel.style.alignItems = "center";
-    archivedLabel.style.gap = "6px";
-    archivedLabel.style.fontSize = "13px";
+    archivedLabel.style.gap = "var(--space-2)";
+    archivedLabel.style.fontSize = "var(--text-sm)";
     archivedLabel.style.color = "var(--text-secondary)";
     var archivedCheckbox = document.createElement("input");
     archivedCheckbox.type = "checkbox";

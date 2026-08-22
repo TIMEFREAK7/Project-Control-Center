@@ -185,7 +185,7 @@
     panel.style.marginBottom = "var(--space-4)";
 
     var heading = document.createElement("h3");
-    heading.style.marginBottom = "14px";
+    heading.style.marginBottom = "var(--space-4)";
     heading.textContent = isNew ? "New Schedule" : "Edit Schedule";
     panel.appendChild(heading);
 
@@ -259,14 +259,14 @@
 
     var errorMsg = document.createElement("p");
     errorMsg.style.color = "var(--status-critical)";
-    errorMsg.style.fontSize = "13px";
+    errorMsg.style.fontSize = "var(--text-sm)";
     errorMsg.style.display = "none";
     errorMsg.textContent = "Schedule name is required.";
     form.appendChild(errorMsg);
 
     var actions = document.createElement("div");
     actions.style.display = "flex";
-    actions.style.gap = "10px";
+    actions.style.gap = "var(--space-3)";
     actions.style.marginTop = "var(--space-3)";
 
     var saveBtn = document.createElement("button");
@@ -580,7 +580,7 @@
     issuesToggle.style.marginBottom = "var(--space-3)";
     var summaryTag = document.createElement("summary");
     summaryTag.style.cursor = "pointer";
-    summaryTag.style.fontSize = "13px";
+    summaryTag.style.fontSize = "var(--text-sm)";
     summaryTag.textContent = "View " + (summary.errors + summary.warnings) + " issue(s)";
     issuesToggle.appendChild(summaryTag);
     var issuesList = document.createElement("div");
@@ -589,14 +589,14 @@
     issuesList.style.marginTop = "var(--space-2)";
     parsed.errors.forEach(function (e) {
       var p = document.createElement("p");
-      p.style.fontSize = "12px";
+      p.style.fontSize = "var(--text-sm)";
       p.style.color = "var(--status-critical)";
       p.textContent = (e.row ? "Row " + e.row + ": " : "") + e.message;
       issuesList.appendChild(p);
     });
     parsed.warnings.forEach(function (w) {
       var p = document.createElement("p");
-      p.style.fontSize = "12px";
+      p.style.fontSize = "var(--text-sm)";
       p.style.color = "var(--status-at-risk)";
       p.textContent = (w.row ? "Row " + w.row + ": " : "") + w.message;
       issuesList.appendChild(p);
@@ -611,15 +611,15 @@
     panel.style.marginBottom = "var(--space-4)";
 
     var heading = document.createElement("h3");
-    heading.style.marginBottom = "10px";
+    heading.style.marginBottom = "var(--space-3)";
     heading.textContent = "Import Schedule from Excel";
     panel.appendChild(heading);
 
     if (uiState.importStep === "pick") {
       var help = document.createElement("p");
       help.className = "text-secondary";
-      help.style.fontSize = "12px";
-      help.style.marginBottom = "10px";
+      help.style.fontSize = "var(--text-sm)";
+      help.style.marginBottom = "var(--space-3)";
       help.innerHTML =
         "Expected columns (any order, extras ignored): <strong>Activity ID*, Activity Name*</strong>, " +
         "WBS Code, WBS Name, Activity Type (Task/Milestone/Summary/WBS Summary), Duration, Planned Start, " +
@@ -641,7 +641,7 @@
       if (uiState.importError) {
         var err = document.createElement("p");
         err.style.color = "var(--status-critical)";
-        err.style.fontSize = "13px";
+        err.style.fontSize = "var(--text-sm)";
         err.style.marginTop = "var(--space-2)";
         err.textContent = uiState.importError;
         panel.appendChild(err);
@@ -665,17 +665,17 @@
         dupBox.style.border = "1px solid var(--status-at-risk)";
         dupBox.style.borderRadius = "var(--radius-md)";
         dupBox.style.padding = "var(--space-3)";
-        dupBox.style.marginBottom = "14px";
+        dupBox.style.marginBottom = "var(--space-4)";
         dupBox.style.background = "rgba(230, 162, 60, 0.08)";
         var dupTitle = document.createElement("p");
         dupTitle.style.fontWeight = "600";
-        dupTitle.style.fontSize = "13px";
+        dupTitle.style.fontSize = "var(--text-sm)";
         dupTitle.textContent = "This file looks like it may have been imported before";
         dupBox.appendChild(dupTitle);
         uiState.importDuplicateMatches.forEach(function (m) {
           var line = document.createElement("p");
-          line.style.fontSize = "12px";
-          line.style.marginTop = "6px";
+          line.style.fontSize = "var(--text-sm)";
+          line.style.marginTop = "var(--space-2)";
           line.innerHTML =
             "<strong>" + m.record.name + "</strong> (Rev " + m.record.revision_number + ") \u2014 imported " +
             (m.record.import_date ? new Date(m.record.import_date).toLocaleDateString() : "unknown date") +
@@ -684,8 +684,8 @@
         });
         var dupActions = document.createElement("div");
         dupActions.style.display = "flex";
-        dupActions.style.gap = "10px";
-        dupActions.style.marginTop = "10px";
+        dupActions.style.gap = "var(--space-3)";
+        dupActions.style.marginTop = "var(--space-3)";
         var continueBtn = document.createElement("button");
         continueBtn.className = "btn btn--ghost";
         continueBtn.textContent = "Continue Anyway";
@@ -718,8 +718,8 @@
       if (summary.errors > 0) {
         var errNote = document.createElement("p");
         errNote.className = "text-secondary";
-        errNote.style.fontSize = "12px";
-        errNote.style.marginBottom = "10px";
+        errNote.style.fontSize = "var(--text-sm)";
+        errNote.style.marginBottom = "var(--space-3)";
         errNote.textContent = "Rows with errors are excluded entirely \u2014 fix them in the source file and re-import if needed.";
         panel.appendChild(errNote);
       }
@@ -742,8 +742,8 @@
 
       var actions = document.createElement("div");
       actions.style.display = "flex";
-      actions.style.gap = "10px";
-      actions.style.marginTop = "14px";
+      actions.style.gap = "var(--space-3)";
+      actions.style.marginTop = "var(--space-4)";
 
       var confirmBtn = document.createElement("button");
       confirmBtn.className = "btn btn--primary";
@@ -772,8 +772,8 @@
       if (uiState.importError) {
         var reviewErr = document.createElement("p");
         reviewErr.style.color = "var(--status-critical)";
-        reviewErr.style.fontSize = "13px";
-        reviewErr.style.marginTop = "10px";
+        reviewErr.style.fontSize = "var(--text-sm)";
+        reviewErr.style.marginTop = "var(--space-3)";
         reviewErr.textContent = uiState.importError;
         panel.appendChild(reviewErr);
       }
@@ -950,8 +950,8 @@
   function renderExcelGridStep(panel, schedule, data, rerender) {
     var gridActions = document.createElement("div");
     gridActions.style.display = "flex";
-    gridActions.style.gap = "10px";
-    gridActions.style.marginBottom = "10px";
+    gridActions.style.gap = "var(--space-3)";
+    gridActions.style.marginBottom = "var(--space-3)";
 
     var addRowBtn = document.createElement("button");
     addRowBtn.type = "button";
@@ -985,8 +985,8 @@
     if (uiState.excelEditorRows.length === 0) {
       var emptyNote = document.createElement("p");
       emptyNote.className = "text-secondary";
-      emptyNote.style.fontSize = "12px";
-      emptyNote.style.marginBottom = "10px";
+      emptyNote.style.fontSize = "var(--text-sm)";
+      emptyNote.style.marginBottom = "var(--space-3)";
       emptyNote.textContent = "No activities from the original Excel file remain on this schedule. Click “+ Add Row” to start adding some, or Close and use the Activities tab instead.";
       panel.appendChild(emptyNote);
     }
@@ -1002,7 +1002,7 @@
     var table = document.createElement("table");
     table.style.borderCollapse = "collapse";
     table.style.width = "100%";
-    table.style.fontSize = "12px";
+    table.style.fontSize = "var(--text-sm)";
 
     var thead = document.createElement("thead");
     var headRow = document.createElement("tr");
@@ -1010,7 +1010,7 @@
       var th = document.createElement("th");
       th.textContent = f.label;
       th.style.textAlign = "left";
-      th.style.padding = "6px var(--space-2)";
+      th.style.padding = "var(--space-2) var(--space-2)";
       th.style.borderBottom = "1px solid var(--divider)";
       th.style.position = "sticky";
       th.style.top = "0";
@@ -1062,7 +1062,7 @@
 
     var bottomActions = document.createElement("div");
     bottomActions.style.display = "flex";
-    bottomActions.style.gap = "10px";
+    bottomActions.style.gap = "var(--space-3)";
 
     var reviewBtn = document.createElement("button");
     reviewBtn.type = "button";
@@ -1098,8 +1098,8 @@
     if (uiState.excelEditorError) {
       var gridErr = document.createElement("p");
       gridErr.style.color = "var(--status-critical)";
-      gridErr.style.fontSize = "13px";
-      gridErr.style.marginTop = "10px";
+      gridErr.style.fontSize = "var(--text-sm)";
+      gridErr.style.marginTop = "var(--space-3)";
       gridErr.textContent = uiState.excelEditorError;
       panel.appendChild(gridErr);
     }
@@ -1118,26 +1118,26 @@
       warnBox.style.border = "1px solid var(--status-at-risk)";
       warnBox.style.borderRadius = "var(--radius-md)";
       warnBox.style.padding = "var(--space-3)";
-      warnBox.style.marginBottom = "14px";
+      warnBox.style.marginBottom = "var(--space-4)";
       warnBox.style.background = "rgba(230, 162, 60, 0.08)";
       var warnTitle = document.createElement("p");
       warnTitle.style.fontWeight = "600";
-      warnTitle.style.fontSize = "13px";
+      warnTitle.style.fontSize = "var(--text-sm)";
       warnTitle.textContent =
         handAdded.length + " activit" + (handAdded.length === 1 ? "y" : "ies") + " on this schedule " +
         (handAdded.length === 1 ? "isn’t" : "aren’t") + " from the Excel file";
       warnBox.appendChild(warnTitle);
       var warnBody = document.createElement("p");
-      warnBody.style.fontSize = "12px";
-      warnBody.style.marginTop = "6px";
+      warnBody.style.fontSize = "var(--text-sm)";
+      warnBody.style.marginTop = "var(--space-2)";
       warnBody.textContent =
         "They were added by hand on the Activities tab and have no Activity ID, so they can't appear in this " +
         "grid. Applying replaces this schedule's full activity list from the grid, so continuing will delete them.";
       warnBox.appendChild(warnBody);
       var warnActions = document.createElement("div");
       warnActions.style.display = "flex";
-      warnActions.style.gap = "10px";
-      warnActions.style.marginTop = "10px";
+      warnActions.style.gap = "var(--space-3)";
+      warnActions.style.marginTop = "var(--space-3)";
       var ackBtn = document.createElement("button");
       ackBtn.type = "button";
       ackBtn.className = "btn btn--ghost";
@@ -1172,8 +1172,8 @@
     if (summary.errors > 0) {
       var errNote = document.createElement("p");
       errNote.className = "text-secondary";
-      errNote.style.fontSize = "12px";
-      errNote.style.marginBottom = "10px";
+      errNote.style.fontSize = "var(--text-sm)";
+      errNote.style.marginBottom = "var(--space-3)";
       errNote.textContent = "Rows with errors are excluded entirely — go back, fix them in the grid, and click Review Changes again.";
       panel.appendChild(errNote);
     }
@@ -1183,8 +1183,8 @@
 
     var actions = document.createElement("div");
     actions.style.display = "flex";
-    actions.style.gap = "10px";
-    actions.style.marginTop = "14px";
+    actions.style.gap = "var(--space-3)";
+    actions.style.marginTop = "var(--space-4)";
 
     var applyBtn = document.createElement("button");
     applyBtn.type = "button";
@@ -1212,8 +1212,8 @@
     if (uiState.excelEditorError) {
       var reviewErr = document.createElement("p");
       reviewErr.style.color = "var(--status-critical)";
-      reviewErr.style.fontSize = "13px";
-      reviewErr.style.marginTop = "10px";
+      reviewErr.style.fontSize = "var(--text-sm)";
+      reviewErr.style.marginTop = "var(--space-3)";
       reviewErr.textContent = uiState.excelEditorError;
       panel.appendChild(reviewErr);
     }
@@ -1305,14 +1305,14 @@
     panel.style.marginBottom = "var(--space-4)";
 
     var heading = document.createElement("h3");
-    heading.style.marginBottom = "10px";
+    heading.style.marginBottom = "var(--space-3)";
     heading.textContent = "Edit Excel — " + schedule.name;
     panel.appendChild(heading);
 
     var help = document.createElement("p");
     help.className = "text-secondary";
-    help.style.fontSize = "12px";
-    help.style.marginBottom = "10px";
+    help.style.fontSize = "var(--text-sm)";
+    help.style.marginBottom = "var(--space-3)";
     help.textContent =
       "Editing here updates the attached Excel file and this schedule's Activities/WBS/Relationships together — " +
       "no separate download or re-upload needed. Recognized columns only (same set as Import); extra columns " +
@@ -1665,7 +1665,7 @@
     panel.style.marginBottom = "var(--space-4)";
 
     var heading = document.createElement("h3");
-    heading.style.marginBottom = "14px";
+    heading.style.marginBottom = "var(--space-4)";
     heading.textContent = isNew ? "Add Activity" : "Edit Activity";
     panel.appendChild(heading);
 
@@ -1721,12 +1721,12 @@
     if (!isNew) {
       var calcBox = document.createElement("div");
       calcBox.className = "panel";
-      calcBox.style.padding = "10px var(--space-3)";
+      calcBox.style.padding = "var(--space-3) var(--space-3)";
       calcBox.style.marginTop = "-4px";
-      calcBox.style.marginBottom = "10px";
+      calcBox.style.marginBottom = "var(--space-3)";
       if (activity.early_start == null) {
         calcBox.className += " text-secondary";
-        calcBox.style.fontSize = "12px";
+        calcBox.style.fontSize = "var(--text-sm)";
         calcBox.textContent =
           "Early/Late Start/Finish, Total Float, and Free Float aren't calculated yet \u2014 use \u201cCalculate Schedule\u201d above.";
       } else {
@@ -1746,14 +1746,14 @@
 
     var errorMsg = document.createElement("p");
     errorMsg.style.color = "var(--status-critical)";
-    errorMsg.style.fontSize = "13px";
+    errorMsg.style.fontSize = "var(--text-sm)";
     errorMsg.style.display = "none";
     errorMsg.textContent = "Activity name is required.";
     form.appendChild(errorMsg);
 
     var actions = document.createElement("div");
     actions.style.display = "flex";
-    actions.style.gap = "10px";
+    actions.style.gap = "var(--space-3)";
     actions.style.marginTop = "var(--space-3)";
 
     var saveBtn = document.createElement("button");
@@ -1983,8 +1983,8 @@
     var criticalToggle = document.createElement("label");
     criticalToggle.style.display = "flex";
     criticalToggle.style.alignItems = "center";
-    criticalToggle.style.gap = "6px";
-    criticalToggle.style.fontSize = "13px";
+    criticalToggle.style.gap = "var(--space-2)";
+    criticalToggle.style.fontSize = "var(--text-sm)";
     var criticalCheckbox = document.createElement("input");
     criticalCheckbox.type = "checkbox";
     criticalCheckbox.checked = uiState.activityFilterCritical;
@@ -2190,7 +2190,7 @@
 
       var badgeWrap = document.createElement("div");
       badgeWrap.style.display = "flex";
-      badgeWrap.style.gap = "6px";
+      badgeWrap.style.gap = "var(--space-2)";
       badgeWrap.style.flexWrap = "wrap";
 
       var statusBadge = document.createElement("span");
@@ -2374,7 +2374,7 @@
     panel.style.marginBottom = "var(--space-4)";
 
     var heading = document.createElement("h3");
-    heading.style.marginBottom = "14px";
+    heading.style.marginBottom = "var(--space-4)";
     heading.textContent = isNew ? "Add WBS Item" : "Edit WBS Item";
     panel.appendChild(heading);
 
@@ -2439,14 +2439,14 @@
 
     var errorMsg = document.createElement("p");
     errorMsg.style.color = "var(--status-critical)";
-    errorMsg.style.fontSize = "13px";
+    errorMsg.style.fontSize = "var(--text-sm)";
     errorMsg.style.display = "none";
     errorMsg.textContent = "WBS name is required.";
     form.appendChild(errorMsg);
 
     var actions = document.createElement("div");
     actions.style.display = "flex";
-    actions.style.gap = "10px";
+    actions.style.gap = "var(--space-3)";
     actions.style.marginTop = "var(--space-3)";
 
     var saveBtn = document.createElement("button");
@@ -2585,7 +2585,7 @@
       row.style.justifyContent = "space-between";
       row.style.alignItems = "center";
       row.style.marginLeft = w.level * 20 + "px";
-      row.style.marginBottom = "6px";
+      row.style.marginBottom = "var(--space-2)";
 
       var main = document.createElement("div");
       main.innerHTML = "<strong>" + (w.code ? w.code + " \u2014 " : "") + w.name + "</strong>";
@@ -2646,7 +2646,7 @@
     panel.style.marginBottom = "var(--space-4)";
 
     var heading = document.createElement("h3");
-    heading.style.marginBottom = "14px";
+    heading.style.marginBottom = "var(--space-4)";
     heading.textContent = isNew ? "Add Relationship" : "Edit Relationship";
     panel.appendChild(heading);
 
@@ -2727,14 +2727,14 @@
 
     var errorMsg = document.createElement("p");
     errorMsg.style.color = "var(--status-critical)";
-    errorMsg.style.fontSize = "13px";
+    errorMsg.style.fontSize = "var(--text-sm)";
     errorMsg.style.display = "none";
     errorMsg.textContent = "Predecessor and successor must be different activities.";
     form.appendChild(errorMsg);
 
     var actions = document.createElement("div");
     actions.style.display = "flex";
-    actions.style.gap = "10px";
+    actions.style.gap = "var(--space-3)";
     actions.style.marginTop = "var(--space-3)";
 
     var saveBtn = document.createElement("button");
@@ -2848,7 +2848,7 @@
       row.style.display = "flex";
       row.style.justifyContent = "space-between";
       row.style.alignItems = "center";
-      row.style.marginBottom = "6px";
+      row.style.marginBottom = "var(--space-2)";
 
       var main = document.createElement("div");
       main.innerHTML =
@@ -3130,7 +3130,7 @@
 
     var zoomLabel = document.createElement("span");
     zoomLabel.className = "text-secondary";
-    zoomLabel.style.fontSize = "12px";
+    zoomLabel.style.fontSize = "var(--text-sm)";
     zoomLabel.style.alignSelf = "center";
     zoomLabel.textContent = "Zoom:";
     zoomGroup.appendChild(zoomLabel);
@@ -3187,8 +3187,8 @@
       var baselineToggle = document.createElement("label");
       baselineToggle.style.display = "flex";
       baselineToggle.style.alignItems = "center";
-      baselineToggle.style.gap = "6px";
-      baselineToggle.style.fontSize = "13px";
+      baselineToggle.style.gap = "var(--space-2)";
+      baselineToggle.style.fontSize = "var(--text-sm)";
       var checkbox = document.createElement("input");
       checkbox.type = "checkbox";
       checkbox.checked = uiState.ganttShowBaseline;
@@ -3225,7 +3225,7 @@
       if (uiState.ganttBaselineLoading) {
         var loadingNote = document.createElement("span");
         loadingNote.className = "text-secondary";
-        loadingNote.style.fontSize = "12px";
+        loadingNote.style.fontSize = "var(--text-sm)";
         loadingNote.style.alignSelf = "center";
         loadingNote.textContent = "Loading baseline…";
         bar3.appendChild(loadingNote);
@@ -3442,8 +3442,8 @@
    * is "Not Ready" when at least one linked requirement isn't yet Available. */
   function renderDocumentReadinessSection(activity, data) {
     var wrap = document.createElement("div");
-    wrap.style.marginTop = "14px";
-    wrap.style.paddingTop = "10px";
+    wrap.style.marginTop = "var(--space-4)";
+    wrap.style.paddingTop = "var(--space-3)";
     wrap.style.borderTop = "1px solid var(--divider)";
 
     var typesById = {};
@@ -3456,14 +3456,14 @@
 
     var heading = document.createElement("p");
     heading.className = "detail-item__label";
-    heading.style.marginBottom = "6px";
+    heading.style.marginBottom = "var(--space-2)";
     heading.textContent = "DOCUMENT READINESS (" + rows.length + ")";
     wrap.appendChild(heading);
 
     if (rows.length === 0) {
       var empty = document.createElement("p");
       empty.className = "text-secondary";
-      empty.style.fontSize = "12px";
+      empty.style.fontSize = "var(--text-sm)";
       empty.textContent =
         "No document requirements are linked to this activity yet — link one from Portfolio's Add/Edit Project form (Document Requirements section).";
       wrap.appendChild(empty);
@@ -3478,9 +3478,9 @@
     });
 
     var readinessLine = document.createElement("p");
-    readinessLine.style.fontSize = "13px";
+    readinessLine.style.fontSize = "var(--text-sm)";
     readinessLine.style.fontWeight = "600";
-    readinessLine.style.margin = "0 0 6px";
+    readinessLine.style.margin = "0 0 var(--space-2)";
     readinessLine.style.color = notReady ? "var(--status-critical)" : "var(--status-on-track)";
     readinessLine.textContent = notReady ? "NOT READY — one or more governing documents are not yet Available" : "READY — every governing document is Available";
     wrap.appendChild(readinessLine);
@@ -3493,7 +3493,7 @@
       rowEl.style.display = "flex";
       rowEl.style.justifyContent = "space-between";
       rowEl.style.alignItems = "center";
-      rowEl.style.fontSize = "13px";
+      rowEl.style.fontSize = "var(--text-sm)";
       rowEl.style.marginBottom = "var(--space-1)";
 
       var text = document.createElement("span");
@@ -3514,8 +3514,8 @@
 
   function renderLinkedRecordsSection(activity, data) {
     var wrap = document.createElement("div");
-    wrap.style.marginTop = "14px";
-    wrap.style.paddingTop = "10px";
+    wrap.style.marginTop = "var(--space-4)";
+    wrap.style.paddingTop = "var(--space-3)";
     wrap.style.borderTop = "1px solid var(--divider)";
 
     var rows = [];
@@ -3531,14 +3531,14 @@
 
     var heading = document.createElement("p");
     heading.className = "detail-item__label";
-    heading.style.marginBottom = "6px";
+    heading.style.marginBottom = "var(--space-2)";
     heading.textContent = "LINKED RECORDS (" + rows.length + ")";
     wrap.appendChild(heading);
 
     if (rows.length === 0) {
       var empty = document.createElement("p");
       empty.className = "text-secondary";
-      empty.style.fontSize = "12px";
+      empty.style.fontSize = "var(--text-sm)";
       empty.textContent = "No Risks/Issues, RFIs, Meetings, Documents, Daily Log entries, or Change Orders are linked to this activity yet — link one from that record's own Add/Edit form.";
       wrap.appendChild(empty);
     } else {
@@ -3547,7 +3547,7 @@
         rowEl.style.display = "flex";
         rowEl.style.justifyContent = "space-between";
         rowEl.style.alignItems = "center";
-        rowEl.style.fontSize = "13px";
+        rowEl.style.fontSize = "var(--text-sm)";
         rowEl.style.marginBottom = "var(--space-1)";
 
         var text = document.createElement("span");
@@ -3591,8 +3591,8 @@
    * store.js for why. */
   function renderRecoveryActionsSection(activity, data, rerender) {
     var wrap = document.createElement("div");
-    wrap.style.marginTop = "14px";
-    wrap.style.paddingTop = "10px";
+    wrap.style.marginTop = "var(--space-4)";
+    wrap.style.paddingTop = "var(--space-3)";
     wrap.style.borderTop = "1px solid var(--divider)";
 
     var rows = data.recovery_actions
@@ -3601,7 +3601,7 @@
 
     var heading = document.createElement("p");
     heading.className = "detail-item__label";
-    heading.style.marginBottom = "6px";
+    heading.style.marginBottom = "var(--space-2)";
     heading.textContent = "RECOVERY ACTIONS (" + rows.length + ")";
     wrap.appendChild(heading);
 
@@ -3623,7 +3623,7 @@
       if (editing) {
         var formPanel = document.createElement("div");
         formPanel.className = "panel";
-        formPanel.style.marginBottom = "10px";
+        formPanel.style.marginBottom = "var(--space-3)";
         var form = document.createElement("form");
         var grid = document.createElement("div");
         grid.className = "form-grid";
@@ -3701,14 +3701,14 @@
 
         var errorMsg = document.createElement("p");
         errorMsg.style.color = "var(--status-critical)";
-        errorMsg.style.fontSize = "12px";
+        errorMsg.style.fontSize = "var(--text-sm)";
         errorMsg.style.display = "none";
         form.appendChild(errorMsg);
 
         var formActions = document.createElement("div");
         formActions.style.display = "flex";
-        formActions.style.gap = "10px";
-        formActions.style.marginTop = "10px";
+        formActions.style.gap = "var(--space-3)";
+        formActions.style.marginTop = "var(--space-3)";
         var saveBtn = document.createElement("button");
         saveBtn.type = "submit";
         saveBtn.className = "btn btn--primary";
@@ -3763,7 +3763,7 @@
     if (rows.length === 0) {
       var empty = document.createElement("p");
       empty.className = "text-secondary";
-      empty.style.fontSize = "12px";
+      empty.style.fontSize = "var(--text-sm)";
       empty.textContent = "No recovery actions logged against this activity yet.";
       wrap.appendChild(empty);
       return wrap;
@@ -3777,7 +3777,7 @@
       rowEl.style.alignItems = "flex-start";
       rowEl.style.gap = "var(--space-2)";
       rowEl.style.marginBottom = "var(--space-2)";
-      rowEl.style.fontSize = "13px";
+      rowEl.style.fontSize = "var(--text-sm)";
 
       var left = document.createElement("div");
       left.innerHTML =
@@ -3793,7 +3793,7 @@
       var right = document.createElement("div");
       right.style.display = "flex";
       right.style.alignItems = "center";
-      right.style.gap = "6px";
+      right.style.gap = "var(--space-2)";
       right.style.flexShrink = "0";
 
       var badge = document.createElement("span");
@@ -3838,8 +3838,8 @@
    * this app's own convention favors small per-purpose builders over a generalized one. */
   function renderDelayRecordsSection(activity, data, rerender) {
     var wrap = document.createElement("div");
-    wrap.style.marginTop = "14px";
-    wrap.style.paddingTop = "10px";
+    wrap.style.marginTop = "var(--space-4)";
+    wrap.style.paddingTop = "var(--space-3)";
     wrap.style.borderTop = "1px solid var(--divider)";
 
     var rows = data.delay_records
@@ -3848,7 +3848,7 @@
 
     var heading = document.createElement("p");
     heading.className = "detail-item__label";
-    heading.style.marginBottom = "6px";
+    heading.style.marginBottom = "var(--space-2)";
     heading.textContent = "DELAY RECORDS (" + rows.length + ")";
     wrap.appendChild(heading);
 
@@ -3870,7 +3870,7 @@
       if (editing) {
         var formPanel = document.createElement("div");
         formPanel.className = "panel";
-        formPanel.style.marginBottom = "10px";
+        formPanel.style.marginBottom = "var(--space-3)";
         var form = document.createElement("form");
         var grid = document.createElement("div");
         grid.className = "form-grid";
@@ -3950,14 +3950,14 @@
 
         var errorMsg = document.createElement("p");
         errorMsg.style.color = "var(--status-critical)";
-        errorMsg.style.fontSize = "12px";
+        errorMsg.style.fontSize = "var(--text-sm)";
         errorMsg.style.display = "none";
         form.appendChild(errorMsg);
 
         var formActions = document.createElement("div");
         formActions.style.display = "flex";
-        formActions.style.gap = "10px";
-        formActions.style.marginTop = "10px";
+        formActions.style.gap = "var(--space-3)";
+        formActions.style.marginTop = "var(--space-3)";
         var saveBtn = document.createElement("button");
         saveBtn.type = "submit";
         saveBtn.className = "btn btn--primary";
@@ -4012,7 +4012,7 @@
     if (rows.length === 0) {
       var empty = document.createElement("p");
       empty.className = "text-secondary";
-      empty.style.fontSize = "12px";
+      empty.style.fontSize = "var(--text-sm)";
       empty.textContent = "No delay records logged against this activity yet.";
       wrap.appendChild(empty);
       return wrap;
@@ -4025,7 +4025,7 @@
       rowEl.style.alignItems = "flex-start";
       rowEl.style.gap = "var(--space-2)";
       rowEl.style.marginBottom = "var(--space-2)";
-      rowEl.style.fontSize = "13px";
+      rowEl.style.fontSize = "var(--text-sm)";
 
       var left = document.createElement("div");
       left.innerHTML =
@@ -4041,7 +4041,7 @@
       var right = document.createElement("div");
       right.style.display = "flex";
       right.style.alignItems = "center";
-      right.style.gap = "6px";
+      right.style.gap = "var(--space-2)";
       right.style.flexShrink = "0";
 
       var badge = document.createElement("span");
@@ -4095,8 +4095,8 @@
     var gapDays = Math.max(0, delayDays - recoveryDays);
     var note = document.createElement("p");
     note.className = "text-secondary";
-    note.style.fontSize = "12px";
-    note.style.margin = "10px 0 0";
+    note.style.fontSize = "var(--text-sm)";
+    note.style.margin = "var(--space-3) 0 0";
     note.textContent =
       gapDays > 0
         ? delayDays + "d delay logged, " + recoveryDays + "d recovery estimated — " + gapDays + "d unaddressed."
@@ -4114,7 +4114,7 @@
     header.style.display = "flex";
     header.style.justifyContent = "space-between";
     header.style.alignItems = "flex-start";
-    header.style.marginBottom = "10px";
+    header.style.marginBottom = "var(--space-3)";
     var heading = document.createElement("h3");
     heading.textContent = activity.name || "(unnamed activity)";
     header.appendChild(heading);
@@ -4179,8 +4179,8 @@
 
     if (activity.notes) {
       var notesP = document.createElement("p");
-      notesP.style.marginTop = "10px";
-      notesP.style.fontSize = "13px";
+      notesP.style.marginTop = "var(--space-3)";
+      notesP.style.fontSize = "var(--text-sm)";
       notesP.innerHTML = "<strong>Notes:</strong> " + activity.notes;
       panel.appendChild(notesP);
     }
@@ -4190,7 +4190,7 @@
 
     var relWrap = document.createElement("div");
     relWrap.style.marginTop = "var(--space-3)";
-    relWrap.style.fontSize = "13px";
+    relWrap.style.fontSize = "var(--text-sm)";
     var predLine = document.createElement("p");
     predLine.innerHTML =
       "<strong>Predecessors:</strong> " +
@@ -4213,8 +4213,8 @@
 
     var actions = document.createElement("div");
     actions.style.display = "flex";
-    actions.style.gap = "10px";
-    actions.style.marginTop = "14px";
+    actions.style.gap = "var(--space-3)";
+    actions.style.marginTop = "var(--space-4)";
 
     var editBtn = document.createElement("button");
     editBtn.className = "btn btn--primary";
@@ -4309,8 +4309,8 @@
     if (layout.undatedCount > 0) {
       var note = document.createElement("p");
       note.className = "text-secondary";
-      note.style.fontSize = "12px";
-      note.style.marginBottom = "10px";
+      note.style.fontSize = "var(--text-sm)";
+      note.style.marginBottom = "var(--space-3)";
       note.textContent =
         layout.undatedCount + " activity(ies) have no planned or calculated dates and aren't shown on the chart.";
       container.appendChild(note);
@@ -4624,7 +4624,7 @@
     jumpBar.className = "gantt-chart-only-control";
     jumpBar.style.display = "flex";
     jumpBar.style.gap = "var(--space-2)";
-    jumpBar.style.marginTop = "10px";
+    jumpBar.style.marginTop = "var(--space-3)";
     jumpBar.style.marginBottom = "-4px";
     jumpBar.style.flexWrap = "wrap";
 
@@ -4650,18 +4650,18 @@
     legend.style.display = "flex";
     legend.style.flexWrap = "wrap";
     legend.style.gap = "var(--space-4)";
-    legend.style.marginTop = "10px";
-    legend.style.fontSize = "12px";
+    legend.style.marginTop = "var(--space-3)";
+    legend.style.fontSize = "var(--text-sm)";
 
     function legendItem(colorCss, label, dashed) {
       var itemEl = document.createElement("span");
       itemEl.style.display = "inline-flex";
       itemEl.style.alignItems = "center";
-      itemEl.style.gap = "6px";
+      itemEl.style.gap = "var(--space-2)";
       var swatch = document.createElement("span");
       swatch.style.width = "14px";
       swatch.style.height = "10px";
-      swatch.style.borderRadius = "2px";
+      swatch.style.borderRadius = "var(--radius-sm)";
       swatch.style.background = colorCss;
       if (dashed) {
         swatch.style.background = "transparent";
@@ -4688,7 +4688,7 @@
     var dragHint = document.createElement("p");
     dragHint.className = "text-secondary gantt-chart-only-control";
     dragHint.style.fontSize = "var(--text-xs)";
-    dragHint.style.marginTop = "6px";
+    dragHint.style.marginTop = "var(--space-2)";
     dragHint.textContent = "Drag a bar to move it, drag its right edge to resize, or click a bar/milestone/label to open its details. Every edit recalculates the schedule automatically.";
     container.appendChild(dragHint);
 
@@ -4741,7 +4741,7 @@
 
         var badgeWrap = document.createElement("div");
         badgeWrap.style.display = "flex";
-        badgeWrap.style.gap = "6px";
+        badgeWrap.style.gap = "var(--space-2)";
         badgeWrap.style.flexWrap = "wrap";
         var statusBadge = document.createElement("span");
         statusBadge.className =
@@ -4895,17 +4895,17 @@
     var s = result.summary;
     var panel = document.createElement("div");
     panel.className = "panel";
-    panel.style.marginTop = "10px";
+    panel.style.marginTop = "var(--space-3)";
     panel.style.marginBottom = "var(--space-4)";
 
     var heading = document.createElement("h4");
-    heading.style.marginBottom = "10px";
+    heading.style.marginBottom = "var(--space-3)";
     heading.textContent = "Baseline vs Current \u2014 comparing against \u201c" + currentScheduleName + "\u201d";
     panel.appendChild(heading);
 
     var summaryLine = document.createElement("p");
-    summaryLine.style.fontSize = "13px";
-    summaryLine.style.marginBottom = "10px";
+    summaryLine.style.fontSize = "var(--text-sm)";
+    summaryLine.style.marginBottom = "var(--space-3)";
     var finishBit =
       s.project_finish_variance_days === null
         ? "Overall finish variance: not comparable (missing dates on one side)."
@@ -4944,7 +4944,7 @@
         row.style.display = "flex";
         row.style.justifyContent = "space-between";
         row.style.alignItems = "center";
-        row.style.marginBottom = "6px";
+        row.style.marginBottom = "var(--space-2)";
 
         var main = document.createElement("div");
         var varianceLabel =
@@ -4964,14 +4964,14 @@
       if (changed.length > 50) {
         var more = document.createElement("p");
         more.className = "text-secondary";
-        more.style.fontSize = "12px";
+        more.style.fontSize = "var(--text-sm)";
         more.textContent = "+" + (changed.length - 50) + " more changed activities not shown.";
         panel.appendChild(more);
       }
     } else {
       var noChange = document.createElement("p");
       noChange.className = "text-secondary";
-      noChange.style.fontSize = "13px";
+      noChange.style.fontSize = "var(--text-sm)";
       noChange.textContent = "No finish-date or criticality changes among matched activities.";
       panel.appendChild(noChange);
     }
@@ -4990,7 +4990,7 @@
 
     if (floatErosion.length > 0) {
       var erosionHeading = document.createElement("h4");
-      erosionHeading.style.marginTop = "14px";
+      erosionHeading.style.marginTop = "var(--space-4)";
       erosionHeading.style.marginBottom = "var(--space-2)";
       erosionHeading.textContent = "Float Erosion (" + floatErosion.length + ") — activities consuming float since baseline";
       panel.appendChild(erosionHeading);
@@ -4999,8 +4999,8 @@
       floatErosion.slice(0, 20).forEach(function (m) {
         var erosionRow = document.createElement("div");
         erosionRow.className = "detail-card";
-        erosionRow.style.marginBottom = "6px";
-        erosionRow.style.fontSize = "13px";
+        erosionRow.style.marginBottom = "var(--space-2)";
+        erosionRow.style.fontSize = "var(--text-sm)";
         erosionRow.innerHTML =
           "<strong>" + m.name + "</strong><br/>" +
           "<span class='text-secondary' style='font-size:12px;'>" +
@@ -5013,7 +5013,7 @@
       if (floatErosion.length > 20) {
         var erosionMore = document.createElement("p");
         erosionMore.className = "text-secondary";
-        erosionMore.style.fontSize = "12px";
+        erosionMore.style.fontSize = "var(--text-sm)";
         erosionMore.textContent = "+" + (floatErosion.length - 20) + " more not shown.";
         panel.appendChild(erosionMore);
       }
@@ -5022,7 +5022,7 @@
     if (result.activities.added.length > 0 || result.activities.removed.length > 0) {
       var addRemoveNote = document.createElement("p");
       addRemoveNote.className = "text-secondary";
-      addRemoveNote.style.fontSize = "12px";
+      addRemoveNote.style.fontSize = "var(--text-sm)";
       addRemoveNote.style.marginTop = "var(--space-2)";
       addRemoveNote.textContent =
         (result.activities.added.length ? result.activities.added.length + " activities exist in current but not in baseline. " : "") +
@@ -5059,8 +5059,8 @@
 
     var note = document.createElement("p");
     note.className = "text-secondary";
-    note.style.fontSize = "12px";
-    note.style.marginBottom = "10px";
+    note.style.fontSize = "var(--text-sm)";
+    note.style.marginBottom = "var(--space-3)";
     note.textContent =
       "Baselines from every schedule revision in this project. \u201cCompare\u201d checks a baseline " +
       "against whichever schedule is currently selected above. At most one baseline can be Official " +
@@ -5075,7 +5075,7 @@
       row.style.display = "flex";
       row.style.justifyContent = "space-between";
       row.style.alignItems = "center";
-      row.style.marginBottom = "6px";
+      row.style.marginBottom = "var(--space-2)";
       row.style.flexWrap = "wrap";
       row.style.gap = "var(--space-2)";
 
@@ -5215,14 +5215,14 @@
         if (uiState.baselineComparePending) {
           var loading = document.createElement("p");
           loading.className = "text-secondary";
-          loading.style.fontSize = "12px";
-          loading.style.marginBottom = "10px";
+          loading.style.fontSize = "var(--text-sm)";
+          loading.style.marginBottom = "var(--space-3)";
           loading.textContent = "Loading stored baseline data\u2026";
           list.appendChild(loading);
         } else if (uiState.baselineCompareError) {
           var errP = document.createElement("p");
           errP.style.color = "var(--status-critical)";
-          errP.style.fontSize = "13px";
+          errP.style.fontSize = "var(--text-sm)";
           errP.textContent = uiState.baselineCompareError;
           list.appendChild(errP);
         } else if (uiState.baselineCompareResult) {
@@ -5252,8 +5252,8 @@
 
     var intro = document.createElement("p");
     intro.className = "text-secondary";
-    intro.style.fontSize = "12px";
-    intro.style.marginBottom = "10px";
+    intro.style.fontSize = "var(--text-sm)";
+    intro.style.marginBottom = "var(--space-3)";
     intro.textContent =
       "Explore “what if we recover N days on this activity” without changing anything — nothing here is saved. Decide on a number, then log it against a Recovery Action from the Activity Detail Panel.";
     container.appendChild(intro);
@@ -5310,15 +5310,15 @@
     if (uiState.whatIfError) {
       var errorMsg = document.createElement("p");
       errorMsg.style.color = "var(--status-critical)";
-      errorMsg.style.fontSize = "12px";
+      errorMsg.style.fontSize = "var(--text-sm)";
       errorMsg.textContent = uiState.whatIfError;
       formPanel.appendChild(errorMsg);
     }
 
     var actions = document.createElement("div");
     actions.style.display = "flex";
-    actions.style.gap = "10px";
-    actions.style.marginTop = "10px";
+    actions.style.gap = "var(--space-3)";
+    actions.style.marginTop = "var(--space-3)";
 
     var runBtn = document.createElement("button");
     runBtn.type = "button";
@@ -5425,17 +5425,17 @@
       var r = uiState.whatIfResult;
       var resultPanel = document.createElement("div");
       resultPanel.className = "panel";
-      resultPanel.style.marginTop = "10px";
+      resultPanel.style.marginTop = "var(--space-3)";
 
       var heading = document.createElement("h4");
-      heading.style.marginBottom = "10px";
+      heading.style.marginBottom = "var(--space-3)";
       heading.textContent = "What-If Result — " + (r.activityName || "(unnamed activity)");
       resultPanel.appendChild(heading);
 
       if (r.actualReduction < r.requestedReduction) {
         var clampNote = document.createElement("p");
         clampNote.className = "text-secondary";
-        clampNote.style.fontSize = "12px";
+        clampNote.style.fontSize = "var(--text-sm)";
         clampNote.style.marginBottom = "var(--space-2)";
         clampNote.textContent =
           "Requested " + r.requestedReduction + "d, but this activity only had " + r.actualReduction + "d of " +
@@ -5445,7 +5445,7 @@
 
       if (!r.wasCritical) {
         var floatNote = document.createElement("p");
-        floatNote.style.fontSize = "13px";
+        floatNote.style.fontSize = "var(--text-sm)";
         floatNote.style.marginBottom = "var(--space-2)";
         floatNote.style.color = "var(--status-at-risk)";
         floatNote.textContent =
@@ -5454,7 +5454,7 @@
       }
 
       var summary = document.createElement("p");
-      summary.style.fontSize = "13px";
+      summary.style.fontSize = "var(--text-sm)";
       summary.innerHTML =
         "<strong>Project Finish:</strong> " + (r.beforeFinish || "—") + " → " + (r.afterFinish || "—") +
         (r.varianceDays != null
@@ -5465,14 +5465,14 @@
 
       if (r.newlyNonCritical.length > 0) {
         var offCritical = document.createElement("p");
-        offCritical.style.fontSize = "13px";
+        offCritical.style.fontSize = "var(--text-sm)";
         offCritical.style.marginTop = "var(--space-2)";
         offCritical.textContent = "No longer critical: " + r.newlyNonCritical.join(", ");
         resultPanel.appendChild(offCritical);
       }
       if (r.newlyCritical.length > 0) {
         var onCritical = document.createElement("p");
-        onCritical.style.fontSize = "13px";
+        onCritical.style.fontSize = "var(--text-sm)";
         onCritical.style.marginTop = "var(--space-1)";
         onCritical.textContent = "Newly critical: " + r.newlyCritical.join(", ");
         resultPanel.appendChild(onCritical);
@@ -5497,12 +5497,12 @@
     var h1 = document.createElement("h2");
     h1.className = "focus-mode-hide";
     h1.textContent = "Schedule";
-    h1.style.marginBottom = "6px";
+    h1.style.marginBottom = "var(--space-2)";
     outlet.appendChild(h1);
 
     var gateNote = document.createElement("p");
     gateNote.className = "text-secondary focus-mode-hide";
-    gateNote.style.fontSize = "12px";
+    gateNote.style.fontSize = "var(--text-sm)";
     gateNote.style.marginBottom = "var(--space-4)";
     gateNote.textContent =
       "Hand-enter activities, import from Excel, or calculate the critical path. " +

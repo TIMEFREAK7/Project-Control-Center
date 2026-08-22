@@ -599,7 +599,7 @@
     card.style.flex = "1 1 320px";
     card.style.minWidth = "280px";
     var h = document.createElement("h4");
-    h.style.marginBottom = "10px";
+    h.style.marginBottom = "var(--space-3)";
     h.textContent = title;
     card.appendChild(h);
     return card;
@@ -608,7 +608,7 @@
   function noDataNote(card, text) {
     var p = document.createElement("p");
     p.className = "text-secondary";
-    p.style.fontSize = "13px";
+    p.style.fontSize = "var(--text-sm)";
     p.textContent = text || "No data available.";
     card.appendChild(p);
   }
@@ -680,12 +680,12 @@
     wrap.style.flexWrap = "wrap";
     wrap.appendChild(svg);
     var legend = document.createElement("div");
-    legend.style.fontSize = "12px";
+    legend.style.fontSize = "var(--text-sm)";
     items.forEach(function (item) {
       var line = document.createElement("div");
       line.style.display = "flex";
       line.style.alignItems = "center";
-      line.style.gap = "6px";
+      line.style.gap = "var(--space-2)";
       line.style.marginBottom = "var(--space-1)";
       var swatch = document.createElement("span");
       swatch.style.width = "10px";
@@ -724,7 +724,7 @@
       var labelCell = document.createElement("td");
       labelCell.textContent = prob.toUpperCase();
       labelCell.className = "text-secondary";
-      labelCell.style.padding = "var(--space-1) 8px";
+      labelCell.style.padding = "var(--space-1) var(--space-2)";
       row.appendChild(labelCell);
       levels.forEach(function (impact) {
         var sev = SEVERITY_MATRIX[prob][impact];
@@ -755,7 +755,7 @@
       var td = document.createElement("td");
       td.className = "text-secondary";
       td.style.textAlign = "center";
-      td.style.fontSize = "10px";
+      td.style.fontSize = "var(--text-xs)";
       td.textContent = impact.toUpperCase();
       axisRow.appendChild(td);
     });
@@ -764,7 +764,7 @@
     var caption = document.createElement("p");
     caption.className = "text-secondary";
     caption.style.fontSize = "var(--text-xs)";
-    caption.style.marginTop = "6px";
+    caption.style.marginTop = "var(--space-2)";
     caption.textContent = "Rows: Probability · Columns: Impact";
     card.appendChild(caption);
   }
@@ -972,12 +972,12 @@
     var h1 = document.createElement("h2");
     h1.className = "focus-mode-hide";
     h1.textContent = "Project Executive Center";
-    h1.style.marginBottom = "6px";
+    h1.style.marginBottom = "var(--space-2)";
     outlet.appendChild(h1);
 
     var sub = document.createElement("p");
     sub.className = "text-secondary focus-mode-hide";
-    sub.style.fontSize = "12px";
+    sub.style.fontSize = "var(--text-sm)";
     sub.style.marginBottom = "var(--space-4)";
     sub.textContent = "Management rollup for one project — every number reads live from Portfolio, Schedule, Cost Tracking, Risk Register, RFI/TQ, Change Management, and Meetings.";
     outlet.appendChild(sub);
@@ -1078,7 +1078,7 @@
     heroHeader.style.display = "flex";
     heroHeader.style.justifyContent = "space-between";
     heroHeader.style.alignItems = "flex-start";
-    heroHeader.style.marginBottom = "12px";
+    heroHeader.style.marginBottom = "var(--space-3)";
     var heroTitle = document.createElement("div");
     heroTitle.innerHTML = "<h3 style='margin-bottom:2px;'>" + esc(p.name || "(unnamed project)") + "</h3>" +
       "<span class='text-secondary' style='font-size:12px;'>" + esc(p.client || "—") + (p.sector ? " · " + esc(p.sector) : "") + (p.project_type ? " · " + esc(p.project_type) : "") + "</span>";
@@ -1155,7 +1155,7 @@
     var detailsPanel = document.createElement("div");
     detailsPanel.className = "panel";
     var detailsHeading = document.createElement("h3");
-    detailsHeading.style.marginBottom = "10px";
+    detailsHeading.style.marginBottom = "var(--space-3)";
     detailsHeading.textContent = "Project Details";
     detailsPanel.appendChild(detailsHeading);
 
@@ -1355,7 +1355,7 @@
     wrap.style.marginTop = "var(--space-4)";
     var h = document.createElement("h4");
     h.style.marginBottom = "var(--space-2)";
-    h.style.fontSize = "12px";
+    h.style.fontSize = "var(--text-sm)";
     h.style.letterSpacing = "1px";
     h.className = "text-secondary";
     h.textContent = title;
@@ -1386,7 +1386,7 @@
     wrap.style.marginTop = "var(--space-4)";
     var h = document.createElement("h4");
     h.style.marginBottom = "var(--space-2)";
-    h.style.fontSize = "12px";
+    h.style.fontSize = "var(--text-sm)";
     h.style.letterSpacing = "1px";
     h.className = "text-secondary";
     h.textContent = title;
@@ -1410,13 +1410,13 @@
   function renderSchedulePerformanceDetail(outlet, ctx, p, rerender) {
     var wrap = document.createElement("div");
     wrap.className = "panel";
-    wrap.style.marginTop = "10px";
+    wrap.style.marginTop = "var(--space-3)";
 
     var heading = document.createElement("div");
     heading.style.display = "flex";
     heading.style.justifyContent = "space-between";
     heading.style.alignItems = "center";
-    heading.style.marginBottom = "10px";
+    heading.style.marginBottom = "var(--space-3)";
     var headingTitle = document.createElement("h4");
     headingTitle.textContent = "Schedule Performance Score";
     heading.appendChild(headingTitle);
@@ -1425,16 +1425,16 @@
 
     var table = document.createElement("table");
     table.style.width = "100%";
-    table.style.fontSize = "12px";
+    table.style.fontSize = "var(--text-sm)";
     table.style.borderCollapse = "collapse";
-    table.style.marginBottom = "10px";
+    table.style.marginBottom = "var(--space-3)";
     var thead = document.createElement("tr");
     ["Factor", "Weight", "Score", "Why"].forEach(function (h) {
       var th = document.createElement("th");
       th.textContent = h;
       th.style.textAlign = "left";
       th.style.borderBottom = "1px solid var(--divider)";
-      th.style.padding = "var(--space-1) 6px";
+      th.style.padding = "var(--space-1) var(--space-2)";
       thead.appendChild(th);
     });
     table.appendChild(thead);
@@ -1443,7 +1443,7 @@
       var tr = document.createElement("tr");
       function td(text) {
         var cell = document.createElement("td");
-        cell.style.padding = "var(--space-1) 6px";
+        cell.style.padding = "var(--space-1) var(--space-2)";
         cell.style.borderBottom = "1px solid var(--divider)";
         cell.style.verticalAlign = "top";
         cell.textContent = text;
@@ -1467,7 +1467,7 @@
     captureRow.style.gap = "var(--space-2)";
 
     var captureNote = document.createElement("span");
-    captureNote.style.fontSize = "13px";
+    captureNote.style.fontSize = "var(--text-sm)";
     captureNote.textContent =
       snapshots.length > 0
         ? snapshots.length + " performance snapshot" + (snapshots.length === 1 ? "" : "s") + " captured — last on " + snapshots[0].captured_at.slice(0, 10) + "."
@@ -1502,10 +1502,10 @@
 
     if (snapshots.length > 0) {
       var historyList = document.createElement("div");
-      historyList.style.marginTop = "10px";
+      historyList.style.marginTop = "var(--space-3)";
       snapshots.slice(0, 10).forEach(function (s) {
         var row = document.createElement("p");
-        row.style.fontSize = "12px";
+        row.style.fontSize = "var(--text-sm)";
         row.style.margin = "var(--space-1) 0";
         row.className = "text-secondary";
         row.textContent =
@@ -1517,7 +1517,7 @@
       if (snapshots.length > 10) {
         var more = document.createElement("p");
         more.className = "text-secondary";
-        more.style.fontSize = "12px";
+        more.style.fontSize = "var(--text-sm)";
         more.textContent = "+" + (snapshots.length - 10) + " more not shown.";
         historyList.appendChild(more);
       }
@@ -1538,14 +1538,14 @@
     if (ctx.forecastLateActivities.length > 0) {
       var lateWrap = document.createElement("div");
       lateWrap.className = "panel";
-      lateWrap.style.marginTop = "10px";
+      lateWrap.style.marginTop = "var(--space-3)";
       var lateHeading = document.createElement("h4");
       lateHeading.style.marginBottom = "var(--space-2)";
       lateHeading.textContent = "Forecast to Finish Late (" + ctx.forecastLateActivities.length + ")";
       lateWrap.appendChild(lateHeading);
       ctx.forecastLateActivities.slice(0, 20).forEach(function (a) {
         var row = document.createElement("p");
-        row.style.fontSize = "13px";
+        row.style.fontSize = "var(--text-sm)";
         row.style.margin = "var(--space-1) 0";
         row.textContent =
           esc(a.name || "(unnamed activity)") + " — planned " + a.plannedFinish + ", forecast " + a.forecastFinish +
@@ -1555,7 +1555,7 @@
       if (ctx.forecastLateActivities.length > 20) {
         var more = document.createElement("p");
         more.className = "text-secondary";
-        more.style.fontSize = "12px";
+        more.style.fontSize = "var(--text-sm)";
         more.textContent = "+" + (ctx.forecastLateActivities.length - 20) + " more not shown.";
         lateWrap.appendChild(more);
       }
@@ -1565,7 +1565,7 @@
     if (ctx.outOfSequenceActivities.length > 0) {
       var oosWrap = document.createElement("div");
       oosWrap.className = "panel";
-      oosWrap.style.marginTop = "10px";
+      oosWrap.style.marginTop = "var(--space-3)";
       var oosHeading = document.createElement("h4");
       oosHeading.style.marginBottom = "var(--space-2)";
       var modeLabel = ctx.schedule && ctx.schedule.calculation_mode === "retained_logic" ? "Retained Logic" : "Progress Override";
@@ -1573,7 +1573,7 @@
       oosWrap.appendChild(oosHeading);
       ctx.outOfSequenceActivities.slice(0, 20).forEach(function (a) {
         var row = document.createElement("p");
-        row.style.fontSize = "13px";
+        row.style.fontSize = "var(--text-sm)";
         row.style.margin = "var(--space-1) 0";
         row.textContent = esc(a.name || "(unnamed activity)");
         oosWrap.appendChild(row);
@@ -1581,14 +1581,14 @@
       if (ctx.outOfSequenceActivities.length > 20) {
         var oosMore = document.createElement("p");
         oosMore.className = "text-secondary";
-        oosMore.style.fontSize = "12px";
+        oosMore.style.fontSize = "var(--text-sm)";
         oosMore.textContent = "+" + (ctx.outOfSequenceActivities.length - 20) + " more not shown.";
         oosWrap.appendChild(oosMore);
       }
       var oosNote = document.createElement("p");
       oosNote.className = "text-secondary";
-      oosNote.style.fontSize = "12px";
-      oosNote.style.marginTop = "6px";
+      oosNote.style.fontSize = "var(--text-sm)";
+      oosNote.style.marginTop = "var(--space-2)";
       oosNote.textContent =
         modeLabel === "Retained Logic"
           ? "These activities had actual progress before their predecessor logic allowed — their forecast is pushed to respect that logic. Change the mode on the Schedule page."
@@ -1600,8 +1600,8 @@
     if (ctx.remainingDurationMissingCount > 0) {
       var missingNote = document.createElement("p");
       missingNote.className = "text-secondary";
-      missingNote.style.fontSize = "12px";
-      missingNote.style.marginTop = "6px";
+      missingNote.style.fontSize = "var(--text-sm)";
+      missingNote.style.marginTop = "var(--space-2)";
       missingNote.textContent =
         ctx.remainingDurationMissingCount + " in-progress activit" + (ctx.remainingDurationMissingCount === 1 ? "y has" : "ies have") +
         " no Remaining Duration set, so Remaining Duration above is understated — update it on the Schedule page.";
@@ -1610,7 +1610,7 @@
 
     var baselineWrap = document.createElement("div");
     baselineWrap.className = "panel";
-    baselineWrap.style.marginTop = "10px";
+    baselineWrap.style.marginTop = "var(--space-3)";
     baselineWrap.style.display = "flex";
     baselineWrap.style.justifyContent = "space-between";
     baselineWrap.style.alignItems = "center";
@@ -1618,7 +1618,7 @@
     baselineWrap.style.gap = "var(--space-2)";
 
     var baselineNote = document.createElement("span");
-    baselineNote.style.fontSize = "13px";
+    baselineNote.style.fontSize = "var(--text-sm)";
     baselineNote.textContent =
       ctx.baselineCount > 0
         ? "Float Changes and Milestone Variance are computed from " + ctx.baselineCount + " captured baseline" + (ctx.baselineCount === 1 ? "" : "s") + " on the Baselines tab."
@@ -1649,7 +1649,7 @@
     if (ctx.unaddressedDelayActivities.length === 0) return;
     var wrap = document.createElement("div");
     wrap.className = "panel";
-    wrap.style.marginTop = "10px";
+    wrap.style.marginTop = "var(--space-3)";
     var heading = document.createElement("h4");
     heading.style.marginBottom = "var(--space-2)";
     heading.textContent = "Activities With Unaddressed Delay (" + ctx.unaddressedDelayActivities.length + ")";
@@ -1663,7 +1663,7 @@
       row.style.gap = "var(--space-2)";
       row.style.margin = "var(--space-1) 0";
       var label = document.createElement("span");
-      label.style.fontSize = "13px";
+      label.style.fontSize = "var(--text-sm)";
       label.textContent =
         esc(a.name) + " — " + a.delayDays + "d delay, " + a.recoveryDays + "d recovery estimated (" + a.gapDays + "d unaddressed)";
       row.appendChild(label);
@@ -1682,7 +1682,7 @@
     if (ctx.unaddressedDelayActivities.length > 20) {
       var more = document.createElement("p");
       more.className = "text-secondary";
-      more.style.fontSize = "12px";
+      more.style.fontSize = "var(--text-sm)";
       more.textContent = "+" + (ctx.unaddressedDelayActivities.length - 20) + " more not shown.";
       wrap.appendChild(more);
     }
@@ -1763,7 +1763,7 @@
     breakdownWrap.style.flex = "1 1 320px";
     var table = document.createElement("table");
     table.style.width = "100%";
-    table.style.fontSize = "12px";
+    table.style.fontSize = "var(--text-sm)";
     table.style.borderCollapse = "collapse";
     var thead = document.createElement("tr");
     ["Factor", "Weight", "Score", "Contribution", "Why"].forEach(function (h2) {
@@ -1771,7 +1771,7 @@
       th.textContent = h2;
       th.style.textAlign = "left";
       th.style.borderBottom = "1px solid var(--divider)";
-      th.style.padding = "var(--space-1) 6px";
+      th.style.padding = "var(--space-1) var(--space-2)";
       thead.appendChild(th);
     });
     table.appendChild(thead);
@@ -1780,7 +1780,7 @@
       var tr = document.createElement("tr");
       function td(text) {
         var cell = document.createElement("td");
-        cell.style.padding = "var(--space-1) 6px";
+        cell.style.padding = "var(--space-1) var(--space-2)";
         cell.style.borderBottom = "1px solid var(--divider)";
         cell.style.verticalAlign = "top";
         cell.textContent = text;
@@ -1789,7 +1789,7 @@
       tr.appendChild(td(f.label));
       if (uiState.editingWeights) {
         var weightCell = document.createElement("td");
-        weightCell.style.padding = "var(--space-1) 6px";
+        weightCell.style.padding = "var(--space-1) var(--space-2)";
         weightCell.style.borderBottom = "1px solid var(--divider)";
         var input = document.createElement("input");
         input.type = "number";
@@ -1839,13 +1839,13 @@
     panel.className = "panel";
     panel.style.marginTop = "var(--space-4)";
     var h = document.createElement("h3");
-    h.style.marginBottom = "10px";
+    h.style.marginBottom = "var(--space-3)";
     h.textContent = "Project Health Diagnostics (" + diagnostics.length + ")";
     panel.appendChild(h);
     if (diagnostics.length === 0) {
       var okP = document.createElement("p");
       okP.className = "text-secondary";
-      okP.style.fontSize = "13px";
+      okP.style.fontSize = "var(--text-sm)";
       okP.textContent = "No rule-based alerts right now.";
       panel.appendChild(okP);
       return panel;
@@ -2012,13 +2012,13 @@
     panel.className = "panel";
     panel.style.marginTop = "var(--space-4)";
     var h = document.createElement("h3");
-    h.style.marginBottom = "10px";
+    h.style.marginBottom = "var(--space-3)";
     h.textContent = "Executive Summary";
     panel.appendChild(h);
     var note = document.createElement("p");
     note.className = "text-secondary no-print";
     note.style.fontSize = "var(--text-xs)";
-    note.style.marginBottom = "10px";
+    note.style.marginBottom = "var(--space-3)";
     note.textContent = "Generated from real project data below. Edit any section to override it before printing/exporting; overrides are saved and persist until reset.";
     panel.appendChild(note);
 
@@ -2028,13 +2028,13 @@
       var displayText = override || autoText;
 
       var sectionWrap = document.createElement("div");
-      sectionWrap.style.marginBottom = "14px";
+      sectionWrap.style.marginBottom = "var(--space-4)";
       var sectionHeader = document.createElement("div");
       sectionHeader.style.display = "flex";
       sectionHeader.style.justifyContent = "space-between";
       sectionHeader.style.alignItems = "center";
       var label = document.createElement("strong");
-      label.style.fontSize = "13px";
+      label.style.fontSize = "var(--text-sm)";
       label.textContent = section.label.toUpperCase() + (override ? " (edited)" : "");
       sectionHeader.appendChild(label);
 
@@ -2054,14 +2054,14 @@
         var textarea = document.createElement("textarea");
         textarea.rows = 3;
         textarea.style.width = "100%";
-        textarea.style.marginTop = "6px";
+        textarea.style.marginTop = "var(--space-2)";
         textarea.value = displayText;
         sectionWrap.appendChild(textarea);
 
         var actions = document.createElement("div");
         actions.style.display = "flex";
         actions.style.gap = "var(--space-2)";
-        actions.style.marginTop = "6px";
+        actions.style.marginTop = "var(--space-2)";
 
         var saveBtn = document.createElement("button");
         saveBtn.className = "btn btn--primary";
@@ -2107,7 +2107,7 @@
         sectionWrap.appendChild(actions);
       } else {
         var textP = document.createElement("p");
-        textP.style.fontSize = "13px";
+        textP.style.fontSize = "var(--text-sm)";
         textP.style.marginTop = "var(--space-1)";
         textP.textContent = displayText;
         sectionWrap.appendChild(textP);
@@ -2131,7 +2131,7 @@
     var wrap = document.createElement("div");
     wrap.style.marginTop = "var(--space-4)";
     var h = document.createElement("h4");
-    h.style.marginBottom = "10px";
+    h.style.marginBottom = "var(--space-3)";
     h.textContent = "Charts";
     wrap.appendChild(h);
 
@@ -2181,7 +2181,7 @@
     var wrap = document.createElement("div");
     wrap.style.marginTop = "var(--space-4)";
     var h = document.createElement("h4");
-    h.style.marginBottom = "10px";
+    h.style.marginBottom = "var(--space-3)";
     h.textContent = "Charts";
     wrap.appendChild(h);
 
@@ -2236,8 +2236,8 @@
     var list = document.createElement("div");
     items.forEach(function (i) {
       var row = document.createElement("div");
-      row.style.fontSize = "12px";
-      row.style.marginBottom = "6px";
+      row.style.fontSize = "var(--text-sm)";
+      row.style.marginBottom = "var(--space-2)";
       row.innerHTML = "<span class='text-secondary'>" + new Date(i.date).toLocaleDateString() + "</span> — " + esc(i.text);
       list.appendChild(row);
     });
@@ -2284,8 +2284,8 @@
     var list = document.createElement("div");
     items.forEach(function (i) {
       var row = document.createElement("div");
-      row.style.fontSize = "12px";
-      row.style.marginBottom = "6px";
+      row.style.fontSize = "var(--text-sm)";
+      row.style.marginBottom = "var(--space-2)";
       row.innerHTML = "<span class='mono text-secondary'>" + i.date + "</span> — " + esc(i.text);
       list.appendChild(row);
     });
@@ -2298,7 +2298,7 @@
     panel.className = "panel";
     panel.style.marginTop = "var(--space-4)";
     var h = document.createElement("h3");
-    h.style.marginBottom = "10px";
+    h.style.marginBottom = "var(--space-3)";
     h.textContent = "Management Action List";
     panel.appendChild(h);
 
@@ -2317,7 +2317,7 @@
     if (items.length === 0) {
       var okP = document.createElement("p");
       okP.className = "text-secondary";
-      okP.style.fontSize = "13px";
+      okP.style.fontSize = "var(--text-sm)";
       okP.textContent = "Nothing outstanding.";
       panel.appendChild(okP);
       return panel;
@@ -2389,7 +2389,7 @@
     section.className = "report-doc__section";
     var h = document.createElement("h3");
     h.textContent = title;
-    h.style.marginBottom = "6px";
+    h.style.marginBottom = "var(--space-2)";
     section.appendChild(h);
     return section;
   }
@@ -2397,7 +2397,7 @@
   function reportEmptyNote(text) {
     var p = document.createElement("p");
     p.className = "text-secondary";
-    p.style.fontSize = "12px";
+    p.style.fontSize = "var(--text-sm)";
     p.style.margin = "var(--space-1) 0 0";
     p.textContent = text;
     return p;
@@ -2439,7 +2439,7 @@
     header.style.justifyContent = "space-between";
     header.style.alignItems = "flex-start";
     header.style.gap = "var(--space-3)";
-    header.style.marginBottom = "10px";
+    header.style.marginBottom = "var(--space-3)";
     var headerLeft = document.createElement("div");
     headerLeft.innerHTML =
       "<h2 style='margin-bottom:2px'>" + esc(ctx.project.name || "(unnamed project)") + "</h2>" +
@@ -2462,7 +2462,7 @@
     var grid3 = document.createElement("div");
     grid3.style.display = "grid";
     grid3.style.gridTemplateColumns = "repeat(3, 1fr)";
-    grid3.style.gap = "10px";
+    grid3.style.gap = "var(--space-3)";
 
     var overview = reportSection("Overview");
     overview.appendChild(reportTable(["Field", "Value"], [
@@ -2524,7 +2524,7 @@
 
     if (sections.cover) {
       var cover = document.createElement("div");
-      cover.style.marginBottom = "24px";
+      cover.style.marginBottom = "var(--space-5)";
       cover.style.textAlign = "center";
       cover.style.paddingTop = "60px";
       var coverLogo = renderLogoImg(data);
@@ -2548,7 +2548,7 @@
       SUMMARY_SECTIONS.forEach(function (s) {
         var text = (summaryRecord2 && summaryRecord2[s.overrideKey]) || s.auto(ctx);
         var p = document.createElement("p");
-        p.style.fontSize = "12px";
+        p.style.fontSize = "var(--text-sm)";
         p.innerHTML = "<strong>" + s.label + ":</strong> " + esc(text);
         execSection.appendChild(p);
       });
@@ -2821,7 +2821,7 @@
 
     var badgeWrap = document.createElement("div");
     badgeWrap.style.display = "flex";
-    badgeWrap.style.gap = "6px";
+    badgeWrap.style.gap = "var(--space-2)";
     badgeWrap.appendChild(ragBadge(s.rag));
 
     var actions = document.createElement("div");
@@ -2887,8 +2887,8 @@
       ].forEach(function (f) {
         if (!f.value) return;
         var p = document.createElement("p");
-        p.style.marginTop = "10px";
-        p.style.fontSize = "13px";
+        p.style.marginTop = "var(--space-3)";
+        p.style.fontSize = "var(--text-sm)";
         p.innerHTML = "<strong>" + esc(f.label) + ":</strong> " + esc(f.value);
         details.appendChild(p);
       });
@@ -2906,14 +2906,14 @@
 
     var intro = document.createElement("p");
     intro.className = "text-secondary";
-    intro.style.fontSize = "12px";
-    intro.style.marginBottom = "12px";
+    intro.style.fontSize = "var(--text-sm)";
+    intro.style.marginBottom = "var(--space-3)";
     intro.textContent = "Each review freezes this project's key numbers at that moment — a review from a month ago shows what was true then, not today's live figures.";
     outlet.appendChild(intro);
 
     var newBtn = document.createElement("button");
     newBtn.className = "btn btn--primary no-print";
-    newBtn.style.marginBottom = "12px";
+    newBtn.style.marginBottom = "var(--space-3)";
     newBtn.textContent = "+ New Weekly Review";
     newBtn.onclick = function () {
       uiState.pendingNewReviewSnapshot = captureSnapshot(ctx, health);
@@ -2933,16 +2933,16 @@
         panel.className = "panel no-print";
         panel.style.marginBottom = "var(--space-4)";
         var heading = document.createElement("h3");
-        heading.style.marginBottom = "12px";
+        heading.style.marginBottom = "var(--space-3)";
         heading.textContent = isNew ? "New Weekly Review" : "Edit Weekly Review";
         panel.appendChild(heading);
 
         if (isNew) {
           var snapNote = document.createElement("p");
           snapNote.className = "text-secondary";
-          snapNote.style.fontSize = "12px";
+          snapNote.style.fontSize = "var(--text-sm)";
           snapNote.style.marginTop = "-6px";
-          snapNote.style.marginBottom = "12px";
+          snapNote.style.marginBottom = "var(--space-3)";
           snapNote.textContent = "Snapshot captured just now — Health " + (review.snapshot.rag ? RAG_LABELS[review.snapshot.rag] : "—") + " (" + (review.snapshot.health_score == null ? "—" : review.snapshot.health_score) + "), Schedule " + fmtPct(review.snapshot.schedule_progress_pct) + ", Physical " + fmtPct(review.snapshot.physical_progress_pct) + ".";
           panel.appendChild(snapNote);
         }
@@ -2970,7 +2970,7 @@
         function textareaField(label, id, value) {
           var f = document.createElement("div");
           f.className = "field";
-          f.style.marginTop = "10px";
+          f.style.marginTop = "var(--space-3)";
           f.innerHTML = "<label>" + esc(label) + "</label>";
           var ta = document.createElement("textarea");
           ta.id = id;
@@ -2985,7 +2985,7 @@
 
         var actionsRow = document.createElement("div");
         actionsRow.style.display = "flex";
-        actionsRow.style.gap = "10px";
+        actionsRow.style.gap = "var(--space-3)";
         actionsRow.style.marginTop = "var(--space-3)";
         var saveBtn = document.createElement("button");
         saveBtn.type = "submit";
@@ -3094,7 +3094,7 @@
       var cbGrid = document.createElement("div");
       cbGrid.style.display = "grid";
       cbGrid.style.gridTemplateColumns = "repeat(auto-fill, minmax(180px, 1fr))";
-      cbGrid.style.gap = "6px";
+      cbGrid.style.gap = "var(--space-2)";
       var sectionLabels = {
         cover: "Cover Page", summary: "Executive Summary", snapshot: "Project Snapshot", kpis: "KPI Dashboard",
         progress: "Progress Summary (S-Curve)", schedule: "Schedule Summary",
@@ -3113,10 +3113,10 @@
       templateRow.style.alignItems = "center";
       templateRow.style.gap = "var(--space-2)";
       templateRow.style.flexWrap = "wrap";
-      templateRow.style.marginBottom = "10px";
+      templateRow.style.marginBottom = "var(--space-3)";
 
       var templateLabel = document.createElement("span");
-      templateLabel.style.fontSize = "13px";
+      templateLabel.style.fontSize = "var(--text-sm)";
       templateLabel.textContent = "Template:";
       templateRow.appendChild(templateLabel);
 
@@ -3195,7 +3195,7 @@
         saveNewRow.style.display = "flex";
         saveNewRow.style.alignItems = "center";
         saveNewRow.style.gap = "var(--space-2)";
-        saveNewRow.style.marginBottom = "10px";
+        saveNewRow.style.marginBottom = "var(--space-3)";
 
         var nameInput = document.createElement("input");
         nameInput.type = "text";
@@ -3246,8 +3246,8 @@
         var label = document.createElement("label");
         label.style.display = "flex";
         label.style.alignItems = "center";
-        label.style.gap = "6px";
-        label.style.fontSize = "12px";
+        label.style.gap = "var(--space-2)";
+        label.style.fontSize = "var(--text-sm)";
         var cb = document.createElement("input");
         cb.type = "checkbox";
         cb.checked = uiState.packSections[key];

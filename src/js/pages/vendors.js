@@ -265,7 +265,7 @@
     panel.style.marginBottom = "var(--space-4)";
 
     var heading = document.createElement("h3");
-    heading.style.marginBottom = "14px";
+    heading.style.marginBottom = "var(--space-4)";
     heading.textContent = isNew ? "Add Vendor" : "Edit Vendor";
     panel.appendChild(heading);
 
@@ -273,7 +273,7 @@
 
     var basicHeading = document.createElement("p");
     basicHeading.className = "text-secondary";
-    basicHeading.style.fontSize = "12px";
+    basicHeading.style.fontSize = "var(--text-sm)";
     basicHeading.style.fontWeight = "600";
     basicHeading.style.marginBottom = "var(--space-2)";
     basicHeading.textContent = "BASIC INFORMATION";
@@ -292,7 +292,7 @@
 
     var contactHeading = document.createElement("p");
     contactHeading.className = "text-secondary";
-    contactHeading.style.fontSize = "12px";
+    contactHeading.style.fontSize = "var(--text-sm)";
     contactHeading.style.fontWeight = "600";
     contactHeading.style.marginTop = "var(--space-4)";
     contactHeading.style.marginBottom = "var(--space-2)";
@@ -316,7 +316,7 @@
 
     var addressHeading = document.createElement("p");
     addressHeading.className = "text-secondary";
-    addressHeading.style.fontSize = "12px";
+    addressHeading.style.fontSize = "var(--text-sm)";
     addressHeading.style.fontWeight = "600";
     addressHeading.style.marginTop = "var(--space-4)";
     addressHeading.style.marginBottom = "var(--space-2)";
@@ -343,7 +343,7 @@
 
     var notesField = document.createElement("div");
     notesField.className = "field";
-    notesField.style.marginTop = "10px";
+    notesField.style.marginTop = "var(--space-3)";
     notesField.innerHTML = "<label>Notes</label>";
     var notesArea = document.createElement("textarea");
     notesArea.id = "vendorfield-notes";
@@ -354,16 +354,16 @@
 
     var errorMsg = document.createElement("p");
     errorMsg.style.color = "var(--status-critical)";
-    errorMsg.style.fontSize = "13px";
+    errorMsg.style.fontSize = "var(--text-sm)";
     errorMsg.style.display = "none";
-    errorMsg.style.marginTop = "10px";
+    errorMsg.style.marginTop = "var(--space-3)";
     errorMsg.textContent = "Vendor Name is required.";
     form.appendChild(errorMsg);
 
     var actions = document.createElement("div");
     actions.style.display = "flex";
-    actions.style.gap = "10px";
-    actions.style.marginTop = "14px";
+    actions.style.gap = "var(--space-3)";
+    actions.style.marginTop = "var(--space-4)";
 
     var saveBtn = document.createElement("button");
     saveBtn.type = "submit";
@@ -510,7 +510,7 @@
     top.style.display = "flex";
     top.style.justifyContent = "space-between";
     top.style.alignItems = "flex-start";
-    top.style.gap = "10px";
+    top.style.gap = "var(--space-3)";
 
     var titleBlock = document.createElement("div");
     var titleRow = document.createElement("div");
@@ -528,7 +528,7 @@
 
     var sub = document.createElement("p");
     sub.className = "text-secondary";
-    sub.style.fontSize = "12px";
+    sub.style.fontSize = "var(--text-sm)";
     sub.style.margin = "var(--space-1) 0 0";
     var projectCount = data.vendor_project_links.filter(function (l) {
       return l.vendor_id === v.id;
@@ -749,7 +749,7 @@
     var lab = document.createElement("p");
     lab.className = "text-secondary";
     lab.style.fontSize = "var(--text-xs)";
-    lab.style.marginBottom = "6px";
+    lab.style.marginBottom = "var(--space-2)";
     lab.textContent = label.toUpperCase();
     card.appendChild(lab);
     var val = document.createElement("p");
@@ -763,7 +763,7 @@
       subEl.style.marginTop = "var(--space-2)";
       if (typeof sub === "string") {
         subEl.className = "text-secondary";
-        subEl.style.fontSize = "12px";
+        subEl.style.fontSize = "var(--text-sm)";
         subEl.textContent = sub;
       } else {
         subEl.appendChild(sub);
@@ -778,14 +778,14 @@
     if (items.length === 0) {
       var none = document.createElement("p");
       none.className = "text-secondary";
-      none.style.fontSize = "12px";
+      none.style.fontSize = "var(--text-sm)";
       none.textContent = "None.";
       wrap.appendChild(none);
       return wrap;
     }
     items.forEach(function (text) {
       var p = document.createElement("p");
-      p.style.fontSize = "12px";
+      p.style.fontSize = "var(--text-sm)";
       p.style.margin = "0 0 var(--space-1)";
       p.textContent = text;
       wrap.appendChild(p);
@@ -803,7 +803,7 @@
     cardsGrid.style.display = "grid";
     cardsGrid.style.gridTemplateColumns = "repeat(auto-fit, minmax(220px, 1fr))";
     cardsGrid.style.gap = "var(--space-3)";
-    cardsGrid.style.marginBottom = "20px";
+    cardsGrid.style.marginBottom = "var(--space-5)";
 
     var activeCount = data.vendors.filter(function (v) { return v.status === "active"; }).length;
     var preferredCount = data.vendors.filter(function (v) { return v.status === "preferred"; }).length;
@@ -891,9 +891,9 @@
     function activityColumn(title, items) {
       var col = document.createElement("div");
       var t = document.createElement("p");
-      t.style.fontSize = "12px";
+      t.style.fontSize = "var(--text-sm)";
       t.style.fontWeight = "600";
-      t.style.marginBottom = "6px";
+      t.style.marginBottom = "var(--space-2)";
       t.textContent = title;
       col.appendChild(t);
       col.appendChild(miniList(items));
@@ -978,7 +978,7 @@
     var grid = document.createElement("div");
     grid.style.display = "grid";
     grid.style.gridTemplateColumns = "repeat(auto-fit, minmax(200px, 1fr))";
-    grid.style.gap = "14px";
+    grid.style.gap = "var(--space-4)";
 
     function row(label, value) {
       var d = document.createElement("div");
@@ -1011,7 +1011,7 @@
 
     if (vendor.notes) {
       var notesP = document.createElement("p");
-      notesP.style.marginTop = "14px";
+      notesP.style.marginTop = "var(--space-4)";
       notesP.style.whiteSpace = "pre-wrap";
       notesP.textContent = vendor.notes;
       panel.appendChild(notesP);
@@ -1019,7 +1019,7 @@
 
     var statsRow = document.createElement("div");
     statsRow.style.display = "flex";
-    statsRow.style.gap = "20px";
+    statsRow.style.gap = "var(--space-5)";
     statsRow.style.marginTop = "var(--space-4)";
     statsRow.style.flexWrap = "wrap";
 
@@ -1103,7 +1103,7 @@
 
         var actions = document.createElement("div");
         actions.style.display = "flex";
-        actions.style.gap = "10px";
+        actions.style.gap = "var(--space-3)";
         actions.style.marginTop = "var(--space-3)";
         var saveBtn = document.createElement("button");
         saveBtn.type = "submit";
@@ -1253,7 +1253,7 @@
 
         var actions = document.createElement("div");
         actions.style.display = "flex";
-        actions.style.gap = "10px";
+        actions.style.gap = "var(--space-3)";
         actions.style.marginTop = "var(--space-3)";
         var saveBtn = document.createElement("button");
         saveBtn.type = "submit";
@@ -1393,7 +1393,7 @@
     panel.style.marginBottom = "var(--space-3)";
 
     var heading = document.createElement("h4");
-    heading.style.marginBottom = "10px";
+    heading.style.marginBottom = "var(--space-3)";
     heading.textContent = uiState.pendingDocGroupId ? "Upload New Revision" : "Upload Document";
     panel.appendChild(heading);
 
@@ -1407,7 +1407,7 @@
     if (uiState.pendingDocReadError) {
       var err = document.createElement("p");
       err.style.color = "var(--status-critical)";
-      err.style.fontSize = "13px";
+      err.style.fontSize = "var(--text-sm)";
       err.style.marginTop = "var(--space-2)";
       err.textContent = uiState.pendingDocReadError;
       panel.appendChild(err);
@@ -1416,7 +1416,7 @@
     if (uiState.pendingDocFile) {
       var fileInfo = document.createElement("p");
       fileInfo.className = "text-secondary";
-      fileInfo.style.fontSize = "12px";
+      fileInfo.style.fontSize = "var(--text-sm)";
       fileInfo.style.margin = "var(--space-2) 0";
       fileInfo.textContent = uiState.pendingDocFile.name + " · " + formatBytes(uiState.pendingDocFile.size);
       panel.appendChild(fileInfo);
@@ -1424,7 +1424,7 @@
 
     var grid = document.createElement("div");
     grid.className = "form-grid";
-    grid.style.marginTop = "10px";
+    grid.style.marginTop = "var(--space-3)";
 
     var catField = document.createElement("div");
     catField.className = "field";
@@ -1511,7 +1511,7 @@
 
     var actions = document.createElement("div");
     actions.style.display = "flex";
-    actions.style.gap = "10px";
+    actions.style.gap = "var(--space-3)";
     actions.style.marginTop = "var(--space-3)";
 
     var saveBtn = document.createElement("button");
@@ -1695,15 +1695,15 @@
 
       if (uiState.expandedDocGroupId === groupId && allRevisions.length > 1) {
         var histWrap = document.createElement("div");
-        histWrap.style.marginTop = "10px";
-        histWrap.style.paddingTop = "10px";
+        histWrap.style.marginTop = "var(--space-3)";
+        histWrap.style.paddingTop = "var(--space-3)";
         histWrap.style.borderTop = "1px solid var(--divider)";
         allRevisions.slice(1).forEach(function (rev) {
           var revRow = document.createElement("div");
           revRow.style.display = "flex";
           revRow.style.justifyContent = "space-between";
           revRow.style.alignItems = "center";
-          revRow.style.fontSize = "12px";
+          revRow.style.fontSize = "var(--text-sm)";
           revRow.style.marginBottom = "var(--space-1)";
           var revLabel = document.createElement("span");
           revLabel.textContent = "Rev " + rev.revision_number + " — " + rev.filename + " · " + (rev.upload_date || "").slice(0, 10);
@@ -1732,7 +1732,7 @@
     if (cfg.items.length === 0) {
       var empty = document.createElement("p");
       empty.className = "text-secondary";
-      empty.style.fontSize = "12px";
+      empty.style.fontSize = "var(--text-sm)";
       empty.textContent = cfg.emptyText;
       panel.appendChild(empty);
     } else {
@@ -1746,7 +1746,7 @@
       panel.appendChild(select);
       var linkBtn = document.createElement("button");
       linkBtn.className = "btn btn--primary";
-      linkBtn.style.marginLeft = "10px";
+      linkBtn.style.marginLeft = "var(--space-3)";
       linkBtn.textContent = cfg.buttonText;
       linkBtn.onclick = function () {
         cfg.onLink(select.value);
@@ -1755,7 +1755,7 @@
     }
     var cancelBtn = document.createElement("button");
     cancelBtn.className = "btn btn--ghost";
-    cancelBtn.style.marginLeft = "10px";
+    cancelBtn.style.marginLeft = "var(--space-3)";
     cancelBtn.textContent = "Cancel";
     cancelBtn.onclick = cfg.onClose;
     panel.appendChild(cancelBtn);
@@ -1885,9 +1885,9 @@
 
     var countsRow = document.createElement("div");
     countsRow.style.display = "flex";
-    countsRow.style.gap = "20px";
+    countsRow.style.gap = "var(--space-5)";
     countsRow.style.marginBottom = "var(--space-3)";
-    countsRow.style.fontSize = "13px";
+    countsRow.style.fontSize = "var(--text-sm)";
     countsRow.innerHTML =
       "<span><strong>" + counts.pending + "</strong> Pending RFIs</span>" +
       "<span><strong>" + counts.closed + "</strong> Closed</span>" +
@@ -2178,7 +2178,7 @@
 
         var actions = document.createElement("div");
         actions.style.display = "flex";
-        actions.style.gap = "10px";
+        actions.style.gap = "var(--space-3)";
         actions.style.marginTop = "var(--space-3)";
         var saveBtn = document.createElement("button");
         saveBtn.type = "submit";
@@ -2446,7 +2446,7 @@
 
         var meta = document.createElement("p");
         meta.className = "text-secondary";
-        meta.style.fontSize = "12px";
+        meta.style.fontSize = "var(--text-sm)";
         meta.style.margin = "var(--space-1) 0 0";
         meta.textContent =
           "Project: " +
@@ -2532,7 +2532,7 @@
 
         var meta = document.createElement("p");
         meta.className = "text-secondary";
-        meta.style.fontSize = "12px";
+        meta.style.fontSize = "var(--text-sm)";
         meta.style.margin = "var(--space-1) 0 0";
         var date = a.early_start || a.planned_start;
         meta.textContent =
@@ -2544,7 +2544,7 @@
         if (window.PCC.schedule) {
           var viewBtn = document.createElement("button");
           viewBtn.className = "btn btn--ghost";
-          viewBtn.style.marginTop = "6px";
+          viewBtn.style.marginTop = "var(--space-2)";
           viewBtn.textContent = "View in Schedule";
           viewBtn.onclick = (function (projectId, scheduleId, activityId) {
             return function () {
@@ -2589,7 +2589,7 @@
     h3.textContent = vendor.vendor_name;
     var badge = document.createElement("span");
     badge.className = statusBadgeClass(vendor.status);
-    badge.style.marginLeft = "10px";
+    badge.style.marginLeft = "var(--space-3)";
     badge.textContent = VENDOR_STATUS_LABELS[vendor.status] || vendor.status;
     var titleWrap = document.createElement("div");
     titleWrap.style.display = "flex";
@@ -2641,12 +2641,12 @@
 
     var h1 = document.createElement("h2");
     h1.textContent = "Vendor Management";
-    h1.style.marginBottom = "6px";
+    h1.style.marginBottom = "var(--space-2)";
     outlet.appendChild(h1);
 
     var subNote = document.createElement("p");
     subNote.className = "text-secondary";
-    subNote.style.fontSize = "12px";
+    subNote.style.fontSize = "var(--text-sm)";
     subNote.style.marginBottom = "var(--space-4)";
     subNote.textContent =
       "The single source of truth for vendor information across every project — master list, project links, " +

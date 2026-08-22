@@ -3058,6 +3058,39 @@ Vendor Management screenshot confirms KPI cards, tab bar, and panels render with
 `resources.js`, `delayRecoveryDashboard.js`, `settings.js`, `rfis.js`), and Gates D-F (loading-state
 pattern, icon system, empty-state/motion polish) — all still pending Aditya's go-ahead.
 
+## UI Modernization — Gate B2: Scale-Snapping (2026-08-22)
+
+Aditya asked to proceed with B2 — the broader normalization declined at Gate B time, applied now to
+the same four files (`vendors.js`, `executiveCenter.js`, `portfolio.js`, `schedule.js`) already
+cleaned up in B1. This snaps the near-miss values B1 deliberately left untouched (dominant 12px/13px
+font-sizes, 6px/10px/14px/18px/20px spacing) onto the nearest token, causing small real rendering
+shifts (0.5–4px per instance) in exchange for actual visual consistency.
+
+**Snapping rule, applied uniformly:** nearest token by absolute distance; exact ties round up (6px
+is equidistant from `--space-1`=4 and `--space-2`=8, so it snaps to 8 — same tie-break for 10px→12,
+14px→16, 20px→24). Font-size: 10px→`--text-xs`(11), 12px and 13px both→`--text-sm`(12.5) — the two
+values collapse to one, which is itself a small consistency win, since the 12-vs-13 split across
+these pages was never a deliberate distinction.
+
+**Explicitly excluded, not snapped:**
+- Values ≤3px (1px/2px/3px padding components) — treated as intentional micro-adjustments on tight
+  UI (badges, table cells), not spacing-scale drift, consistent with Gate A excluding border-widths.
+- Negative margins (`-4px`, `-6px`) — deliberate pull-up visual nudges, not scale values.
+- One clear outlier (`paddingTop: 60px` on an Executive Center empty-state cover) — far from any
+  token, evidently an intentional one-off spacer, not a near-miss.
+- `borderRadius: 50%` — a circle shape, not a radius-scale value.
+
+**Also fixed in passing:** two exact-match instances in `executiveCenter.js`
+(`marginBottom: 12px`/`24px`, matching `--space-3`/`--space-5` exactly) and one shorthand padding
+component (`4px 8px`, where only the `4px` had been tokenized) were missed by Gate B's own B1 pass —
+caught during B2's re-audit and corrected as a small fix, not new B2 scope.
+
+**Verified:** all four files pass `node --check`; full 78-file test suite — 2089 checks, 0 failures;
+real-Chromium pass across the same four pages, zero console errors. Visual comparison against the
+pre-B2 screenshots was inconclusive on the empty-state dashboards used for verification (no seeded
+data to exercise dense tables/lists, where the actual 0.5–4px shifts would be visible) — flagged
+honestly rather than claimed as a confirmed visual diff.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →

@@ -1682,6 +1682,38 @@ B2 stays scoped but unbuilt, a real future decision, not something decided on hi
   (loading-state pattern, icon system, empty-state/motion polish), and the B2 scale-snapping decision
   for these same four files if Aditya wants deeper consistency later.
 
+**Gate B2 — Scale-Snapping, done, 2026-08-22.** Aditya asked to proceed with B2 right after Gate B —
+applied to the same four files (`vendors.js`/`executiveCenter.js`/`portfolio.js`/`schedule.js`),
+snapping the near-miss values B1 deliberately left as literals onto the nearest token. Real, small
+rendering shifts (0.5-4px per instance), not a zero-visual-change gate like A/B1.
+
+- **Snapping rule, stated explicitly so it's not a hidden judgment call**: nearest token by absolute
+  distance; exact ties round up (6px is equidistant between `--space-1`=4 and `--space-2`=8 → snaps
+  to 8; same tie-break logic for 10→12, 14→16, 20→24). Font-size 12px and 13px both collapse to
+  `--text-sm`(12.5) — the two values were never a deliberate distinction in these pages, so
+  collapsing them is itself a small real consistency win, not just mechanical snapping.
+- **Explicitly excluded from snapping** (same "not every literal is scale drift" discipline as Gate
+  A's `20px`/breakpoints): values ≤3px (treated as intentional micro-adjustments on tight UI —
+  badges, table cells — not scale drift), negative margins (deliberate visual pull-up nudges), one
+  clear outlier (`paddingTop: 60px` on an Executive Center empty-state cover — far from any token,
+  evidently intentional, not a near-miss), and `borderRadius: 50%` (a circle shape, not a radius
+  value).
+- **Caught and fixed two real Gate B (B1) oversights while re-auditing for B2**: `executiveCenter.js`
+  had `marginBottom: 12px` (5×) and `marginBottom: 24px` (1×) that exactly matched `--space-3`/
+  `--space-5` and should have been converted in B1 but were missed, plus one shorthand padding
+  (`4px 8px`) where only the first component had been tokenized. Fixed as a small correction
+  alongside B2, not counted as new B2 scope — worth noting for future gates: **when re-auditing a
+  file for a follow-on gate, always re-check for exact-match oversights from the prior gate, not
+  just the new gate's own target values** — this is how the mistake was caught.
+- **Verified**: all four files pass `node --check`; full 78-file test suite — 2089 checks, 0
+  failures; real-Chromium pass across the same four pages (Portfolio/Vendors/Executive Center/
+  Schedule), zero console errors.
+- **Honest gap**: the before/after visual comparison used the same empty-state dashboard screenshots
+  as Gate B's verification, which don't exercise dense tables/lists with real data — exactly where
+  the actual 0.5-4px shifts would be visible. Flagged directly rather than claiming a confirmed
+  visual diff that wasn't actually checked; a future verification pass with seeded data would give a
+  real before/after comparison if that matters later.
+
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
 `main` is fully up to date through **Tier 3, "final polish," Gate 4** (Gantt virtualization for
