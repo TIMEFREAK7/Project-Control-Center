@@ -1,10 +1,11 @@
 {
-  "name": "pcc-desktop",
+  "name": "project-control-center",
   "private": true,
   "version": "1.0.0",
-  "description": "Desktop packaging (Electron) for Project Control Center. Wraps the self-contained index.html built by ../build.js in a native window — dev-only tooling, not part of the shipped single-file app.",
+  "description": "Offline-first project and portfolio management, packaged as a native desktop app.",
   "author": "Aditya Abhyankar",
   "main": "electron/main.js",
+  "desktopName": "project-control-center.desktop",
   "scripts": {
     "electron:dev": "node scripts/copy-app.js && electron .",
     "electron:build": "node scripts/copy-app.js && electron-builder"
@@ -33,7 +34,8 @@
     "linux": {
       "target": "AppImage",
       "category": "Office",
-      "synopsis": "Solo-developer, offline-first project/portfolio management"
+      "synopsis": "Solo-developer, offline-first project/portfolio management",
+      "syncDesktopName": true
     }
   }
 }

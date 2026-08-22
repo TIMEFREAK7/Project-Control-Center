@@ -2921,6 +2921,30 @@ initiative's originally-scoped work — desktop and Android, feature parity, plu
 follow-on — is complete. What's left (release signing, code signing, macOS) is new, explicit scope
 for whenever actual distribution beyond sideloading/direct installs is wanted.
 
+## Mobile & Desktop Packaging — Desktop Cosmetics Fix (2026-08-22)
+
+Reported after actually running the installed apps: no custom icon and no proper app name showing
+on desktop. Investigated concretely rather than guessing — Android's naming/icon were already
+correct (Gate 1), so this was Electron-only, and turned out to be two real, root-caused bugs:
+
+1. **`BrowserWindow` never set an `icon`** — electron-builder's icon config only brands the
+   *installed* file (shortcuts, Explorer); the running window (title bar, taskbar, Alt-Tab) needs
+   it set explicitly in code. Fixed, plus the app's shared icon is now bundled into the packaged
+   Electron app correctly (previously only worked in dev mode).
+2. **The real cause of the missing desktop name**: Electron's Linux window-manager class
+   (`WM_CLASS`) is fixed from `package.json`'s `"name"` field natively — too early for
+   `app.setName()` in code to override, confirmed by directly inspecting a running window's X11
+   properties rather than assuming. The app's `.desktop` entry had never actually matched this,
+   since before this fix — a genuine pre-existing bug, not something this round introduced. Renamed
+   the internal package name and added the correct config so every reference (window manager
+   class, `.desktop` entry, icon filename) is now internally consistent, end-to-end verified.
+
+One honest gap: `_NET_WM_ICON` (a separate icon-reporting mechanism some taskbars use) still didn't
+show up in this sandbox's tests, most likely because there's no real window manager/compositor
+running here at all — the fixed `.desktop`/window-class association above is the mechanism most
+real desktop environments actually rely on, so the practical effect should be small, but this one
+specific property's real-world behavior is unverified rather than assumed fixed.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →

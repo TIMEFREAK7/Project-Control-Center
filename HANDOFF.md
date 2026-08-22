@@ -1458,6 +1458,67 @@ the storage-efficiency follow-on) is complete — anything further (release sign
 macOS) is a new, explicit decision for whenever Aditya wants to actually distribute beyond
 sideloading/direct installs.
 
+**Desktop cosmetics fixed, 2026-08-22, before Android release signing** (Aditya's explicit
+priority call). Reported "no custom icon set throughout the app, no desktop Name" after actually
+running the installed apps — investigated concretely rather than guessing, and found two real,
+verifiable bugs, both Electron-specific (Android's app name/icon were already correct since Gate 1
+— `strings.xml`'s `app_name` and `@mipmap/ic_launcher` were both already right, confirmed by
+re-checking, not assumed):
+
+1. **`BrowserWindow` never set an `icon`.** electron-builder's `build.icon` config only brands the
+   *installed* exe/AppImage file (Explorer, shortcuts, Start Menu) — the actually-**running**
+   window (title bar, taskbar while open, Alt-Tab) falls back to Electron's default logo unless
+   set explicitly in code. Fixed in `main.js` — added `icon:` to the `BrowserWindow` constructor,
+   plus a redundant explicit `win.setIcon()` call (see point 3 below for why redundant).
+   `scripts/copy-app.js` now also copies the shared icon into `electron/icon.png` (previously only
+   `index.html` was copied — only `electron/**/*` gets bundled into the packaged app, so a
+   reference to `packaging/icons/` directly would have worked in `electron:dev` but silently broken
+   in the actual packaged build).
+
+2. **The real root cause of "no desktop Name," found by directly inspecting a running window's X11
+   properties (`xprop`/`xwininfo` under a bare `Xvfb`, no window manager needed for this) rather
+   than guessing**: Electron's Linux `WM_CLASS` — what desktop environments use to associate a
+   running window back to its `.desktop` entry (and therefore its icon) — is set natively from
+   `package.json`'s `"name"` field, too early for `app.setName()` in `main.js` to change it
+   (confirmed directly: `app.setName("Project Control Center")` *did* correctly change
+   `app.getName()` and the userData path — visible in the running process's
+   `--user-data-dir=/root/.config/Project Control Center` — but `WM_CLASS` stayed `"pcc-desktop"`
+   regardless). Compounding this: the AppImage's generated `.desktop` entry had
+   `StartupWMClass=Project Control Center`, which never matched the real runtime `WM_CLASS` at
+   all — a **pre-existing mismatch that predates this session's own `desktopName` fix attempt**,
+   not something introduced by it. Root-caused, not papered over: renamed `packaging/package.json`'s
+   `"name"` from `"pcc-desktop"` to `"project-control-center"`, added top-level `"desktopName":
+   "project-control-center.desktop"` (must be top-level, not nested under `build.linux` — first
+   attempt at nesting it there failed electron-builder's own config schema validation, corrected
+   after checking the schema directly rather than guessing at placement) and
+   `build.linux.syncDesktopName: true`. Verified end-to-end: rebuilt, re-inspected the same way —
+   `WM_CLASS` is now `"project-control-center"`, and the AppImage's own `.desktop` entry now reads
+   `Icon=project-control-center` / `StartupWMClass=project-control-center`, matching a real
+   `project-control-center.png` file actually present at the AppImage root and in
+   `usr/share/icons/hicolor/1254x1254/apps/` — fully internally consistent for the first time.
+   This also happened to permanently clear the "electron uses desktopName..." warning that had
+   silently appeared in every single Linux build since Gate 1 and was never investigated until now.
+
+3. **Honest gap**: even after all of the above, `_NET_WM_ICON` (the X11 property some taskbars read
+   directly for a running window's icon, independent of the `.desktop`/`WM_CLASS` mechanism) stayed
+   completely empty in this sandbox's own repeated tests — both via the `BrowserWindow` constructor
+   option and an explicit `win.setIcon()` call afterward. Most likely a real limitation of testing
+   under bare `Xvfb` with no window manager or compositor running at all, not a code bug — the
+   `WM_CLASS`↔`.desktop`-`Icon=` mechanism verified working above is the standard, primary
+   mechanism most real Linux desktop environments (GNOME, KDE) actually rely on for this, so the
+   practical impact should be small — but this specific property's real-world behavior on an actual
+   desktop session is unverified from here, flagged directly rather than assumed fixed. Windows
+   icon handling doesn't share X11's mechanism/quirks here and was not the source of any
+   uncertainty — its exe icon (via `build.icon`) was already confirmed correct in earlier gates and
+   is unaffected by any of this round's changes.
+
+Also cleaned up `packaging/package.json`'s top-level `"description"` field, which had been leaking
+straight into the AppImage's user-facing `.desktop` `Comment=` field as dev-facing text ("dev-only
+tooling, not part of the shipped single-file app") — replaced with a short, genuinely user-facing
+sentence. Rebuilt and re-verified both Windows and Linux installers; Android untouched this round
+since its naming/icon were already correct. Full test suite unaffected (zero `src/` changes, only
+`packaging/electron/` and `packaging/package.json`).
+
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
 `main` is fully up to date through **Tier 3, "final polish," Gate 4** (Gantt virtualization for
