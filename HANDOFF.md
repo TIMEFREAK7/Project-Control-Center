@@ -2314,6 +2314,43 @@ literals predating the current design tokens.
   cleanup only, on modules Gates 1-9 didn't already touch.
 - **Not started**: Gates 11-12 (Responsive & Cross-Platform Verification Pass; App Icon & Branding).
 
+**Gate 11 — Responsive & Cross-Platform Verification Pass, done, 2026-08-22.** Aditya said "Start
+gate 11" directly. Per the brief: "a dedicated tablet/Android testing pass across everything, not
+assumed correct from desktop-only checks." Gates 1-10 verified real-Chromium at desktop width only
+— this is the first pass to actually measure the redesign at narrow widths.
+
+- **Method**: automated, not eyeballed. Seeded a representative project and drove all 27 routes at
+  360px (common lower-end Android), 390px (iPhone-class), 768px (tablet portrait), and 1023px (the
+  sidebar breakpoint's upper edge), measuring `document.documentElement.scrollWidth` vs
+  `clientWidth`. A second pass clicked every visible Details/Edit/View/"+ Add X" button on every
+  route at each width and re-measured, since collapsed-row overflow is often invisible until
+  something expands.
+- **4 real overflow bugs found and fixed**, all the same class (a flex row of badges/buttons with
+  no `flex-wrap`): Commitments' list row (risk badge + status badge + 3 buttons, +100px at 390px);
+  Meetings' Details quick-actions row (6 "+ Add X" buttons, +281px at 390px); Portfolio's
+  project-card action row (Open Workspace/Executive Center/Details/⋯, +32px, only visible at the
+  narrower 360px — clean at 390px); Executive Center's Project Health Score and Schedule
+  Performance Score breakdown tables (5-col/4-col analytical tables with a free-text "Why" cell,
+  +19px at 360px, fixed by scoping `overflow-x: auto` to the table itself rather than letting a
+  genuinely-can't-fit data table blow out the whole page — same principle as Gate 8's Schedule
+  Activities table).
+- **One flagged, investigated, ruled out**: the deep probe also flagged Change Orders' Edit form at
+  both 390px and 360px with an identical `right: 468` in both — a tell it wasn't actually
+  width-dependent. Never reproduced under direct, isolated interaction (fresh page, single change
+  order, with/without a source-risk link, with/without first walking all 18 prior routes). Checked
+  for a DOM/listener leak across navigations directly (outlet child counts, total node counts,
+  fixed-position element counts) — all normal, no accumulation. Concluded it's an artifact of the
+  probe's own click-every-button-on-every-route stress pattern, not a shipped bug; documented rather
+  than silently dropped.
+- **Verified**: `node --check` on every touched file; full 73-file suite, 0 failures. Full
+  360/390/768/1023px × 27-route sweep re-run clean after the fixes; deep probe re-run clean at
+  768px and (aside from the investigated Change Orders flag) at 360/390px. Real-Chromium screenshots
+  of the nav drawer and 6 key redesigned pages (Dashboard, My Work, Action Centre, Project
+  Workspace, Portfolio, Executive Center) at phone and tablet widths — all correct.
+- **Not done**: no change to Gate 8's breakpoint values or touch-target sizing — fixed only the
+  overflow bugs actually found, not a re-architecture of the responsive system.
+- **Not started**: Gate 12 (App Icon & Branding) — the last gate in the 12-gate plan.
+
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
 `main` is fully up to date through **Tier 3, "final polish," Gate 4** (Gantt virtualization for

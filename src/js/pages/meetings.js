@@ -933,6 +933,7 @@
     // pre-linked to this meeting and project.
     var quickActions = document.createElement("div");
     quickActions.style.display = "flex";
+    quickActions.style.flexWrap = "wrap";
     quickActions.style.gap = "var(--space-2)";
     quickActions.style.marginTop = "var(--space-4)";
     quickActions.style.paddingTop = "var(--space-3)";
