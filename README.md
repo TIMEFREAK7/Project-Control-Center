@@ -2945,6 +2945,29 @@ running here at all — the fixed `.desktop`/window-class association above is t
 real desktop environments actually rely on, so the practical effect should be small, but this one
 specific property's real-world behavior is unverified rather than assumed fixed.
 
+## Mobile & Desktop Packaging — Android Release Signing (2026-08-22)
+
+A dedicated release keystore was generated for `com.pcc.projectcontrolcenter` — not reused from any
+other app, since Android permanently ties a signing key to one app id: every future update must be
+signed with the same key the first real release used, or Android refuses to install it as an
+upgrade. PKCS12, RSA 2048, 10000-day validity. The keystore file and its password were handed
+directly to Aditya before any other work in this round, since this build environment is temporary
+and the key can't be regenerated once a real release ships under it.
+
+`packaging/android/android/app/build.gradle` now loads `app/keystore.properties` (gitignored, never
+committed) if present and signs `assembleRelease` with it — falls back to an unsigned build when the
+file isn't there, so the same command works with or without the keystore locally. Verified the built
+APK three ways: `apksigner verify` confirms it's signed with the real cert (not Android's debug
+cert) and the cert fingerprint matches the keystore exactly; `zipalign -c -v 4` passes; the embedded
+`index.html` is byte-identical to the current build.
+
+**Still needed for Windows/macOS code signing** (both require credentials only Aditya can obtain —
+not buildable from here): Windows needs a purchased code-signing certificate from a CA, which
+`electron-builder` then picks up automatically via `CSC_LINK`/`CSC_KEY_PASSWORD` environment
+variables — without it the installer works fine but shows an "Unknown Publisher" warning. macOS
+needs an Apple Developer account, a Developer ID certificate, and notarization credentials, plus a
+real macOS host to build the `.dmg` at all. Android itself is now fully signed for real distribution.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →

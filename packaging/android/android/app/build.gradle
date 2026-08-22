@@ -1,5 +1,15 @@
 apply plugin: 'com.android.application'
 
+// Loads app/keystore.properties if present (gitignored — never committed). This makes
+// `assembleRelease` work identically with or without it: a real signed build when the
+// keystore exists, an unsigned build otherwise — no separate CI/dev path needed.
+def keystorePropertiesFile = rootProject.file("app/keystore.properties")
+def keystoreProperties = new Properties()
+def hasKeystoreConfig = keystorePropertiesFile.exists()
+if (hasKeystoreConfig) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
 android {
     namespace = "com.pcc.projectcontrolcenter"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,10 +26,21 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (hasKeystoreConfig) {
+            release {
+                storeFile rootProject.file("app/${keystoreProperties['storeFile']}")
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (hasKeystoreConfig) signingConfig signingConfigs.release
         }
     }
 }

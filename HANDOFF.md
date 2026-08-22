@@ -1519,6 +1519,64 @@ sentence. Rebuilt and re-verified both Windows and Linux installers; Android unt
 since its naming/icon were already correct. Full test suite unaffected (zero `src/` changes, only
 `packaging/electron/` and `packaging/package.json`).
 
+**Android release signing, done, 2026-08-22** (Aditya's explicit next instruction after the desktop
+cosmetics fix: "move on to Android release signing and code signing for real distribution"). A
+dedicated release keystore was generated for this app specifically — confirmed earlier this session
+there's no benefit to reusing Aditya's existing keystore from an unrelated app, since Android ties
+a keystore to one `applicationId` (`com.pcc.projectcontrolcenter`) for the life of that app; once a
+real release ships signed with a given key, every future update must be signed with that *same* key
+or Android refuses to install it as an upgrade.
+
+- Generated via `keytool -genkeypair`: PKCS12 format, RSA 2048, alias `project-control-center`,
+  `CN=Project Control Center, C=IN`, 10000-day validity (until 2054-01-07). Cert SHA256 fingerprint:
+  `94:52:69:20:2C:B7:E4:6A:CC:78:F7:2C:29:87:36:67:04:47:3C:08:56:23:2F:E3:2B:CC:AC:04:C5:84:A4:9D`.
+- **The keystore file and its password were delivered directly to Aditya via file/message before
+  any other work in this round**, ahead of even documenting or committing anything — this container
+  is ephemeral and the key cannot be regenerated once a real release has shipped under it, so losing
+  it before delivery would have been unrecoverable. The password itself is never written to any file
+  in this repo, including this one.
+- `packaging/android/android/app/build.gradle`: added a `signingConfigs` block that loads
+  `app/keystore.properties` *if present* and conditionally applies it to the `release` buildType —
+  `assembleRelease` produces a properly signed build when the keystore exists locally, or falls back
+  to an unsigned build otherwise, with no separate CI/dev code path needed. `keystore.properties`
+  (references the keystore file, alias, and both passwords) and `*.keystore`/`*.jks` were added to
+  `packaging/android/android/.gitignore` — previously the Capacitor template had these lines present
+  but *commented out*, i.e. inactive; a real keystore now exists so this had to be a real, active
+  ignore rule, not a template placeholder. Verified with `git check-ignore -v` that both the keystore
+  and its properties file are actually excluded before committing anything.
+- Added `"android:build:release"` to `packaging/android/package.json`'s scripts, mirroring the
+  existing `"android:build:debug"` pattern.
+- Built with `./gradlew assembleRelease` → `BUILD SUCCESSFUL`. Verified three separate ways before
+  delivery: `apksigner verify --print-certs` confirms the APK is signed with the real release cert
+  (not the Android debug cert), and the printed certificate SHA256 matches the keystore's own
+  fingerprint exactly; `zipalign -c -v 4` passes; the embedded `assets/public/index.html` inside the
+  signed APK is byte-identical to the current repo build (same technique used for every prior
+  packaging gate's structural verification, since no emulator/device is available in this sandbox).
+  Delivered APK: 9,678,463 bytes, sha256 `a1b8f22bd7975c423e63ff61ba38d746e2bf3d833e8c55d0296f819becd2ac07`.
+- A **staging copy** of the keystore was briefly placed at `packaging/android/release.keystore`
+  (outside the `packaging/android/android/` directory the `.gitignore` above actually covers) purely
+  to hand it off via file delivery — this was deleted immediately after delivery and confirmed via
+  `git status` before any commit, so it was never at risk of being committed.
+- **Certificate details (CN=Project Control Center, C=IN) can still be changed for free** by
+  regenerating the keystore, but only until a real release actually ships to end users signed with
+  it — after that, the identity is permanent for the life of the app. Flagged to Aditya for
+  confirmation/awareness, not yet explicitly re-confirmed back.
+- **What "code signing for real distribution" still needs beyond this, explicitly out of scope for
+  me to execute** (both require credentials only Aditya can obtain, not something buildable from
+  this sandbox):
+  - **Windows**: a code-signing certificate purchased from a CA (e.g. DigiCert, Sectigo) — once
+    Aditya has one, `electron-builder` picks it up automatically via the `CSC_LINK` (path/URL to the
+    `.pfx`) and `CSC_KEY_PASSWORD` environment variables at build time; no config file changes
+    needed beyond setting those two variables before running `npm run electron:build`. Without this,
+    the `.exe` installs fine but shows an "Unknown Publisher" SmartScreen warning — a distribution
+    polish issue, not a functional blocker.
+  - **macOS**: requires an Apple Developer Program account (paid, Apple-side), a Developer ID
+    Application certificate, and notarization credentials (an app-specific password or API key) —
+    plus, separately from signing, a real macOS host to actually build the `.dmg` at all (still not
+    available in this sandbox, unrelated to signing).
+  - Android itself is now fully signed for real distribution (Play Store or direct APK
+    sideloading) as of this round — no further Android-side action needed beyond this.
+
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
 `main` is fully up to date through **Tier 3, "final polish," Gate 4** (Gantt virtualization for

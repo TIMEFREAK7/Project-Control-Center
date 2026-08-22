@@ -6,7 +6,8 @@
   "scripts": {
     "assets:generate": "node scripts/copy-app.js && npx @capacitor/assets generate --android",
     "android:sync": "node scripts/copy-app.js && npx cap sync android",
-    "android:build:debug": "npm run android:sync && cd android && ./gradlew assembleDebug"
+    "android:build:debug": "npm run android:sync && cd android && ./gradlew assembleDebug",
+    "android:build:release": "npm run android:sync && cd android && ./gradlew assembleRelease"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.0",
