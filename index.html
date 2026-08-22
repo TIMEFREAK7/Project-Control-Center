@@ -1348,6 +1348,7 @@ a:focus-visible {
 
 .project-card__actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
 }
 
@@ -16381,11 +16382,16 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     if (ctx.schedulePerformance.rag) heading.appendChild(ragBadge(ctx.schedulePerformance.rag));
     wrap.appendChild(heading);
 
+    // Gate 11 (Responsive Verification Pass): same narrow-Android scroll scoping as
+    // Project Health Score's own breakdown table just below — see its comment.
+    var tableScroll = document.createElement("div");
+    tableScroll.style.overflowX = "auto";
+    tableScroll.style.marginBottom = "var(--space-3)";
     var table = document.createElement("table");
     table.style.width = "100%";
+    table.style.minWidth = "360px";
     table.style.fontSize = "var(--text-sm)";
     table.style.borderCollapse = "collapse";
-    table.style.marginBottom = "var(--space-3)";
     var thead = document.createElement("tr");
     ["Factor", "Weight", "Score", "Why"].forEach(function (h) {
       var th = document.createElement("th");
@@ -16413,7 +16419,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       tr.appendChild(td(f.note));
       table.appendChild(tr);
     });
-    wrap.appendChild(table);
+    tableScroll.appendChild(table);
+    wrap.appendChild(tableScroll);
 
     var snapshots = ctx.schedulePerformanceSnapshots;
 
@@ -16719,8 +16726,15 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     var breakdownWrap = document.createElement("div");
     breakdownWrap.style.flex = "1 1 320px";
+    // Gate 11 (Responsive Verification Pass): 5 columns including a free-text "Why" cell
+    // don't fit inside 320px on narrow Android widths (measured overflow at 360px) — scope
+    // the horizontal scroll to this table specifically rather than letting it blow out the
+    // whole page's layout, same "always readable, never a whole-page side-scroll" principle
+    // Gate 8's Schedule Activities table follows.
+    breakdownWrap.style.overflowX = "auto";
     var table = document.createElement("table");
     table.style.width = "100%";
+    table.style.minWidth = "420px";
     table.style.fontSize = "var(--text-sm)";
     table.style.borderCollapse = "collapse";
     var thead = document.createElement("tr");
@@ -32518,6 +32532,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     // pre-linked to this meeting and project.
     var quickActions = document.createElement("div");
     quickActions.style.display = "flex";
+    quickActions.style.flexWrap = "wrap";
     quickActions.style.gap = "var(--space-2)";
     quickActions.style.marginTop = "var(--space-4)";
     quickActions.style.paddingTop = "var(--space-3)";
@@ -38394,6 +38409,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           right.style.display = "flex";
           right.style.alignItems = "center";
           right.style.gap = "8px";
+          right.style.flexWrap = "wrap";
 
           if (commitmentIsAtRisk(c, data)) {
             var riskBadge = document.createElement("span");

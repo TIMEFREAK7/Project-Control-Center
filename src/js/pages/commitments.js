@@ -642,6 +642,7 @@
           right.style.display = "flex";
           right.style.alignItems = "center";
           right.style.gap = "8px";
+          right.style.flexWrap = "wrap";
 
           if (commitmentIsAtRisk(c, data)) {
             var riskBadge = document.createElement("span");

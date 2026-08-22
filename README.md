@@ -3777,6 +3777,66 @@ row typography, whole row clickable, no leftover ghost buttons.
 **Not done**: no change to any module's underlying data/business logic — this gate is markup and
 stale-color cleanup only, on modules Gates 1–9 didn't already touch.
 
+### Gate 11 — Responsive & Cross-Platform Verification Pass, done, 2026-08-22
+
+Per the brief's own definition, "a dedicated tablet/Android testing pass across everything, not
+assumed correct from desktop-only checks." Gates 1-10's own verification was real-Chromium at a
+desktop viewport; this gate is the first to actually measure the redesign at narrow widths rather
+than assume the existing tablet/mobile CSS infrastructure (UI/UX Overhaul Gate 8's breakpoints)
+still holds after 10 gates of new components and markup.
+
+**Method**: an automated real-Chromium pass, not spot-checking by eye. Seeded a representative
+project (activities, a meeting, a high-severity risk, an RFI, a change order, a decision, a vendor,
+a resource assignment, a commitment) and drove every one of the app's 27 routes at four widths —
+360px (a common lower-end Android width), 390px (iPhone-class), 768px (tablet portrait), and 1023px
+(the sidebar breakpoint's upper edge) — measuring `document.documentElement.scrollWidth` against
+`clientWidth` after each render. A second pass clicked every visible "Details"/"Edit"/"View"/"+ Add
+X" button on every route at each width and re-measured, since a collapsed list row's overflow is
+often invisible until something expands.
+
+**Two real, reproducible overflow bugs found and fixed** (both the same class of bug: a flex row of
+several badges/buttons with no `flex-wrap`, wide enough to blow past the viewport once enough
+items are present):
+- **Commitments' list row** (`right` div: risk badge + status badge + "View Activity" + "Edit" +
+  "Delete") — overflowed by 100px at 390px width. Added `flex-wrap: wrap`.
+- **Meetings' Details panel quick-actions row** (6 "+ Add X" ghost buttons: Risk, Document, RFI,
+  Change Order, Decision, Lesson Learned) — overflowed by 281px at 390px width once a meeting had
+  enough quick actions rendered. Added `flex-wrap: wrap`.
+
+**Two more found only at the narrower 360px Android width** (both clean at 390px, confirming the
+brief's instinct that a single desktop-plus-one-phone-size check isn't enough):
+- **Portfolio's project-card action row** (`.project-card__actions`: Open Workspace / Executive
+  Center / Details / ⋯ menu) — 32px over at 360px. Added `flex-wrap: wrap` to the shared CSS class.
+- **Executive Center's Project Health Score and Schedule Performance Score breakdown tables**
+  (5-column and 4-column analytical tables with a free-text "Why" cell) — 19px over at 360px. A
+  real data table doesn't fit in ~320px no matter how it wraps; scoped a horizontal-scroll
+  container to the table itself (`overflow-x: auto` + a `min-width` floor) rather than letting it
+  blow out the whole page — the same "always readable, never a whole-page side-scroll" principle
+  UI/UX Overhaul Gate 8 already established for Schedule's Activities table.
+
+**One flagged, investigated, and ruled out**: the deep-probe pass also flagged Change Orders' Edit
+form at both 390px and 360px, but the reported overflow (`right: 468`, identical in px at both
+widths — a strong tell it wasn't actually width-dependent) never reproduced under any direct,
+isolated interaction — fresh page, single change order, Details-then-Edit, with or without a
+source-risk link, with or without first walking all 18 prior routes the deep probe visits. Checked
+for a DOM/listener leak across route navigations directly (`#page-outlet` child counts, total DOM
+node counts, fixed-position element counts) across the full route sequence — all normal, no
+accumulation. Treated as an artifact of the deep probe's own aggressive click-every-button-on-
+every-route stress pattern (something no real user session replicates), not a shipped bug — noted
+here rather than silently dropped, per this project's own documentation discipline.
+
+**Verified**: `node --check` on every touched file; full 73-file suite, 0 failures. The full
+360/390/768/1023px × 27-route overflow sweep re-run clean (zero overflow anywhere) after the fixes,
+plus the deep Details/Edit/View probe re-run clean at 768px and (aside from the investigated,
+non-reproducing Change Orders flag) at 360/390px. Real-Chromium visual screenshots of the nav
+drawer and six key redesigned pages (Dashboard, My Work, Action Centre, Project Workspace,
+Portfolio, Executive Center) at both phone and tablet widths — all render correctly, no broken
+layouts, no leftover ghost content.
+
+**Not done**: no changes to the Gate 8-era breakpoint values themselves (1279/1023/780/420px) or to
+touch-target sizing (already correct, unchanged) — this gate only fixed genuine overflow bugs it
+found, not a re-architecture of the responsive system.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →

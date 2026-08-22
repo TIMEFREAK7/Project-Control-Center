@@ -1440,11 +1440,16 @@
     if (ctx.schedulePerformance.rag) heading.appendChild(ragBadge(ctx.schedulePerformance.rag));
     wrap.appendChild(heading);
 
+    // Gate 11 (Responsive Verification Pass): same narrow-Android scroll scoping as
+    // Project Health Score's own breakdown table just below — see its comment.
+    var tableScroll = document.createElement("div");
+    tableScroll.style.overflowX = "auto";
+    tableScroll.style.marginBottom = "var(--space-3)";
     var table = document.createElement("table");
     table.style.width = "100%";
+    table.style.minWidth = "360px";
     table.style.fontSize = "var(--text-sm)";
     table.style.borderCollapse = "collapse";
-    table.style.marginBottom = "var(--space-3)";
     var thead = document.createElement("tr");
     ["Factor", "Weight", "Score", "Why"].forEach(function (h) {
       var th = document.createElement("th");
@@ -1472,7 +1477,8 @@
       tr.appendChild(td(f.note));
       table.appendChild(tr);
     });
-    wrap.appendChild(table);
+    tableScroll.appendChild(table);
+    wrap.appendChild(tableScroll);
 
     var snapshots = ctx.schedulePerformanceSnapshots;
 
@@ -1778,8 +1784,15 @@
 
     var breakdownWrap = document.createElement("div");
     breakdownWrap.style.flex = "1 1 320px";
+    // Gate 11 (Responsive Verification Pass): 5 columns including a free-text "Why" cell
+    // don't fit inside 320px on narrow Android widths (measured overflow at 360px) — scope
+    // the horizontal scroll to this table specifically rather than letting it blow out the
+    // whole page's layout, same "always readable, never a whole-page side-scroll" principle
+    // Gate 8's Schedule Activities table follows.
+    breakdownWrap.style.overflowX = "auto";
     var table = document.createElement("table");
     table.style.width = "100%";
+    table.style.minWidth = "420px";
     table.style.fontSize = "var(--text-sm)";
     table.style.borderCollapse = "collapse";
     var thead = document.createElement("tr");
