@@ -271,7 +271,7 @@
     var isNew = uiState.editingId === "new";
     var panel = document.createElement("div");
     panel.className = "panel";
-    panel.style.marginBottom = "16px";
+    panel.style.marginBottom = "var(--space-4)";
 
     var heading = document.createElement("h3");
     heading.style.marginBottom = "14px";
@@ -299,7 +299,7 @@
     var actions = document.createElement("div");
     actions.style.display = "flex";
     actions.style.gap = "10px";
-    actions.style.marginTop = "12px";
+    actions.style.marginTop = "var(--space-3)";
 
     var saveBtn = document.createElement("button");
     saveBtn.type = "submit";
@@ -478,7 +478,7 @@
   function renderKpiStrip(kpis) {
     var grid = document.createElement("div");
     grid.className = "kpi-grid";
-    grid.style.marginBottom = "16px";
+    grid.style.marginBottom = "var(--space-4)";
     [
       { label: "TOTAL PROJECTS", value: kpis.total, colorVar: null },
       { label: "ACTIVE", value: kpis.active, colorVar: null },
@@ -572,7 +572,7 @@
       if (summary.score != null) {
         var scoreSpan = document.createElement("span");
         scoreSpan.className = "text-secondary";
-        scoreSpan.style.fontSize = "11px";
+        scoreSpan.style.fontSize = "var(--text-xs)";
         scoreSpan.style.marginLeft = "6px";
         scoreSpan.textContent = summary.score;
         healthCell.appendChild(scoreSpan);
@@ -584,7 +584,7 @@
       if (schedPerf.score != null) {
         var schedPerfScoreSpan = document.createElement("span");
         schedPerfScoreSpan.className = "text-secondary";
-        schedPerfScoreSpan.style.fontSize = "11px";
+        schedPerfScoreSpan.style.fontSize = "var(--text-xs)";
         schedPerfScoreSpan.style.marginLeft = "6px";
         schedPerfScoreSpan.textContent = schedPerf.score;
         schedPerfCell.appendChild(schedPerfScoreSpan);
@@ -853,7 +853,7 @@
       var hint = document.createElement("p");
       hint.className = "text-secondary";
       hint.style.fontSize = "12px";
-      hint.style.margin = "4px 0 0";
+      hint.style.margin = "var(--space-1) 0 0";
       hint.textContent =
         "Select which document types this project needs. Status updates automatically once a matching document is attached.";
       fieldWrap.appendChild(hint);
@@ -862,7 +862,7 @@
         var noneNote = document.createElement("p");
         noneNote.className = "text-secondary";
         noneNote.style.fontSize = "13px";
-        noneNote.style.margin = "8px 0 0";
+        noneNote.style.margin = "var(--space-2) 0 0";
         noneNote.textContent = "No active document types in the master repository yet — add some in Document Types first.";
         fieldWrap.appendChild(noneNote);
         return;
@@ -870,10 +870,10 @@
 
       var toolbar = document.createElement("div");
       toolbar.style.display = "flex";
-      toolbar.style.gap = "8px";
+      toolbar.style.gap = "var(--space-2)";
       toolbar.style.alignItems = "center";
       toolbar.style.flexWrap = "wrap";
-      toolbar.style.marginTop = "8px";
+      toolbar.style.marginTop = "var(--space-2)";
 
       var templateSelect = document.createElement("select");
       var pickOpt = document.createElement("option");
@@ -954,9 +954,9 @@
 
         var groupLabel = document.createElement("div");
         groupLabel.className = "text-secondary";
-        groupLabel.style.fontSize = "11px";
+        groupLabel.style.fontSize = "var(--text-xs)";
         groupLabel.style.fontWeight = "600";
-        groupLabel.style.marginBottom = "4px";
+        groupLabel.style.marginBottom = "var(--space-1)";
         groupLabel.textContent = cat.toUpperCase();
         group.appendChild(groupLabel);
 
@@ -964,7 +964,7 @@
           var row = document.createElement("label");
           row.style.display = "flex";
           row.style.alignItems = "center";
-          row.style.gap = "8px";
+          row.style.gap = "var(--space-2)";
           row.style.fontSize = "13px";
           row.style.padding = "2px 0";
 
@@ -998,7 +998,7 @@
             dueInput.type = "date";
             dueInput.value = uiState.formDueDates[t.id] || "";
             dueInput.style.fontSize = "12px";
-            dueInput.style.padding = "2px 4px";
+            dueInput.style.padding = "2px var(--space-1)";
             dueInput.title = "Planned submission date (optional)";
             dueInput.onchange = function () {
               if (dueInput.value) {
@@ -1015,7 +1015,7 @@
             // list — no new register of its own.
             var vendorSelect = document.createElement("select");
             vendorSelect.style.fontSize = "12px";
-            vendorSelect.style.padding = "2px 4px";
+            vendorSelect.style.padding = "2px var(--space-1)";
             vendorSelect.title = "Vendor expected to submit this document (optional)";
             var noVendorOpt = document.createElement("option");
             noVendorOpt.value = "";
@@ -1042,7 +1042,7 @@
             // Purely a link — doesn't read or write formDueDates in either direction.
             var activitySelect = document.createElement("select");
             activitySelect.style.fontSize = "12px";
-            activitySelect.style.padding = "2px 4px";
+            activitySelect.style.padding = "2px var(--space-1)";
             activitySelect.title = "Linked Schedule activity (optional)";
             activityOptionsFor(activitySelect, data, project.id, uiState.formActivityIds[t.id] || "");
             activitySelect.onchange = function () {
@@ -1063,7 +1063,7 @@
             leadTimeInput.type = "number";
             leadTimeInput.min = "0";
             leadTimeInput.style.fontSize = "12px";
-            leadTimeInput.style.padding = "2px 4px";
+            leadTimeInput.style.padding = "2px var(--space-1)";
             leadTimeInput.style.width = "60px";
             leadTimeInput.title = "Lead time in days before the linked activity starts (optional)";
             leadTimeInput.placeholder = "Lead days";
@@ -1082,13 +1082,13 @@
             var suggestedDate = computeSuggestedDueDate(data, uiState.formActivityIds[t.id], uiState.formLeadTimes[t.id]);
             if (suggestedDate && suggestedDate !== (uiState.formDueDates[t.id] || "")) {
               var suggestionWrap = document.createElement("span");
-              suggestionWrap.style.fontSize = "11px";
+              suggestionWrap.style.fontSize = "var(--text-xs)";
               suggestionWrap.style.color = "var(--text-secondary)";
               suggestionWrap.textContent = "Suggested: " + suggestedDate + " ";
               var useSuggestedBtn = document.createElement("button");
               useSuggestedBtn.type = "button";
               useSuggestedBtn.className = "btn btn--ghost";
-              useSuggestedBtn.style.fontSize = "11px";
+              useSuggestedBtn.style.fontSize = "var(--text-xs)";
               useSuggestedBtn.style.padding = "1px 6px";
               useSuggestedBtn.textContent = "Use";
               useSuggestedBtn.onclick = function () {
@@ -1103,7 +1103,7 @@
             var badgeInfo = REQUIREMENT_STATUS_BADGE[status];
             var statusBadge = document.createElement("span");
             statusBadge.className = "status-badge status-badge--" + badgeInfo.className;
-            statusBadge.style.fontSize = "11px";
+            statusBadge.style.fontSize = "var(--text-xs)";
             statusBadge.textContent = badgeInfo.label;
             row.appendChild(statusBadge);
           }
@@ -1171,7 +1171,7 @@
     }).length;
 
     var section = document.createElement("div");
-    section.style.marginTop = "16px";
+    section.style.marginTop = "var(--space-4)";
     section.style.paddingTop = "14px";
     section.style.borderTop = "1px solid var(--divider)";
 
@@ -1180,7 +1180,7 @@
     header.style.justifyContent = "space-between";
     header.style.alignItems = "center";
     header.style.flexWrap = "wrap";
-    header.style.gap = "8px";
+    header.style.gap = "var(--space-2)";
 
     var label = document.createElement("span");
     label.className = "detail-item__label";
@@ -1223,7 +1223,7 @@
       var noneNote = document.createElement("p");
       noneNote.className = "text-secondary";
       noneNote.style.fontSize = "13px";
-      noneNote.style.margin = "8px 0 0";
+      noneNote.style.margin = "var(--space-2) 0 0";
       noneNote.textContent = "No document requirements selected yet. Click “Edit Requirements” to choose which document types this project needs.";
       section.appendChild(noneNote);
       return section;
@@ -1233,7 +1233,7 @@
     list.style.display = "flex";
     list.style.flexDirection = "column";
     list.style.gap = "6px";
-    list.style.marginTop = "8px";
+    list.style.marginTop = "var(--space-2)";
 
     projectRequirements
       .slice()
@@ -1271,7 +1271,7 @@
         var badgeInfo = REQUIREMENT_STATUS_BADGE[status];
         var statusBadge = document.createElement("span");
         statusBadge.className = "status-badge status-badge--" + badgeInfo.className;
-        statusBadge.style.fontSize = "11px";
+        statusBadge.style.fontSize = "var(--text-xs)";
         statusBadge.textContent = badgeInfo.label;
         row.appendChild(statusBadge);
 
@@ -1316,7 +1316,7 @@
     var attachedDocs = window.PCC.files && window.PCC.files.latestOnly ? window.PCC.files.latestOnly(projectDocs) : projectDocs;
 
     var attachmentsSection = document.createElement("div");
-    attachmentsSection.style.marginTop = "16px";
+    attachmentsSection.style.marginTop = "var(--space-4)";
     attachmentsSection.style.paddingTop = "14px";
     attachmentsSection.style.borderTop = "1px solid var(--divider)";
 
@@ -1354,7 +1354,7 @@
       docList.style.display = "flex";
       docList.style.flexDirection = "column";
       docList.style.gap = "6px";
-      docList.style.marginTop = "8px";
+      docList.style.marginTop = "var(--space-2)";
 
       attachedDocs.forEach(function (doc) {
         var row = document.createElement("div");
@@ -1397,7 +1397,7 @@
       });
 
     var logsSection = document.createElement("div");
-    logsSection.style.marginTop = "16px";
+    logsSection.style.marginTop = "var(--space-4)";
     logsSection.style.paddingTop = "14px";
     logsSection.style.borderTop = "1px solid var(--divider)";
 
@@ -1436,7 +1436,7 @@
       logsList.style.display = "flex";
       logsList.style.flexDirection = "column";
       logsList.style.gap = "6px";
-      logsList.style.marginTop = "8px";
+      logsList.style.marginTop = "var(--space-2)";
 
       projectLogs.slice(0, 5).forEach(function (log) {
         var row = document.createElement("div");
@@ -1468,8 +1468,8 @@
       if (projectLogs.length > 5) {
         var moreNote = document.createElement("p");
         moreNote.className = "text-secondary";
-        moreNote.style.fontSize = "11px";
-        moreNote.style.marginTop = "4px";
+        moreNote.style.fontSize = "var(--text-xs)";
+        moreNote.style.marginTop = "var(--space-1)";
         moreNote.textContent = "+" + (projectLogs.length - 5) + " more \u2014 View All to see the rest.";
         logsSection.appendChild(moreNote);
       }
@@ -1484,7 +1484,7 @@
       });
 
     var risksSection = document.createElement("div");
-    risksSection.style.marginTop = "16px";
+    risksSection.style.marginTop = "var(--space-4)";
     risksSection.style.paddingTop = "14px";
     risksSection.style.borderTop = "1px solid var(--divider)";
 
@@ -1523,7 +1523,7 @@
       risksList.style.display = "flex";
       risksList.style.flexDirection = "column";
       risksList.style.gap = "6px";
-      risksList.style.marginTop = "8px";
+      risksList.style.marginTop = "var(--space-2)";
 
       projectRisks.slice(0, 5).forEach(function (r) {
         var row = document.createElement("div");
@@ -1531,7 +1531,7 @@
         row.style.justifyContent = "space-between";
         row.style.alignItems = "center";
         row.style.fontSize = "13px";
-        row.style.gap = "8px";
+        row.style.gap = "var(--space-2)";
 
         var label = document.createElement("span");
         label.style.overflow = "hidden";
@@ -1548,8 +1548,8 @@
       if (projectRisks.length > 5) {
         var moreRisksNote = document.createElement("p");
         moreRisksNote.className = "text-secondary";
-        moreRisksNote.style.fontSize = "11px";
-        moreRisksNote.style.marginTop = "4px";
+        moreRisksNote.style.fontSize = "var(--text-xs)";
+        moreRisksNote.style.marginTop = "var(--space-1)";
         moreRisksNote.textContent = "+" + (projectRisks.length - 5) + " more \u2014 View All to see the rest.";
         risksSection.appendChild(moreRisksNote);
       }
@@ -1567,7 +1567,7 @@
       });
 
     var meetingsSection = document.createElement("div");
-    meetingsSection.style.marginTop = "16px";
+    meetingsSection.style.marginTop = "var(--space-4)";
     meetingsSection.style.paddingTop = "14px";
     meetingsSection.style.borderTop = "1px solid var(--divider)";
 
@@ -1606,7 +1606,7 @@
       meetingsList.style.display = "flex";
       meetingsList.style.flexDirection = "column";
       meetingsList.style.gap = "6px";
-      meetingsList.style.marginTop = "8px";
+      meetingsList.style.marginTop = "var(--space-2)";
 
       projectMeetings.slice(0, 5).forEach(function (m) {
         var overdueInMeeting = m.actions.filter(function (a) {
@@ -1619,7 +1619,7 @@
         row.style.justifyContent = "space-between";
         row.style.alignItems = "center";
         row.style.fontSize = "13px";
-        row.style.gap = "8px";
+        row.style.gap = "var(--space-2)";
 
         var label = document.createElement("span");
         label.style.overflow = "hidden";
@@ -1644,8 +1644,8 @@
       if (projectMeetings.length > 5) {
         var moreMeetingsNote = document.createElement("p");
         moreMeetingsNote.className = "text-secondary";
-        moreMeetingsNote.style.fontSize = "11px";
-        moreMeetingsNote.style.marginTop = "4px";
+        moreMeetingsNote.style.fontSize = "var(--text-xs)";
+        moreMeetingsNote.style.marginTop = "var(--space-1)";
         moreMeetingsNote.textContent = "+" + (projectMeetings.length - 5) + " more \u2014 View All to see the rest.";
         meetingsSection.appendChild(moreMeetingsNote);
       }
@@ -1660,7 +1660,7 @@
       });
 
     var rfisSection = document.createElement("div");
-    rfisSection.style.marginTop = "16px";
+    rfisSection.style.marginTop = "var(--space-4)";
     rfisSection.style.paddingTop = "14px";
     rfisSection.style.borderTop = "1px solid var(--divider)";
 
@@ -1699,7 +1699,7 @@
       rfisList.style.display = "flex";
       rfisList.style.flexDirection = "column";
       rfisList.style.gap = "6px";
-      rfisList.style.marginTop = "8px";
+      rfisList.style.marginTop = "var(--space-2)";
 
       var today = new Date().toISOString().slice(0, 10);
 
@@ -1709,7 +1709,7 @@
         row.style.justifyContent = "space-between";
         row.style.alignItems = "center";
         row.style.fontSize = "13px";
-        row.style.gap = "8px";
+        row.style.gap = "var(--space-2)";
 
         var label = document.createElement("span");
         label.style.overflow = "hidden";
@@ -1734,8 +1734,8 @@
       if (projectRfis.length > 5) {
         var moreRfisNote = document.createElement("p");
         moreRfisNote.className = "text-secondary";
-        moreRfisNote.style.fontSize = "11px";
-        moreRfisNote.style.marginTop = "4px";
+        moreRfisNote.style.fontSize = "var(--text-xs)";
+        moreRfisNote.style.marginTop = "var(--space-1)";
         moreRfisNote.textContent = "+" + (projectRfis.length - 5) + " more \u2014 View All to see the rest.";
         rfisSection.appendChild(moreRfisNote);
       }
@@ -1750,7 +1750,7 @@
       });
 
     var coSection = document.createElement("div");
-    coSection.style.marginTop = "16px";
+    coSection.style.marginTop = "var(--space-4)";
     coSection.style.paddingTop = "14px";
     coSection.style.borderTop = "1px solid var(--divider)";
 
@@ -1789,7 +1789,7 @@
       coList.style.display = "flex";
       coList.style.flexDirection = "column";
       coList.style.gap = "6px";
-      coList.style.marginTop = "8px";
+      coList.style.marginTop = "var(--space-2)";
 
       projectChangeOrders.slice(0, 5).forEach(function (co) {
         var row = document.createElement("div");
@@ -1797,7 +1797,7 @@
         row.style.justifyContent = "space-between";
         row.style.alignItems = "center";
         row.style.fontSize = "13px";
-        row.style.gap = "8px";
+        row.style.gap = "var(--space-2)";
 
         var label = document.createElement("span");
         label.style.overflow = "hidden";
@@ -1819,8 +1819,8 @@
       if (projectChangeOrders.length > 5) {
         var moreCoNote = document.createElement("p");
         moreCoNote.className = "text-secondary";
-        moreCoNote.style.fontSize = "11px";
-        moreCoNote.style.marginTop = "4px";
+        moreCoNote.style.fontSize = "var(--text-xs)";
+        moreCoNote.style.marginTop = "var(--space-1)";
         moreCoNote.textContent = "+" + (projectChangeOrders.length - 5) + " more \u2014 View All to see the rest.";
         coSection.appendChild(moreCoNote);
       }
@@ -1841,7 +1841,7 @@
     var allVendors = window.PCC.store.get().vendors;
 
     var vendorsSection = document.createElement("div");
-    vendorsSection.style.marginTop = "16px";
+    vendorsSection.style.marginTop = "var(--space-4)";
     vendorsSection.style.paddingTop = "14px";
     vendorsSection.style.borderTop = "1px solid var(--divider)";
 
@@ -1857,7 +1857,7 @@
 
     var vendorsHeaderBtns = document.createElement("div");
     vendorsHeaderBtns.style.display = "flex";
-    vendorsHeaderBtns.style.gap = "8px";
+    vendorsHeaderBtns.style.gap = "var(--space-2)";
 
     var linkVendorBtn = document.createElement("button");
     linkVendorBtn.className = "btn btn--ghost";
@@ -1891,9 +1891,9 @@
 
     if (uiState.vendorLinkPickerOpen) {
       var pickerWrap = document.createElement("div");
-      pickerWrap.style.marginTop = "8px";
+      pickerWrap.style.marginTop = "var(--space-2)";
       pickerWrap.style.display = "flex";
-      pickerWrap.style.gap = "8px";
+      pickerWrap.style.gap = "var(--space-2)";
       pickerWrap.style.alignItems = "center";
       pickerWrap.style.flexWrap = "wrap";
 
@@ -1942,7 +1942,7 @@
       vendorsList.style.display = "flex";
       vendorsList.style.flexDirection = "column";
       vendorsList.style.gap = "6px";
-      vendorsList.style.marginTop = "8px";
+      vendorsList.style.marginTop = "var(--space-2)";
 
       projectVendorLinks.slice(0, 5).forEach(function (link) {
         var vendor = allVendors.find(function (v) {
@@ -1954,14 +1954,14 @@
         row.style.justifyContent = "space-between";
         row.style.alignItems = "center";
         row.style.fontSize = "13px";
-        row.style.gap = "8px";
+        row.style.gap = "var(--space-2)";
 
         var nameBtn = document.createElement("button");
         nameBtn.className = "btn btn--ghost";
         nameBtn.style.overflow = "hidden";
         nameBtn.style.textOverflow = "ellipsis";
         nameBtn.style.whiteSpace = "nowrap";
-        nameBtn.style.padding = "2px 8px";
+        nameBtn.style.padding = "2px var(--space-2)";
         nameBtn.textContent = (vendor ? vendor.vendor_name || "(unnamed vendor)" : "(deleted vendor)") + (link.role ? " — " + link.role : "");
         nameBtn.disabled = !vendor;
         nameBtn.onclick = function () {
@@ -1973,7 +1973,7 @@
         var rightSide = document.createElement("div");
         rightSide.style.display = "flex";
         rightSide.style.alignItems = "center";
-        rightSide.style.gap = "8px";
+        rightSide.style.gap = "var(--space-2)";
         rightSide.style.flexShrink = "0";
 
         var statusBadge = document.createElement("span");
@@ -1983,7 +1983,7 @@
 
         var unlinkBtn = document.createElement("button");
         unlinkBtn.className = "btn btn--ghost";
-        unlinkBtn.style.padding = "2px 8px";
+        unlinkBtn.style.padding = "2px var(--space-2)";
         unlinkBtn.textContent = "Unlink";
         unlinkBtn.onclick = function () {
           window.PCC.store.update(function (d) {
@@ -2004,8 +2004,8 @@
       if (projectVendorLinks.length > 5) {
         var moreVendorsNote = document.createElement("p");
         moreVendorsNote.className = "text-secondary";
-        moreVendorsNote.style.fontSize = "11px";
-        moreVendorsNote.style.marginTop = "4px";
+        moreVendorsNote.style.fontSize = "var(--text-xs)";
+        moreVendorsNote.style.marginTop = "var(--space-1)";
         moreVendorsNote.textContent = "+" + (projectVendorLinks.length - 5) + " more — View All to see the rest.";
         vendorsSection.appendChild(moreVendorsNote);
       }
@@ -2014,7 +2014,7 @@
     wrap.appendChild(vendorsSection);
 
     var costSection = document.createElement("div");
-    costSection.style.marginTop = "16px";
+    costSection.style.marginTop = "var(--space-4)";
     costSection.style.paddingTop = "14px";
     costSection.style.borderTop = "1px solid var(--divider)";
 
@@ -2068,7 +2068,7 @@
       var projectAssignments = data.resource_assignments.filter(function (a) { return projectActivityIds[a.activity_id]; });
 
       var resSection = document.createElement("div");
-      resSection.style.marginTop = "16px";
+      resSection.style.marginTop = "var(--space-4)";
       resSection.style.paddingTop = "14px";
       resSection.style.borderTop = "1px solid var(--divider)";
 
@@ -2131,7 +2131,7 @@
     if (projectCommitments.length > 0 && window.PCC.commitments) {
       var data2 = window.PCC.store.get();
       var cmtSection = document.createElement("div");
-      cmtSection.style.marginTop = "16px";
+      cmtSection.style.marginTop = "var(--space-4)";
       cmtSection.style.paddingTop = "14px";
       cmtSection.style.borderTop = "1px solid var(--divider)";
 
@@ -2187,7 +2187,7 @@
 
     var h1 = document.createElement("h2");
     h1.textContent = "Portfolio";
-    h1.style.marginBottom = "16px";
+    h1.style.marginBottom = "var(--space-4)";
     outlet.appendChild(h1);
 
     outlet.appendChild(renderKpiStrip(computePortfolioKpis(data)));

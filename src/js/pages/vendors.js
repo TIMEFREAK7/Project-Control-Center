@@ -262,7 +262,7 @@
     var isNew = uiState.editingVendorId === "new";
     var panel = document.createElement("div");
     panel.className = "panel";
-    panel.style.marginBottom = "16px";
+    panel.style.marginBottom = "var(--space-4)";
 
     var heading = document.createElement("h3");
     heading.style.marginBottom = "14px";
@@ -275,7 +275,7 @@
     basicHeading.className = "text-secondary";
     basicHeading.style.fontSize = "12px";
     basicHeading.style.fontWeight = "600";
-    basicHeading.style.marginBottom = "8px";
+    basicHeading.style.marginBottom = "var(--space-2)";
     basicHeading.textContent = "BASIC INFORMATION";
     form.appendChild(basicHeading);
 
@@ -294,8 +294,8 @@
     contactHeading.className = "text-secondary";
     contactHeading.style.fontSize = "12px";
     contactHeading.style.fontWeight = "600";
-    contactHeading.style.marginTop = "16px";
-    contactHeading.style.marginBottom = "8px";
+    contactHeading.style.marginTop = "var(--space-4)";
+    contactHeading.style.marginBottom = "var(--space-2)";
     contactHeading.textContent = "PRIMARY CONTACT (more contacts can be added from the vendor's Contacts tab after saving)";
     form.appendChild(contactHeading);
 
@@ -318,8 +318,8 @@
     addressHeading.className = "text-secondary";
     addressHeading.style.fontSize = "12px";
     addressHeading.style.fontWeight = "600";
-    addressHeading.style.marginTop = "16px";
-    addressHeading.style.marginBottom = "8px";
+    addressHeading.style.marginTop = "var(--space-4)";
+    addressHeading.style.marginBottom = "var(--space-2)";
     addressHeading.textContent = "ADDRESS";
     form.appendChild(addressHeading);
 
@@ -332,7 +332,7 @@
 
     var statusGrid = document.createElement("div");
     statusGrid.className = "form-grid";
-    statusGrid.style.marginTop = "16px";
+    statusGrid.style.marginTop = "var(--space-4)";
     statusGrid.appendChild(
       buildField({ key: "status", label: "Status", type: "select", options: window.PCC.store.VENDOR_STATUSES, labels: VENDOR_STATUS_LABELS }, vendor, "vendorfield-")
     );
@@ -516,7 +516,7 @@
     var titleRow = document.createElement("div");
     titleRow.style.display = "flex";
     titleRow.style.alignItems = "center";
-    titleRow.style.gap = "8px";
+    titleRow.style.gap = "var(--space-2)";
     var name = document.createElement("strong");
     name.textContent = v.vendor_name || "(unnamed vendor)";
     titleRow.appendChild(name);
@@ -529,7 +529,7 @@
     var sub = document.createElement("p");
     sub.className = "text-secondary";
     sub.style.fontSize = "12px";
-    sub.style.margin = "4px 0 0";
+    sub.style.margin = "var(--space-1) 0 0";
     var projectCount = data.vendor_project_links.filter(function (l) {
       return l.vendor_id === v.id;
     }).length;
@@ -542,7 +542,7 @@
 
     var btnRow = document.createElement("div");
     btnRow.style.display = "flex";
-    btnRow.style.gap = "8px";
+    btnRow.style.gap = "var(--space-2)";
     btnRow.style.flexShrink = "0";
 
     var viewBtn = document.createElement("button");
@@ -748,19 +748,19 @@
     card.className = "panel";
     var lab = document.createElement("p");
     lab.className = "text-secondary";
-    lab.style.fontSize = "11px";
+    lab.style.fontSize = "var(--text-xs)";
     lab.style.marginBottom = "6px";
     lab.textContent = label.toUpperCase();
     card.appendChild(lab);
     var val = document.createElement("p");
-    val.style.fontSize = "28px";
+    val.style.fontSize = "var(--text-2xl)";
     val.style.fontWeight = "600";
     val.style.margin = "0";
     val.textContent = value;
     card.appendChild(val);
     if (sub) {
       var subEl = document.createElement("div");
-      subEl.style.marginTop = "8px";
+      subEl.style.marginTop = "var(--space-2)";
       if (typeof sub === "string") {
         subEl.className = "text-secondary";
         subEl.style.fontSize = "12px";
@@ -786,7 +786,7 @@
     items.forEach(function (text) {
       var p = document.createElement("p");
       p.style.fontSize = "12px";
-      p.style.margin = "0 0 4px";
+      p.style.margin = "0 0 var(--space-1)";
       p.textContent = text;
       wrap.appendChild(p);
     });
@@ -795,14 +795,14 @@
 
   function renderDashboard(container, data, rerender) {
     var h3 = document.createElement("h3");
-    h3.style.marginBottom = "12px";
+    h3.style.marginBottom = "var(--space-3)";
     h3.textContent = "Vendor Dashboard";
     container.appendChild(h3);
 
     var cardsGrid = document.createElement("div");
     cardsGrid.style.display = "grid";
     cardsGrid.style.gridTemplateColumns = "repeat(auto-fit, minmax(220px, 1fr))";
-    cardsGrid.style.gap = "12px";
+    cardsGrid.style.gap = "var(--space-3)";
     cardsGrid.style.marginBottom = "20px";
 
     var activeCount = data.vendors.filter(function (v) { return v.status === "active"; }).length;
@@ -879,14 +879,14 @@
     var activityPanel = document.createElement("div");
     activityPanel.className = "panel";
     var activityHeading = document.createElement("h3");
-    activityHeading.style.marginBottom = "12px";
+    activityHeading.style.marginBottom = "var(--space-3)";
     activityHeading.textContent = "Recent Activity";
     activityPanel.appendChild(activityHeading);
 
     var activityGrid = document.createElement("div");
     activityGrid.style.display = "grid";
     activityGrid.style.gridTemplateColumns = "repeat(auto-fit, minmax(220px, 1fr))";
-    activityGrid.style.gap = "16px";
+    activityGrid.style.gap = "var(--space-4)";
 
     function activityColumn(title, items) {
       var col = document.createElement("div");
@@ -944,8 +944,8 @@
   function profileTabBar(vendor, container, rerender) {
     var bar = document.createElement("div");
     bar.className = "tab-bar";
-    bar.style.marginTop = "16px";
-    bar.style.marginBottom = "16px";
+    bar.style.marginTop = "var(--space-4)";
+    bar.style.marginBottom = "var(--space-4)";
     [
       { key: "overview", label: "Overview" },
       { key: "projects", label: "Projects" },
@@ -984,7 +984,7 @@
       var d = document.createElement("div");
       var l = document.createElement("p");
       l.className = "text-secondary";
-      l.style.fontSize = "11px";
+      l.style.fontSize = "var(--text-xs)";
       l.style.marginBottom = "2px";
       l.textContent = label.toUpperCase();
       var v = document.createElement("p");
@@ -1020,7 +1020,7 @@
     var statsRow = document.createElement("div");
     statsRow.style.display = "flex";
     statsRow.style.gap = "20px";
-    statsRow.style.marginTop = "16px";
+    statsRow.style.marginTop = "var(--space-4)";
     statsRow.style.flexWrap = "wrap";
 
     function stat(label, count) {
@@ -1042,7 +1042,7 @@
   function renderProjectsTab(container, vendor, data, rerender) {
     var addBtn = document.createElement("button");
     addBtn.className = "btn btn--primary";
-    addBtn.style.marginBottom = "12px";
+    addBtn.style.marginBottom = "var(--space-3)";
     addBtn.textContent = "+ Link Project";
     addBtn.disabled = data.projects.filter(function (p) { return !p.archived; }).length === 0;
     addBtn.onclick = function () {
@@ -1061,7 +1061,7 @@
       if (link) {
         var panel = document.createElement("div");
         panel.className = "panel";
-        panel.style.marginBottom = "12px";
+        panel.style.marginBottom = "var(--space-3)";
         var form = document.createElement("form");
 
         var projField = document.createElement("div");
@@ -1104,7 +1104,7 @@
         var actions = document.createElement("div");
         actions.style.display = "flex";
         actions.style.gap = "10px";
-        actions.style.marginTop = "12px";
+        actions.style.marginTop = "var(--space-3)";
         var saveBtn = document.createElement("button");
         saveBtn.type = "submit";
         saveBtn.className = "btn btn--primary";
@@ -1180,7 +1180,7 @@
 
       var btnRow = document.createElement("div");
       btnRow.style.display = "flex";
-      btnRow.style.gap = "8px";
+      btnRow.style.gap = "var(--space-2)";
       var editBtn = document.createElement("button");
       editBtn.className = "btn btn--ghost";
       editBtn.textContent = "Edit";
@@ -1208,7 +1208,7 @@
   function renderContactsTab(container, vendor, data, rerender) {
     var addBtn = document.createElement("button");
     addBtn.className = "btn btn--primary";
-    addBtn.style.marginBottom = "12px";
+    addBtn.style.marginBottom = "var(--space-3)";
     addBtn.textContent = "+ Add Contact";
     addBtn.onclick = function () {
       uiState.editingContactId = "new";
@@ -1226,7 +1226,7 @@
       if (contact) {
         var panel = document.createElement("div");
         panel.className = "panel";
-        panel.style.marginBottom = "12px";
+        panel.style.marginBottom = "var(--space-3)";
         var form = document.createElement("form");
         var grid = document.createElement("div");
         grid.className = "form-grid";
@@ -1241,7 +1241,7 @@
         var primaryLabel = document.createElement("label");
         primaryLabel.style.display = "flex";
         primaryLabel.style.alignItems = "center";
-        primaryLabel.style.gap = "8px";
+        primaryLabel.style.gap = "var(--space-2)";
         var primaryCheckbox = document.createElement("input");
         primaryCheckbox.type = "checkbox";
         primaryCheckbox.id = "vcfield-is_primary";
@@ -1254,7 +1254,7 @@
         var actions = document.createElement("div");
         actions.style.display = "flex";
         actions.style.gap = "10px";
-        actions.style.marginTop = "12px";
+        actions.style.marginTop = "var(--space-3)";
         var saveBtn = document.createElement("button");
         saveBtn.type = "submit";
         saveBtn.className = "btn btn--primary";
@@ -1330,7 +1330,7 @@
       top.appendChild(left);
       var btnRow = document.createElement("div");
       btnRow.style.display = "flex";
-      btnRow.style.gap = "8px";
+      btnRow.style.gap = "var(--space-2)";
       var editBtn = document.createElement("button");
       editBtn.className = "btn btn--ghost";
       editBtn.textContent = "Edit";
@@ -1390,7 +1390,7 @@
   function renderDocumentUploadForm(container, vendor, data, rerender) {
     var panel = document.createElement("div");
     panel.className = "panel";
-    panel.style.marginBottom = "12px";
+    panel.style.marginBottom = "var(--space-3)";
 
     var heading = document.createElement("h4");
     heading.style.marginBottom = "10px";
@@ -1408,7 +1408,7 @@
       var err = document.createElement("p");
       err.style.color = "var(--status-critical)";
       err.style.fontSize = "13px";
-      err.style.marginTop = "8px";
+      err.style.marginTop = "var(--space-2)";
       err.textContent = uiState.pendingDocReadError;
       panel.appendChild(err);
     }
@@ -1417,7 +1417,7 @@
       var fileInfo = document.createElement("p");
       fileInfo.className = "text-secondary";
       fileInfo.style.fontSize = "12px";
-      fileInfo.style.margin = "8px 0";
+      fileInfo.style.margin = "var(--space-2) 0";
       fileInfo.textContent = uiState.pendingDocFile.name + " · " + formatBytes(uiState.pendingDocFile.size);
       panel.appendChild(fileInfo);
     }
@@ -1500,7 +1500,7 @@
 
     var commentsField = document.createElement("div");
     commentsField.className = "field";
-    commentsField.style.marginTop = "8px";
+    commentsField.style.marginTop = "var(--space-2)";
     commentsField.innerHTML = "<label>Comments</label>";
     var commentsArea = document.createElement("textarea");
     commentsArea.id = "vdocfield-comments";
@@ -1512,7 +1512,7 @@
     var actions = document.createElement("div");
     actions.style.display = "flex";
     actions.style.gap = "10px";
-    actions.style.marginTop = "12px";
+    actions.style.marginTop = "var(--space-3)";
 
     var saveBtn = document.createElement("button");
     saveBtn.className = "btn btn--primary";
@@ -1585,7 +1585,7 @@
   function renderDocumentsTab(container, vendor, data, rerender) {
     var addBtn = document.createElement("button");
     addBtn.className = "btn btn--primary";
-    addBtn.style.marginBottom = "12px";
+    addBtn.style.marginBottom = "var(--space-3)";
     addBtn.textContent = "+ Upload Document";
     addBtn.onclick = function () {
       resetDocUploadState();
@@ -1643,7 +1643,7 @@
 
       var btnRow = document.createElement("div");
       btnRow.style.display = "flex";
-      btnRow.style.gap = "8px";
+      btnRow.style.gap = "var(--space-2)";
       btnRow.style.flexShrink = "0";
 
       var viewBtn = document.createElement("button");
@@ -1704,7 +1704,7 @@
           revRow.style.justifyContent = "space-between";
           revRow.style.alignItems = "center";
           revRow.style.fontSize = "12px";
-          revRow.style.marginBottom = "4px";
+          revRow.style.marginBottom = "var(--space-1)";
           var revLabel = document.createElement("span");
           revLabel.textContent = "Rev " + rev.revision_number + " — " + rev.filename + " · " + (rev.upload_date || "").slice(0, 10);
           var revViewBtn = document.createElement("button");
@@ -1728,7 +1728,7 @@
     // cfg: { open, items, itemLabel, onLink, onClose, emptyText, buttonText }
     var panel = document.createElement("div");
     panel.className = "panel";
-    panel.style.marginBottom = "12px";
+    panel.style.marginBottom = "var(--space-3)";
     if (cfg.items.length === 0) {
       var empty = document.createElement("p");
       empty.className = "text-secondary";
@@ -1768,7 +1768,7 @@
 
     var addBtn = document.createElement("button");
     addBtn.className = "btn btn--primary";
-    addBtn.style.marginBottom = "12px";
+    addBtn.style.marginBottom = "var(--space-3)";
     addBtn.textContent = "+ Link Existing Meeting";
     addBtn.onclick = function () {
       uiState.meetingPickerOpen = true;
@@ -1846,7 +1846,7 @@
       top.appendChild(left);
       var btnRow = document.createElement("div");
       btnRow.style.display = "flex";
-      btnRow.style.gap = "8px";
+      btnRow.style.gap = "var(--space-2)";
       var openBtn = document.createElement("button");
       openBtn.className = "btn btn--ghost";
       openBtn.textContent = "View Meeting";
@@ -1886,7 +1886,7 @@
     var countsRow = document.createElement("div");
     countsRow.style.display = "flex";
     countsRow.style.gap = "20px";
-    countsRow.style.marginBottom = "12px";
+    countsRow.style.marginBottom = "var(--space-3)";
     countsRow.style.fontSize = "13px";
     countsRow.innerHTML =
       "<span><strong>" + counts.pending + "</strong> Pending RFIs</span>" +
@@ -1896,7 +1896,7 @@
 
     var addBtn = document.createElement("button");
     addBtn.className = "btn btn--primary";
-    addBtn.style.marginBottom = "12px";
+    addBtn.style.marginBottom = "var(--space-3)";
     addBtn.textContent = "+ Link Existing RFI / TQ";
     addBtn.onclick = function () {
       uiState.rfiPickerOpen = true;
@@ -1972,7 +1972,7 @@
       top.appendChild(left);
       var btnRow = document.createElement("div");
       btnRow.style.display = "flex";
-      btnRow.style.gap = "8px";
+      btnRow.style.gap = "var(--space-2)";
       var openBtn = document.createElement("button");
       openBtn.className = "btn btn--ghost";
       openBtn.textContent = "View RFI / TQ";
@@ -2003,7 +2003,7 @@
 
     var addBtn = document.createElement("button");
     addBtn.className = "btn btn--primary";
-    addBtn.style.marginBottom = "12px";
+    addBtn.style.marginBottom = "var(--space-3)";
     addBtn.textContent = "+ Link Existing Risk";
     addBtn.onclick = function () {
       uiState.riskPickerOpen = true;
@@ -2077,7 +2077,7 @@
       top.appendChild(left);
       var btnRow = document.createElement("div");
       btnRow.style.display = "flex";
-      btnRow.style.gap = "8px";
+      btnRow.style.gap = "var(--space-2)";
       var openBtn = document.createElement("button");
       openBtn.className = "btn btn--ghost";
       openBtn.textContent = "View Risk";
@@ -2110,7 +2110,7 @@
     if (reviews.length > 0) {
       var avgPanel = document.createElement("div");
       avgPanel.className = "panel";
-      avgPanel.style.marginBottom = "12px";
+      avgPanel.style.marginBottom = "var(--space-3)";
       var runningAvg = Math.round((reviews.reduce(function (sum, r) { return sum + overallRating(r); }, 0) / reviews.length) * 10) / 10;
       avgPanel.innerHTML =
         "<p class='text-secondary' style='font-size:11px;margin-bottom:4px'>OVERALL RATING (" + reviews.length + " review" + (reviews.length === 1 ? "" : "s") + ")</p>" +
@@ -2120,7 +2120,7 @@
 
     var addBtn = document.createElement("button");
     addBtn.className = "btn btn--primary";
-    addBtn.style.marginBottom = "12px";
+    addBtn.style.marginBottom = "var(--space-3)";
     addBtn.textContent = "+ Add Review";
     addBtn.onclick = function () {
       uiState.editingPerformanceId = "new";
@@ -2136,7 +2136,7 @@
       if (perf) {
         var panel = document.createElement("div");
         panel.className = "panel";
-        panel.style.marginBottom = "12px";
+        panel.style.marginBottom = "var(--space-3)";
         var form = document.createElement("form");
         var grid = document.createElement("div");
         grid.className = "form-grid";
@@ -2167,7 +2167,7 @@
 
         var commentsField = document.createElement("div");
         commentsField.className = "field";
-        commentsField.style.marginTop = "8px";
+        commentsField.style.marginTop = "var(--space-2)";
         commentsField.innerHTML = "<label>Comments</label>";
         var commentsArea = document.createElement("textarea");
         commentsArea.id = "vperffield-comments";
@@ -2179,7 +2179,7 @@
         var actions = document.createElement("div");
         actions.style.display = "flex";
         actions.style.gap = "10px";
-        actions.style.marginTop = "12px";
+        actions.style.marginTop = "var(--space-3)";
         var saveBtn = document.createElement("button");
         saveBtn.type = "submit";
         saveBtn.className = "btn btn--primary";
@@ -2252,7 +2252,7 @@
       top.appendChild(left);
       var btnRow = document.createElement("div");
       btnRow.style.display = "flex";
-      btnRow.style.gap = "8px";
+      btnRow.style.gap = "var(--space-2)";
       var editBtn = document.createElement("button");
       editBtn.className = "btn btn--ghost";
       editBtn.textContent = "Edit";
@@ -2278,7 +2278,7 @@
   function renderNotesTab(container, vendor, data, rerender) {
     var panel = document.createElement("div");
     panel.className = "panel";
-    panel.style.marginBottom = "12px";
+    panel.style.marginBottom = "var(--space-3)";
     var textarea = document.createElement("textarea");
     textarea.rows = 3;
     textarea.placeholder = "Add a note…";
@@ -2289,7 +2289,7 @@
     panel.appendChild(textarea);
     var addBtn = document.createElement("button");
     addBtn.className = "btn btn--primary";
-    addBtn.style.marginTop = "8px";
+    addBtn.style.marginTop = "var(--space-2)";
     addBtn.textContent = "Add Note";
     addBtn.onclick = function () {
       if (!textarea.value.trim()) return;
@@ -2398,7 +2398,7 @@
 
     var summary = document.createElement("div");
     summary.className = "panel";
-    summary.style.marginBottom = "12px";
+    summary.style.marginBottom = "var(--space-3)";
     summary.innerHTML =
       "<p class='text-secondary' style='font-size:11px;margin-bottom:4px'>DOCUMENT LOOKAHEAD</p>" +
       "<p style='font-size:13px;margin:0'>" +
@@ -2447,7 +2447,7 @@
         var meta = document.createElement("p");
         meta.className = "text-secondary";
         meta.style.fontSize = "12px";
-        meta.style.margin = "4px 0 0";
+        meta.style.margin = "var(--space-1) 0 0";
         meta.textContent =
           "Project: " +
           projectName(data.projects, r.project_id) +
@@ -2492,7 +2492,7 @@
 
     var summary = document.createElement("div");
     summary.className = "panel";
-    summary.style.marginBottom = "12px";
+    summary.style.marginBottom = "var(--space-3)";
     summary.innerHTML =
       "<p class='text-secondary' style='font-size:11px;margin-bottom:4px'>ASSIGNED ACTIVITIES</p>" +
       "<p style='font-size:13px;margin:0'>" +
@@ -2533,7 +2533,7 @@
         var meta = document.createElement("p");
         meta.className = "text-secondary";
         meta.style.fontSize = "12px";
-        meta.style.margin = "4px 0 0";
+        meta.style.margin = "var(--space-1) 0 0";
         var date = a.early_start || a.planned_start;
         meta.textContent =
           "Project: " + projectName(data.projects, a.project_id) +
@@ -2584,7 +2584,7 @@
     headerRow.style.display = "flex";
     headerRow.style.justifyContent = "space-between";
     headerRow.style.alignItems = "center";
-    headerRow.style.marginTop = "12px";
+    headerRow.style.marginTop = "var(--space-3)";
     var h3 = document.createElement("h3");
     h3.textContent = vendor.vendor_name;
     var badge = document.createElement("span");
@@ -2647,7 +2647,7 @@
     var subNote = document.createElement("p");
     subNote.className = "text-secondary";
     subNote.style.fontSize = "12px";
-    subNote.style.marginBottom = "16px";
+    subNote.style.marginBottom = "var(--space-4)";
     subNote.textContent =
       "The single source of truth for vendor information across every project — master list, project links, " +
       "documents, meetings, RFI/TQ, risks, and performance, all from one profile.";
@@ -2656,7 +2656,7 @@
     if (uiState.view !== "profile") {
       var viewToggle = document.createElement("div");
       viewToggle.className = "tab-bar";
-      viewToggle.style.marginBottom = "16px";
+      viewToggle.style.marginBottom = "var(--space-4)";
       [
         { key: "dashboard", label: "Dashboard" },
         { key: "list", label: "Vendor List" },

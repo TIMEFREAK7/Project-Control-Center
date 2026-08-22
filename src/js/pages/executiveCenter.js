@@ -676,7 +676,7 @@
     var wrap = document.createElement("div");
     wrap.style.display = "flex";
     wrap.style.alignItems = "center";
-    wrap.style.gap = "16px";
+    wrap.style.gap = "var(--space-4)";
     wrap.style.flexWrap = "wrap";
     wrap.appendChild(svg);
     var legend = document.createElement("div");
@@ -686,7 +686,7 @@
       line.style.display = "flex";
       line.style.alignItems = "center";
       line.style.gap = "6px";
-      line.style.marginBottom = "4px";
+      line.style.marginBottom = "var(--space-1)";
       var swatch = document.createElement("span");
       swatch.style.width = "10px";
       swatch.style.height = "10px";
@@ -716,7 +716,7 @@
     });
     var table = document.createElement("table");
     table.style.borderCollapse = "collapse";
-    table.style.fontSize = "11px";
+    table.style.fontSize = "var(--text-xs)";
     var levelColors = { high: "var(--status-critical)", medium: "var(--status-at-risk)", low: "var(--status-on-track)" };
     for (var pi = levels.length - 1; pi >= 0; pi--) {
       var prob = levels[pi];
@@ -724,7 +724,7 @@
       var labelCell = document.createElement("td");
       labelCell.textContent = prob.toUpperCase();
       labelCell.className = "text-secondary";
-      labelCell.style.padding = "4px 8px";
+      labelCell.style.padding = "var(--space-1) 8px";
       row.appendChild(labelCell);
       levels.forEach(function (impact) {
         var sev = SEVERITY_MATRIX[prob][impact];
@@ -763,7 +763,7 @@
     card.appendChild(table);
     var caption = document.createElement("p");
     caption.className = "text-secondary";
-    caption.style.fontSize = "11px";
+    caption.style.fontSize = "var(--text-xs)";
     caption.style.marginTop = "6px";
     caption.textContent = "Rows: Probability · Columns: Impact";
     card.appendChild(caption);
@@ -872,8 +872,8 @@
     card.appendChild(svg);
     var legend = document.createElement("p");
     legend.className = "text-secondary";
-    legend.style.fontSize = "11px";
-    legend.style.marginTop = "4px";
+    legend.style.fontSize = "var(--text-xs)";
+    legend.style.marginTop = "var(--space-1)";
     legend.textContent =
       actualPoints.length > 0
         ? "Planned cumulative progress (blue), duration-weighted across " + dated.length + " dated activity(ies), vs. actual progress (green) from " +
@@ -978,7 +978,7 @@
     var sub = document.createElement("p");
     sub.className = "text-secondary focus-mode-hide";
     sub.style.fontSize = "12px";
-    sub.style.marginBottom = "16px";
+    sub.style.marginBottom = "var(--space-4)";
     sub.textContent = "Management rollup for one project — every number reads live from Portfolio, Schedule, Cost Tracking, Risk Register, RFI/TQ, Change Management, and Meetings.";
     outlet.appendChild(sub);
 
@@ -1123,7 +1123,7 @@
 
     var subNav = document.createElement("div");
     subNav.className = "toolbar no-print";
-    subNav.style.marginBottom = "16px";
+    subNav.style.marginBottom = "var(--space-4)";
     subNav.style.flexWrap = "wrap";
     subTabs.forEach(function (t) {
       var btn = document.createElement("button");
@@ -1190,9 +1190,9 @@
 
     var twoCol = document.createElement("div");
     twoCol.style.display = "flex";
-    twoCol.style.gap = "16px";
+    twoCol.style.gap = "var(--space-4)";
     twoCol.style.flexWrap = "wrap";
-    twoCol.style.marginTop = "16px";
+    twoCol.style.marginTop = "var(--space-4)";
     twoCol.appendChild(renderRecentActivityPanel(ctx));
     twoCol.appendChild(renderUpcomingItemsPanel(ctx, rerender));
     outlet.appendChild(twoCol);
@@ -1352,9 +1352,9 @@
 
   function renderKpiSection(outlet, title, kpis, footnote) {
     var wrap = document.createElement("div");
-    wrap.style.marginTop = "16px";
+    wrap.style.marginTop = "var(--space-4)";
     var h = document.createElement("h4");
-    h.style.marginBottom = "8px";
+    h.style.marginBottom = "var(--space-2)";
     h.style.fontSize = "12px";
     h.style.letterSpacing = "1px";
     h.className = "text-secondary";
@@ -1373,7 +1373,7 @@
     if (footnote) {
       var note = document.createElement("p");
       note.className = "text-secondary";
-      note.style.fontSize = "11px";
+      note.style.fontSize = "var(--text-xs)";
       note.style.marginTop = "-6px";
       note.textContent = footnote;
       wrap.appendChild(note);
@@ -1383,9 +1383,9 @@
 
   function renderKpiEmptySection(outlet, title, message) {
     var wrap = document.createElement("div");
-    wrap.style.marginTop = "16px";
+    wrap.style.marginTop = "var(--space-4)";
     var h = document.createElement("h4");
-    h.style.marginBottom = "8px";
+    h.style.marginBottom = "var(--space-2)";
     h.style.fontSize = "12px";
     h.style.letterSpacing = "1px";
     h.className = "text-secondary";
@@ -1434,7 +1434,7 @@
       th.textContent = h;
       th.style.textAlign = "left";
       th.style.borderBottom = "1px solid var(--divider)";
-      th.style.padding = "4px 6px";
+      th.style.padding = "var(--space-1) 6px";
       thead.appendChild(th);
     });
     table.appendChild(thead);
@@ -1443,7 +1443,7 @@
       var tr = document.createElement("tr");
       function td(text) {
         var cell = document.createElement("td");
-        cell.style.padding = "4px 6px";
+        cell.style.padding = "var(--space-1) 6px";
         cell.style.borderBottom = "1px solid var(--divider)";
         cell.style.verticalAlign = "top";
         cell.textContent = text;
@@ -1464,7 +1464,7 @@
     captureRow.style.justifyContent = "space-between";
     captureRow.style.alignItems = "center";
     captureRow.style.flexWrap = "wrap";
-    captureRow.style.gap = "8px";
+    captureRow.style.gap = "var(--space-2)";
 
     var captureNote = document.createElement("span");
     captureNote.style.fontSize = "13px";
@@ -1506,7 +1506,7 @@
       snapshots.slice(0, 10).forEach(function (s) {
         var row = document.createElement("p");
         row.style.fontSize = "12px";
-        row.style.margin = "4px 0";
+        row.style.margin = "var(--space-1) 0";
         row.className = "text-secondary";
         row.textContent =
           s.captured_at.slice(0, 10) + " — SPI " + (s.spi == null ? "—" : s.spi.toFixed(2)) +
@@ -1540,13 +1540,13 @@
       lateWrap.className = "panel";
       lateWrap.style.marginTop = "10px";
       var lateHeading = document.createElement("h4");
-      lateHeading.style.marginBottom = "8px";
+      lateHeading.style.marginBottom = "var(--space-2)";
       lateHeading.textContent = "Forecast to Finish Late (" + ctx.forecastLateActivities.length + ")";
       lateWrap.appendChild(lateHeading);
       ctx.forecastLateActivities.slice(0, 20).forEach(function (a) {
         var row = document.createElement("p");
         row.style.fontSize = "13px";
-        row.style.margin = "4px 0";
+        row.style.margin = "var(--space-1) 0";
         row.textContent =
           esc(a.name || "(unnamed activity)") + " — planned " + a.plannedFinish + ", forecast " + a.forecastFinish +
           " (+" + a.varianceDays + "d)";
@@ -1567,14 +1567,14 @@
       oosWrap.className = "panel";
       oosWrap.style.marginTop = "10px";
       var oosHeading = document.createElement("h4");
-      oosHeading.style.marginBottom = "8px";
+      oosHeading.style.marginBottom = "var(--space-2)";
       var modeLabel = ctx.schedule && ctx.schedule.calculation_mode === "retained_logic" ? "Retained Logic" : "Progress Override";
       oosHeading.textContent = "Out of Sequence (" + ctx.outOfSequenceActivities.length + ") — " + modeLabel + " mode";
       oosWrap.appendChild(oosHeading);
       ctx.outOfSequenceActivities.slice(0, 20).forEach(function (a) {
         var row = document.createElement("p");
         row.style.fontSize = "13px";
-        row.style.margin = "4px 0";
+        row.style.margin = "var(--space-1) 0";
         row.textContent = esc(a.name || "(unnamed activity)");
         oosWrap.appendChild(row);
       });
@@ -1615,7 +1615,7 @@
     baselineWrap.style.justifyContent = "space-between";
     baselineWrap.style.alignItems = "center";
     baselineWrap.style.flexWrap = "wrap";
-    baselineWrap.style.gap = "8px";
+    baselineWrap.style.gap = "var(--space-2)";
 
     var baselineNote = document.createElement("span");
     baselineNote.style.fontSize = "13px";
@@ -1651,7 +1651,7 @@
     wrap.className = "panel";
     wrap.style.marginTop = "10px";
     var heading = document.createElement("h4");
-    heading.style.marginBottom = "8px";
+    heading.style.marginBottom = "var(--space-2)";
     heading.textContent = "Activities With Unaddressed Delay (" + ctx.unaddressedDelayActivities.length + ")";
     wrap.appendChild(heading);
     ctx.unaddressedDelayActivities.slice(0, 20).forEach(function (a) {
@@ -1660,8 +1660,8 @@
       row.style.justifyContent = "space-between";
       row.style.alignItems = "center";
       row.style.flexWrap = "wrap";
-      row.style.gap = "8px";
-      row.style.margin = "4px 0";
+      row.style.gap = "var(--space-2)";
+      row.style.margin = "var(--space-1) 0";
       var label = document.createElement("span");
       label.style.fontSize = "13px";
       label.textContent =
@@ -1727,7 +1727,7 @@
   function renderHealthScorePanel(health, data, rerender) {
     var panel = document.createElement("div");
     panel.className = "panel";
-    panel.style.marginTop = "16px";
+    panel.style.marginTop = "var(--space-4)";
     var header = document.createElement("div");
     header.style.display = "flex";
     header.style.justifyContent = "space-between";
@@ -1747,7 +1747,7 @@
 
     var body = document.createElement("div");
     body.style.display = "flex";
-    body.style.gap = "24px";
+    body.style.gap = "var(--space-5)";
     body.style.flexWrap = "wrap";
     body.style.alignItems = "flex-start";
 
@@ -1771,7 +1771,7 @@
       th.textContent = h2;
       th.style.textAlign = "left";
       th.style.borderBottom = "1px solid var(--divider)";
-      th.style.padding = "4px 6px";
+      th.style.padding = "var(--space-1) 6px";
       thead.appendChild(th);
     });
     table.appendChild(thead);
@@ -1780,7 +1780,7 @@
       var tr = document.createElement("tr");
       function td(text) {
         var cell = document.createElement("td");
-        cell.style.padding = "4px 6px";
+        cell.style.padding = "var(--space-1) 6px";
         cell.style.borderBottom = "1px solid var(--divider)";
         cell.style.verticalAlign = "top";
         cell.textContent = text;
@@ -1789,7 +1789,7 @@
       tr.appendChild(td(f.label));
       if (uiState.editingWeights) {
         var weightCell = document.createElement("td");
-        weightCell.style.padding = "4px 6px";
+        weightCell.style.padding = "var(--space-1) 6px";
         weightCell.style.borderBottom = "1px solid var(--divider)";
         var input = document.createElement("input");
         input.type = "number";
@@ -1815,8 +1815,8 @@
     breakdownWrap.appendChild(table);
     var note = document.createElement("p");
     note.className = "text-secondary";
-    note.style.fontSize = "11px";
-    note.style.marginTop = "8px";
+    note.style.fontSize = "var(--text-xs)";
+    note.style.marginTop = "var(--space-2)";
     note.textContent =
       "Score = weighted average of each available factor's 0–100 sub-score (weights re-normalized over just the factors with real data — a project with no budget set yet doesn't get penalized for a missing Cost factor). Edit weights above; they apply to every project.";
     breakdownWrap.appendChild(note);
@@ -1837,7 +1837,7 @@
   function renderDiagnosticsPanel(diagnostics) {
     var panel = document.createElement("div");
     panel.className = "panel";
-    panel.style.marginTop = "16px";
+    panel.style.marginTop = "var(--space-4)";
     var h = document.createElement("h3");
     h.style.marginBottom = "10px";
     h.textContent = "Project Health Diagnostics (" + diagnostics.length + ")";
@@ -2010,14 +2010,14 @@
 
     var panel = document.createElement("div");
     panel.className = "panel";
-    panel.style.marginTop = "16px";
+    panel.style.marginTop = "var(--space-4)";
     var h = document.createElement("h3");
     h.style.marginBottom = "10px";
     h.textContent = "Executive Summary";
     panel.appendChild(h);
     var note = document.createElement("p");
     note.className = "text-secondary no-print";
-    note.style.fontSize = "11px";
+    note.style.fontSize = "var(--text-xs)";
     note.style.marginBottom = "10px";
     note.textContent = "Generated from real project data below. Edit any section to override it before printing/exporting; overrides are saved and persist until reset.";
     panel.appendChild(note);
@@ -2060,7 +2060,7 @@
 
         var actions = document.createElement("div");
         actions.style.display = "flex";
-        actions.style.gap = "8px";
+        actions.style.gap = "var(--space-2)";
         actions.style.marginTop = "6px";
 
         var saveBtn = document.createElement("button");
@@ -2108,7 +2108,7 @@
       } else {
         var textP = document.createElement("p");
         textP.style.fontSize = "13px";
-        textP.style.marginTop = "4px";
+        textP.style.marginTop = "var(--space-1)";
         textP.textContent = displayText;
         sectionWrap.appendChild(textP);
       }
@@ -2129,7 +2129,7 @@
   // seven-chart wall at the bottom of the old flat page.
   function renderScheduleCharts(ctx) {
     var wrap = document.createElement("div");
-    wrap.style.marginTop = "16px";
+    wrap.style.marginTop = "var(--space-4)";
     var h = document.createElement("h4");
     h.style.marginBottom = "10px";
     h.textContent = "Charts";
@@ -2137,7 +2137,7 @@
 
     var row1 = document.createElement("div");
     row1.style.display = "flex";
-    row1.style.gap = "16px";
+    row1.style.gap = "var(--space-4)";
     row1.style.flexWrap = "wrap";
 
     var sCurveCard = chartCard("Progress S-Curve");
@@ -2165,9 +2165,9 @@
 
     var row2 = document.createElement("div");
     row2.style.display = "flex";
-    row2.style.gap = "16px";
+    row2.style.gap = "var(--space-4)";
     row2.style.flexWrap = "wrap";
-    row2.style.marginTop = "16px";
+    row2.style.marginTop = "var(--space-4)";
 
     var milestoneCard = chartCard("Milestone Timeline");
     milestoneTimelineMini(milestoneCard, ctx.upcomingMilestones, ctx.todayIso);
@@ -2179,7 +2179,7 @@
 
   function renderRiskCharts(ctx) {
     var wrap = document.createElement("div");
-    wrap.style.marginTop = "16px";
+    wrap.style.marginTop = "var(--space-4)";
     var h = document.createElement("h4");
     h.style.marginBottom = "10px";
     h.textContent = "Charts";
@@ -2187,7 +2187,7 @@
 
     var row1 = document.createElement("div");
     row1.style.display = "flex";
-    row1.style.gap = "16px";
+    row1.style.gap = "var(--space-4)";
     row1.style.flexWrap = "wrap";
 
     var riskCard = chartCard("Risk Heat Map (open)");
@@ -2258,7 +2258,7 @@
       rangeSelect.appendChild(opt);
     });
     rangeSelect.value = uiState.upcomingRangeDays;
-    rangeSelect.style.marginBottom = "8px";
+    rangeSelect.style.marginBottom = "var(--space-2)";
     rangeSelect.onchange = function () {
       uiState.upcomingRangeDays = Number(rangeSelect.value);
       rerender();
@@ -2296,7 +2296,7 @@
   function renderManagementActionListPanel(ctx) {
     var panel = document.createElement("div");
     panel.className = "panel";
-    panel.style.marginTop = "16px";
+    panel.style.marginTop = "var(--space-4)";
     var h = document.createElement("h3");
     h.style.marginBottom = "10px";
     h.textContent = "Management Action List";
@@ -2398,7 +2398,7 @@
     var p = document.createElement("p");
     p.className = "text-secondary";
     p.style.fontSize = "12px";
-    p.style.margin = "4px 0 0";
+    p.style.margin = "var(--space-1) 0 0";
     p.textContent = text;
     return p;
   }
@@ -2438,7 +2438,7 @@
     header.style.display = "flex";
     header.style.justifyContent = "space-between";
     header.style.alignItems = "flex-start";
-    header.style.gap = "12px";
+    header.style.gap = "var(--space-3)";
     header.style.marginBottom = "10px";
     var headerLeft = document.createElement("div");
     headerLeft.innerHTML =
@@ -2498,8 +2498,8 @@
     SUMMARY_SECTIONS.forEach(function (s) {
       var text = (summaryRecord && summaryRecord[s.overrideKey]) || s.auto(ctx);
       var p = document.createElement("p");
-      p.style.fontSize = "11px";
-      p.style.margin = "4px 0";
+      p.style.fontSize = "var(--text-xs)";
+      p.style.margin = "var(--space-1) 0";
       p.innerHTML = "<strong>" + s.label + ":</strong> " + esc(text);
       summarySection.appendChild(p);
     });
@@ -2530,7 +2530,7 @@
       var coverLogo = renderLogoImg(data);
       if (coverLogo) {
         coverLogo.style.display = "block";
-        coverLogo.style.margin = "0 auto 12px";
+        coverLogo.style.margin = "0 auto var(--space-3)";
         cover.appendChild(coverLogo);
       }
       var coverText = document.createElement("div");
@@ -2931,7 +2931,7 @@
       if (review) {
         var panel = document.createElement("div");
         panel.className = "panel no-print";
-        panel.style.marginBottom = "16px";
+        panel.style.marginBottom = "var(--space-4)";
         var heading = document.createElement("h3");
         heading.style.marginBottom = "12px";
         heading.textContent = isNew ? "New Weekly Review" : "Edit Weekly Review";
@@ -2986,7 +2986,7 @@
         var actionsRow = document.createElement("div");
         actionsRow.style.display = "flex";
         actionsRow.style.gap = "10px";
-        actionsRow.style.marginTop = "12px";
+        actionsRow.style.marginTop = "var(--space-3)";
         var saveBtn = document.createElement("button");
         saveBtn.type = "submit";
         saveBtn.className = "btn btn--primary";
@@ -3086,9 +3086,9 @@
     if (mode === "pack") {
       var checkboxPanel = document.createElement("div");
       checkboxPanel.className = "panel no-print";
-      checkboxPanel.style.marginBottom = "16px";
+      checkboxPanel.style.marginBottom = "var(--space-4)";
       var cbHeading = document.createElement("h4");
-      cbHeading.style.marginBottom = "8px";
+      cbHeading.style.marginBottom = "var(--space-2)";
       cbHeading.textContent = "Sections to include";
       checkboxPanel.appendChild(cbHeading);
       var cbGrid = document.createElement("div");
@@ -3111,7 +3111,7 @@
       var templateRow = document.createElement("div");
       templateRow.style.display = "flex";
       templateRow.style.alignItems = "center";
-      templateRow.style.gap = "8px";
+      templateRow.style.gap = "var(--space-2)";
       templateRow.style.flexWrap = "wrap";
       templateRow.style.marginBottom = "10px";
 
@@ -3194,7 +3194,7 @@
         var saveNewRow = document.createElement("div");
         saveNewRow.style.display = "flex";
         saveNewRow.style.alignItems = "center";
-        saveNewRow.style.gap = "8px";
+        saveNewRow.style.gap = "var(--space-2)";
         saveNewRow.style.marginBottom = "10px";
 
         var nameInput = document.createElement("input");

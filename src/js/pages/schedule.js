@@ -182,7 +182,7 @@
     var isNew = uiState.editingScheduleId === "new";
     var panel = document.createElement("div");
     panel.className = "panel";
-    panel.style.marginBottom = "16px";
+    panel.style.marginBottom = "var(--space-4)";
 
     var heading = document.createElement("h3");
     heading.style.marginBottom = "14px";
@@ -267,7 +267,7 @@
     var actions = document.createElement("div");
     actions.style.display = "flex";
     actions.style.gap = "10px";
-    actions.style.marginTop = "12px";
+    actions.style.marginTop = "var(--space-3)";
 
     var saveBtn = document.createElement("button");
     saveBtn.type = "submit";
@@ -577,7 +577,7 @@
     if (summary.warnings === 0 && summary.errors === 0) return null;
 
     var issuesToggle = document.createElement("details");
-    issuesToggle.style.marginBottom = "12px";
+    issuesToggle.style.marginBottom = "var(--space-3)";
     var summaryTag = document.createElement("summary");
     summaryTag.style.cursor = "pointer";
     summaryTag.style.fontSize = "13px";
@@ -586,7 +586,7 @@
     var issuesList = document.createElement("div");
     issuesList.style.maxHeight = "220px";
     issuesList.style.overflowY = "auto";
-    issuesList.style.marginTop = "8px";
+    issuesList.style.marginTop = "var(--space-2)";
     parsed.errors.forEach(function (e) {
       var p = document.createElement("p");
       p.style.fontSize = "12px";
@@ -608,7 +608,7 @@
   function renderImportPanel(container, data, rerender) {
     var panel = document.createElement("div");
     panel.className = "panel";
-    panel.style.marginBottom = "16px";
+    panel.style.marginBottom = "var(--space-4)";
 
     var heading = document.createElement("h3");
     heading.style.marginBottom = "10px";
@@ -642,14 +642,14 @@
         var err = document.createElement("p");
         err.style.color = "var(--status-critical)";
         err.style.fontSize = "13px";
-        err.style.marginTop = "8px";
+        err.style.marginTop = "var(--space-2)";
         err.textContent = uiState.importError;
         panel.appendChild(err);
       }
 
       var cancelBtn = document.createElement("button");
       cancelBtn.className = "btn btn--ghost";
-      cancelBtn.style.marginTop = "12px";
+      cancelBtn.style.marginTop = "var(--space-3)";
       cancelBtn.textContent = "Cancel";
       cancelBtn.onclick = function () {
         resetImportState();
@@ -663,8 +663,8 @@
       if (uiState.importDuplicateMatches.length > 0 && !uiState.importDuplicateAcknowledged) {
         var dupBox = document.createElement("div");
         dupBox.style.border = "1px solid var(--status-at-risk)";
-        dupBox.style.borderRadius = "8px";
-        dupBox.style.padding = "12px";
+        dupBox.style.borderRadius = "var(--radius-md)";
+        dupBox.style.padding = "var(--space-3)";
         dupBox.style.marginBottom = "14px";
         dupBox.style.background = "rgba(230, 162, 60, 0.08)";
         var dupTitle = document.createElement("p");
@@ -707,9 +707,9 @@
       }
 
       var summaryLine = document.createElement("p");
-      summaryLine.style.fontSize = "14px";
+      summaryLine.style.fontSize = "var(--text-base)";
       summaryLine.style.fontWeight = "600";
-      summaryLine.style.marginBottom = "4px";
+      summaryLine.style.marginBottom = "var(--space-1)";
       summaryLine.textContent =
         "Parsed " + summary.total_rows + " row(s) \u2014 " + summary.imported + " activities will be imported, " +
         summary.warnings + " warning(s), " + summary.errors + " error(s).";
@@ -997,7 +997,7 @@
     tableWrap.style.overflowY = "auto";
     tableWrap.style.border = "1px solid var(--divider)";
     tableWrap.style.borderRadius = "var(--radius-sm)";
-    tableWrap.style.marginBottom = "12px";
+    tableWrap.style.marginBottom = "var(--space-3)";
 
     var table = document.createElement("table");
     table.style.borderCollapse = "collapse";
@@ -1010,7 +1010,7 @@
       var th = document.createElement("th");
       th.textContent = f.label;
       th.style.textAlign = "left";
-      th.style.padding = "6px 8px";
+      th.style.padding = "6px var(--space-2)";
       th.style.borderBottom = "1px solid var(--divider)";
       th.style.position = "sticky";
       th.style.top = "0";
@@ -1044,7 +1044,7 @@
       var delBtn = document.createElement("button");
       delBtn.type = "button";
       delBtn.className = "btn btn--ghost";
-      delBtn.style.padding = "2px 8px";
+      delBtn.style.padding = "2px var(--space-2)";
       delBtn.title = "Delete row";
       delBtn.textContent = "×";
       delBtn.onclick = function () {
@@ -1116,8 +1116,8 @@
     if (blockedByHandAdded) {
       var warnBox = document.createElement("div");
       warnBox.style.border = "1px solid var(--status-at-risk)";
-      warnBox.style.borderRadius = "8px";
-      warnBox.style.padding = "12px";
+      warnBox.style.borderRadius = "var(--radius-md)";
+      warnBox.style.padding = "var(--space-3)";
       warnBox.style.marginBottom = "14px";
       warnBox.style.background = "rgba(230, 162, 60, 0.08)";
       var warnTitle = document.createElement("p");
@@ -1161,9 +1161,9 @@
     }
 
     var summaryLine = document.createElement("p");
-    summaryLine.style.fontSize = "14px";
+    summaryLine.style.fontSize = "var(--text-base)";
     summaryLine.style.fontWeight = "600";
-    summaryLine.style.marginBottom = "4px";
+    summaryLine.style.marginBottom = "var(--space-1)";
     summaryLine.textContent =
       summary.imported + " activit" + (summary.imported === 1 ? "y" : "ies") + " will be applied to this schedule, " +
       summary.warnings + " warning(s), " + summary.errors + " error(s).";
@@ -1302,7 +1302,7 @@
 
     var panel = document.createElement("div");
     panel.className = "panel";
-    panel.style.marginBottom = "16px";
+    panel.style.marginBottom = "var(--space-4)";
 
     var heading = document.createElement("h3");
     heading.style.marginBottom = "10px";
@@ -1662,7 +1662,7 @@
     var isNew = uiState.editingActivityId === "new";
     var panel = document.createElement("div");
     panel.className = "panel";
-    panel.style.marginBottom = "16px";
+    panel.style.marginBottom = "var(--space-4)";
 
     var heading = document.createElement("h3");
     heading.style.marginBottom = "14px";
@@ -1721,7 +1721,7 @@
     if (!isNew) {
       var calcBox = document.createElement("div");
       calcBox.className = "panel";
-      calcBox.style.padding = "10px 12px";
+      calcBox.style.padding = "10px var(--space-3)";
       calcBox.style.marginTop = "-4px";
       calcBox.style.marginBottom = "10px";
       if (activity.early_start == null) {
@@ -1754,7 +1754,7 @@
     var actions = document.createElement("div");
     actions.style.display = "flex";
     actions.style.gap = "10px";
-    actions.style.marginTop = "12px";
+    actions.style.marginTop = "var(--space-3)";
 
     var saveBtn = document.createElement("button");
     saveBtn.type = "submit";
@@ -2371,7 +2371,7 @@
     var isNew = uiState.editingWbsId === "new";
     var panel = document.createElement("div");
     panel.className = "panel";
-    panel.style.marginBottom = "16px";
+    panel.style.marginBottom = "var(--space-4)";
 
     var heading = document.createElement("h3");
     heading.style.marginBottom = "14px";
@@ -2447,7 +2447,7 @@
     var actions = document.createElement("div");
     actions.style.display = "flex";
     actions.style.gap = "10px";
-    actions.style.marginTop = "12px";
+    actions.style.marginTop = "var(--space-3)";
 
     var saveBtn = document.createElement("button");
     saveBtn.type = "submit";
@@ -2593,7 +2593,7 @@
 
       var actions = document.createElement("div");
       actions.style.display = "flex";
-      actions.style.gap = "8px";
+      actions.style.gap = "var(--space-2)";
 
       var editBtn = document.createElement("button");
       editBtn.className = "btn btn--ghost";
@@ -2643,7 +2643,7 @@
     var isNew = uiState.editingRelationshipId === "new";
     var panel = document.createElement("div");
     panel.className = "panel";
-    panel.style.marginBottom = "16px";
+    panel.style.marginBottom = "var(--space-4)";
 
     var heading = document.createElement("h3");
     heading.style.marginBottom = "14px";
@@ -2735,7 +2735,7 @@
     var actions = document.createElement("div");
     actions.style.display = "flex";
     actions.style.gap = "10px";
-    actions.style.marginTop = "12px";
+    actions.style.marginTop = "var(--space-3)";
 
     var saveBtn = document.createElement("button");
     saveBtn.type = "submit";
@@ -3115,7 +3115,7 @@
     var bar2 = document.createElement("div");
     bar2.className = "toolbar";
     bar2.style.flexWrap = "wrap";
-    bar2.style.marginTop = "8px";
+    bar2.style.marginTop = "var(--space-2)";
 
     // UI/UX Overhaul Gate 8: only the zoom controls specifically are chart-only — Add
     // Activity/Add Milestone below stay useful (and stay unwrapped in bar2 directly) at
@@ -3182,7 +3182,7 @@
       // chart — nothing here applies to the mobile timeline, so the whole row hides.
       bar3.className = "toolbar gantt-chart-only-control";
       bar3.style.flexWrap = "wrap";
-      bar3.style.marginTop = "8px";
+      bar3.style.marginTop = "var(--space-2)";
 
       var baselineToggle = document.createElement("label");
       baselineToggle.style.display = "flex";
@@ -3494,7 +3494,7 @@
       rowEl.style.justifyContent = "space-between";
       rowEl.style.alignItems = "center";
       rowEl.style.fontSize = "13px";
-      rowEl.style.marginBottom = "4px";
+      rowEl.style.marginBottom = "var(--space-1)";
 
       var text = document.createElement("span");
       text.textContent = t.name + (t.code ? " (" + t.code + ")" : "") + (r.planned_submission_date ? " — due " + r.planned_submission_date : "");
@@ -3502,7 +3502,7 @@
 
       var badge = document.createElement("span");
       badge.className = "status-badge status-badge--" + badgeInfo.className;
-      badge.style.fontSize = "11px";
+      badge.style.fontSize = "var(--text-xs)";
       badge.textContent = badgeInfo.label;
       rowEl.appendChild(badge);
 
@@ -3548,7 +3548,7 @@
         rowEl.style.justifyContent = "space-between";
         rowEl.style.alignItems = "center";
         rowEl.style.fontSize = "13px";
-        rowEl.style.marginBottom = "4px";
+        rowEl.style.marginBottom = "var(--space-1)";
 
         var text = document.createElement("span");
         text.textContent = row.text;
@@ -3558,8 +3558,8 @@
         if (row.badge) {
           var badge = document.createElement("span");
           badge.className = "status-badge status-badge--" + row.badge.className;
-          badge.style.fontSize = "11px";
-          badge.style.marginRight = "8px";
+          badge.style.fontSize = "var(--text-xs)";
+          badge.style.marginRight = "var(--space-2)";
           badge.textContent = row.badge.label;
           rowEl.appendChild(badge);
         }
@@ -3607,7 +3607,7 @@
 
     var addBtn = document.createElement("button");
     addBtn.className = "btn btn--ghost";
-    addBtn.style.marginBottom = "8px";
+    addBtn.style.marginBottom = "var(--space-2)";
     addBtn.textContent = "+ Add Recovery Action";
     addBtn.onclick = function () {
       uiState.editingRecoveryActionId = "new";
@@ -3775,8 +3775,8 @@
       rowEl.style.display = "flex";
       rowEl.style.justifyContent = "space-between";
       rowEl.style.alignItems = "flex-start";
-      rowEl.style.gap = "8px";
-      rowEl.style.marginBottom = "8px";
+      rowEl.style.gap = "var(--space-2)";
+      rowEl.style.marginBottom = "var(--space-2)";
       rowEl.style.fontSize = "13px";
 
       var left = document.createElement("div");
@@ -3800,7 +3800,7 @@
       badge.className =
         "status-badge status-badge--" +
         (overdue ? "critical" : r.status === "completed" ? "complete" : r.status === "cancelled" ? "info" : "at_risk");
-      badge.style.fontSize = "11px";
+      badge.style.fontSize = "var(--text-xs)";
       badge.textContent = overdue ? "Overdue" : RECOVERY_ACTION_STATUS_LABELS[r.status];
       right.appendChild(badge);
 
@@ -3854,7 +3854,7 @@
 
     var addBtn = document.createElement("button");
     addBtn.className = "btn btn--ghost";
-    addBtn.style.marginBottom = "8px";
+    addBtn.style.marginBottom = "var(--space-2)";
     addBtn.textContent = "+ Add Delay Record";
     addBtn.onclick = function () {
       uiState.editingDelayRecordId = "new";
@@ -3925,7 +3925,7 @@
         var excusableLabel = document.createElement("label");
         excusableLabel.style.display = "flex";
         excusableLabel.style.alignItems = "center";
-        excusableLabel.style.gap = "8px";
+        excusableLabel.style.gap = "var(--space-2)";
         var excusableCheckbox = document.createElement("input");
         excusableCheckbox.type = "checkbox";
         excusableCheckbox.id = "delayfield-is_excusable";
@@ -4023,8 +4023,8 @@
       rowEl.style.display = "flex";
       rowEl.style.justifyContent = "space-between";
       rowEl.style.alignItems = "flex-start";
-      rowEl.style.gap = "8px";
-      rowEl.style.marginBottom = "8px";
+      rowEl.style.gap = "var(--space-2)";
+      rowEl.style.marginBottom = "var(--space-2)";
       rowEl.style.fontSize = "13px";
 
       var left = document.createElement("div");
@@ -4046,7 +4046,7 @@
 
       var badge = document.createElement("span");
       badge.className = "status-badge status-badge--" + (r.is_excusable ? "complete" : "at_risk");
-      badge.style.fontSize = "11px";
+      badge.style.fontSize = "var(--text-xs)";
       badge.textContent = r.is_excusable ? "Excusable" : "Non-Excusable";
       right.appendChild(badge);
 
@@ -4107,7 +4107,7 @@
   function renderActivityDetailPanel(container, activity, data, wbsItems, scheduleActivities, relationships, rerender) {
     var panel = document.createElement("div");
     panel.className = "panel";
-    panel.style.marginBottom = "16px";
+    panel.style.marginBottom = "var(--space-4)";
     panel.style.borderColor = "var(--signal-amber)";
 
     var header = document.createElement("div");
@@ -4189,14 +4189,14 @@
     var succs = relationships.filter(function (r) { return r.predecessor_id === activity.id; });
 
     var relWrap = document.createElement("div");
-    relWrap.style.marginTop = "12px";
+    relWrap.style.marginTop = "var(--space-3)";
     relWrap.style.fontSize = "13px";
     var predLine = document.createElement("p");
     predLine.innerHTML =
       "<strong>Predecessors:</strong> " +
       (preds.length ? preds.map(function (r) { return activityName(scheduleActivities, r.predecessor_id) + " (" + r.type + (r.lag ? ", lag " + r.lag : "") + ")"; }).join(", ") : "none");
     var succLine = document.createElement("p");
-    succLine.style.marginTop = "4px";
+    succLine.style.marginTop = "var(--space-1)";
     succLine.innerHTML =
       "<strong>Successors:</strong> " +
       (succs.length ? succs.map(function (r) { return activityName(scheduleActivities, r.successor_id) + " (" + r.type + (r.lag ? ", lag " + r.lag : "") + ")"; }).join(", ") : "none");
@@ -4623,7 +4623,7 @@
     var jumpBar = document.createElement("div");
     jumpBar.className = "gantt-chart-only-control";
     jumpBar.style.display = "flex";
-    jumpBar.style.gap = "8px";
+    jumpBar.style.gap = "var(--space-2)";
     jumpBar.style.marginTop = "10px";
     jumpBar.style.marginBottom = "-4px";
     jumpBar.style.flexWrap = "wrap";
@@ -4649,7 +4649,7 @@
     legend.className = "gantt-chart-only-control";
     legend.style.display = "flex";
     legend.style.flexWrap = "wrap";
-    legend.style.gap = "16px";
+    legend.style.gap = "var(--space-4)";
     legend.style.marginTop = "10px";
     legend.style.fontSize = "12px";
 
@@ -4687,7 +4687,7 @@
 
     var dragHint = document.createElement("p");
     dragHint.className = "text-secondary gantt-chart-only-control";
-    dragHint.style.fontSize = "11px";
+    dragHint.style.fontSize = "var(--text-xs)";
     dragHint.style.marginTop = "6px";
     dragHint.textContent = "Drag a bar to move it, drag its right edge to resize, or click a bar/milestone/label to open its details. Every edit recalculates the schedule automatically.";
     container.appendChild(dragHint);
@@ -4896,7 +4896,7 @@
     var panel = document.createElement("div");
     panel.className = "panel";
     panel.style.marginTop = "10px";
-    panel.style.marginBottom = "16px";
+    panel.style.marginBottom = "var(--space-4)";
 
     var heading = document.createElement("h4");
     heading.style.marginBottom = "10px";
@@ -4991,7 +4991,7 @@
     if (floatErosion.length > 0) {
       var erosionHeading = document.createElement("h4");
       erosionHeading.style.marginTop = "14px";
-      erosionHeading.style.marginBottom = "8px";
+      erosionHeading.style.marginBottom = "var(--space-2)";
       erosionHeading.textContent = "Float Erosion (" + floatErosion.length + ") — activities consuming float since baseline";
       panel.appendChild(erosionHeading);
       var erosionList = document.createElement("div");
@@ -5023,7 +5023,7 @@
       var addRemoveNote = document.createElement("p");
       addRemoveNote.className = "text-secondary";
       addRemoveNote.style.fontSize = "12px";
-      addRemoveNote.style.marginTop = "8px";
+      addRemoveNote.style.marginTop = "var(--space-2)";
       addRemoveNote.textContent =
         (result.activities.added.length ? result.activities.added.length + " activities exist in current but not in baseline. " : "") +
         (result.activities.removed.length ? result.activities.removed.length + " activities exist in baseline but not in current." : "");
@@ -5077,14 +5077,14 @@
       row.style.alignItems = "center";
       row.style.marginBottom = "6px";
       row.style.flexWrap = "wrap";
-      row.style.gap = "8px";
+      row.style.gap = "var(--space-2)";
 
       var main = document.createElement("div");
       if (uiState.renamingBaselineId === b.id) {
         var renameInput = document.createElement("input");
         renameInput.type = "text";
         renameInput.value = b.name;
-        renameInput.style.marginBottom = "4px";
+        renameInput.style.marginBottom = "var(--space-1)";
         var renameSaveBtn = document.createElement("button");
         renameSaveBtn.type = "button";
         renameSaveBtn.className = "btn btn--ghost";
@@ -5128,7 +5128,7 @@
 
       var actions = document.createElement("div");
       actions.style.display = "flex";
-      actions.style.gap = "8px";
+      actions.style.gap = "var(--space-2)";
       actions.style.flexWrap = "wrap";
 
       var compareBtn = document.createElement("button");
@@ -5436,7 +5436,7 @@
         var clampNote = document.createElement("p");
         clampNote.className = "text-secondary";
         clampNote.style.fontSize = "12px";
-        clampNote.style.marginBottom = "8px";
+        clampNote.style.marginBottom = "var(--space-2)";
         clampNote.textContent =
           "Requested " + r.requestedReduction + "d, but this activity only had " + r.actualReduction + "d of " +
           (r.fieldToReduce === "remaining_duration" ? "remaining duration" : "duration") + " to give — clamped at 0.";
@@ -5446,7 +5446,7 @@
       if (!r.wasCritical) {
         var floatNote = document.createElement("p");
         floatNote.style.fontSize = "13px";
-        floatNote.style.marginBottom = "8px";
+        floatNote.style.marginBottom = "var(--space-2)";
         floatNote.style.color = "var(--status-at-risk)";
         floatNote.textContent =
           "This activity was NOT on the critical path before this change — reducing its duration may not move the project finish at all.";
@@ -5466,14 +5466,14 @@
       if (r.newlyNonCritical.length > 0) {
         var offCritical = document.createElement("p");
         offCritical.style.fontSize = "13px";
-        offCritical.style.marginTop = "8px";
+        offCritical.style.marginTop = "var(--space-2)";
         offCritical.textContent = "No longer critical: " + r.newlyNonCritical.join(", ");
         resultPanel.appendChild(offCritical);
       }
       if (r.newlyCritical.length > 0) {
         var onCritical = document.createElement("p");
         onCritical.style.fontSize = "13px";
-        onCritical.style.marginTop = "4px";
+        onCritical.style.marginTop = "var(--space-1)";
         onCritical.textContent = "Newly critical: " + r.newlyCritical.join(", ");
         resultPanel.appendChild(onCritical);
       }
@@ -5503,7 +5503,7 @@
     var gateNote = document.createElement("p");
     gateNote.className = "text-secondary focus-mode-hide";
     gateNote.style.fontSize = "12px";
-    gateNote.style.marginBottom = "16px";
+    gateNote.style.marginBottom = "var(--space-4)";
     gateNote.textContent =
       "Hand-enter activities, import from Excel, or calculate the critical path. " +
       "View the Gantt tab for a timeline, and save/compare baselines from the Baselines tab.";
@@ -5547,7 +5547,7 @@
 
     var tabBar = document.createElement("div");
     tabBar.className = "tab-bar";
-    tabBar.style.marginTop = "16px";
+    tabBar.style.marginTop = "var(--space-4)";
 
     [
       { key: "activities", label: "Activities" },

@@ -3021,6 +3021,43 @@ Also did a real-Chromium pass (not just jsdom) per this project's own testing co
 built `index.html`, zero console/page errors, and a Portfolio-page screenshot confirms KPI cards,
 toolbar, buttons, and the empty-state all render with unchanged spacing.
 
+## UI Modernization — Gate B: Page Inline-Style Cleanup, Batch 1 (2026-08-22)
+
+Aditya chose **B1** (strict, zero-visual-change) over B2 (a broader normalization that would have
+snapped near-miss values like 12px/13px font sizes onto the token scale, causing small but real
+rendering shifts) — kept as a design decision for later, not made unilaterally. Piloted on
+`vendors.js` first (smallest of the four target files), verified clean, then applied the identical
+method to `executiveCenter.js`, `portfolio.js`, and `schedule.js`.
+
+**What this gate actually found, correcting the original 6-gate plan's estimate:** most inline
+`.style.X =` assignments in these four files (382/247/263/189 total per file) are layout-mode
+properties (`display`, `alignItems`, `flexWrap`, `position`, `cursor`, etc.) that aren't tokenizable
+at all — converting those to CSS classes would be a different, much bigger refactor, out of scope
+here. Of the genuinely tokenizable subset (`fontSize`/`margin*`/`padding*`/`gap`/`borderRadius`),
+most values in these pages don't sit on the token scale at all — `12px`/`13px` font sizes and
+`6px`/`10px`/`14px` spacing dominate, none of which match `--text-*`/`--space-*` exactly. B1 only
+converts the exact matches (roughly 470 instances across the four files); the non-matching majority
+was left as literals, same precedent as the `20px` case in Gate A.
+
+**Method:** since `.style.PROPERTY = "VALUE"` in JS (unlike a CSS shorthand rule) already
+disambiguates by property name, exact literal substitution (`sed`) was safe here — no risk of the
+same numeric value going to the wrong token, which was the reason Gate A needed manual per-rule
+review instead. Shorthand values (e.g. `margin = "4px 0 0"`) were split the same way Gate A did,
+tokenizing only the matching component. `var(--...)` assigned via inline `element.style` is standard
+and already had one precedent in this codebase (`schedule.js`'s `borderRadius = "var(--radius-sm)"`
+predates this gate) — confirmed working in Capacitor's Chromium-based Android WebView too, not just
+desktop browsers.
+
+**Verified:** all four files pass `node --check` (syntax), the full 78-file test suite (0 failures —
+the background test run launched right after the `vendors.js` pilot picked up the other three files'
+edits mid-run too, so this was effectively one combined verification covering all four), and a
+real-Chromium pass across Portfolio/Vendors/Executive Center/Schedule with zero console errors — a
+Vendor Management screenshot confirms KPI cards, tab bar, and panels render with unchanged spacing.
+
+**Not done:** Gate C (the same cleanup for the remaining six files — `documents.js`, `meetings.js`,
+`resources.js`, `delayRecoveryDashboard.js`, `settings.js`, `rfis.js`), and Gates D-F (loading-state
+pattern, icon system, empty-state/motion polish) — all still pending Aditya's go-ahead.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →

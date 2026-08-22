@@ -1641,6 +1641,47 @@ own initiative.
   and written up above/in README.md, pending Aditya's go-ahead on which to build next and in what
   order.
 
+**Gate B — Page Inline-Style Cleanup, Batch 1, done, 2026-08-22.** Aditya chose **B1** (strict,
+zero-visual-change) over B2 (broader normalization with small real rendering shifts) when asked —
+B2 stays scoped but unbuilt, a real future decision, not something decided on his behalf.
+
+- **The re-audit before touching anything corrected my own original estimate**: most of the ~250-380
+  `.style.X =` assignments per file counted in the original 6-gate proposal are layout-mode
+  properties (`display`, `alignItems`, `flexWrap`, `position`, `cursor`, etc.) that aren't
+  tokenizable at all — converting those to CSS classes is a different, much bigger refactor than
+  what was pitched as "inline-style cleanup," explicitly kept out of this gate. Surfaced this
+  correction to Aditya before writing any code, rather than quietly redefining the gate's own scope.
+- **A second real finding, more significant than Gate A's**: of the actually tokenizable subset
+  (`fontSize`/`margin*`/`padding*`/`gap`/`borderRadius`), the *dominant* values in these four pages
+  (12px/13px font-size; 6px/10px/14px spacing) don't sit on the token scale at all — unlike
+  `styles.css` itself in Gate A, which mostly did. This meant B1 (exact-match-only) converts a
+  meaningfully smaller fraction of instances than the raw counts suggested; put to Aditya as an
+  explicit B1-vs-B2 choice rather than picked automatically.
+- **Piloted on `vendors.js` first** (smallest, 108 tokenizable instances), verified clean (syntax
+  check + diff inspection), then applied the identical method to `executiveCenter.js`, `portfolio.js`,
+  `schedule.js`. Roughly 470 instances converted total across the four files (62 in `vendors.js`, 59
+  in `executiveCenter.js`, 65 in `portfolio.js`, 61 in `schedule.js`).
+- **Method**: literal `sed` substitution, not manual per-rule review like Gate A needed — safe here
+  specifically because `.style.PROPERTY = "VALUE"` in JS already disambiguates by property name (no
+  risk of the same numeric value needing a different token depending on context, which was Gate A's
+  reason for manual review). Shorthand values (`margin = "4px 0 0"`) were split the same way Gate A
+  did, tokenizing only the matching component. `var(--...)` inside inline `element.style` assignment
+  already had one precedent in this codebase (`schedule.js`'s pre-existing `borderRadius =
+  "var(--radius-sm)"`) — confirmed this pattern works in Capacitor's Chromium-based Android WebView,
+  not just desktop browsers, since Gate 1-3 of the packaging initiative already proved that WebView
+  renders this app's CSS correctly.
+- **Verified**: all four files pass `node --check`; the full 78-file test suite ran once and covered
+  all four files together (the background test run, launched right after the `vendors.js` pilot edit,
+  picked up the other three files' edits mid-run since they landed within seconds — confirmed via
+  `ps` that the test process was still early in the chain) — **0 failures, exit code 0**. Also did a
+  real-Chromium pass (Playwright) across Portfolio/Vendors/Executive Center/Schedule specifically
+  (the four touched pages), zero console/page errors; a Vendor Management screenshot confirms KPI
+  cards, tab bar, and panels render with unchanged spacing.
+- **Not started**: Gate C (same cleanup for the remaining six page files — `documents.js`,
+  `meetings.js`, `resources.js`, `delayRecoveryDashboard.js`, `settings.js`, `rfis.js`), Gates D-F
+  (loading-state pattern, icon system, empty-state/motion polish), and the B2 scale-snapping decision
+  for these same four files if Aditya wants deeper consistency later.
+
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
 `main` is fully up to date through **Tier 3, "final polish," Gate 4** (Gantt virtualization for
