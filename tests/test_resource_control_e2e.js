@@ -198,11 +198,11 @@ function findButtonByText(dom, text) {
     win.PCC.router.render();
     var text = outlet().textContent;
     assert.ok(text.indexOf("Skilled Electricians") !== -1, "resource assignment must still be listed as a linked record");
-    var rows = Array.from(outlet().querySelectorAll("div")).filter((d) => d.textContent.indexOf("Skilled Electricians") !== -1 && d.querySelector("button"));
-    var resourceRow = rows[rows.length - 1];
-    var badge = resourceRow.querySelector(".status-badge");
-    assert.ok(badge, "no availability badge found on the resource's linked-record row");
-    assert.strictEqual(badge.textContent.trim(), "Over-Allocated", "this activity's own Jan 1-6 window overlaps the Jan 3-4 over-allocated days");
+    // Redesign Gate 10: retrofitted onto .attention-list/.attention-item — availability is
+    // now signaled by the row's icon color, not a separate .status-badge element.
+    var resourceRow = Array.from(outlet().querySelectorAll(".attention-item")).find((r) => r.textContent.indexOf("Skilled Electricians") !== -1);
+    assert.ok(resourceRow, "no linked-record row found for the resource assignment");
+    assert.ok(resourceRow.querySelector(".attention-item__icon--critical"), "this activity's own Jan 1-6 window overlaps the Jan 3-4 over-allocated days, so the row should show the critical icon");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
@@ -224,11 +224,9 @@ function findButtonByText(dom, text) {
     win.PCC.schedule.viewActivity(projectId, scheduleId, okActivityId);
     win.PCC.router.go("schedule");
     win.PCC.router.render();
-    var rows = Array.from(outlet().querySelectorAll("div")).filter((d) => d.textContent.indexOf("Test Technician") !== -1 && d.querySelector("button"));
-    var resourceRow = rows[rows.length - 1];
-    var badge = resourceRow.querySelector(".status-badge");
-    assert.ok(badge);
-    assert.strictEqual(badge.textContent.trim(), "Available");
+    var resourceRow = Array.from(outlet().querySelectorAll(".attention-item")).find((r) => r.textContent.indexOf("Test Technician") !== -1);
+    assert.ok(resourceRow, "no linked-record row found for the resource assignment");
+    assert.ok(resourceRow.querySelector(".attention-item__icon--on_track"), "a non-over-allocated resource should show the on_track icon");
   });
 
   await check("this gate writes nothing back beyond what was seeded — record counts unchanged apart from the deliberate additions above", () => {

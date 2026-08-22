@@ -132,22 +132,20 @@ function addDaysIso(days) {
   });
 
   await check("the imminent, unapproved commitment shows a Procurement Risk badge on the Activity Detail Panel", () => {
-    var rows = Array.from(outlet().querySelectorAll("div")).filter((el) => el.textContent.indexOf("PO-RISKY") !== -1 && el.querySelector("button"));
-    var row = rows[rows.length - 1];
-    var badge = row.querySelector(".status-badge");
-    assert.ok(badge, "no badge found on the commitment's linked-record row");
-    assert.strictEqual(badge.textContent.trim(), "Procurement Risk");
-    assert.ok(badge.className.indexOf("status-badge--critical") !== -1);
+    // Redesign Gate 10: retrofitted onto .attention-list/.attention-item — the badge
+    // label now lives in the row's meta line, and severity is the row's icon color.
+    var row = Array.from(outlet().querySelectorAll(".attention-item")).find((el) => el.textContent.indexOf("PO-RISKY") !== -1);
+    assert.ok(row, "no linked-record row found for the commitment");
+    assert.ok(row.textContent.indexOf("Procurement Risk") !== -1, "row meta text should carry the Procurement Risk label");
+    assert.ok(row.querySelector(".attention-item__icon--critical"), "no critical icon found on the commitment's linked-record row");
   });
 
   await check("the far-out, unapproved commitment does NOT show a Procurement Risk badge (only its status)", () => {
     win.PCC.schedule.viewActivity(projectId, scheduleId, farActivityId);
     win.PCC.router.render();
-    var rows = Array.from(outlet().querySelectorAll("div")).filter((el) => el.textContent.indexOf("PO-SAFE") !== -1 && el.querySelector("button"));
-    var row = rows[rows.length - 1];
-    var badge = row.querySelector(".status-badge");
-    assert.ok(badge);
-    assert.notStrictEqual(badge.textContent.trim(), "Procurement Risk", "an activity 90 days out shouldn't be flagged yet");
+    var row = Array.from(outlet().querySelectorAll(".attention-item")).find((el) => el.textContent.indexOf("PO-SAFE") !== -1);
+    assert.ok(row);
+    assert.strictEqual(row.textContent.indexOf("Procurement Risk"), -1, "an activity 90 days out shouldn't be flagged yet");
   });
 
   await check("the Commitments page shows a Procurement Risk badge and an AT RISK KPI of 1", () => {
@@ -196,10 +194,10 @@ function addDaysIso(days) {
     win.PCC.schedule.viewActivity(projectId, scheduleId, imminentActivityId);
     win.PCC.router.go("schedule");
     win.PCC.router.render();
-    var rows = Array.from(outlet().querySelectorAll("div")).filter((el) => el.textContent.indexOf("PO-RISKY") !== -1 && el.querySelector("button"));
-    var row = rows[rows.length - 1];
-    var badge = row.querySelector(".status-badge");
-    assert.strictEqual(badge.textContent.trim(), "Approved");
+    var row = Array.from(outlet().querySelectorAll(".attention-item")).find((el) => el.textContent.indexOf("PO-RISKY") !== -1);
+    assert.ok(row, "no linked-record row found for the commitment");
+    assert.ok(row.textContent.indexOf("Approved") !== -1);
+    assert.ok(row.querySelector(".attention-item__icon--on_track"), "an approved commitment should show the on_track icon");
   });
 
   await check("this round writes nothing back beyond the one status edit above — record counts unchanged", () => {

@@ -2267,6 +2267,53 @@ writing any code. Most items already existed; this gate closes only the confirme
   Commitment position, Resource concerns, etc.) was already fully built in earlier gates, untouched.
 - **Not started**: Gates 10-12.
 
+**Gate 10 — Module Consistency Pass, done, 2026-08-22.** Aditya said "Start gate 10" directly. By
+Gate 9 the shared `.attention-list`/`.attention-item` vocabulary was well established on the
+modules Gates 1-9 touched, but plenty of smaller registers and cross-reference rows were never
+revisited. Swept for one smell: a hand-built row (text + a separate ghost "View"/"View in
+Gantt"/"View Profile" button) instead of the shared component, plus leftover hardcoded color
+literals predating the current design tokens.
+
+- Delegated a read-only Explore audit describing the exact pattern; it found 11 of 14 eventual
+  instances. **The audit had real gaps, caught by my own follow-up, not by Aditya**: a
+  `grep -rln "LINKED ACTIVITY"` I ran myself after finishing the audited batch found 3 more files
+  the audit marked clean (`dailyLog.js`, `meetings.js`, `lessonsLearned.js` all had the identical
+  row pattern). Fixed identically; a final `grep -rn "detail-item__label'>[A-Z]"` sweep across every
+  page file then returned zero further hits, confirming completeness.
+- **14 files retrofitted** from row+button to `.attention-item`: `risks.js`, `rfis.js`,
+  `decisionRegister.js`, `dailyLog.js`, `meetings.js`, `lessonsLearned.js`, `changeOrders.js`,
+  `knowledgeBase.js` (all `info`-colored plain cross-reference rows — "RAISED IN MEETING"/"LINKED
+  ACTIVITY"/"ATTACHED FILE"), plus severity-colored retrofits in `documents.js` (Revision History),
+  `schedule.js` (Linked Records panel), `vendorPerformanceCentre.js` (ranked/not-yet-reviewed
+  panels), `projectLookahead.js` (item rows), `documentControlDashboard.js` (compliance rows), and
+  `resources.js` (over-allocation summary). Added a new `.attention-item__icon--on_track` CSS
+  modifier — Vendor Performance Centre's "On Track" rating band is the first `.attention-item`
+  consumer with a genuinely positive severity; the four pre-existing modifiers (critical/warning/
+  at_risk/info) were all attention-worthy by design. Former badge label text moved into
+  `.attention-item__meta` where it carried real info (e.g. "X overdue"), or was dropped where the
+  row's own micro-label already said it (e.g. "RAISED IN MEETING").
+- **Two real bugs caught, not just cosmetic tidying**: `documents.js` line 524's CSS fallback
+  `var(--border-subtle, rgba(255,255,255,0.08))` — `--border-subtle` was never defined anywhere in
+  `styles.css`, so that hardcoded white rgba was *always* the active value, rendering the border
+  wrong (near-invisible) in light theme this whole time; fixed to the correct `var(--divider)`
+  token. Also found and fixed stale `rgba()` warning/success tints in `documents.js` and
+  `schedule.js` left over from before Gate 2's palette pass, no longer matching
+  `--status-at-risk`/`--status-on-track`'s actual RGB values.
+- **Verified**: `node --check` on every touched file; full 73-file suite run fresh, exit code 0,
+  zero failures — after fixing every test the row→whole-row-click conversion broke (mostly
+  `findButtonByText`/`.status-badge` text lookups for buttons/badges that no longer exist, re-scoped
+  to `.attention-item--clickable` row lookups or `.attention-item__icon--<class>` presence checks):
+  `test_activity_linking_e2e.js`, `test_resources_e2e.js`, `test_project_lookahead_e2e.js`,
+  `test_document_control_dashboard_e2e.js`, `test_vendor_performance_centre_e2e.js`,
+  `test_knowledge_base_e2e.js`, `test_decision_register_e2e.js`, `test_lessons_learned_e2e.js`,
+  `test_resource_control_e2e.js`, `test_commitment_schedule_integration_e2e.js`. Real-Chromium pass
+  with a seeded project (activity, meeting, linked risk, vendor): Risk Register Details, Project
+  Lookahead, and Vendor Performance Centre all render the new rows correctly — colored dot, clean
+  typography, whole row clickable, no leftover ghost buttons, zero console errors.
+- **Not done**: no change to any module's underlying data/business logic — markup and stale-color
+  cleanup only, on modules Gates 1-9 didn't already touch.
+- **Not started**: Gates 11-12 (Responsive & Cross-Platform Verification Pass; App Icon & Branding).
+
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
 `main` is fully up to date through **Tier 3, "final polish," Gate 4** (Gantt virtualization for

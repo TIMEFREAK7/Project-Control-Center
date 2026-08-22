@@ -137,9 +137,14 @@ function kpiValue(dom, label) {
   });
 
   await check("the ranked panel shows correct rating bands: Critical for the 2/5 vendor, On Track for the 4.5/5 vendor", () => {
-    var badges = Array.from(outlet().querySelectorAll(".status-badge")).map((b) => b.textContent.trim());
-    assert.ok(badges.indexOf("Critical") !== -1, "expected a Critical badge for the 2/5-rated vendor; got: " + badges.join(", "));
-    assert.ok(badges.indexOf("On Track") !== -1, "expected an On Track badge for the 4.5/5-rated vendor; got: " + badges.join(", "));
+    // Redesign Gate 10: retrofitted onto .attention-list/.attention-item — the rating
+    // band is now the row's icon color (attention-item__icon--<band>), not a separate
+    // .status-badge element.
+    var rows = Array.from(outlet().querySelectorAll(".attention-item"));
+    var badRow = rows.find((r) => r.textContent.indexOf("Shaky Scaffolding Ltd") !== -1);
+    var goodRow = rows.find((r) => r.textContent.indexOf("Reliable Rebar Co") !== -1);
+    assert.ok(badRow && badRow.querySelector(".attention-item__icon--critical"), "expected a critical-severity icon for the 2/5-rated vendor");
+    assert.ok(goodRow && goodRow.querySelector(".attention-item__icon--on_track"), "expected an on_track-severity icon for the 4.5/5-rated vendor");
   });
 
   await check("the Not Yet Reviewed panel lists only the vendor with zero reviews", () => {
@@ -151,11 +156,12 @@ function kpiValue(dom, label) {
     assert.ok(unreviewedPanel.textContent.indexOf("Shaky Scaffolding Ltd") === -1);
   });
 
-  await check("'View Profile' from the ranked panel navigates to Vendors with that vendor's Performance tab already open", () => {
-    var viewButtons = Array.from(outlet().querySelectorAll("button")).filter((b) => b.textContent.trim() === "View Profile");
-    var badVendorBtn = viewButtons.find((b) => b.parentElement.parentElement.textContent.indexOf("Shaky Scaffolding Ltd") !== -1);
-    assert.ok(badVendorBtn, "View Profile button for Shaky Scaffolding Ltd not found");
-    badVendorBtn.click();
+  await check("clicking the ranked panel's row navigates to Vendors with that vendor's Performance tab already open", () => {
+    // Redesign Gate 10: retrofitted onto .attention-list/.attention-item — the whole
+    // row is the click target now, no separate "View Profile" button.
+    var badVendorRow = Array.from(outlet().querySelectorAll(".attention-item--clickable")).find((r) => r.textContent.indexOf("Shaky Scaffolding Ltd") !== -1);
+    assert.ok(badVendorRow, "clickable row for Shaky Scaffolding Ltd not found");
+    badVendorRow.click();
 
     assert.strictEqual(win.PCC.router.currentRouteName(), "vendors");
     var text = outlet().textContent;
@@ -167,14 +173,14 @@ function kpiValue(dom, label) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("'View Profile' from the Not Yet Reviewed panel also lands on that vendor's Performance tab", () => {
+  await check("clicking the Not Yet Reviewed panel's row also lands on that vendor's Performance tab", () => {
     win.PCC.router.go("vendorPerformanceCentre");
     win.PCC.router.render();
     var panels = Array.from(outlet().querySelectorAll(".panel"));
     var unreviewedPanel = panels.find((p) => p.textContent.indexOf("Not Yet Reviewed") !== -1);
-    var btn = Array.from(unreviewedPanel.querySelectorAll("button")).find((b) => b.textContent.trim() === "View Profile");
-    assert.ok(btn, "View Profile button in Not Yet Reviewed panel not found");
-    btn.click();
+    var row = Array.from(unreviewedPanel.querySelectorAll(".attention-item--clickable")).find((r) => r.textContent.indexOf("New Vendor Inc") !== -1);
+    assert.ok(row, "clickable row in Not Yet Reviewed panel not found");
+    row.click();
 
     assert.strictEqual(win.PCC.router.currentRouteName(), "vendors");
     var text = outlet().textContent;

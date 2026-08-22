@@ -190,9 +190,11 @@ function findButtonByText(dom, text) {
     detailsBtn.click();
     var outlet = win.document.getElementById("page-outlet");
     assert.ok(outlet.textContent.indexOf("LINKED ACTIVITY") !== -1, "risk details should show the linked activity");
-    var viewBtn = findButtonByText(dom, "View in Gantt");
-    assert.ok(viewBtn, "View in Gantt button not found");
-    viewBtn.click();
+    // Redesign Gate 10: retrofitted onto .attention-list/.attention-item — the whole
+    // row is the click target now, no separate "View in Gantt" button.
+    var viewRow = Array.from(outlet.querySelectorAll(".attention-item--clickable")).find((r) => r.textContent.indexOf("LINKED ACTIVITY") !== -1);
+    assert.ok(viewRow, "linked-activity row not found");
+    viewRow.click();
     win.PCC.router.render();
     assert.strictEqual(win.PCC.router.currentRouteName(), "schedule");
     var outlet2 = win.document.getElementById("page-outlet");
@@ -215,11 +217,12 @@ function findButtonByText(dom, text) {
     assert.ok(text.indexOf("Extra Excavation") !== -1, "change order should be listed");
     assert.ok(text.indexOf("spec.pdf") !== -1, "document should be listed");
 
-    // Locate the RFI's "View" button by finding the row whose text mentions "Beam Spec".
-    var viewButtons = Array.from(outlet.querySelectorAll("button")).filter((b) => b.textContent.trim() === "View");
-    var rfiViewBtn = viewButtons.find((b) => b.parentElement.textContent.indexOf("Beam Spec") !== -1);
-    assert.ok(rfiViewBtn, "RFI's View button not found in Linked Records");
-    rfiViewBtn.click();
+    // Redesign Gate 10: retrofitted onto .attention-list/.attention-item — locate the
+    // RFI's row (the whole row is the click target now) by finding the one whose text
+    // mentions "Beam Spec".
+    var rfiRow = Array.from(outlet.querySelectorAll(".attention-item--clickable")).find((r) => r.textContent.indexOf("Beam Spec") !== -1);
+    assert.ok(rfiRow, "RFI's row not found in Linked Records");
+    rfiRow.click();
     win.PCC.router.render();
     assert.strictEqual(win.PCC.router.currentRouteName(), "rfis");
     var outlet2 = win.document.getElementById("page-outlet");

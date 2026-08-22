@@ -471,28 +471,43 @@
     wrap.appendChild(grid);
 
     if (a.filename) {
+      // Redesign Gate 10 (Module Consistency Pass): retrofitted onto the same
+      // .attention-list/.attention-item primitive every other panel-turned-list in this
+      // app now uses — "info" icon color since this is a plain file reference, not a
+      // severity alert. Whole row is the click target now, replacing the separate
+      // "Open File" ghost button.
+      var fileWrap = document.createElement("div");
+      fileWrap.style.marginTop = "12px";
+      fileWrap.style.paddingTop = "10px";
+      fileWrap.style.borderTop = "1px solid var(--divider)";
+      var fileList = document.createElement("div");
+      fileList.className = "attention-list";
+
       var fileRow = document.createElement("div");
-      fileRow.style.marginTop = "12px";
-      fileRow.style.paddingTop = "10px";
-      fileRow.style.borderTop = "1px solid var(--divider)";
-      fileRow.style.display = "flex";
-      fileRow.style.justifyContent = "space-between";
-      fileRow.style.alignItems = "center";
-      fileRow.style.fontSize = "13px";
-
-      var fileLabel = document.createElement("span");
-      fileLabel.innerHTML = "<span class='detail-item__label'>ATTACHED FILE</span>" + esc(a.filename) + (a.file_size ? " (" + fmtSize(a.file_size) + ")" : "");
-
-      var openBtn = document.createElement("button");
-      openBtn.className = "btn btn--ghost";
-      openBtn.textContent = "Open File";
-      openBtn.onclick = function () {
+      fileRow.className = "attention-item attention-item--clickable";
+      fileRow.onclick = function () {
         openArticleFile(a);
       };
 
-      fileRow.appendChild(fileLabel);
-      fileRow.appendChild(openBtn);
-      wrap.appendChild(fileRow);
+      var fileIcon = document.createElement("span");
+      fileIcon.className = "attention-item__icon attention-item__icon--info";
+      fileRow.appendChild(fileIcon);
+
+      var fileBody = document.createElement("div");
+      fileBody.className = "attention-item__body";
+      var fileText = document.createElement("div");
+      fileText.className = "attention-item__text";
+      fileText.textContent = a.filename + (a.file_size ? " (" + fmtSize(a.file_size) + ")" : "");
+      fileBody.appendChild(fileText);
+      var fileMeta = document.createElement("div");
+      fileMeta.className = "attention-item__meta";
+      fileMeta.textContent = "ATTACHED FILE";
+      fileBody.appendChild(fileMeta);
+      fileRow.appendChild(fileBody);
+
+      fileList.appendChild(fileRow);
+      fileWrap.appendChild(fileList);
+      wrap.appendChild(fileWrap);
     }
 
     return wrap;

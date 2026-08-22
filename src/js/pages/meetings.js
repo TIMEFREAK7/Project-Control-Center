@@ -675,29 +675,42 @@
         return a.id === m.activity_id;
       });
       if (linkedActivity) {
+        // Redesign Gate 10 (Module Consistency Pass): retrofitted onto the same
+        // .attention-list/.attention-item primitive every other panel-turned-list in
+        // this app now uses — "info" icon color since this is a plain cross-reference,
+        // not a severity alert. Whole row is the click target now, replacing the
+        // separate "View in Gantt" ghost button.
+        var activityList = document.createElement("div");
+        activityList.className = "attention-list";
+        activityList.style.marginTop = "var(--space-3)";
+        activityList.style.paddingTop = "var(--space-3)";
+        activityList.style.borderTop = "1px solid var(--divider)";
+
         var activityRow = document.createElement("div");
-        activityRow.style.marginTop = "var(--space-3)";
-        activityRow.style.paddingTop = "var(--space-3)";
-        activityRow.style.borderTop = "1px solid var(--divider)";
-        activityRow.style.display = "flex";
-        activityRow.style.justifyContent = "space-between";
-        activityRow.style.alignItems = "center";
-        activityRow.style.fontSize = "var(--text-sm)";
-
-        var activityLabel = document.createElement("span");
-        activityLabel.innerHTML = "<span class='detail-item__label'>LINKED ACTIVITY</span>" + linkedActivity.name;
-
-        var viewActivityBtn = document.createElement("button");
-        viewActivityBtn.className = "btn btn--ghost";
-        viewActivityBtn.textContent = "View in Gantt";
-        viewActivityBtn.onclick = function () {
+        activityRow.className = "attention-item attention-item--clickable";
+        activityRow.onclick = function () {
           if (window.PCC.schedule) window.PCC.schedule.viewActivity(m.project_id, linkedActivity.schedule_id, linkedActivity.id);
           window.PCC.router.go("schedule");
         };
 
-        activityRow.appendChild(activityLabel);
-        activityRow.appendChild(viewActivityBtn);
-        wrap.appendChild(activityRow);
+        var activityIcon = document.createElement("span");
+        activityIcon.className = "attention-item__icon attention-item__icon--info";
+        activityRow.appendChild(activityIcon);
+
+        var activityBody = document.createElement("div");
+        activityBody.className = "attention-item__body";
+        var activityText = document.createElement("div");
+        activityText.className = "attention-item__text";
+        activityText.textContent = linkedActivity.name;
+        activityBody.appendChild(activityText);
+        var activityMeta = document.createElement("div");
+        activityMeta.className = "attention-item__meta";
+        activityMeta.textContent = "LINKED ACTIVITY";
+        activityBody.appendChild(activityMeta);
+        activityRow.appendChild(activityBody);
+
+        activityList.appendChild(activityRow);
+        wrap.appendChild(activityList);
       }
     }
 

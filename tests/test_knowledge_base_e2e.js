@@ -224,7 +224,12 @@ function findButtonByText(dom, text) {
     // reset by re-rendering. Clicking "Details" again here would TOGGLE it back closed.
     assert.ok(text.indexOf("ATTACHED FILE") !== -1, "got: " + text.slice(0, 400));
     assert.ok(text.indexOf("rebar-checklist.pdf") !== -1);
-    assert.ok(findButtonByText(dom, "Open File"), "Open File button not found");
+    // Redesign Gate 10: retrofitted onto .attention-list/.attention-item — the whole
+    // row is the click target now, no separate "Open File" button.
+    assert.ok(
+      Array.from(outlet().querySelectorAll(".attention-item--clickable")).some((r) => r.textContent.indexOf("rebar-checklist.pdf") !== -1),
+      "clickable row for the attached file not found"
+    );
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
