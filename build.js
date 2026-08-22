@@ -29,6 +29,7 @@ const JS_ORDER = [
   "js/notifications.js",
   "js/router.js",
   "js/layout.js",
+  "js/loadingIndicator.js",
   "js/nativeFile.js",
   "js/fileViewer.js",
   "js/nativePrint.js",

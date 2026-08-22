@@ -188,9 +188,11 @@
    * in-app viewer (fileViewer.js) — same approach documents.js and dailyLog.js use, kept
    * consistent app-wide rather than building a separate preview here. */
   function openStoredVendorDocument(doc) {
+    window.PCC.loadingIndicator.show("Opening file…");
     window.PCC.blobStore
       .getBlob(doc.id)
       .then(function (fileData) {
+        window.PCC.loadingIndicator.hide();
         if (!fileData) {
           window.PCC.notify("No file was stored for this document.", "warning");
           return;
@@ -207,6 +209,7 @@
         window.PCC.fileViewer.open({ filename: doc.filename, mimeType: mime, blob: blob });
       })
       .catch(function (e) {
+        window.PCC.loadingIndicator.hide();
         window.PCC.notify("Could not open this file: " + e.message, "error");
       });
   }

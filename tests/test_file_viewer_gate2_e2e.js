@@ -232,6 +232,35 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
+  await check("Documents: 'Open File' shows a loading indicator while the blob resolves, then hides it (Gate D)", async () => {
+    win.PCC.router.go("documents");
+    win.PCC.router.render();
+    const openBtn = findButtonByText(dom, "Open File");
+    assert.ok(openBtn, "expected an Open File button for the seeded document");
+
+    const realOpen = win.PCC.fileViewer.open;
+    let opened = false;
+    win.PCC.fileViewer.open = () => {
+      opened = true;
+    };
+
+    openBtn.click();
+    assert.ok(
+      dom.window.document.querySelector(".loading-indicator-overlay"),
+      "expected the loading overlay to appear synchronously on click, before the blob resolve promise settles"
+    );
+
+    await waitFor(() => opened, 5000);
+    assert.strictEqual(
+      dom.window.document.querySelector(".loading-indicator-overlay"),
+      null,
+      "expected the loading overlay to be removed once the file viewer opens"
+    );
+
+    win.PCC.fileViewer.open = realOpen;
+    assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
+  });
+
   let vendorId, vendorDocId;
   await check("Vendors: 'View / Download' on a seeded vendor document calls fileViewer.open", async () => {
     win.PCC.store.update(function (data) {

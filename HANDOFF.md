@@ -1751,6 +1751,46 @@ calls needed since every value encountered matched a pattern already established
   fully complete. Remaining: Gates D-F (loading-state pattern, icon system, empty-state/motion
   polish) — none started, all still pending Aditya's priority call.
 
+**Gate D — Loading-State Pattern, done, 2026-08-22.** Aditya asked to scope this, then confirmed
+"both parts" when offered a primary-fix-only vs. primary-plus-polish split.
+
+- **Corrected the original 6-gate plan's framing before building anything**: "no loading-state
+  pattern exists at all" (from the Gate A-scoping-time audit) wasn't fully accurate — grepping found
+  four spots with existing plain-text feedback (`fileViewer.js`'s in-modal "Loading preview…",
+  `documents.js`'s upload-reading label, two spots in `schedule.js` for baseline loading). **The real,
+  zero-feedback gap was narrower**: three call sites (`documents.js`'s `openStoredFile()`,
+  `vendors.js`'s `openStoredVendorDocument()`, `dailyLog.js`'s `openPhotoFullSize()`) all call
+  `blobStore.resolve()`/`getBlob()` — an async IndexedDB read plus gzip decompression — before
+  opening the in-app file viewer, and during that wait there was nothing visible at all. Surfaced
+  this correction before scoping further, same discipline as every prior gate's re-audits.
+- **New shared component**: `src/js/loadingIndicator.js` — `show()`/`hide()` for a global blocking
+  overlay (nothing else on screen to render feedback into yet) and `buildInline(label)` returning an
+  unattached spinner+label DOM fragment for callers with an existing place to render into. Added to
+  `build.js`'s `JS_ORDER` (between `layout.js` and `nativeFile.js`) — this is the kind of thing
+  CLAUDE.md warns about ("New files must be added to `JS_ORDER` or they silently won't ship"),
+  confirmed done correctly by the successful rebuild and real-Chromium pass, not just assumed.
+  CSS spinner/overlay styles added to `styles.css`, reusing the existing `@keyframes` idiom (same
+  pattern as the toast-in/modal-in animations already there) rather than a new one.
+- **Part 1 (the real gap)**: wired `show()`/`hide()` into the three pre-viewer resolve call sites —
+  immediate visual feedback on click, hidden once the viewer opens or on error.
+- **Part 2 (consistency polish, also done — Aditya chose "both parts")**: replaced the four existing
+  plain-text loading spots with `buildInline()` so they share the same visual spinner instead of ad
+  hoc `<p>` tags with hand-repeated `text-secondary`/font-size styling.
+- **Verified, more rigorously than most prior UI gates since this is new behavior, not a refactor**:
+  added a new regression test to `test_file_viewer_gate2_e2e.js` that clicks "Open File" and asserts
+  the overlay is in the DOM *synchronously*, in the same tick as the click, before the
+  `blobStore.resolve()` promise settles — then asserts it's gone once the viewer opens. This is
+  genuinely testable in jsdom because the promise chain naturally creates that tick. Full 78-file
+  suite: 2090 checks (2089 + this new one), 0 failures. Also verified in real Chromium — first
+  attempt used a `page.locator().count()` check *after* the click, which raced past the overlay
+  because Playwright's IPC round-trip is slower than real IndexedDB resolving a few bytes; fixed by
+  doing the click and the DOM check inside one `page.evaluate()` call so there's no gap. Confirmed:
+  overlay present immediately after click, gone once settled, zero console errors, screenshot taken
+  (though it happened to land after the (very fast) resolve completed, since real Chromium's
+  IndexedDB is faster than the screenshot round-trip for a tiny test blob — the assertion-based check
+  is the real evidence here, not the screenshot).
+- **Not started**: Gates E-F (icon system, empty-state/motion polish) — pending Aditya's call.
+
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
 `main` is fully up to date through **Tier 3, "final polish," Gate 4** (Gantt virtualization for

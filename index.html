@@ -648,6 +648,53 @@ a:focus-visible {
   font-family: var(--font-mono);
 }
 
+/* ===== Loading indicator (Gate D, UI Modernization) =====
+   .spinner + .loading-indicator are used two ways — see loadingIndicator.js: as a global
+   blocking overlay (.loading-indicator-overlay) for waits with nothing on screen yet to show
+   feedback in, and as an unattached inline fragment callers insert into their own layout
+   (a form field, a modal body, a toolbar) for waits that already have somewhere to render. */
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--divider);
+  border-top-color: var(--signal-amber);
+  border-radius: 50%;
+  flex-shrink: 0;
+  animation: spin 700ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.loading-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.loading-indicator-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1150;
+  background-color: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.loading-indicator-overlay .loading-indicator {
+  background-color: var(--bg-paper);
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  box-shadow: var(--shadow-lg);
+}
+
 /* ===== Toasts ===== */
 #toast-stack {
   position: fixed;
@@ -8553,6 +8600,51 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 })();
 
 
+/* ---- js/loadingIndicator.js ---- */
+/** Shared visual loading feedback — a small spinner, in two forms:
+ * - show()/hide(): a global blocking overlay, for waits with nothing else on screen to show
+ *   feedback in (e.g. blobStore.resolve() before the file viewer modal exists yet).
+ * - buildInline(label): an unattached DOM fragment (spinner + label) callers insert into
+ *   their own layout — for waits that already have a place to render into (a form field, a
+ *   modal body, a toolbar), replacing what used to be plain "Loading…" text in a few pages.
+ * Gate D (UI Modernization). Not blob-related, so this stays out of blobStore.js on purpose —
+ * see that file's own header on why it's scoped to binary blobs only.
+ */
+(function () {
+  "use strict";
+  window.PCC = window.PCC || {};
+
+  var overlayEl = null;
+
+  function buildInline(label) {
+    var box = document.createElement("div");
+    box.className = "loading-indicator";
+    var spinner = document.createElement("span");
+    spinner.className = "spinner";
+    box.appendChild(spinner);
+    var text = document.createElement("span");
+    text.textContent = label || "Loading…";
+    box.appendChild(text);
+    return box;
+  }
+
+  function show(label) {
+    hide();
+    overlayEl = document.createElement("div");
+    overlayEl.className = "loading-indicator-overlay";
+    overlayEl.appendChild(buildInline(label));
+    document.body.appendChild(overlayEl);
+  }
+
+  function hide() {
+    if (overlayEl && overlayEl.parentNode) overlayEl.parentNode.removeChild(overlayEl);
+    overlayEl = null;
+  }
+
+  window.PCC.loadingIndicator = { show: show, hide: hide, buildInline: buildInline };
+})();
+
+
 /* ---- js/nativeFile.js ---- */
 /** Getting a file OUT of the app onto the device — the one place a real "download" is the
  * whole point (exporting your data, saving a document's original file), unlike viewing a
@@ -8735,10 +8827,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   }
 
   function renderLoading(body) {
-    var loading = document.createElement("p");
-    loading.className = "text-secondary";
-    loading.textContent = "Loading preview…";
-    body.appendChild(loading);
+    body.appendChild(window.PCC.loadingIndicator.buildInline("Loading preview…"));
   }
 
   function renderUnsupported(body, reason) {
@@ -17434,9 +17523,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
    * in-app viewer (fileViewer.js) — same approach documents.js and dailyLog.js use, kept
    * consistent app-wide rather than building a separate preview here. */
   function openStoredVendorDocument(doc) {
+    window.PCC.loadingIndicator.show("Opening file…");
     window.PCC.blobStore
       .getBlob(doc.id)
       .then(function (fileData) {
+        window.PCC.loadingIndicator.hide();
         if (!fileData) {
           window.PCC.notify("No file was stored for this document.", "warning");
           return;
@@ -17453,6 +17544,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         window.PCC.fileViewer.open({ filename: doc.filename, mimeType: mime, blob: blob });
       })
       .catch(function (e) {
+        window.PCC.loadingIndicator.hide();
         window.PCC.notify("Could not open this file: " + e.message, "error");
       });
   }
@@ -21156,11 +21248,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     panel.appendChild(fileField);
 
     if (uiState.readingLabel) {
-      var loading = document.createElement("p");
-      loading.className = "text-secondary";
-      loading.style.fontSize = "var(--text-sm)";
-      loading.textContent = uiState.readingLabel;
-      panel.appendChild(loading);
+      panel.appendChild(window.PCC.loadingIndicator.buildInline(uiState.readingLabel));
     }
 
     if (uiState.readError) {
@@ -21358,9 +21446,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
    * IndexedDB migration) or need fetching by id from IndexedDB — blobStore.resolve()
    * handles that dual-path lookup so this function doesn't need to know or care which. */
   function openStoredFile(doc) {
+    window.PCC.loadingIndicator.show("Opening file…");
     window.PCC.blobStore
       .resolve(doc.id, doc.file_data)
       .then(function (fileData) {
+        window.PCC.loadingIndicator.hide();
         if (!fileData) {
           window.PCC.notify("No original file was stored for this document.", "warning");
           return;
@@ -21377,6 +21467,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         window.PCC.fileViewer.open({ filename: doc.filename, mimeType: mime, blob: blob });
       })
       .catch(function (e) {
+        window.PCC.loadingIndicator.hide();
         window.PCC.notify("Could not open this file: " + e.message, "error");
       });
   }
@@ -23024,9 +23115,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
    * on `photo.file_data` (a legacy record predating the IndexedDB migration) or need fetching
    * by id — blobStore.resolve() handles that dual-path lookup. */
   function openPhotoFullSize(photo) {
+    window.PCC.loadingIndicator.show("Opening photo…");
     window.PCC.blobStore
       .resolve(photo.id, photo.file_data)
       .then(function (fileData) {
+        window.PCC.loadingIndicator.hide();
         if (!fileData) {
           window.PCC.notify("No image data stored for this photo.", "warning");
           return;
@@ -23044,6 +23137,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         window.PCC.fileViewer.open({ filename: filename, mimeType: mime, blob: blob });
       })
       .catch(function (e) {
+        window.PCC.loadingIndicator.hide();
         window.PCC.notify("Could not open this photo: " + e.message, "error");
       });
   }
@@ -26670,11 +26764,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       bar3.appendChild(baselineSelect);
 
       if (uiState.ganttBaselineLoading) {
-        var loadingNote = document.createElement("span");
-        loadingNote.className = "text-secondary";
-        loadingNote.style.fontSize = "var(--text-sm)";
+        var loadingNote = window.PCC.loadingIndicator.buildInline("Loading baseline…");
         loadingNote.style.alignSelf = "center";
-        loadingNote.textContent = "Loading baseline…";
         bar3.appendChild(loadingNote);
       }
 
@@ -28660,11 +28751,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
       if (uiState.baselineCompareId === b.id) {
         if (uiState.baselineComparePending) {
-          var loading = document.createElement("p");
-          loading.className = "text-secondary";
-          loading.style.fontSize = "var(--text-sm)";
+          var loading = window.PCC.loadingIndicator.buildInline("Loading stored baseline data\u2026");
           loading.style.marginBottom = "var(--space-3)";
-          loading.textContent = "Loading stored baseline data\u2026";
           list.appendChild(loading);
         } else if (uiState.baselineCompareError) {
           var errP = document.createElement("p");

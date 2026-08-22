@@ -3136,6 +3136,38 @@ the design-token system for their exact and near-miss spacing/typography values.
 Gates D-F (loading-state pattern, icon system, empty-state/motion polish) — none started, all
 pending Aditya's call on priority.
 
+## UI Modernization — Gate D: Loading-State Pattern (2026-08-22)
+
+Before building, corrected the original 6-gate plan's framing — "no loading-state pattern exists at
+all" wasn't fully accurate. Four spots already had plain-text feedback (`fileViewer.js`'s in-modal
+"Loading preview…", `documents.js`'s upload-reading label, two spots in `schedule.js` for baseline
+loading), just no shared component and no visual spinner. **The real, zero-feedback gap was
+narrower and more specific**: three call sites — `documents.js`, `vendors.js`, `dailyLog.js` — all
+call `blobStore.resolve()`/`getBlob()` before opening the in-app file viewer, and during that async
+IndexedDB-read-plus-decompression wait, nothing was visible at all — a click that appeared to do
+nothing until the viewer modal popped open.
+
+Built one new shared component, `src/js/loadingIndicator.js` (added to `build.js`'s `JS_ORDER`,
+same tier as `nativeFile.js`/`fileViewer.js`), with two forms: `show()`/`hide()` for a global
+blocking overlay (used where nothing else is on screen yet to render feedback into), and
+`buildInline(label)` returning an unattached spinner+label fragment callers insert into their own
+layout (used where a place to render already exists). CSS added to `styles.css` reusing the
+project's existing `@keyframes` idiom (same pattern as the toast/modal animations already there).
+
+**Part 1 (the real gap):** wired `loadingIndicator.show()`/`hide()` into the three pre-viewer
+resolve call sites, so clicking "Open File"/"View / Download"/a photo now shows immediate feedback.
+
+**Part 2 (consistency polish):** replaced the four existing plain-text loading spots with
+`buildInline()` so they share the same visual spinner instead of ad hoc `<p>` tags.
+
+**Verified:** all files pass `node --check`; added a new regression test to
+`test_file_viewer_gate2_e2e.js` confirming the overlay appears synchronously right after the click
+(before the resolve promise settles) and is gone once the viewer opens — full 78-file suite, 2090
+checks, 0 failures. Also confirmed in real Chromium via a click-and-check done inside a single
+`page.evaluate()` call (avoiding a Playwright IPC round-trip that would otherwise race past the
+overlay, since real IndexedDB resolves a tiny test blob in under a millisecond) — overlay present
+immediately after click, gone once settled, zero console errors.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →

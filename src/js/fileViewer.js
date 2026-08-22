@@ -95,10 +95,7 @@
   }
 
   function renderLoading(body) {
-    var loading = document.createElement("p");
-    loading.className = "text-secondary";
-    loading.textContent = "Loading preview…";
-    body.appendChild(loading);
+    body.appendChild(window.PCC.loadingIndicator.buildInline("Loading preview…"));
   }
 
   function renderUnsupported(body, reason) {

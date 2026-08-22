@@ -325,9 +325,11 @@
    * on `photo.file_data` (a legacy record predating the IndexedDB migration) or need fetching
    * by id — blobStore.resolve() handles that dual-path lookup. */
   function openPhotoFullSize(photo) {
+    window.PCC.loadingIndicator.show("Opening photo…");
     window.PCC.blobStore
       .resolve(photo.id, photo.file_data)
       .then(function (fileData) {
+        window.PCC.loadingIndicator.hide();
         if (!fileData) {
           window.PCC.notify("No image data stored for this photo.", "warning");
           return;
@@ -345,6 +347,7 @@
         window.PCC.fileViewer.open({ filename: filename, mimeType: mime, blob: blob });
       })
       .catch(function (e) {
+        window.PCC.loadingIndicator.hide();
         window.PCC.notify("Could not open this photo: " + e.message, "error");
       });
   }

@@ -641,6 +641,53 @@ a:focus-visible {
   font-family: var(--font-mono);
 }
 
+/* ===== Loading indicator (Gate D, UI Modernization) =====
+   .spinner + .loading-indicator are used two ways — see loadingIndicator.js: as a global
+   blocking overlay (.loading-indicator-overlay) for waits with nothing on screen yet to show
+   feedback in, and as an unattached inline fragment callers insert into their own layout
+   (a form field, a modal body, a toolbar) for waits that already have somewhere to render. */
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--divider);
+  border-top-color: var(--signal-amber);
+  border-radius: 50%;
+  flex-shrink: 0;
+  animation: spin 700ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.loading-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.loading-indicator-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1150;
+  background-color: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.loading-indicator-overlay .loading-indicator {
+  background-color: var(--bg-paper);
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  box-shadow: var(--shadow-lg);
+}
+
 /* ===== Toasts ===== */
 #toast-stack {
   position: fixed;

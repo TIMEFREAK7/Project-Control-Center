@@ -3223,11 +3223,8 @@
       bar3.appendChild(baselineSelect);
 
       if (uiState.ganttBaselineLoading) {
-        var loadingNote = document.createElement("span");
-        loadingNote.className = "text-secondary";
-        loadingNote.style.fontSize = "var(--text-sm)";
+        var loadingNote = window.PCC.loadingIndicator.buildInline("Loading baseline…");
         loadingNote.style.alignSelf = "center";
-        loadingNote.textContent = "Loading baseline…";
         bar3.appendChild(loadingNote);
       }
 
@@ -5213,11 +5210,8 @@
 
       if (uiState.baselineCompareId === b.id) {
         if (uiState.baselineComparePending) {
-          var loading = document.createElement("p");
-          loading.className = "text-secondary";
-          loading.style.fontSize = "var(--text-sm)";
+          var loading = window.PCC.loadingIndicator.buildInline("Loading stored baseline data\u2026");
           loading.style.marginBottom = "var(--space-3)";
-          loading.textContent = "Loading stored baseline data\u2026";
           list.appendChild(loading);
         } else if (uiState.baselineCompareError) {
           var errP = document.createElement("p");

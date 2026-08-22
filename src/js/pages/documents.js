@@ -969,11 +969,7 @@
     panel.appendChild(fileField);
 
     if (uiState.readingLabel) {
-      var loading = document.createElement("p");
-      loading.className = "text-secondary";
-      loading.style.fontSize = "var(--text-sm)";
-      loading.textContent = uiState.readingLabel;
-      panel.appendChild(loading);
+      panel.appendChild(window.PCC.loadingIndicator.buildInline(uiState.readingLabel));
     }
 
     if (uiState.readError) {
@@ -1171,9 +1167,11 @@
    * IndexedDB migration) or need fetching by id from IndexedDB — blobStore.resolve()
    * handles that dual-path lookup so this function doesn't need to know or care which. */
   function openStoredFile(doc) {
+    window.PCC.loadingIndicator.show("Opening file…");
     window.PCC.blobStore
       .resolve(doc.id, doc.file_data)
       .then(function (fileData) {
+        window.PCC.loadingIndicator.hide();
         if (!fileData) {
           window.PCC.notify("No original file was stored for this document.", "warning");
           return;
@@ -1190,6 +1188,7 @@
         window.PCC.fileViewer.open({ filename: doc.filename, mimeType: mime, blob: blob });
       })
       .catch(function (e) {
+        window.PCC.loadingIndicator.hide();
         window.PCC.notify("Could not open this file: " + e.message, "error");
       });
   }
