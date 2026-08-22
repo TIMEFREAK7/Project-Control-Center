@@ -1577,6 +1577,70 @@ or Android refuses to install it as an upgrade.
   - Android itself is now fully signed for real distribution (Play Store or direct APK
     sideloading) as of this round — no further Android-side action needed beyond this.
 
+**Windows/macOS code signing: closed, not just deferred (2026-08-22).** Aditya confirmed the
+Windows build is for his own personal use only — not buying a CA certificate, so the "Unknown
+Publisher" SmartScreen warning on the unsigned `.exe` stays and is accepted. macOS was already
+declined earlier (no Mac hardware). No further code-signing work is planned for this app unless
+Aditya explicitly decides to distribute more widely later — this whole thread of the packaging
+initiative is done.
+
+## NEW INITIATIVE: UI Modernization (started 2026-08-22) — a FIFTH, separate initiative
+
+Aditya asked, via `/prompt-master`, to modernize the app's UI to current app standards — a vague
+starting brief deliberately handled the way this project handles every vague brief: don't guess,
+scope first, get confirmation before writing code. An Explore-agent audit of `styles.css` and every
+`src/js/pages/*.js` file against the existing design-token system (from the original UI/UX Overhaul,
+Gate 1) found the real gap isn't missing design infrastructure — tokens, shared `.btn`/`.panel`/
+`.kpi-card`/`.empty-state` classes, and complete dark/light theming all already exist and are
+already well-adopted — it's that page modules almost never *use* the tokens for their own styling,
+setting `el.style.fontSize = "13px"` etc. directly instead of the cascade. That produced a 6-gate
+plan (A: stylesheet token cleanup, B/C: page-level inline-style cleanup split into two batches by
+file size, D: a genuinely new loading-state pattern — none currently exists anywhere in the app, E:
+an SVG icon system replacing the current Unicode-glyph icons, F: empty-state copy + motion polish),
+presented to Aditya for confirmation before any implementation, per this project's own standing
+"scope before building" convention (see CLAUDE.md).
+
+**Gate A — Stylesheet Token Cleanup, done, 2026-08-22.** Aditya confirmed proceeding with Gate A
+specifically (not the whole 6-gate plan) and left one open decision — whether to fold a new
+`--space-4-5: 20px` token into the cleanup for the 11 `20px` instances that don't match any existing
+token — to my judgment; decided to leave `20px` as a literal, consistent with Gate A's own stated
+scope of "swap in existing tokens, don't invent new ones," rather than quietly expanding scope on my
+own initiative.
+
+- **CSS-only, no `src/js/` file touched.** `styles.css` itself, which *owns* the token system, still
+  had 342 raw px literals against only 228 real `var(--...)` uses — some duplicating a token's exact
+  value in a rule sitting right next to an already-tokenized sibling.
+- **Method**: manual, per-rule review of roughly 60 rules — not a blind find/replace, since the same
+  numeric value maps to a different token depending on the property it's used in (`padding: 16px` →
+  `--space-4`, but `border-radius: 16px` would need a radius token, or stay literal if none matches).
+  Every value that exactly matched an existing token *and* used it in a semantically matching
+  property (font-size↔`--text-*`, border-radius↔`--radius-*`, padding/margin/gap↔`--space-*`) was
+  converted. Result: `var(--...)` usage 228→288; raw px literals 342→282.
+- **Explicitly excluded, on purpose, not by oversight**:
+  - `[data-density="compact"/"spacious"]` — its literal values are deliberate matched steps from the
+    baseline (per that gate's own header comment), not oversights; touching them risks the density
+    toggle's own behavior.
+  - `@media print` and the `.report-doc`/`.report-doc__section` component, both inside and outside
+    that block — reports are print-sensitive (`window.print()`-based, no PDF library per CLAUDE.md)
+    and were kept fully out of scope as a precaution, wider than just the print block itself.
+  - Responsive breakpoint values (`780px`/`1023px`/etc.) — layout thresholds, not spacing, already
+    flagged as intentionally untouched by the file's own original Gate 1 comment.
+  - `20px` (11 occurrences, no exact token match) and any other non-matching value — see the open
+    decision above.
+  - Dimensional properties (fixed-size `width`/`height` on icons, drawers, progress tracks) — these
+    coincide numerically with some tokens but aren't semantically "spacing," so tokenizing them would
+    blur what the token actually means for no real benefit.
+- **Verified**: rebuilt (`node build.js`), full test suite — **all 78 test files still pass, zero
+  failures** (pure value-for-token swap, no visual change intended, confirmed exit code 0 on the full
+  chained `npm test` run). Also did a real-Chromium pass (Playwright, not just jsdom, per this
+  project's own testing convention) — zero console/page errors opening the built `index.html`, and a
+  Portfolio-page screenshot confirms KPI cards, toolbar, buttons, and the empty-state all render with
+  unchanged spacing.
+- **Not started yet**: Gates B through F of the 6-gate plan (page-level inline-style cleanup in two
+  batches, the new loading-state pattern, the icon system, empty-state/motion polish) — all scoped
+  and written up above/in README.md, pending Aditya's go-ahead on which to build next and in what
+  order.
+
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
 `main` is fully up to date through **Tier 3, "final polish," Gate 4** (Gantt virtualization for

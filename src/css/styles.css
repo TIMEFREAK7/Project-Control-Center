@@ -191,8 +191,8 @@ button {
 
 .sidebar__group + .sidebar__group {
   border-top: 1px solid var(--divider);
-  margin-top: 4px;
-  padding-top: 4px;
+  margin-top: var(--space-1);
+  padding-top: var(--space-1);
 }
 
 .sidebar__group-toggle {
@@ -200,8 +200,8 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 10px 12px;
+  gap: var(--space-2);
+  padding: 10px var(--space-3);
   background: transparent;
   border: none;
   border-radius: var(--radius-sm);
@@ -216,14 +216,14 @@ button {
 
 .sidebar__group-toggle .sidebar__group-label {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--text-xs);
   letter-spacing: 1.5px;
   color: var(--text-secondary);
 }
 
 .sidebar__group-chevron {
   color: var(--text-secondary);
-  font-size: 14px;
+  font-size: var(--text-base);
   transition: transform var(--transition-base);
 }
 
@@ -234,7 +234,7 @@ button {
 .sidebar__group-items {
   list-style: none;
   margin: 0;
-  padding: 0 8px;
+  padding: 0 var(--space-2);
   max-height: 0;
   overflow: hidden;
   transition: max-height var(--transition-base);
@@ -248,13 +248,13 @@ button {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 9px 12px;
-  margin-bottom: 4px;
+  padding: 9px var(--space-3);
+  margin-bottom: var(--space-1);
   border-radius: var(--radius-sm);
   border-left: 2px solid transparent;
   text-decoration: none;
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: var(--text-base);
   font-weight: 500;
   cursor: pointer;
   transition: background-color var(--transition-fast), border-color var(--transition-fast);
@@ -292,7 +292,7 @@ button {
 }
 
 .title-block__cell {
-  padding: 8px 16px;
+  padding: var(--space-2) var(--space-4);
   border-right: 1px solid var(--divider);
 }
 
@@ -321,8 +321,8 @@ button {
 .title-block__actions {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 0 8px;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
 }
 
 .icon-btn {
@@ -333,7 +333,7 @@ button {
   height: 32px;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: 15px;
+  font-size: var(--text-md);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -381,17 +381,17 @@ body.focus-mode .focus-mode-hide {
 
 main.page {
   flex-grow: 1;
-  padding: 24px;
+  padding: var(--space-5);
 }
 
 footer.app-footer {
   border-top: 1px solid var(--divider);
   background-color: var(--bg-paper);
-  padding: 6px 16px;
+  padding: 6px var(--space-4);
   display: flex;
   justify-content: space-between;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--text-secondary);
 }
 
@@ -405,14 +405,14 @@ footer.app-footer {
 }
 
 .panel + .panel {
-  margin-top: 16px;
+  margin-top: var(--space-4);
 }
 
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-  margin-bottom: 16px;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
 }
 
 .kpi-card {
@@ -430,15 +430,15 @@ footer.app-footer {
 
 .kpi-card__label {
   display: block;
-  font-size: 11px;
+  font-size: var(--text-xs);
   letter-spacing: 1px;
   color: var(--text-secondary);
-  margin-bottom: 8px;
+  margin-bottom: var(--space-2);
 }
 
 .kpi-card__value {
   font-family: var(--font-mono);
-  font-size: 28px;
+  font-size: var(--text-2xl);
   font-weight: 600;
 }
 
@@ -452,16 +452,16 @@ footer.app-footer {
 
 .data-table th {
   text-align: left;
-  font-size: 11px;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.03em;
   color: var(--text-secondary);
-  padding: 8px 10px;
+  padding: var(--space-2) 10px;
   border-bottom: 1px solid var(--divider);
 }
 
 .data-table td {
-  padding: 8px 10px;
+  padding: var(--space-2) 10px;
   font-size: 13px;
   border-bottom: 1px solid var(--divider);
 }
@@ -509,7 +509,7 @@ footer.app-footer {
 .data-table__sort-btn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   background: none;
   border: none;
   padding: 0;
@@ -533,7 +533,7 @@ footer.app-footer {
   font-size: 13.5px;
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
-  padding: 9px 16px;
+  padding: 9px var(--space-4);
   cursor: pointer;
   transition: background-color var(--transition-fast), border-color var(--transition-fast),
     transform var(--transition-fast), opacity var(--transition-fast);
@@ -597,7 +597,7 @@ a:focus-visible {
 .field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
   margin-bottom: 14px;
 }
 
@@ -610,7 +610,7 @@ a:focus-visible {
 .field select,
 .field textarea {
   font-family: var(--font-body);
-  font-size: 14px;
+  font-size: var(--text-base);
   padding: 9px 10px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--divider);
@@ -648,14 +648,14 @@ a:focus-visible {
   right: 20px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
   z-index: 1000;
 }
 
 .toast {
   min-width: 260px;
   max-width: 360px;
-  padding: 12px 14px;
+  padding: var(--space-3) 14px;
   border-radius: var(--radius-sm);
   font-family: var(--font-mono);
   font-size: 13px;
@@ -697,7 +697,7 @@ a:focus-visible {
 .toolbar {
   display: flex;
   gap: 10px;
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
   flex-wrap: wrap;
   align-items: center;
 }
@@ -728,9 +728,9 @@ a:focus-visible {
    navigation reads as a different kind of control than a filter or a form action. */
 .tab-bar {
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
   border-bottom: 1px solid var(--divider);
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
   overflow-x: auto;
 }
 
@@ -774,7 +774,7 @@ a:focus-visible {
    throughout this app, rather than a new breakpoint-specific rule. */
 .doc-register {
   display: flex;
-  gap: 16px;
+  gap: var(--space-4);
   flex-wrap: wrap;
   align-items: flex-start;
 }
@@ -785,14 +785,14 @@ a:focus-visible {
   max-width: 420px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .doc-register-item {
   background-color: var(--bg-paper);
   border: 1px solid var(--divider);
   border-radius: var(--radius-md);
-  padding: 10px 12px;
+  padding: 10px var(--space-3);
   cursor: pointer;
   transition: border-color var(--transition-base), background-color var(--transition-base);
 }
@@ -873,7 +873,7 @@ a:focus-visible {
    width instead of forcing the row to overflow. */
 .gantt-layout-row {
   display: flex;
-  gap: 16px;
+  gap: var(--space-4);
   flex-wrap: wrap;
   align-items: flex-start;
 }
@@ -893,10 +893,10 @@ a:focus-visible {
   background-color: var(--bg-paper);
   border: 1px solid var(--divider);
   border-radius: var(--radius-md);
-  padding: 14px 16px;
+  padding: 14px var(--space-4);
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: var(--space-4);
   flex-wrap: wrap;
   box-shadow: var(--shadow-sm);
   transition: border-color var(--transition-base);
@@ -917,7 +917,7 @@ a:focus-visible {
 
 .project-card__name {
   font-weight: 600;
-  font-size: 15px;
+  font-size: var(--text-md);
 }
 
 .project-card__meta {
@@ -929,7 +929,7 @@ a:focus-visible {
 
 .project-card__figures {
   font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: var(--text-sm);
   color: var(--text-secondary);
   min-width: 140px;
 }
@@ -937,7 +937,7 @@ a:focus-visible {
 .project-card__progress {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   min-width: 140px;
 }
 
@@ -1002,7 +1002,7 @@ a:focus-visible {
   border: 1px solid var(--divider);
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow-lg);
-  padding: 4px;
+  padding: var(--space-1);
   display: flex;
   flex-direction: column;
 }
@@ -1029,7 +1029,7 @@ a:focus-visible {
 .card-menu__checkbox-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 7px 10px;
   border-radius: var(--radius-sm);
   font-size: 13px;
@@ -1091,14 +1091,14 @@ a:focus-visible {
   width: 100%;
   height: 8px;
   background-color: var(--divider);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   overflow: hidden;
 }
 
 .progress-bar__fill {
   height: 100%;
   background-color: var(--signal-amber);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   transition: width var(--transition-base);
 }
 
@@ -1108,7 +1108,7 @@ a:focus-visible {
   font-family: var(--font-mono);
   font-size: 10.5px;
   padding: 3px 9px;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   white-space: nowrap;
@@ -1154,7 +1154,7 @@ a:focus-visible {
   background-color: var(--bg-paper-raised);
   border: 1px solid var(--divider);
   border-radius: var(--radius-md);
-  padding: 16px;
+  padding: var(--space-4);
 }
 
 /* Used for individual rows inside a list (Schedule's Activities/WBS/Relationships/
@@ -1165,7 +1165,7 @@ a:focus-visible {
   background-color: var(--bg-paper);
   border: 1px solid var(--divider);
   border-radius: var(--radius-md);
-  padding: 12px 14px;
+  padding: var(--space-3) 14px;
   box-shadow: var(--shadow-sm);
   transition: border-color var(--transition-base);
 }
@@ -1181,7 +1181,7 @@ a:focus-visible {
 .detail-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 14px 24px;
+  gap: 14px var(--space-5);
 }
 
 .detail-item__label {
@@ -1211,7 +1211,7 @@ a:focus-visible {
 
 .empty-state {
   text-align: center;
-  padding: 40px 20px;
+  padding: var(--space-7) 20px;
   color: var(--text-secondary);
   border-style: dashed;
   box-shadow: none;
@@ -1222,7 +1222,7 @@ a:focus-visible {
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 0 16px;
+  gap: 0 var(--space-4);
 }
 
 /* ===== Risk heat map ===== */
@@ -1230,7 +1230,7 @@ a:focus-visible {
   display: grid;
   grid-template-columns: 90px repeat(3, 1fr);
   grid-template-rows: auto repeat(3, 64px);
-  gap: 4px;
+  gap: var(--space-1);
   max-width: 440px;
 }
 
@@ -1317,7 +1317,7 @@ a:focus-visible {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 10px 4px;
+  padding: 10px var(--space-1);
   border-bottom: 1px solid var(--divider);
 }
 
@@ -1490,7 +1490,7 @@ a:focus-visible {
 }
 
 .drawer .sidebar__link {
-  padding: 13px 12px;
+  padding: 13px var(--space-3);
   font-size: var(--text-md);
 }
 
@@ -1689,7 +1689,7 @@ a:focus-visible {
   }
 
   main.page {
-    padding: 16px;
+    padding: var(--space-4);
   }
 
   .kpi-grid {
@@ -1712,7 +1712,7 @@ a:focus-visible {
   }
 
   .kpi-card__value {
-    font-size: 22px;
+    font-size: var(--text-xl);
   }
 }
 

@@ -2968,6 +2968,59 @@ variables — without it the installer works fine but shows an "Unknown Publishe
 needs an Apple Developer account, a Developer ID certificate, and notarization credentials, plus a
 real macOS host to build the `.dmg` at all. Android itself is now fully signed for real distribution.
 
+**Decision (2026-08-22): no Windows code-signing certificate.** Aditya confirmed the Windows build
+is for his own personal use only, not third-party distribution — buying a CA certificate isn't
+worth it for that. The "Unknown Publisher" SmartScreen warning on the unsigned `.exe` is expected
+and accepted going forward. macOS was also explicitly declined earlier in this initiative (no Mac
+hardware to build/sign on). Both are closed, not just deferred — no further code-signing work is
+planned for this app unless Aditya decides to distribute it more widely later.
+
+## UI Modernization — Gate A: Stylesheet Token Cleanup (2026-08-22)
+
+Aditya asked (via `/prompt-master`) to modernize the app's UI to current app standards. Rather than
+guessing at what "modern" means, an Explore-agent audit of `src/css/styles.css` and every
+`src/js/pages/*.js` file against the existing (Gate 1, UI/UX Overhaul) design-token system produced
+a scoped 6-gate plan, presented for confirmation before any code was touched — matching this
+project's own standing scope-first convention. Gate A, the first and lowest-risk piece, is now done;
+Gates B-F (page-level inline-style cleanup, a loading-state pattern, an icon system, empty-state/
+motion polish) remain proposed but not started, pending Aditya's go-ahead on which to build next.
+
+**The actual gap, per the audit:** the design-token system itself (`--space-*`/`--radius-*`/
+`--text-*` custom properties, defined since the original UI/UX Overhaul Gate 1) was mostly *not
+used by the file that owns it* — `styles.css` itself still carried 342 raw px literals against only
+228 real `var(--...)` uses, some duplicating a token's exact value in a rule sitting right next to
+already-tokenized siblings. Gate A closes that specific gap: **CSS-only**, no `src/js/` file touched
+at all.
+
+**Method:** manual, per-rule review — not a blind find/replace, since the same numeric value maps to
+different tokens depending on the property (`padding: 16px` → `--space-4`, but `border-radius: 16px`
+would need a radius token instead, or stay literal if none matches). Roughly 60 individual rules
+were reviewed; every value that exactly matched an existing token *and* used it in a semantically
+matching property (font-size↔`--text-*`, border-radius↔`--radius-*`, padding/margin/gap↔`--space-*`)
+was converted. Result: `var(--...)` usage rose from 228 to 288; raw px literals fell from 342 to 282.
+
+**Explicitly left untouched, on purpose:**
+- The `[data-density="compact"/"spacious"]` block — its literal px values are deliberate matched
+  steps away from the baseline (per its own header comment from the density-control gate), not
+  oversights; retrofitting them to consume tokens would risk the density toggle's own behavior.
+- The `@media print` block and the `.report-doc`/`.report-doc__section` component (both in and out
+  of that block) — reports are a print-sensitive area (`window.print()`-based, no PDF library, per
+  CLAUDE.md) and were kept out of scope entirely as a precaution, not just the print block itself.
+- Responsive breakpoint values (`780px`/`1023px`/`1279px`/etc.) — these are layout thresholds, not
+  spacing, and were already flagged as intentionally untouched by the file's own Gate 1 comment.
+- Any value with no exact token match, including `20px` (11 occurrences) — a real gap between
+  `--space-4` (16px) and `--space-5` (24px), deliberately left as a literal rather than inventing a
+  new token mid-cleanup-gate; flagged for Aditya as a future decision, not made unilaterally.
+- Dimensional properties (`width`/`height` of fixed-size elements like icons, drawers, tracks) —
+  these coincide numerically with some tokens but aren't semantically "spacing," so tokenizing them
+  would blur what the token actually means without any real benefit.
+
+**Verified:** rebuilt (`node build.js`), full test suite (`cd tests && npm test`) — all 78 files
+still pass, zero failures, since this is a pure value-for-token swap with no visual change intended.
+Also did a real-Chromium pass (not just jsdom) per this project's own testing convention — opened the
+built `index.html`, zero console/page errors, and a Portfolio-page screenshot confirms KPI cards,
+toolbar, buttons, and the empty-state all render with unchanged spacing.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
