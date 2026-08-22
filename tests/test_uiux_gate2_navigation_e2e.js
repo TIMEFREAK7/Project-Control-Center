@@ -1,19 +1,22 @@
 // End-to-end jsdom test against the ACTUAL bundled index.html for the UI/UX Overhaul,
-// Gate 2 (Global Navigation) — REVISED per Aditya's explicit follow-up request: an
-// Outlook-Online-style nav instead of the persistent/collapsible sidebar this gate
-// originally shipped. There is no more `.sidebar` element in the DOM at any screen
-// size: navigation is hidden until the hamburger button (.icon-btn--menu, always
-// visible now, not CSS-hidden above 780px any more) is clicked, opening the full nav
-// as a left-anchored slide-in overlay (.drawer.drawer--left). Inside it, each group
-// (OVERVIEW/REGISTERS/PLANNING/OUTPUT) is its own click-to-expand accordion — the
-// group containing the current route starts expanded, the rest start collapsed.
+// Gate 2 (Global Navigation). Superseded again by PCC Redesign Gate 4
+// (Navigation Architecture), which reinstates a persistent, collapsible desktop
+// sidebar (`.sidebar`, id="app-sidebar") per the brief's explicit requirement —
+// this is a deliberate reversal of the Outlook-Online-style overlay-only nav
+// this file originally documented, not a regression. Below ~1024px width the
+// persistent sidebar is CSS-hidden and the hamburger (.icon-btn--menu) + overlay
+// drawer (.drawer.drawer--left) behavior below is unchanged — same DOM/markup,
+// same accordion groups, same `buildNavList()` renderer shared by both.
 //
-// settings.sidebar_collapsed (added for the original collapse-toggle version of this
-// gate, schema v51 -> v52) is now unused — nothing in layout.js reads or writes it any
-// more, since there's no persistent "collapsed vs expanded" state left to persist. The
-// field itself stays in the schema untouched (no migration change, no data loss),
-// consistent with how this app has retired fields before; store.js's own migration
-// tests still cover it existing and backfilling correctly, unrelated to this file.
+// Gate 4 also adds mutual-exclusion accordion behavior (opening one group
+// auto-collapses any other open group) and auto-expands the active route's
+// group on every route change, since the persistent sidebar — unlike the
+// overlay drawer — is never rebuilt on navigation.
+//
+// settings.sidebar_collapsed (added for the original collapse-toggle version of
+// this gate, schema v51 -> v52) is back in active use as of Gate 4: it now
+// persists the desktop sidebar's collapsed/expanded state via the collapse
+// toggle button in `.sidebar__header`.
 "use strict";
 const fs = require("fs");
 const path = require("path");
@@ -65,10 +68,10 @@ async function check(label, fn) {
 
   const win = dom.window;
 
-  await check("app boots on the bundled index.html without throwing, schema_version is 52, and there is no persistent .sidebar element", () => {
+  await check("app boots on the bundled index.html without throwing, schema_version is 52, and the persistent .sidebar element exists", () => {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
     assert.ok(win.PCC.store.get().schema_version >= 52);
-    assert.ok(!win.document.querySelector(".sidebar"), "there should be no persistent sidebar element any more");
+    assert.ok(win.document.querySelector(".sidebar"), "the persistent sidebar element should exist (Gate 4 reinstated it)");
   });
 
   await check("the hamburger menu button exists in the title block, and no nav overlay is open initially", () => {

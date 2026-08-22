@@ -2028,6 +2028,47 @@ Confirmed zero test risk before touching anything — grepped `tests/` for `.sid
   assertion in the check script, not just eyeballed.
 - **Not started**: Gates 4-12.
 
+**Gate 4 — Navigation Architecture, done, 2026-08-22.** Aditya said "start gate 4" directly, with
+one explicit addition: *"when i open one group other open group should collapse."*
+
+- **Resolves the contradiction Phase A's inspection flagged**: reinstates the persistent,
+  collapsible desktop sidebar the brief requires (expanded = icon+label, collapsed = icon-only
+  rail), reversing UI Modernization Gate 2's later revision to an overlay-only nav at every screen
+  size. Sidebar now shows at ≥1024px; below that, Gate 2's hamburger + overlay drawer is completely
+  unchanged — both share the exact same `buildNavList()` renderer, no second nav implementation
+  (per the brief's "reuse existing components" instruction). New `buildSidebar()` +
+  `toggleSidebarCollapse()` in `layout.js`; collapse state persists to `settings.sidebar_collapsed`
+  (a field that already existed, unused, since the original collapse-toggle version of Gate 2 — no
+  migration needed).
+- **Aditya's explicit addition — mutual-exclusion accordion**: opening one group
+  (OVERVIEW/REGISTERS/PLANNING/OUTPUT) now auto-collapses whichever other group was open. Since the
+  persistent sidebar (unlike the mobile drawer) is never rebuilt on navigation, `setActiveNav()` was
+  also extended to auto-expand the active route's group on every route change — a real gap that
+  would otherwise have shipped silently (sidebar going stale after clicking a link). One shared
+  module-level `expandedGroups` object + a new `syncGroupExpansionDOM()` sweep function keeps both
+  independently-built DOM trees (sidebar built once in `mount()`, drawer rebuilt fresh every open)
+  in sync from a single source of truth.
+- **A real CSS cascade bug, caught by testing, not assumed away**: the rule hiding the hamburger at
+  desktop widths was first placed early in the file, near `#app-shell` — before `.icon-btn`'s own
+  base `display:flex` rule defined later in "Shared components." Equal specificity + no
+  `!important` means CSS resolves the tie in favor of whichever rule is *later* in source order, so
+  the hamburger stayed visible at 1400px despite the media query. Fixed by moving the rule to after
+  `.icon-btn`'s base rule. Also avoided a second, unrelated landmine while fixing this: the
+  sidebar's own `@media (max-width:1023px)` hide rule, left as its own block, would have been a
+  second block at the exact same breakpoint as Gate 8's touch-target tier — harmless in the browser,
+  but a test isolating "the" 1023px block by regex grabbed the wrong one by source-order accident
+  (caught by the full suite re-run, not by inspection). Folded it into Gate 8's existing block
+  instead.
+- **Verified**: `node --check` on `layout.js`; full 73-file suite, 2090 checks, 0 failures —
+  including updating `test_uiux_gate2_navigation_e2e.js`'s stale "no persistent `.sidebar` element"
+  assertion left from Gate 2's overlay-only revision. Real-Chromium pass: desktop sidebar visible +
+  hamburger hidden at 1400px; mutual exclusion confirmed (expanding PLANNING collapses a
+  previously-open REGISTERS); route-change auto-expand confirmed (navigating to Risk Register
+  auto-expands REGISTERS, collapses PLANNING); collapse toggle brings the rail to 60px and persists
+  across reload; mobile at 500px shows the hamburger with the sidebar hidden, overlay drawer opens
+  and behaves exactly as before this gate. Zero console errors throughout.
+- **Not started**: Gates 5-12.
+
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
 `main` is fully up to date through **Tier 3, "final polish," Gate 4** (Gantt virtualization for
