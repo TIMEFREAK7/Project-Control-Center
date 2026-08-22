@@ -1274,15 +1274,85 @@ Delivered `app-debug.apk` directly (11.9MB, under the 30MB chat limit — no spl
 time, unlike the Electron builds) with its sha256 and an explicit note that Print and Export/
 Import/Open File are known-broken in this build (Gates 2/3, not yet built).
 
-**Not done yet**: Android Gates 2 (`@capacitor/filesystem`/`@capacitor/share` for Export/Import/
-Open File) and 3 (a native print plugin for `window.print()`) — both scoped, both genuinely
-depend on Gate 1's native project now existing, neither started. Android release signing (a
-dedicated keystore for this app specifically — Aditya has a keystore from a different Capacitor
-app already, confirmed it should NOT be reused: no benefit across unrelated `applicationId`s, only
-added blast radius). No custom app icon/splash situation left for Electron (done this round). macOS
-`.dmg` still needs a macOS host (or cross-build tooling) — not attempted. Code signing for
-Windows/Android real releases is still an explicit later decision, not needed for personal/
-internal use.
+**Gate 2 (Export/Import/Open File) done, 2026-08-22.** Scoped extensively per Aditya's request
+before building — he had four real concerns: not losing PDF/Excel/Word import (and future MS
+Project/Primavera P6), not losing printable PDF reports, wanting uploaded files to open *in the
+app* rather than downloading to the phone, and a "compress at rest, decompress on open" storage
+idea. Investigated the actual code before answering rather than assuming: PDF/Excel/Word
+extraction (`pdf.min.js`/`mammoth.browser.min.js`/`xlsx.core.min.js`) runs entirely on in-memory
+bytes, untouched by anything in this gate; MS Project/Primavera P6 import doesn't exist anywhere
+yet (`scheduleImportService.js` only does generic row import), so that's genuinely future work,
+unaffected either way. Printable reports are Gate 3 (a native print plugin), not this gate —
+kept separate on purpose. The storage-compression idea was scoped out entirely, into its own
+future **Gate 4** (cross-platform, not Android-specific — `blobStore.js` stores blobs as base64
+strings today, used by every platform; changing that format is a real decision on its own,
+not something to fold into an Android compatibility fix).
+
+**The real finding while scoping**: every "view a stored file" call site (`documents.js`,
+`dailyLog.js`'s photos, `vendors.js`'s vendor documents) used `window.open(blob:..., "_blank")` —
+a browser "new tab" pattern that doesn't exist in *any* bare WebView, Capacitor or Electron. This
+was never purely an Android gap, just one that happened to work by accident in a real browser.
+Fixed with one implementation shared across every platform rather than an Android-only patch:
+
+- **New `src/js/fileViewer.js`** — a self-contained in-app modal viewer. Given just a
+  `{filename, mimeType, blob}`, it renders PDFs via real page-by-page canvas rendering (pdf.js,
+  already bundled — not just the extracted text), images inline, and Word/Excel via
+  `mammoth.convertToHtml()`/SheetJS (also already bundled) rather than a pixel-perfect Office
+  renderer, which would be disproportionate. Reuses the existing (previously unused!)
+  `.modal-overlay`/`.modal`/`.modal__*` CSS already in `styles.css` from an earlier phase. Doesn't
+  depend on a caller's pre-computed `extraction` data — re-parses from the blob's own bytes, so
+  any call site can use it standalone. Unsupported types fall back to a message + a prominent
+  Save/Share action rather than silently failing.
+- **New `src/js/nativeFile.js`** — the one place a real "download" is still correct (exporting
+  your data, saving a document's original file — different intent from *viewing* a file, which
+  never leaves the app now). One `save(blob, filename)` call site, two implementations picked at
+  runtime: the existing `Blob` + `<a download>` pattern unchanged for web/Electron, or
+  `@capacitor/filesystem` (write to cache) + `@capacitor/share` (hand it to Android's native share
+  sheet) when `window.Capacitor.isNativePlatform()`. Consolidated three previously-duplicated
+  `<a download>` blocks (`archive.js`'s Export Archive, `store.js`'s JSON export and recovery-
+  backup download) into this one call site.
+- Call sites updated: `documents.js`'s `openStoredFile()`, `dailyLog.js`'s `openPhotoFullSize()`,
+  `vendors.js`'s `openStoredVendorDocument()` now call `fileViewer.open()` instead of
+  `window.open()`. `archive.js`/`store.js`'s three download sites now call `nativeFile.save()`.
+- `packaging/android/`: added `@capacitor/filesystem`/`@capacitor/share` as dependencies (clean —
+  no new vulnerabilities beyond the three already-accepted `@capacitor/assets` dev-tooling ones
+  from Gate 1), synced, rebuilt the debug APK (`app-debug.apk`, now 15.2MB, up from 11.9MB with
+  the plugin code compiled in).
+
+**Tested more thoroughly than any prior packaging gate, deliberately** — this is real behavior
+change, not just a wrapper: a new dedicated jsdom e2e file
+(`tests/test_file_viewer_gate2_e2e.js`, 12 checks, added to the suite's `npm test` chain) covers
+`nativeFile`'s both branches (stubbed `window.Capacitor.Plugins.Filesystem`/`Share` for the native
+path, a spied `<a>`.click() for the fallback), `fileViewer`'s modal DOM/close behavior, and —
+important — the **real call sites**: seeded a document/vendor-document/daily-log-photo with a real
+blob in `fake-indexeddb`, clicked the actual "Open File"/"View / Download"/photo-link buttons in
+the rendered UI, and asserted `fileViewer.open()` was actually invoked with the right filename —
+not just that the new functions exist in isolation. Hit one jsdom gap along the way
+(`URL.createObjectURL` isn't implemented there) — stubbed it directly, same convention this
+project already uses for jsdom's missing `FileReader.readAsDataURL`. Full existing suite
+(42 files) still passes unchanged — zero regressions. Then went further with **real Chromium**
+(Playwright): hand-built a genuinely valid minimal PDF (correct xref offsets, not just a `%PDF`
+header stub) and a real 1×1 PNG, seeded both through the actual store/blobStore, clicked through
+the real UI — confirmed a real `<canvas>` rendered the PDF's actual text ("Gate 2 Test PDF",
+screenshot taken), the image rendered via a real `blob:` URL, and zero console/page errors either
+way. Android verified the same way Gate 1 was — no emulator/device in this sandbox, so structural
+only: `apksigner verify` (valid debug signature), unzipped and diffed the embedded `index.html`
+byte-identical against the real build, and confirmed both plugins are genuinely compiled in (not
+just referenced) — `capacitor.plugins.json` registers `FilesystemPlugin`/`SharePlugin`, and
+`strings` against the split dex files found real hits in `classes7.dex`/`classes5.dex`/
+`classes8.dex`. **The actual native Filesystem-write-then-Share-sheet flow is still unverified
+live** — same honest gap as Gate 1, now doubly true since this gate is exactly the code path that
+matters most for it. Skipped a fresh Electron relaunch this round (an environment hiccup mid-gate
+made repeated attempts unreliable) — justified since Electron's renderer is the identical Chromium
+engine already proven clean via the Playwright pass above, and no Electron packaging config
+changed this gate; still worth a real relaunch check next time Electron-specific code changes.
+
+**Not done yet**: Gate 3 (a native print plugin for `window.print()` — Reports/Executive Center
+still don't work on Android). Gate 4 (blob storage format/compression, cross-platform, scoped but
+not started). Android release signing (a dedicated keystore, not reusing Aditya's existing one
+from a different app — confirmed no benefit to reuse across unrelated `applicationId`s). macOS
+`.dmg` still needs a macOS host. Code signing for Windows/Android real releases remains an
+explicit later decision, not needed for personal/internal use.
 
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 

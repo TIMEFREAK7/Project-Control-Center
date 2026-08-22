@@ -1187,11 +1187,7 @@
         var bytes = new Uint8Array(binary.length);
         for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
         var blob = new Blob([bytes], { type: mime });
-        var url = URL.createObjectURL(blob);
-        window.open(url, "_blank");
-        window.setTimeout(function () {
-          URL.revokeObjectURL(url);
-        }, 30000);
+        window.PCC.fileViewer.open({ filename: doc.filename, mimeType: mime, blob: blob });
       })
       .catch(function (e) {
         window.PCC.notify("Could not open this file: " + e.message, "error");

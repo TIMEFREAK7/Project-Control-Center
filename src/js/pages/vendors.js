@@ -184,11 +184,9 @@
     return VENDOR_DOCUMENT_CATEGORY_LABELS[doc.category] || doc.category;
   }
 
-  /** Reconstructs a stored vendor document from blobStore and opens/downloads it —
-   * same approach as documents.js's openStoredFile: PDFs typically render inline in a
-   * new tab, Word/Excel/etc. typically download. That's the existing app-wide
-   * convention for "view a stored file," kept consistent here rather than building a
-   * separate richer preview. */
+  /** Reconstructs a stored vendor document from blobStore and opens it in the shared
+   * in-app viewer (fileViewer.js) — same approach documents.js and dailyLog.js use, kept
+   * consistent app-wide rather than building a separate preview here. */
   function openStoredVendorDocument(doc) {
     window.PCC.blobStore
       .getBlob(doc.id)
@@ -206,11 +204,7 @@
         var bytes = new Uint8Array(binary.length);
         for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
         var blob = new Blob([bytes], { type: mime });
-        var url = URL.createObjectURL(blob);
-        window.open(url, "_blank");
-        window.setTimeout(function () {
-          URL.revokeObjectURL(url);
-        }, 30000);
+        window.PCC.fileViewer.open({ filename: doc.filename, mimeType: mime, blob: blob });
       })
       .catch(function (e) {
         window.PCC.notify("Could not open this file: " + e.message, "error");

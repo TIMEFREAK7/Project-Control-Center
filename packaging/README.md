@@ -51,11 +51,12 @@ Needs a JDK and the Android SDK (`compileSdkVersion`/`platforms;android-36` +
 repo root's `index.html` into `www/` and the shared icon into `assets/` before each
 sync/build — never hand-edit those, they're overwritten every time.
 
-**Gate 1 (bare wrapper) is done.** `window.print()` (Reports/Executive Center) and
-Export/Import/"Open File" (currently `Blob`/`window.open()`) both still need real native plugin
-work (`@capacitor/filesystem`, `@capacitor/share`, a print plugin) that a bare Android WebView
-doesn't give you for free — **both are known-broken in the current APK**, deferred to their own
-gates rather than bundled into the base wrapper.
+**Gate 1 (bare wrapper) and Gate 2 (Export/Import/Open File) are both done.** Gate 2 added
+`@capacitor/filesystem` + `@capacitor/share` and, more importantly, a shared in-app file viewer
+(`src/js/fileViewer.js`) used on every platform, not just Android — see the "Mobile & Desktop
+Packaging — Gate 2" entry in the main README for the full writeup. `window.print()`
+(Reports/Executive Center) still doesn't work on Android — that's Gate 3, a native print plugin,
+not yet started.
 
 Release signing isn't set up yet — Gate 1 only produces a debug build (signed with the standard
 Android debug key, not for distribution). When that gate happens: generate a **dedicated** keystore

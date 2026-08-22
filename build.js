@@ -29,6 +29,8 @@ const JS_ORDER = [
   "js/notifications.js",
   "js/router.js",
   "js/layout.js",
+  "js/nativeFile.js",
+  "js/fileViewer.js",
   "js/archive.js",
   "js/pages/dashboard.js",
   "js/pages/actionCentre.js",

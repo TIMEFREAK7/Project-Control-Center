@@ -12,17 +12,10 @@
     return dataUri.slice(commaIdx + 1);
   }
 
+  /** Delegates to nativeFile.js, which picks the browser-download or native Filesystem+Share
+   * path depending on platform — see that module's header comment for why. */
   function triggerDownload(blob, filename) {
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    window.setTimeout(function () {
-      URL.revokeObjectURL(url);
-    }, 30000);
+    window.PCC.nativeFile.save(blob, filename);
   }
 
   /** Adds each document's file into `folder` (a JSZip folder object), resolving each

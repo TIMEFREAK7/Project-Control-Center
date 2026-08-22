@@ -2831,6 +2831,39 @@ or handle the app's Blob-download pattern the way a full browser does; both need
 plugin work: `@capacitor/filesystem`, `@capacitor/share`, a print plugin). Release signing is also
 not set up — this is a debug build only, signed with the standard Android debug key.
 
+## Mobile & Desktop Packaging — Gate 2: Export/Import/Open File (2026-08-22)
+
+Scoped extensively before building, per four concerns: not losing PDF/Excel/Word import (or
+future MS Project/Primavera P6), not losing printable PDF reports, wanting uploaded files to open
+*in the app* rather than download to the phone, and a "compress at rest" storage idea. First two
+turned out to be non-issues — extraction is pure in-memory JS untouched by this gate, and MS
+Project/Primavera P6 import doesn't exist yet anywhere so nothing was at risk either way. Print is
+its own Gate 3, kept separate. The compression idea was scoped into a future, cross-platform
+Gate 4 rather than folded in here, since it touches `blobStore.js`'s on-disk format for every
+platform, not an Android-specific fix.
+
+**What changed**: every "view a stored file" flow (Documents, Daily Log photos, Vendor documents)
+used `window.open(blob:..., "_blank")` — a browser "new tab" that doesn't exist in *any* bare
+WebView, Capacitor or Electron. Replaced with one implementation shared across every platform:
+`src/js/fileViewer.js`, a self-contained in-app modal that renders PDFs via real pdf.js page
+rendering, images inline, and Word/Excel via the already-bundled mammoth.js/SheetJS — and
+`src/js/nativeFile.js`, a single `save()` call site that picks the existing browser-download
+pattern on web/Electron or `@capacitor/filesystem` + `@capacitor/share` (native share sheet) on
+Android. Consolidated three previously-duplicated download blocks into the same helper.
+
+**Tested more thoroughly than prior packaging gates** since this changes real behavior, not just
+wraps it: a new 12-check jsdom e2e suite (`tests/test_file_viewer_gate2_e2e.js`) covers both
+`nativeFile` branches and exercises the *actual* Open File/View-Download/photo-link buttons in the
+rendered UI, not just the new functions in isolation — full existing suite (42 files) still passes
+unchanged. Then real Chromium via Playwright: a genuinely valid hand-built PDF and a real PNG,
+seeded through the real store, clicked through the real UI — confirmed an actual `<canvas>`
+rendered real PDF text and a real image rendered via `blob:`, zero console errors either way
+(screenshots taken). Android: structurally verified the same way Gate 1 was (no emulator in this
+sandbox) — signature valid, embedded `index.html` byte-identical, and confirmed both plugins are
+genuinely compiled into the APK's dex files, not just referenced in a manifest. The live native
+Filesystem-write-then-Share flow itself is still unverified on a real device — flagged directly,
+not glossed over.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →

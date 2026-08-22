@@ -319,13 +319,11 @@
     return f.key !== "log_date";
   });
 
-  /** Converts a stored base64 data URI back into a Blob and opens it via a blob: URL.
-   * Deliberately NOT a raw <a href="data:..."> — Chrome (especially on Android) blocks
-   * top-level navigation to data: URIs as a security measure, which is exactly the
-   * "about:blank#blocked" failure this replaces. Same pattern documents.js uses for
-   * "Open File". The data itself may be inline on `photo.file_data` (a legacy record
-   * predating the IndexedDB migration) or need fetching by id — blobStore.resolve()
-   * handles that dual-path lookup. */
+  /** Converts a stored base64 data URI back into a Blob and opens it in the shared in-app
+   * viewer (fileViewer.js) rather than a browser new-tab — a bare WebView (Capacitor or
+   * Electron) has no "new tab" for window.open() to open into. The data itself may be inline
+   * on `photo.file_data` (a legacy record predating the IndexedDB migration) or need fetching
+   * by id — blobStore.resolve() handles that dual-path lookup. */
   function openPhotoFullSize(photo) {
     window.PCC.blobStore
       .resolve(photo.id, photo.file_data)
@@ -343,11 +341,8 @@
         var bytes = new Uint8Array(binary.length);
         for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
         var blob = new Blob([bytes], { type: mime });
-        var url = URL.createObjectURL(blob);
-        window.open(url, "_blank");
-        window.setTimeout(function () {
-          URL.revokeObjectURL(url);
-        }, 30000);
+        var filename = (photo.caption || "photo").replace(/[\\/:*?"<>|]/g, "-") + ".jpg";
+        window.PCC.fileViewer.open({ filename: filename, mimeType: mime, blob: blob });
       })
       .catch(function (e) {
         window.PCC.notify("Could not open this photo: " + e.message, "error");

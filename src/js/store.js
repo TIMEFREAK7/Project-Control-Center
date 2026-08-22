@@ -2757,17 +2757,11 @@
     });
     return Promise.all(fetches).then(function () {
       var blob = new Blob([JSON.stringify(clone, null, 2)], { type: "application/json" });
-      var url = URL.createObjectURL(blob);
-      var a = document.createElement("a");
       var stamp = new Date().toISOString().slice(0, 10);
-      a.href = url;
-      a.download = "project-data-" + stamp + ".json";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      persistToLocalStorage();
-      notifyListeners();
+      return window.PCC.nativeFile.save(blob, "project-data-" + stamp + ".json").then(function () {
+        persistToLocalStorage();
+        notifyListeners();
+      });
     });
   }
 
@@ -2801,14 +2795,7 @@
     }
     if (raw === null || raw === undefined) return false;
     var blob = new Blob([raw], { type: "text/plain" });
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement("a");
-    a.href = url;
-    a.download = key + ".txt";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    window.PCC.nativeFile.save(blob, key + ".txt");
     return true;
   }
 
