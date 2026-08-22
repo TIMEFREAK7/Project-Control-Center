@@ -3116,6 +3116,26 @@ full 78-file test suite — 2089 checks, 0 failures; real-Chromium pass across a
 **Not done:** the C2 scale-snapping pass for these same six files (parallel to Gate B2), and Gates
 D-F (loading-state pattern, icon system, empty-state/motion polish) — all pending Aditya's call.
 
+## UI Modernization — Gate C2: Scale-Snapping, Batch 2 (2026-08-22)
+
+Same B2 treatment, now for Gate C's six files: `documents.js`, `meetings.js`, `resources.js`,
+`delayRecoveryDashboard.js`, `settings.js`, `rfis.js`. Identical snapping rule (nearest token by
+distance, ties round up) applied without any new judgment calls — every value encountered across
+these six files matched a pattern already established in Gate B2.
+
+**Explicitly excluded, same categories as before:** negative margins (`-8px`, appearing in
+`documents.js`/`resources.js`/`rfis.js`), values ≤3px (`2px` micro-adjustments in `meetings.js`/
+`rfis.js`), and literal `0`/`"0 0 2px"` shorthand values with nothing tokenizable.
+
+**Verified:** all six files pass `node --check`; every remaining literal confirmed (via grep) to be
+an intended exclusion; full 78-file test suite — 2089 checks, 0 failures; real-Chromium pass across
+all six touched pages, zero console errors.
+
+With C2 done, **all ten page files identified in the original 6-gate UI Modernization plan now use
+the design-token system for their exact and near-miss spacing/typography values.** Remaining work:
+Gates D-F (loading-state pattern, icon system, empty-state/motion polish) — none started, all
+pending Aditya's call on priority.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →

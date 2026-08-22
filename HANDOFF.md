@@ -1734,6 +1734,23 @@ rendering shifts (0.5-4px per instance), not a zero-visual-change gate like A/B1
 - **Not started**: C2 (scale-snapping for these six files, parallel to Gate B2) and Gates D-F
   (loading-state pattern, icon system, empty-state/motion polish) — pending Aditya's call.
 
+**Gate C2 — Scale-Snapping, Batch 2, done, 2026-08-22.** Same B2 treatment applied to Gate C's six
+files (`documents.js`, `meetings.js`, `resources.js`, `delayRecoveryDashboard.js`, `settings.js`,
+`rfis.js`) — identical snapping rule (nearest token by distance, ties round up), no new judgment
+calls needed since every value encountered matched a pattern already established in B2.
+
+- **Excluded, same categories as B2**: negative margins (`-8px`), values ≤3px (`2px` micro-
+  adjustments), and literal `0`/zero-only shorthand components.
+- **Verified**: all six files pass `node --check`; every remaining literal confirmed an intended
+  exclusion; full 78-file test suite — 2089 checks, 0 failures; real-Chromium pass across all six
+  pages, zero console errors.
+- **Milestone**: with C2 done, all ten page files from the original 6-gate UI Modernization plan
+  (`vendors.js`, `executiveCenter.js`, `portfolio.js`, `schedule.js`, `documents.js`, `meetings.js`,
+  `resources.js`, `delayRecoveryDashboard.js`, `settings.js`, `rfis.js`) now consistently use the
+  design-token system for spacing/typography, both exact and near-miss values. Gates A through C are
+  fully complete. Remaining: Gates D-F (loading-state pattern, icon system, empty-state/motion
+  polish) — none started, all still pending Aditya's priority call.
+
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
 `main` is fully up to date through **Tier 3, "final polish," Gate 4** (Gantt virtualization for

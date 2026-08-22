@@ -97,7 +97,7 @@
     row.style.gap = "var(--space-2)";
     row.style.padding = "var(--space-2) 0";
     row.style.borderBottom = "1px solid var(--divider)";
-    row.style.fontSize = "13px";
+    row.style.fontSize = "var(--text-sm)";
 
     var overdue = recoveryActionOverdue(r);
     var left = document.createElement("div");
@@ -163,7 +163,7 @@
     var sub = document.createElement("p");
     sub.className = "text-secondary";
     sub.style.marginTop = "0";
-    sub.style.marginBottom = "20px";
+    sub.style.marginBottom = "var(--space-5)";
     sub.textContent =
       actions.length === 0 && delayRecords.length === 0
         ? "Nothing logged across the active portfolio yet — add a recovery action or delay record from an activity's own Detail Panel in the Schedule module (Gantt tab)."
@@ -210,8 +210,8 @@
       });
 
       var causeLine = document.createElement("p");
-      causeLine.style.fontSize = "13px";
-      causeLine.style.marginBottom = "6px";
+      causeLine.style.fontSize = "var(--text-sm)";
+      causeLine.style.marginBottom = "var(--space-2)";
       causeLine.innerHTML =
         "<strong>By cause:</strong> " +
         window.PCC.store.DELAY_RECORD_CAUSES.filter(function (c) { return byCause[c]; })
@@ -221,7 +221,7 @@
 
       var severityOrder = ["Severe (>15d)", "Moderate (5-15d)", "Minor (<5d)", "Unspecified"];
       var severityLine = document.createElement("p");
-      severityLine.style.fontSize = "13px";
+      severityLine.style.fontSize = "var(--text-sm)";
       severityLine.innerHTML =
         "<strong>By severity:</strong> " +
         severityOrder.filter(function (s) { return bySeverity[s]; })
@@ -251,7 +251,7 @@
           row.style.gap = "var(--space-2)";
           row.style.padding = "var(--space-2) 0";
           row.style.borderBottom = "1px solid var(--divider)";
-          row.style.fontSize = "13px";
+          row.style.fontSize = "var(--text-sm)";
 
           var left = document.createElement("div");
           left.innerHTML =
@@ -317,7 +317,7 @@
 
       var gapKpiGrid = document.createElement("div");
       gapKpiGrid.className = "kpi-grid";
-      gapKpiGrid.style.marginTop = "10px";
+      gapKpiGrid.style.marginTop = "var(--space-3)";
       gapKpiGrid.appendChild(kpiCard("UNADDRESSED DELAY (DAYS)", totalUnaddressedGapDays, totalUnaddressedGapDays > 0 ? "--status-critical" : null));
       wrap.appendChild(gapKpiGrid);
 
@@ -337,7 +337,7 @@
           row.style.gap = "var(--space-2)";
           row.style.padding = "var(--space-2) 0";
           row.style.borderBottom = "1px solid var(--divider)";
-          row.style.fontSize = "13px";
+          row.style.fontSize = "var(--text-sm)";
           var left = document.createElement("div");
           left.innerHTML =
             "<strong>" + (g.activity ? g.activity.name : "(deleted activity)") + "</strong>" +
@@ -405,7 +405,7 @@
     if (estDaysTotal > 0 || estCostTotal > 0) {
       var estGrid = document.createElement("div");
       estGrid.className = "kpi-grid";
-      estGrid.style.marginTop = "10px";
+      estGrid.style.marginTop = "var(--space-3)";
       estGrid.appendChild(kpiCard("EST. RECOVERY DAYS (OPEN)", estDaysTotal, null));
       estGrid.appendChild(kpiCard("EST. RECOVERY COST (OPEN)", fmtMoney(estCostTotal) || "0", null));
       wrap.appendChild(estGrid);
@@ -422,7 +422,7 @@
     if (openSorted.length === 0) {
       var noOpen = document.createElement("p");
       noOpen.className = "text-secondary";
-      noOpen.style.fontSize = "13px";
+      noOpen.style.fontSize = "var(--text-sm)";
       noOpen.textContent = "No open recovery actions — every logged action has been completed or cancelled.";
       openPanel.appendChild(noOpen);
     } else {
@@ -443,7 +443,7 @@
     if (closed.length === 0) {
       var noClosed = document.createElement("p");
       noClosed.className = "text-secondary";
-      noClosed.style.fontSize = "13px";
+      noClosed.style.fontSize = "var(--text-sm)";
       noClosed.textContent = "None yet.";
       closedPanel.appendChild(noClosed);
     } else {

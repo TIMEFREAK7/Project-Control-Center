@@ -330,7 +330,7 @@
 
     var note = document.createElement("p");
     note.className = "text-secondary";
-    note.style.fontSize = "12px";
+    note.style.fontSize = "var(--text-sm)";
     note.style.margin = "0 0 var(--space-2)";
     note.textContent =
       "Reference only \u2014 tracks the filename and details, but the actual audio/video file has to be " +
@@ -384,7 +384,7 @@
     panel.style.marginBottom = "var(--space-4)";
 
     var heading = document.createElement("h3");
-    heading.style.marginBottom = "14px";
+    heading.style.marginBottom = "var(--space-4)";
     heading.textContent = isNew ? "Add Meeting" : "Edit Meeting";
     panel.appendChild(heading);
 
@@ -498,14 +498,14 @@
 
     var errorMsg = document.createElement("p");
     errorMsg.style.color = "var(--status-critical)";
-    errorMsg.style.fontSize = "13px";
+    errorMsg.style.fontSize = "var(--text-sm)";
     errorMsg.style.display = "none";
     errorMsg.textContent = "Project, Title, and Date are required.";
     form.appendChild(errorMsg);
 
     var actionsRow2 = document.createElement("div");
     actionsRow2.style.display = "flex";
-    actionsRow2.style.gap = "10px";
+    actionsRow2.style.gap = "var(--space-3)";
     actionsRow2.style.marginTop = "var(--space-3)";
 
     var saveBtn = document.createElement("button");
@@ -675,12 +675,12 @@
       if (linkedActivity) {
         var activityRow = document.createElement("div");
         activityRow.style.marginTop = "var(--space-3)";
-        activityRow.style.paddingTop = "10px";
+        activityRow.style.paddingTop = "var(--space-3)";
         activityRow.style.borderTop = "1px solid var(--divider)";
         activityRow.style.display = "flex";
         activityRow.style.justifyContent = "space-between";
         activityRow.style.alignItems = "center";
-        activityRow.style.fontSize = "13px";
+        activityRow.style.fontSize = "var(--text-sm)";
 
         var activityLabel = document.createElement("span");
         activityLabel.innerHTML = "<span class='detail-item__label'>LINKED ACTIVITY</span>" + linkedActivity.name;
@@ -702,15 +702,15 @@
     if (m.actions.length > 0) {
       var actionsHeading = document.createElement("p");
       actionsHeading.className = "detail-item__label";
-      actionsHeading.style.marginTop = "14px";
-      actionsHeading.style.marginBottom = "6px";
+      actionsHeading.style.marginTop = "var(--space-4)";
+      actionsHeading.style.marginBottom = "var(--space-2)";
       actionsHeading.textContent = "ACTION ITEMS";
       wrap.appendChild(actionsHeading);
 
       var list = document.createElement("div");
       list.style.display = "flex";
       list.style.flexDirection = "column";
-      list.style.gap = "6px";
+      list.style.gap = "var(--space-2)";
 
       var linkData = window.PCC.store.get();
       m.actions.forEach(function (a) {
@@ -718,7 +718,7 @@
         row.style.display = "flex";
         row.style.justifyContent = "space-between";
         row.style.alignItems = "center";
-        row.style.fontSize = "13px";
+        row.style.fontSize = "var(--text-sm)";
         row.style.gap = "var(--space-2)";
 
         var overdue = isOverdue(a);
@@ -763,8 +763,8 @@
     if (m.recordings && m.recordings.length > 0) {
       var recHeading = document.createElement("p");
       recHeading.className = "detail-item__label";
-      recHeading.style.marginTop = "14px";
-      recHeading.style.marginBottom = "6px";
+      recHeading.style.marginTop = "var(--space-4)";
+      recHeading.style.marginBottom = "var(--space-2)";
       recHeading.textContent = "RECORDINGS";
       wrap.appendChild(recHeading);
 
@@ -775,7 +775,7 @@
 
       m.recordings.forEach(function (r) {
         var row = document.createElement("p");
-        row.style.fontSize = "13px";
+        row.style.fontSize = "var(--text-sm)";
         row.style.margin = "0";
         row.className = "mono";
         row.textContent =
@@ -804,14 +804,14 @@
     if (linkedRisks.length > 0) {
       var risksHeading = document.createElement("p");
       risksHeading.className = "detail-item__label";
-      risksHeading.style.marginTop = "14px";
-      risksHeading.style.marginBottom = "6px";
+      risksHeading.style.marginTop = "var(--space-4)";
+      risksHeading.style.marginBottom = "var(--space-2)";
       risksHeading.textContent = "RISKS / ISSUES RAISED (" + linkedRisks.length + ")";
       wrap.appendChild(risksHeading);
 
       linkedRisks.forEach(function (r) {
         var row = document.createElement("p");
-        row.style.fontSize = "13px";
+        row.style.fontSize = "var(--text-sm)";
         row.style.margin = "0 0 2px";
         row.textContent = r.title || "(untitled)";
         wrap.appendChild(row);
@@ -825,14 +825,14 @@
     if (linkedRfis.length > 0) {
       var rfisHeading = document.createElement("p");
       rfisHeading.className = "detail-item__label";
-      rfisHeading.style.marginTop = "14px";
-      rfisHeading.style.marginBottom = "6px";
+      rfisHeading.style.marginTop = "var(--space-4)";
+      rfisHeading.style.marginBottom = "var(--space-2)";
       rfisHeading.textContent = "RFI / TQ RAISED (" + linkedRfis.length + ")";
       wrap.appendChild(rfisHeading);
 
       linkedRfis.forEach(function (r) {
         var row = document.createElement("p");
-        row.style.fontSize = "13px";
+        row.style.fontSize = "var(--text-sm)";
         row.style.margin = "0 0 2px";
         row.innerHTML = "<span class='mono'>" + r.number + "</span> \u2014 " + (r.subject || "(untitled)");
         wrap.appendChild(row);
@@ -846,14 +846,14 @@
     if (linkedChangeOrders.length > 0) {
       var coHeading = document.createElement("p");
       coHeading.className = "detail-item__label";
-      coHeading.style.marginTop = "14px";
-      coHeading.style.marginBottom = "6px";
+      coHeading.style.marginTop = "var(--space-4)";
+      coHeading.style.marginBottom = "var(--space-2)";
       coHeading.textContent = "CHANGE ORDERS RAISED (" + linkedChangeOrders.length + ")";
       wrap.appendChild(coHeading);
 
       linkedChangeOrders.forEach(function (co) {
         var row = document.createElement("p");
-        row.style.fontSize = "13px";
+        row.style.fontSize = "var(--text-sm)";
         row.style.margin = "0 0 2px";
         row.innerHTML = "<span class='mono'>" + co.number + "</span> \u2014 " + (co.title || "(untitled)");
         wrap.appendChild(row);
@@ -867,14 +867,14 @@
     if (linkedDecisions.length > 0) {
       var decisionsHeading = document.createElement("p");
       decisionsHeading.className = "detail-item__label";
-      decisionsHeading.style.marginTop = "14px";
-      decisionsHeading.style.marginBottom = "6px";
+      decisionsHeading.style.marginTop = "var(--space-4)";
+      decisionsHeading.style.marginBottom = "var(--space-2)";
       decisionsHeading.textContent = "DECISIONS RAISED (" + linkedDecisions.length + ")";
       wrap.appendChild(decisionsHeading);
 
       linkedDecisions.forEach(function (d) {
         var row = document.createElement("p");
-        row.style.fontSize = "13px";
+        row.style.fontSize = "var(--text-sm)";
         row.style.margin = "0 0 2px";
         row.textContent = d.title || "(untitled)";
         wrap.appendChild(row);
@@ -884,8 +884,8 @@
     if (linkedDocs.length > 0) {
       var docsHeading = document.createElement("p");
       docsHeading.className = "detail-item__label";
-      docsHeading.style.marginTop = "14px";
-      docsHeading.style.marginBottom = "6px";
+      docsHeading.style.marginTop = "var(--space-4)";
+      docsHeading.style.marginBottom = "var(--space-2)";
       docsHeading.textContent = "ATTACHED DOCUMENTS (" + linkedDocs.length + ")";
       wrap.appendChild(docsHeading);
 
@@ -894,7 +894,7 @@
         row.style.display = "flex";
         row.style.justifyContent = "space-between";
         row.style.alignItems = "center";
-        row.style.fontSize = "13px";
+        row.style.fontSize = "var(--text-sm)";
         row.style.marginBottom = "2px";
 
         var label = document.createElement("span");
@@ -919,8 +919,8 @@
     var quickActions = document.createElement("div");
     quickActions.style.display = "flex";
     quickActions.style.gap = "var(--space-2)";
-    quickActions.style.marginTop = "14px";
-    quickActions.style.paddingTop = "10px";
+    quickActions.style.marginTop = "var(--space-4)";
+    quickActions.style.paddingTop = "var(--space-3)";
     quickActions.style.borderTop = "1px solid var(--divider)";
 
     var addRiskBtn = document.createElement("button");
@@ -1013,11 +1013,11 @@
     var list = document.createElement("div");
     list.style.display = "flex";
     list.style.flexDirection = "column";
-    list.style.gap = "6px";
+    list.style.gap = "var(--space-2)";
 
     overdueItems.slice(0, 8).forEach(function (entry) {
       var row = document.createElement("div");
-      row.style.fontSize = "13px";
+      row.style.fontSize = "var(--text-sm)";
       row.style.display = "flex";
       row.style.justifyContent = "space-between";
       row.innerHTML =

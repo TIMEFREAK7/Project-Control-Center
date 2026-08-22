@@ -118,7 +118,7 @@
     panel.style.marginBottom = "var(--space-4)";
 
     var heading = document.createElement("h3");
-    heading.style.marginBottom = "14px";
+    heading.style.marginBottom = "var(--space-4)";
     heading.textContent = isNew ? "Add Resource" : "Edit Resource";
     panel.appendChild(heading);
 
@@ -185,14 +185,14 @@
 
     var errorMsg = document.createElement("p");
     errorMsg.style.color = "var(--status-critical)";
-    errorMsg.style.fontSize = "13px";
+    errorMsg.style.fontSize = "var(--text-sm)";
     errorMsg.style.display = "none";
     errorMsg.textContent = "Name is required.";
     form.appendChild(errorMsg);
 
     var actions = document.createElement("div");
     actions.style.display = "flex";
-    actions.style.gap = "10px";
+    actions.style.gap = "var(--space-3)";
     actions.style.marginTop = "var(--space-3)";
 
     var saveBtn = document.createElement("button");
@@ -336,7 +336,7 @@
         card.style.alignItems = "center";
         card.style.gap = "var(--space-3)";
         card.style.flexWrap = "wrap";
-        card.style.marginBottom = "6px";
+        card.style.marginBottom = "var(--space-2)";
 
         var main = document.createElement("div");
         main.innerHTML =
@@ -410,7 +410,7 @@
     panel.style.marginBottom = "var(--space-4)";
 
     var heading = document.createElement("h3");
-    heading.style.marginBottom = "14px";
+    heading.style.marginBottom = "var(--space-4)";
     heading.textContent = isNew ? "Add Assignment" : "Edit Assignment";
     panel.appendChild(heading);
 
@@ -582,14 +582,14 @@
 
     var errorMsg = document.createElement("p");
     errorMsg.style.color = "var(--status-critical)";
-    errorMsg.style.fontSize = "13px";
+    errorMsg.style.fontSize = "var(--text-sm)";
     errorMsg.style.display = "none";
     errorMsg.textContent = "Resource, Activity, and a positive Quantity are required.";
     form.appendChild(errorMsg);
 
     var actions = document.createElement("div");
     actions.style.display = "flex";
-    actions.style.gap = "10px";
+    actions.style.gap = "var(--space-3)";
     actions.style.marginTop = "var(--space-3)";
 
     var saveBtn = document.createElement("button");
@@ -684,7 +684,7 @@
     if (uiState.assignmentProjectFilter) {
       var filterNote = document.createElement("span");
       filterNote.className = "text-secondary";
-      filterNote.style.fontSize = "12px";
+      filterNote.style.fontSize = "var(--text-sm)";
       filterNote.style.alignSelf = "center";
       filterNote.textContent = "Filtered to " + projectName(data.projects, uiState.assignmentProjectFilter);
       toolbar.appendChild(filterNote);
@@ -751,7 +751,7 @@
         card.style.alignItems = "center";
         card.style.gap = "var(--space-3)";
         card.style.flexWrap = "wrap";
-        card.style.marginBottom = "6px";
+        card.style.marginBottom = "var(--space-2)";
 
         var qtyText = "planned " + a.quantity + (a.actual_quantity != null ? ", actual " + a.actual_quantity : "");
         var extraParts = [];
@@ -829,7 +829,7 @@
     panel.style.marginBottom = "var(--space-4)";
 
     var heading = document.createElement("h3");
-    heading.style.marginBottom = "14px";
+    heading.style.marginBottom = "var(--space-4)";
     heading.textContent = isNew ? "Add Leave / Unavailable Period" : "Edit Leave / Unavailable Period";
     panel.appendChild(heading);
 
@@ -917,14 +917,14 @@
 
     var errorMsg = document.createElement("p");
     errorMsg.style.color = "var(--status-critical)";
-    errorMsg.style.fontSize = "13px";
+    errorMsg.style.fontSize = "var(--text-sm)";
     errorMsg.style.display = "none";
     errorMsg.textContent = "Resource, Start Date, End Date (on or after Start Date), and a positive Quantity are required.";
     form.appendChild(errorMsg);
 
     var actions = document.createElement("div");
     actions.style.display = "flex";
-    actions.style.gap = "10px";
+    actions.style.gap = "var(--space-3)";
     actions.style.marginTop = "var(--space-3)";
 
     var saveBtn = document.createElement("button");
@@ -1065,7 +1065,7 @@
         card.style.alignItems = "center";
         card.style.gap = "var(--space-3)";
         card.style.flexWrap = "wrap";
-        card.style.marginBottom = "6px";
+        card.style.marginBottom = "var(--space-2)";
 
         var main = document.createElement("div");
         main.innerHTML =
@@ -1126,7 +1126,7 @@
     if (!utilisation.available || utilisation.days.length === 0) {
       var empty = document.createElement("p");
       empty.className = "text-secondary";
-      empty.style.fontSize = "13px";
+      empty.style.fontSize = "var(--text-sm)";
       empty.textContent = utilisation.available ? "No dated assignments to chart yet." : "Max Availability isn't set for this resource, so utilisation can't be computed.";
       container.appendChild(empty);
       return;
@@ -1179,7 +1179,7 @@
     if (timeline.days.length === 0) {
       var empty = document.createElement("p");
       empty.className = "text-secondary";
-      empty.style.fontSize = "13px";
+      empty.style.fontSize = "var(--text-sm)";
       empty.textContent = "No dated assignments to chart yet.";
       container.appendChild(empty);
       return;
@@ -1240,7 +1240,7 @@
     if (portfolioSummary.length === 0) {
       var okP = document.createElement("p");
       okP.className = "text-secondary";
-      okP.style.fontSize = "13px";
+      okP.style.fontSize = "var(--text-sm)";
       okP.textContent = "No resources are currently over-allocated on any dated assignment.";
       summaryPanel.appendChild(okP);
     } else {
@@ -1249,7 +1249,7 @@
         row.style.display = "flex";
         row.style.justifyContent = "space-between";
         row.style.alignItems = "center";
-        row.style.fontSize = "13px";
+        row.style.fontSize = "var(--text-sm)";
         row.style.marginBottom = "var(--space-1)";
         var text = document.createElement("span");
         text.innerHTML = "<strong>" + esc(s.resourceName) + "</strong> — " + s.overAllocatedDayCount + " over-allocated day(s), worst +" + s.maxOverBy;
@@ -1324,7 +1324,7 @@
 
     if (utilisation.available && utilisation.totalShortfallUnitDays > 0) {
       var shortageNote = document.createElement("p");
-      shortageNote.style.fontSize = "12px";
+      shortageNote.style.fontSize = "var(--text-sm)";
       shortageNote.style.color = "var(--status-critical)";
       shortageNote.style.marginTop = "-8px";
       shortageNote.style.marginBottom = "var(--space-3)";
@@ -1336,7 +1336,7 @@
     if (!overAlloc.available) {
       var noteP = document.createElement("p");
       noteP.className = "text-secondary";
-      noteP.style.fontSize = "12px";
+      noteP.style.fontSize = "var(--text-sm)";
       noteP.style.marginTop = "-8px";
       noteP.style.marginBottom = "var(--space-3)";
       noteP.textContent = "Max Availability isn't set for this resource, so over-allocation can't be computed — set it in the Register tab.";
@@ -1346,8 +1346,8 @@
     if (timeline.skippedCount > 0) {
       var skipNote = document.createElement("p");
       skipNote.className = "text-secondary";
-      skipNote.style.fontSize = "12px";
-      skipNote.style.marginBottom = "10px";
+      skipNote.style.fontSize = "var(--text-sm)";
+      skipNote.style.marginBottom = "var(--space-3)";
       skipNote.textContent = timeline.skippedCount + " assignment(s) excluded from this chart (milestone, undated, or zero-quantity activity).";
       container.appendChild(skipNote);
     }
@@ -1386,7 +1386,7 @@
       unavPanel.appendChild(unavHeading);
       resourceUnavailability.forEach(function (u) {
         var row = document.createElement("p");
-        row.style.fontSize = "13px";
+        row.style.fontSize = "var(--text-sm)";
         row.style.margin = "var(--space-1) 0";
         row.textContent = u.start_date + " to " + u.end_date + " — " + u.quantity + " unavailable" + (u.reason ? " (" + u.reason + ")" : "");
         unavPanel.appendChild(row);
@@ -1405,7 +1405,7 @@
       overAlloc.overAllocatedDays.slice(0, 20).forEach(function (day) {
         var dayRow = document.createElement("div");
         dayRow.className = "detail-card";
-        dayRow.style.marginBottom = "6px";
+        dayRow.style.marginBottom = "var(--space-2)";
         dayRow.innerHTML =
           "<strong>" + day.date + "</strong> — " + day.allocated + " needed vs " + day.available + " available (+" + day.overBy + ")<br/>" +
           "<span class='text-secondary' style='font-size:12px;'>" +
@@ -1418,7 +1418,7 @@
       if (overAlloc.count > 20) {
         var more = document.createElement("p");
         more.className = "text-secondary";
-        more.style.fontSize = "12px";
+        more.style.fontSize = "var(--text-sm)";
         more.textContent = "+" + (overAlloc.count - 20) + " more over-allocated day(s) not shown.";
         conflictPanel.appendChild(more);
       }
@@ -1440,12 +1440,12 @@
 
     var h1 = document.createElement("h2");
     h1.textContent = "Resource Management";
-    h1.style.marginBottom = "6px";
+    h1.style.marginBottom = "var(--space-2)";
     outlet.appendChild(h1);
 
     var sub = document.createElement("p");
     sub.className = "text-secondary";
-    sub.style.fontSize = "12px";
+    sub.style.fontSize = "var(--text-sm)";
     sub.style.marginBottom = "var(--space-4)";
     sub.textContent =
       "A shared resource pool assigned to Schedule activities across every project, with cross-project over-allocation, leave-adjusted availability, and utilisation tracking. Quantity/availability only — no cost linkage.";

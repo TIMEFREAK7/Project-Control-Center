@@ -386,11 +386,11 @@
 
   function renderExcelPreview(extraction) {
     var wrap = document.createElement("div");
-    wrap.style.marginTop = "10px";
+    wrap.style.marginTop = "var(--space-3)";
 
     var note = document.createElement("p");
     note.className = "text-secondary";
-    note.style.fontSize = "12px";
+    note.style.fontSize = "var(--text-sm)";
     note.style.marginBottom = "var(--space-2)";
     note.textContent =
       "Extracted from sheet \u201c" +
@@ -413,7 +413,7 @@
     var table = document.createElement("table");
     table.style.borderCollapse = "collapse";
     table.style.width = "100%";
-    table.style.fontSize = "12px";
+    table.style.fontSize = "var(--text-sm)";
     table.className = "mono";
 
     var thead = document.createElement("thead");
@@ -422,7 +422,7 @@
       var th = document.createElement("th");
       th.textContent = h || "\u2014";
       th.style.textAlign = "left";
-      th.style.padding = "6px 10px";
+      th.style.padding = "var(--space-2) var(--space-3)";
       th.style.borderBottom = "1px solid var(--divider)";
       th.style.position = "sticky";
       th.style.top = "0";
@@ -438,7 +438,7 @@
       row.forEach(function (cell) {
         var td = document.createElement("td");
         td.textContent = cell;
-        td.style.padding = "5px 10px";
+        td.style.padding = "var(--space-1) var(--space-3)";
         td.style.borderBottom = "1px solid var(--divider)";
         tr.appendChild(td);
       });
@@ -462,11 +462,11 @@
 
   function renderTextPreview(extraction) {
     var wrap = document.createElement("div");
-    wrap.style.marginTop = "10px";
+    wrap.style.marginTop = "var(--space-3)";
 
     var note = document.createElement("p");
     note.className = "text-secondary";
-    note.style.fontSize = "12px";
+    note.style.fontSize = "var(--text-sm)";
     note.style.marginBottom = "var(--space-2)";
     note.textContent =
       extraction.char_count.toLocaleString() +
@@ -481,7 +481,7 @@
     var box = document.createElement("div");
     box.className = "mono";
     box.style.whiteSpace = "pre-wrap";
-    box.style.fontSize = "12px";
+    box.style.fontSize = "var(--text-sm)";
     box.style.maxHeight = "220px";
     box.style.overflowY = "auto";
     box.style.border = "1px solid var(--divider)";
@@ -502,12 +502,12 @@
     box.style.border = "1px solid var(--status-at-risk)";
     box.style.borderRadius = "var(--radius-md)";
     box.style.padding = "var(--space-3)";
-    box.style.marginTop = "10px";
+    box.style.marginTop = "var(--space-3)";
     box.style.background = "rgba(230, 162, 60, 0.08)";
 
     var title = document.createElement("p");
     title.style.fontWeight = "600";
-    title.style.fontSize = "13px";
+    title.style.fontSize = "var(--text-sm)";
     title.style.marginBottom = "var(--space-2)";
     title.textContent =
       "Possible duplicate " + (matches.length === 1 ? "record" : "records") + " found";
@@ -515,8 +515,8 @@
 
     matches.forEach(function (m) {
       var row = document.createElement("div");
-      row.style.fontSize = "12px";
-      row.style.padding = "6px 0";
+      row.style.fontSize = "var(--text-sm)";
+      row.style.padding = "var(--space-2) 0";
       row.style.borderTop = "1px solid var(--border-subtle, rgba(255,255,255,0.08))";
 
       var meta = document.createElement("div");
@@ -531,7 +531,7 @@
       var rowActions = document.createElement("div");
       rowActions.style.display = "flex";
       rowActions.style.gap = "var(--space-2)";
-      rowActions.style.marginTop = "6px";
+      rowActions.style.marginTop = "var(--space-2)";
 
       var openExistingBtn = document.createElement("button");
       openExistingBtn.className = "btn btn--ghost";
@@ -548,8 +548,8 @@
 
     var decisionRow = document.createElement("div");
     decisionRow.style.display = "flex";
-    decisionRow.style.gap = "10px";
-    decisionRow.style.marginTop = "10px";
+    decisionRow.style.gap = "var(--space-3)";
+    decisionRow.style.marginTop = "var(--space-3)";
 
     var continueBtn = document.createElement("button");
     continueBtn.className = "btn btn--ghost";
@@ -617,7 +617,7 @@
     box.style.borderRadius = "var(--radius-md)";
     box.style.padding = "10px var(--space-3)";
     box.style.marginTop = "var(--space-2)";
-    box.style.fontSize = "12px";
+    box.style.fontSize = "var(--text-sm)";
 
     if (result.matches) {
       box.style.border = "1px solid var(--status-on_track, #3fa66a)";
@@ -640,7 +640,7 @@
     panel.style.marginBottom = "var(--space-4)";
 
     var heading = document.createElement("h3");
-    heading.style.marginBottom = "14px";
+    heading.style.marginBottom = "var(--space-4)";
     heading.textContent = uiState.pendingRevisionGroupId ? "Upload New Revision" : "Add Document";
     panel.appendChild(heading);
 
@@ -651,9 +651,9 @@
       if (meetingForLink) {
         var linkNote = document.createElement("p");
         linkNote.className = "text-secondary";
-        linkNote.style.fontSize = "12px";
+        linkNote.style.fontSize = "var(--text-sm)";
         linkNote.style.marginTop = "-8px";
-        linkNote.style.marginBottom = "14px";
+        linkNote.style.marginBottom = "var(--space-4)";
         linkNote.textContent = "Linked to meeting: \u201c" + meetingForLink.title + "\u201d (" + meetingForLink.meeting_date + ")";
         panel.appendChild(linkNote);
       }
@@ -747,7 +747,7 @@
     // this doesn't read as more mandatory fields than it is.
     var classHeading = document.createElement("h4");
     classHeading.style.margin = "14px 0 var(--space-2)";
-    classHeading.style.fontSize = "13px";
+    classHeading.style.fontSize = "var(--text-sm)";
     classHeading.className = "text-secondary";
     classHeading.textContent = "Classification (optional)";
     panel.appendChild(classHeading);
@@ -971,7 +971,7 @@
     if (uiState.readingLabel) {
       var loading = document.createElement("p");
       loading.className = "text-secondary";
-      loading.style.fontSize = "13px";
+      loading.style.fontSize = "var(--text-sm)";
       loading.textContent = uiState.readingLabel;
       panel.appendChild(loading);
     }
@@ -979,14 +979,14 @@
     if (uiState.readError) {
       var err = document.createElement("p");
       err.style.color = "var(--status-critical)";
-      err.style.fontSize = "13px";
+      err.style.fontSize = "var(--text-sm)";
       err.textContent = uiState.readError;
       panel.appendChild(err);
     }
 
     if (uiState.pendingFile) {
       var fileInfo = document.createElement("p");
-      fileInfo.style.fontSize = "13px";
+      fileInfo.style.fontSize = "var(--text-sm)";
       fileInfo.style.marginTop = "var(--space-2)";
       fileInfo.innerHTML =
         "<strong>" + uiState.pendingFile.name + "</strong> \u00b7 " + formatBytes(uiState.pendingFile.size);
@@ -994,7 +994,7 @@
 
       if (uiState.pendingFile.size > LARGE_FILE_WARNING_BYTES) {
         var sizeWarning = document.createElement("p");
-        sizeWarning.style.fontSize = "12px";
+        sizeWarning.style.fontSize = "var(--text-sm)";
         sizeWarning.style.color = "var(--status-at-risk)";
         sizeWarning.style.marginTop = "var(--space-1)";
         sizeWarning.textContent =
@@ -1021,7 +1021,7 @@
       } else {
         var noExtraction = document.createElement("p");
         noExtraction.className = "text-secondary";
-        noExtraction.style.fontSize = "12px";
+        noExtraction.style.fontSize = "var(--text-sm)";
         noExtraction.style.marginTop = "var(--space-2)";
         noExtraction.textContent = "No data could be extracted from this file.";
         panel.appendChild(noExtraction);
@@ -1031,8 +1031,8 @@
     // Actions
     var actions = document.createElement("div");
     actions.style.display = "flex";
-    actions.style.gap = "10px";
-    actions.style.marginTop = "14px";
+    actions.style.gap = "var(--space-3)";
+    actions.style.marginTop = "var(--space-4)";
 
     var blockedByDuplicate = uiState.duplicateMatches.length > 0 && !uiState.duplicateAcknowledged;
 
@@ -1291,7 +1291,7 @@
     header.appendChild(titleWrap);
     var headerBadges = document.createElement("div");
     headerBadges.style.display = "flex";
-    headerBadges.style.gap = "6px";
+    headerBadges.style.gap = "var(--space-2)";
     headerBadges.style.flexShrink = "0";
     var catBadge = document.createElement("span");
     catBadge.className = "status-badge status-badge--complete";
@@ -1311,7 +1311,7 @@
     // to change over time without reopening the whole classification form, same "quick
     // toggle, no separate save step" convention as Document Types' Deactivate button.
     var statusRow = document.createElement("div");
-    statusRow.style.marginBottom = "14px";
+    statusRow.style.marginBottom = "var(--space-4)";
     var statusLabel = document.createElement("label");
     statusLabel.className = "detail-item__label";
     statusLabel.textContent = "STATUS";
@@ -1358,14 +1358,14 @@
 
     var extractionNote = document.createElement("p");
     extractionNote.className = "text-secondary";
-    extractionNote.style.fontSize = "12px";
-    extractionNote.style.margin = "14px 0 0";
+    extractionNote.style.fontSize = "var(--text-sm)";
+    extractionNote.style.margin = "var(--space-4) 0 0";
     extractionNote.textContent = extractionSummary(doc.extraction);
     panel.appendChild(extractionNote);
 
     var actions = document.createElement("div");
     actions.className = "project-card__actions";
-    actions.style.marginTop = "14px";
+    actions.style.marginTop = "var(--space-4)";
     if (doc.extraction) {
       var viewBtn = document.createElement("button");
       viewBtn.className = "btn btn--ghost";
@@ -1500,7 +1500,7 @@
     if (uiState.previewExtractionExpanded && doc.extraction) {
       var extractionWrap = document.createElement("div");
       extractionWrap.className = "project-details";
-      extractionWrap.style.marginTop = "14px";
+      extractionWrap.style.marginTop = "var(--space-4)";
       extractionWrap.appendChild(
         doc.extraction.type === "excel" ? renderExcelPreview(doc.extraction) : renderTextPreview(doc.extraction)
       );
@@ -1509,8 +1509,8 @@
 
     if (uiState.expandedRevisionsGroupId === doc.document_group_id && allRevisions.length > 1) {
       var histWrap = document.createElement("div");
-      histWrap.style.marginTop = "14px";
-      histWrap.style.paddingTop = "14px";
+      histWrap.style.marginTop = "var(--space-4)";
+      histWrap.style.paddingTop = "var(--space-4)";
       histWrap.style.borderTop = "1px solid var(--divider)";
       var histHeading = document.createElement("h4");
       histHeading.style.marginBottom = "var(--space-2)";
@@ -1522,7 +1522,7 @@
         revRow.style.display = "flex";
         revRow.style.justifyContent = "space-between";
         revRow.style.alignItems = "center";
-        revRow.style.fontSize = "12px";
+        revRow.style.fontSize = "var(--text-sm)";
         revRow.style.gap = "var(--space-2)";
         revRow.style.marginBottom = "var(--space-1)";
 

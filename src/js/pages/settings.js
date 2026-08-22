@@ -16,7 +16,7 @@
 
     var h1 = document.createElement("h2");
     h1.textContent = "Settings";
-    h1.style.marginBottom = "20px";
+    h1.style.marginBottom = "var(--space-5)";
     wrap.appendChild(h1);
 
     // --- General ---
@@ -56,7 +56,7 @@
       var logoPreviewRow = document.createElement("div");
       logoPreviewRow.style.display = "flex";
       logoPreviewRow.style.alignItems = "center";
-      logoPreviewRow.style.gap = "10px";
+      logoPreviewRow.style.gap = "var(--space-3)";
       logoPreviewRow.style.marginBottom = "var(--space-2)";
 
       var logoImg = document.createElement("img");
@@ -78,7 +78,7 @@
 
       var logoName = document.createElement("span");
       logoName.className = "text-secondary";
-      logoName.style.fontSize = "12px";
+      logoName.style.fontSize = "var(--text-sm)";
       logoName.textContent = data.settings.company_logo_filename;
       logoPreviewRow.appendChild(logoName);
 
@@ -166,7 +166,7 @@
 
     var upcomingField = document.createElement("div");
     upcomingField.className = "field";
-    upcomingField.style.marginTop = "10px";
+    upcomingField.style.marginTop = "var(--space-3)";
     upcomingField.style.maxWidth = "260px";
     upcomingField.innerHTML = "<label>Action Centre “Upcoming” window (days)</label>";
     var upcomingInput = document.createElement("input");
@@ -204,7 +204,7 @@
     nomenEnabledLabel.style.display = "flex";
     nomenEnabledLabel.style.alignItems = "center";
     nomenEnabledLabel.style.gap = "var(--space-2)";
-    nomenEnabledLabel.style.fontSize = "13px";
+    nomenEnabledLabel.style.fontSize = "var(--text-sm)";
     nomenEnabledLabel.style.marginTop = "var(--space-2)";
     var nomenEnabledCheckbox = document.createElement("input");
     nomenEnabledCheckbox.type = "checkbox";
@@ -220,7 +220,7 @@
 
     var patternField = document.createElement("div");
     patternField.className = "field";
-    patternField.style.marginTop = "10px";
+    patternField.style.marginTop = "var(--space-3)";
     patternField.innerHTML = "<label>Pattern</label>";
     var patternInput = document.createElement("input");
     patternInput.type = "text";
@@ -250,8 +250,8 @@
 
     var btnRow = document.createElement("div");
     btnRow.style.display = "flex";
-    btnRow.style.gap = "10px";
-    btnRow.style.marginTop = "10px";
+    btnRow.style.gap = "var(--space-3)";
+    btnRow.style.marginTop = "var(--space-3)";
     btnRow.style.flexWrap = "wrap";
 
     var exportBtn = document.createElement("button");
@@ -305,7 +305,7 @@
 
     var lastSaved = document.createElement("p");
     lastSaved.className = "text-secondary mono";
-    lastSaved.style.fontSize = "12px";
+    lastSaved.style.fontSize = "var(--text-sm)";
     lastSaved.style.marginTop = "var(--space-3)";
     lastSaved.textContent =
       "Last autosaved: " + (data.meta.last_saved_at ? new Date(data.meta.last_saved_at).toLocaleString() : "never yet");
@@ -313,7 +313,7 @@
 
     var lastExported = document.createElement("p");
     lastExported.className = "text-secondary mono";
-    lastExported.style.fontSize = "12px";
+    lastExported.style.fontSize = "var(--text-sm)";
     lastExported.style.marginTop = "2px";
     lastExported.textContent =
       "Last exported: " + (data.meta.last_exported_at ? new Date(data.meta.last_exported_at).toLocaleString() : "never yet");
@@ -363,7 +363,7 @@
         row.style.alignItems = "center";
         row.style.gap = "var(--space-2)";
         row.style.marginTop = "var(--space-2)";
-        row.style.fontSize = "13px";
+        row.style.fontSize = "var(--text-sm)";
 
         var label = document.createElement("span");
         label.className = "mono";
@@ -374,7 +374,7 @@
 
         var btnGroup = document.createElement("span");
         btnGroup.style.display = "flex";
-        btnGroup.style.gap = "6px";
+        btnGroup.style.gap = "var(--space-2)";
         btnGroup.style.flexShrink = "0";
 
         var downloadBtn = document.createElement("button");

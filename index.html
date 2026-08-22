@@ -20573,11 +20573,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
   function renderExcelPreview(extraction) {
     var wrap = document.createElement("div");
-    wrap.style.marginTop = "10px";
+    wrap.style.marginTop = "var(--space-3)";
 
     var note = document.createElement("p");
     note.className = "text-secondary";
-    note.style.fontSize = "12px";
+    note.style.fontSize = "var(--text-sm)";
     note.style.marginBottom = "var(--space-2)";
     note.textContent =
       "Extracted from sheet \u201c" +
@@ -20600,7 +20600,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var table = document.createElement("table");
     table.style.borderCollapse = "collapse";
     table.style.width = "100%";
-    table.style.fontSize = "12px";
+    table.style.fontSize = "var(--text-sm)";
     table.className = "mono";
 
     var thead = document.createElement("thead");
@@ -20609,7 +20609,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       var th = document.createElement("th");
       th.textContent = h || "\u2014";
       th.style.textAlign = "left";
-      th.style.padding = "6px 10px";
+      th.style.padding = "var(--space-2) var(--space-3)";
       th.style.borderBottom = "1px solid var(--divider)";
       th.style.position = "sticky";
       th.style.top = "0";
@@ -20625,7 +20625,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       row.forEach(function (cell) {
         var td = document.createElement("td");
         td.textContent = cell;
-        td.style.padding = "5px 10px";
+        td.style.padding = "var(--space-1) var(--space-3)";
         td.style.borderBottom = "1px solid var(--divider)";
         tr.appendChild(td);
       });
@@ -20649,11 +20649,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
   function renderTextPreview(extraction) {
     var wrap = document.createElement("div");
-    wrap.style.marginTop = "10px";
+    wrap.style.marginTop = "var(--space-3)";
 
     var note = document.createElement("p");
     note.className = "text-secondary";
-    note.style.fontSize = "12px";
+    note.style.fontSize = "var(--text-sm)";
     note.style.marginBottom = "var(--space-2)";
     note.textContent =
       extraction.char_count.toLocaleString() +
@@ -20668,7 +20668,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var box = document.createElement("div");
     box.className = "mono";
     box.style.whiteSpace = "pre-wrap";
-    box.style.fontSize = "12px";
+    box.style.fontSize = "var(--text-sm)";
     box.style.maxHeight = "220px";
     box.style.overflowY = "auto";
     box.style.border = "1px solid var(--divider)";
@@ -20689,12 +20689,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     box.style.border = "1px solid var(--status-at-risk)";
     box.style.borderRadius = "var(--radius-md)";
     box.style.padding = "var(--space-3)";
-    box.style.marginTop = "10px";
+    box.style.marginTop = "var(--space-3)";
     box.style.background = "rgba(230, 162, 60, 0.08)";
 
     var title = document.createElement("p");
     title.style.fontWeight = "600";
-    title.style.fontSize = "13px";
+    title.style.fontSize = "var(--text-sm)";
     title.style.marginBottom = "var(--space-2)";
     title.textContent =
       "Possible duplicate " + (matches.length === 1 ? "record" : "records") + " found";
@@ -20702,8 +20702,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     matches.forEach(function (m) {
       var row = document.createElement("div");
-      row.style.fontSize = "12px";
-      row.style.padding = "6px 0";
+      row.style.fontSize = "var(--text-sm)";
+      row.style.padding = "var(--space-2) 0";
       row.style.borderTop = "1px solid var(--border-subtle, rgba(255,255,255,0.08))";
 
       var meta = document.createElement("div");
@@ -20718,7 +20718,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       var rowActions = document.createElement("div");
       rowActions.style.display = "flex";
       rowActions.style.gap = "var(--space-2)";
-      rowActions.style.marginTop = "6px";
+      rowActions.style.marginTop = "var(--space-2)";
 
       var openExistingBtn = document.createElement("button");
       openExistingBtn.className = "btn btn--ghost";
@@ -20735,8 +20735,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     var decisionRow = document.createElement("div");
     decisionRow.style.display = "flex";
-    decisionRow.style.gap = "10px";
-    decisionRow.style.marginTop = "10px";
+    decisionRow.style.gap = "var(--space-3)";
+    decisionRow.style.marginTop = "var(--space-3)";
 
     var continueBtn = document.createElement("button");
     continueBtn.className = "btn btn--ghost";
@@ -20804,7 +20804,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     box.style.borderRadius = "var(--radius-md)";
     box.style.padding = "10px var(--space-3)";
     box.style.marginTop = "var(--space-2)";
-    box.style.fontSize = "12px";
+    box.style.fontSize = "var(--text-sm)";
 
     if (result.matches) {
       box.style.border = "1px solid var(--status-on_track, #3fa66a)";
@@ -20827,7 +20827,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     panel.style.marginBottom = "var(--space-4)";
 
     var heading = document.createElement("h3");
-    heading.style.marginBottom = "14px";
+    heading.style.marginBottom = "var(--space-4)";
     heading.textContent = uiState.pendingRevisionGroupId ? "Upload New Revision" : "Add Document";
     panel.appendChild(heading);
 
@@ -20838,9 +20838,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       if (meetingForLink) {
         var linkNote = document.createElement("p");
         linkNote.className = "text-secondary";
-        linkNote.style.fontSize = "12px";
+        linkNote.style.fontSize = "var(--text-sm)";
         linkNote.style.marginTop = "-8px";
-        linkNote.style.marginBottom = "14px";
+        linkNote.style.marginBottom = "var(--space-4)";
         linkNote.textContent = "Linked to meeting: \u201c" + meetingForLink.title + "\u201d (" + meetingForLink.meeting_date + ")";
         panel.appendChild(linkNote);
       }
@@ -20934,7 +20934,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     // this doesn't read as more mandatory fields than it is.
     var classHeading = document.createElement("h4");
     classHeading.style.margin = "14px 0 var(--space-2)";
-    classHeading.style.fontSize = "13px";
+    classHeading.style.fontSize = "var(--text-sm)";
     classHeading.className = "text-secondary";
     classHeading.textContent = "Classification (optional)";
     panel.appendChild(classHeading);
@@ -21158,7 +21158,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     if (uiState.readingLabel) {
       var loading = document.createElement("p");
       loading.className = "text-secondary";
-      loading.style.fontSize = "13px";
+      loading.style.fontSize = "var(--text-sm)";
       loading.textContent = uiState.readingLabel;
       panel.appendChild(loading);
     }
@@ -21166,14 +21166,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     if (uiState.readError) {
       var err = document.createElement("p");
       err.style.color = "var(--status-critical)";
-      err.style.fontSize = "13px";
+      err.style.fontSize = "var(--text-sm)";
       err.textContent = uiState.readError;
       panel.appendChild(err);
     }
 
     if (uiState.pendingFile) {
       var fileInfo = document.createElement("p");
-      fileInfo.style.fontSize = "13px";
+      fileInfo.style.fontSize = "var(--text-sm)";
       fileInfo.style.marginTop = "var(--space-2)";
       fileInfo.innerHTML =
         "<strong>" + uiState.pendingFile.name + "</strong> \u00b7 " + formatBytes(uiState.pendingFile.size);
@@ -21181,7 +21181,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
       if (uiState.pendingFile.size > LARGE_FILE_WARNING_BYTES) {
         var sizeWarning = document.createElement("p");
-        sizeWarning.style.fontSize = "12px";
+        sizeWarning.style.fontSize = "var(--text-sm)";
         sizeWarning.style.color = "var(--status-at-risk)";
         sizeWarning.style.marginTop = "var(--space-1)";
         sizeWarning.textContent =
@@ -21208,7 +21208,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       } else {
         var noExtraction = document.createElement("p");
         noExtraction.className = "text-secondary";
-        noExtraction.style.fontSize = "12px";
+        noExtraction.style.fontSize = "var(--text-sm)";
         noExtraction.style.marginTop = "var(--space-2)";
         noExtraction.textContent = "No data could be extracted from this file.";
         panel.appendChild(noExtraction);
@@ -21218,8 +21218,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     // Actions
     var actions = document.createElement("div");
     actions.style.display = "flex";
-    actions.style.gap = "10px";
-    actions.style.marginTop = "14px";
+    actions.style.gap = "var(--space-3)";
+    actions.style.marginTop = "var(--space-4)";
 
     var blockedByDuplicate = uiState.duplicateMatches.length > 0 && !uiState.duplicateAcknowledged;
 
@@ -21478,7 +21478,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     header.appendChild(titleWrap);
     var headerBadges = document.createElement("div");
     headerBadges.style.display = "flex";
-    headerBadges.style.gap = "6px";
+    headerBadges.style.gap = "var(--space-2)";
     headerBadges.style.flexShrink = "0";
     var catBadge = document.createElement("span");
     catBadge.className = "status-badge status-badge--complete";
@@ -21498,7 +21498,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     // to change over time without reopening the whole classification form, same "quick
     // toggle, no separate save step" convention as Document Types' Deactivate button.
     var statusRow = document.createElement("div");
-    statusRow.style.marginBottom = "14px";
+    statusRow.style.marginBottom = "var(--space-4)";
     var statusLabel = document.createElement("label");
     statusLabel.className = "detail-item__label";
     statusLabel.textContent = "STATUS";
@@ -21545,14 +21545,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     var extractionNote = document.createElement("p");
     extractionNote.className = "text-secondary";
-    extractionNote.style.fontSize = "12px";
-    extractionNote.style.margin = "14px 0 0";
+    extractionNote.style.fontSize = "var(--text-sm)";
+    extractionNote.style.margin = "var(--space-4) 0 0";
     extractionNote.textContent = extractionSummary(doc.extraction);
     panel.appendChild(extractionNote);
 
     var actions = document.createElement("div");
     actions.className = "project-card__actions";
-    actions.style.marginTop = "14px";
+    actions.style.marginTop = "var(--space-4)";
     if (doc.extraction) {
       var viewBtn = document.createElement("button");
       viewBtn.className = "btn btn--ghost";
@@ -21687,7 +21687,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     if (uiState.previewExtractionExpanded && doc.extraction) {
       var extractionWrap = document.createElement("div");
       extractionWrap.className = "project-details";
-      extractionWrap.style.marginTop = "14px";
+      extractionWrap.style.marginTop = "var(--space-4)";
       extractionWrap.appendChild(
         doc.extraction.type === "excel" ? renderExcelPreview(doc.extraction) : renderTextPreview(doc.extraction)
       );
@@ -21696,8 +21696,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     if (uiState.expandedRevisionsGroupId === doc.document_group_id && allRevisions.length > 1) {
       var histWrap = document.createElement("div");
-      histWrap.style.marginTop = "14px";
-      histWrap.style.paddingTop = "14px";
+      histWrap.style.marginTop = "var(--space-4)";
+      histWrap.style.paddingTop = "var(--space-4)";
       histWrap.style.borderTop = "1px solid var(--divider)";
       var histHeading = document.createElement("h4");
       histHeading.style.marginBottom = "var(--space-2)";
@@ -21709,7 +21709,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         revRow.style.display = "flex";
         revRow.style.justifyContent = "space-between";
         revRow.style.alignItems = "center";
-        revRow.style.fontSize = "12px";
+        revRow.style.fontSize = "var(--text-sm)";
         revRow.style.gap = "var(--space-2)";
         revRow.style.marginBottom = "var(--space-1)";
 
@@ -29169,7 +29169,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     row.style.gap = "var(--space-2)";
     row.style.padding = "var(--space-2) 0";
     row.style.borderBottom = "1px solid var(--divider)";
-    row.style.fontSize = "13px";
+    row.style.fontSize = "var(--text-sm)";
 
     var overdue = recoveryActionOverdue(r);
     var left = document.createElement("div");
@@ -29235,7 +29235,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var sub = document.createElement("p");
     sub.className = "text-secondary";
     sub.style.marginTop = "0";
-    sub.style.marginBottom = "20px";
+    sub.style.marginBottom = "var(--space-5)";
     sub.textContent =
       actions.length === 0 && delayRecords.length === 0
         ? "Nothing logged across the active portfolio yet — add a recovery action or delay record from an activity's own Detail Panel in the Schedule module (Gantt tab)."
@@ -29282,8 +29282,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       });
 
       var causeLine = document.createElement("p");
-      causeLine.style.fontSize = "13px";
-      causeLine.style.marginBottom = "6px";
+      causeLine.style.fontSize = "var(--text-sm)";
+      causeLine.style.marginBottom = "var(--space-2)";
       causeLine.innerHTML =
         "<strong>By cause:</strong> " +
         window.PCC.store.DELAY_RECORD_CAUSES.filter(function (c) { return byCause[c]; })
@@ -29293,7 +29293,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
       var severityOrder = ["Severe (>15d)", "Moderate (5-15d)", "Minor (<5d)", "Unspecified"];
       var severityLine = document.createElement("p");
-      severityLine.style.fontSize = "13px";
+      severityLine.style.fontSize = "var(--text-sm)";
       severityLine.innerHTML =
         "<strong>By severity:</strong> " +
         severityOrder.filter(function (s) { return bySeverity[s]; })
@@ -29323,7 +29323,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           row.style.gap = "var(--space-2)";
           row.style.padding = "var(--space-2) 0";
           row.style.borderBottom = "1px solid var(--divider)";
-          row.style.fontSize = "13px";
+          row.style.fontSize = "var(--text-sm)";
 
           var left = document.createElement("div");
           left.innerHTML =
@@ -29389,7 +29389,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
       var gapKpiGrid = document.createElement("div");
       gapKpiGrid.className = "kpi-grid";
-      gapKpiGrid.style.marginTop = "10px";
+      gapKpiGrid.style.marginTop = "var(--space-3)";
       gapKpiGrid.appendChild(kpiCard("UNADDRESSED DELAY (DAYS)", totalUnaddressedGapDays, totalUnaddressedGapDays > 0 ? "--status-critical" : null));
       wrap.appendChild(gapKpiGrid);
 
@@ -29409,7 +29409,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           row.style.gap = "var(--space-2)";
           row.style.padding = "var(--space-2) 0";
           row.style.borderBottom = "1px solid var(--divider)";
-          row.style.fontSize = "13px";
+          row.style.fontSize = "var(--text-sm)";
           var left = document.createElement("div");
           left.innerHTML =
             "<strong>" + (g.activity ? g.activity.name : "(deleted activity)") + "</strong>" +
@@ -29477,7 +29477,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     if (estDaysTotal > 0 || estCostTotal > 0) {
       var estGrid = document.createElement("div");
       estGrid.className = "kpi-grid";
-      estGrid.style.marginTop = "10px";
+      estGrid.style.marginTop = "var(--space-3)";
       estGrid.appendChild(kpiCard("EST. RECOVERY DAYS (OPEN)", estDaysTotal, null));
       estGrid.appendChild(kpiCard("EST. RECOVERY COST (OPEN)", fmtMoney(estCostTotal) || "0", null));
       wrap.appendChild(estGrid);
@@ -29494,7 +29494,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     if (openSorted.length === 0) {
       var noOpen = document.createElement("p");
       noOpen.className = "text-secondary";
-      noOpen.style.fontSize = "13px";
+      noOpen.style.fontSize = "var(--text-sm)";
       noOpen.textContent = "No open recovery actions — every logged action has been completed or cancelled.";
       openPanel.appendChild(noOpen);
     } else {
@@ -29515,7 +29515,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     if (closed.length === 0) {
       var noClosed = document.createElement("p");
       noClosed.className = "text-secondary";
-      noClosed.style.fontSize = "13px";
+      noClosed.style.fontSize = "var(--text-sm)";
       noClosed.textContent = "None yet.";
       closedPanel.appendChild(noClosed);
     } else {
@@ -30659,7 +30659,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     var note = document.createElement("p");
     note.className = "text-secondary";
-    note.style.fontSize = "12px";
+    note.style.fontSize = "var(--text-sm)";
     note.style.margin = "0 0 var(--space-2)";
     note.textContent =
       "Reference only \u2014 tracks the filename and details, but the actual audio/video file has to be " +
@@ -30713,7 +30713,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     panel.style.marginBottom = "var(--space-4)";
 
     var heading = document.createElement("h3");
-    heading.style.marginBottom = "14px";
+    heading.style.marginBottom = "var(--space-4)";
     heading.textContent = isNew ? "Add Meeting" : "Edit Meeting";
     panel.appendChild(heading);
 
@@ -30827,14 +30827,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     var errorMsg = document.createElement("p");
     errorMsg.style.color = "var(--status-critical)";
-    errorMsg.style.fontSize = "13px";
+    errorMsg.style.fontSize = "var(--text-sm)";
     errorMsg.style.display = "none";
     errorMsg.textContent = "Project, Title, and Date are required.";
     form.appendChild(errorMsg);
 
     var actionsRow2 = document.createElement("div");
     actionsRow2.style.display = "flex";
-    actionsRow2.style.gap = "10px";
+    actionsRow2.style.gap = "var(--space-3)";
     actionsRow2.style.marginTop = "var(--space-3)";
 
     var saveBtn = document.createElement("button");
@@ -31004,12 +31004,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       if (linkedActivity) {
         var activityRow = document.createElement("div");
         activityRow.style.marginTop = "var(--space-3)";
-        activityRow.style.paddingTop = "10px";
+        activityRow.style.paddingTop = "var(--space-3)";
         activityRow.style.borderTop = "1px solid var(--divider)";
         activityRow.style.display = "flex";
         activityRow.style.justifyContent = "space-between";
         activityRow.style.alignItems = "center";
-        activityRow.style.fontSize = "13px";
+        activityRow.style.fontSize = "var(--text-sm)";
 
         var activityLabel = document.createElement("span");
         activityLabel.innerHTML = "<span class='detail-item__label'>LINKED ACTIVITY</span>" + linkedActivity.name;
@@ -31031,15 +31031,15 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     if (m.actions.length > 0) {
       var actionsHeading = document.createElement("p");
       actionsHeading.className = "detail-item__label";
-      actionsHeading.style.marginTop = "14px";
-      actionsHeading.style.marginBottom = "6px";
+      actionsHeading.style.marginTop = "var(--space-4)";
+      actionsHeading.style.marginBottom = "var(--space-2)";
       actionsHeading.textContent = "ACTION ITEMS";
       wrap.appendChild(actionsHeading);
 
       var list = document.createElement("div");
       list.style.display = "flex";
       list.style.flexDirection = "column";
-      list.style.gap = "6px";
+      list.style.gap = "var(--space-2)";
 
       var linkData = window.PCC.store.get();
       m.actions.forEach(function (a) {
@@ -31047,7 +31047,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         row.style.display = "flex";
         row.style.justifyContent = "space-between";
         row.style.alignItems = "center";
-        row.style.fontSize = "13px";
+        row.style.fontSize = "var(--text-sm)";
         row.style.gap = "var(--space-2)";
 
         var overdue = isOverdue(a);
@@ -31092,8 +31092,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     if (m.recordings && m.recordings.length > 0) {
       var recHeading = document.createElement("p");
       recHeading.className = "detail-item__label";
-      recHeading.style.marginTop = "14px";
-      recHeading.style.marginBottom = "6px";
+      recHeading.style.marginTop = "var(--space-4)";
+      recHeading.style.marginBottom = "var(--space-2)";
       recHeading.textContent = "RECORDINGS";
       wrap.appendChild(recHeading);
 
@@ -31104,7 +31104,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
       m.recordings.forEach(function (r) {
         var row = document.createElement("p");
-        row.style.fontSize = "13px";
+        row.style.fontSize = "var(--text-sm)";
         row.style.margin = "0";
         row.className = "mono";
         row.textContent =
@@ -31133,14 +31133,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     if (linkedRisks.length > 0) {
       var risksHeading = document.createElement("p");
       risksHeading.className = "detail-item__label";
-      risksHeading.style.marginTop = "14px";
-      risksHeading.style.marginBottom = "6px";
+      risksHeading.style.marginTop = "var(--space-4)";
+      risksHeading.style.marginBottom = "var(--space-2)";
       risksHeading.textContent = "RISKS / ISSUES RAISED (" + linkedRisks.length + ")";
       wrap.appendChild(risksHeading);
 
       linkedRisks.forEach(function (r) {
         var row = document.createElement("p");
-        row.style.fontSize = "13px";
+        row.style.fontSize = "var(--text-sm)";
         row.style.margin = "0 0 2px";
         row.textContent = r.title || "(untitled)";
         wrap.appendChild(row);
@@ -31154,14 +31154,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     if (linkedRfis.length > 0) {
       var rfisHeading = document.createElement("p");
       rfisHeading.className = "detail-item__label";
-      rfisHeading.style.marginTop = "14px";
-      rfisHeading.style.marginBottom = "6px";
+      rfisHeading.style.marginTop = "var(--space-4)";
+      rfisHeading.style.marginBottom = "var(--space-2)";
       rfisHeading.textContent = "RFI / TQ RAISED (" + linkedRfis.length + ")";
       wrap.appendChild(rfisHeading);
 
       linkedRfis.forEach(function (r) {
         var row = document.createElement("p");
-        row.style.fontSize = "13px";
+        row.style.fontSize = "var(--text-sm)";
         row.style.margin = "0 0 2px";
         row.innerHTML = "<span class='mono'>" + r.number + "</span> \u2014 " + (r.subject || "(untitled)");
         wrap.appendChild(row);
@@ -31175,14 +31175,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     if (linkedChangeOrders.length > 0) {
       var coHeading = document.createElement("p");
       coHeading.className = "detail-item__label";
-      coHeading.style.marginTop = "14px";
-      coHeading.style.marginBottom = "6px";
+      coHeading.style.marginTop = "var(--space-4)";
+      coHeading.style.marginBottom = "var(--space-2)";
       coHeading.textContent = "CHANGE ORDERS RAISED (" + linkedChangeOrders.length + ")";
       wrap.appendChild(coHeading);
 
       linkedChangeOrders.forEach(function (co) {
         var row = document.createElement("p");
-        row.style.fontSize = "13px";
+        row.style.fontSize = "var(--text-sm)";
         row.style.margin = "0 0 2px";
         row.innerHTML = "<span class='mono'>" + co.number + "</span> \u2014 " + (co.title || "(untitled)");
         wrap.appendChild(row);
@@ -31196,14 +31196,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     if (linkedDecisions.length > 0) {
       var decisionsHeading = document.createElement("p");
       decisionsHeading.className = "detail-item__label";
-      decisionsHeading.style.marginTop = "14px";
-      decisionsHeading.style.marginBottom = "6px";
+      decisionsHeading.style.marginTop = "var(--space-4)";
+      decisionsHeading.style.marginBottom = "var(--space-2)";
       decisionsHeading.textContent = "DECISIONS RAISED (" + linkedDecisions.length + ")";
       wrap.appendChild(decisionsHeading);
 
       linkedDecisions.forEach(function (d) {
         var row = document.createElement("p");
-        row.style.fontSize = "13px";
+        row.style.fontSize = "var(--text-sm)";
         row.style.margin = "0 0 2px";
         row.textContent = d.title || "(untitled)";
         wrap.appendChild(row);
@@ -31213,8 +31213,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     if (linkedDocs.length > 0) {
       var docsHeading = document.createElement("p");
       docsHeading.className = "detail-item__label";
-      docsHeading.style.marginTop = "14px";
-      docsHeading.style.marginBottom = "6px";
+      docsHeading.style.marginTop = "var(--space-4)";
+      docsHeading.style.marginBottom = "var(--space-2)";
       docsHeading.textContent = "ATTACHED DOCUMENTS (" + linkedDocs.length + ")";
       wrap.appendChild(docsHeading);
 
@@ -31223,7 +31223,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         row.style.display = "flex";
         row.style.justifyContent = "space-between";
         row.style.alignItems = "center";
-        row.style.fontSize = "13px";
+        row.style.fontSize = "var(--text-sm)";
         row.style.marginBottom = "2px";
 
         var label = document.createElement("span");
@@ -31248,8 +31248,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var quickActions = document.createElement("div");
     quickActions.style.display = "flex";
     quickActions.style.gap = "var(--space-2)";
-    quickActions.style.marginTop = "14px";
-    quickActions.style.paddingTop = "10px";
+    quickActions.style.marginTop = "var(--space-4)";
+    quickActions.style.paddingTop = "var(--space-3)";
     quickActions.style.borderTop = "1px solid var(--divider)";
 
     var addRiskBtn = document.createElement("button");
@@ -31342,11 +31342,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var list = document.createElement("div");
     list.style.display = "flex";
     list.style.flexDirection = "column";
-    list.style.gap = "6px";
+    list.style.gap = "var(--space-2)";
 
     overdueItems.slice(0, 8).forEach(function (entry) {
       var row = document.createElement("div");
-      row.style.fontSize = "13px";
+      row.style.fontSize = "var(--text-sm)";
       row.style.display = "flex";
       row.style.justifyContent = "space-between";
       row.innerHTML =
@@ -31624,7 +31624,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var wrap = document.createElement("label");
     wrap.style.display = "flex";
     wrap.style.alignItems = "center";
-    wrap.style.gap = "6px";
+    wrap.style.gap = "var(--space-2)";
     wrap.style.fontWeight = "normal";
 
     var input = document.createElement("input");
@@ -31661,7 +31661,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     panel.style.marginBottom = "var(--space-4)";
 
     var heading = document.createElement("h3");
-    heading.style.marginBottom = "14px";
+    heading.style.marginBottom = "var(--space-4)";
     heading.textContent = isNew ? "Add RFI / Technical Query" : "Edit " + (rfi.number || "Entry");
     panel.appendChild(heading);
 
@@ -31672,9 +31672,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       if (sourceMeeting) {
         var linkNote = document.createElement("p");
         linkNote.className = "text-secondary";
-        linkNote.style.fontSize = "12px";
+        linkNote.style.fontSize = "var(--text-sm)";
         linkNote.style.marginTop = "-8px";
-        linkNote.style.marginBottom = "14px";
+        linkNote.style.marginBottom = "var(--space-4)";
         linkNote.textContent = "Linked to meeting: \u201c" + sourceMeeting.title + "\u201d (" + sourceMeeting.meeting_date + ")";
         panel.appendChild(linkNote);
       }
@@ -31768,14 +31768,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     var errorMsg = document.createElement("p");
     errorMsg.style.color = "var(--status-critical)";
-    errorMsg.style.fontSize = "13px";
+    errorMsg.style.fontSize = "var(--text-sm)";
     errorMsg.style.display = "none";
     errorMsg.textContent = "Subject, Question, and Project are required.";
     form.appendChild(errorMsg);
 
     var actions = document.createElement("div");
     actions.style.display = "flex";
-    actions.style.gap = "10px";
+    actions.style.gap = "var(--space-3)";
     actions.style.marginTop = "var(--space-3)";
 
     var saveBtn = document.createElement("button");
@@ -31879,7 +31879,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     var badgeWrap = document.createElement("div");
     badgeWrap.style.display = "flex";
-    badgeWrap.style.gap = "6px";
+    badgeWrap.style.gap = "var(--space-2)";
     badgeWrap.style.flexWrap = "wrap";
     badgeWrap.appendChild(statusBadge);
     badgeWrap.appendChild(priorityBadge);
@@ -31967,12 +31967,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       if (sourceMeeting) {
         var sourceRow = document.createElement("div");
         sourceRow.style.marginTop = "var(--space-3)";
-        sourceRow.style.paddingTop = "10px";
+        sourceRow.style.paddingTop = "var(--space-3)";
         sourceRow.style.borderTop = "1px solid var(--divider)";
         sourceRow.style.display = "flex";
         sourceRow.style.justifyContent = "space-between";
         sourceRow.style.alignItems = "center";
-        sourceRow.style.fontSize = "13px";
+        sourceRow.style.fontSize = "var(--text-sm)";
 
         var sourceLabel = document.createElement("span");
         sourceLabel.innerHTML = "<span class='detail-item__label'>RAISED IN MEETING</span>" + sourceMeeting.title + " (" + sourceMeeting.meeting_date + ")";
@@ -31998,12 +31998,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       if (linkedActivity) {
         var activityRow = document.createElement("div");
         activityRow.style.marginTop = "var(--space-3)";
-        activityRow.style.paddingTop = "10px";
+        activityRow.style.paddingTop = "var(--space-3)";
         activityRow.style.borderTop = "1px solid var(--divider)";
         activityRow.style.display = "flex";
         activityRow.style.justifyContent = "space-between";
         activityRow.style.alignItems = "center";
-        activityRow.style.fontSize = "13px";
+        activityRow.style.fontSize = "var(--text-sm)";
 
         var activityLabel = document.createElement("span");
         activityLabel.innerHTML = "<span class='detail-item__label'>LINKED ACTIVITY</span>" + linkedActivity.name;
@@ -32028,13 +32028,13 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     if (linkedChangeOrders.length > 0) {
       var coHeading = document.createElement("p");
       coHeading.className = "detail-item__label";
-      coHeading.style.marginTop = "14px";
-      coHeading.style.marginBottom = "6px";
+      coHeading.style.marginTop = "var(--space-4)";
+      coHeading.style.marginBottom = "var(--space-2)";
       coHeading.textContent = "CHANGE ORDERS RAISED (" + linkedChangeOrders.length + ")";
       wrap.appendChild(coHeading);
       linkedChangeOrders.forEach(function (co) {
         var row = document.createElement("p");
-        row.style.fontSize = "13px";
+        row.style.fontSize = "var(--text-sm)";
         row.style.margin = "0 0 2px";
         row.innerHTML = "<span class='mono'>" + co.number + "</span> \u2014 " + (co.title || "(untitled)");
         wrap.appendChild(row);
@@ -32055,20 +32055,20 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     // over time. Distinct from the Question/Response fields, which hold the current
     // state; this is the "what changed and when" thread underneath them.
     var revisionsWrap = document.createElement("div");
-    revisionsWrap.style.marginTop = "14px";
-    revisionsWrap.style.paddingTop = "10px";
+    revisionsWrap.style.marginTop = "var(--space-4)";
+    revisionsWrap.style.paddingTop = "var(--space-3)";
     revisionsWrap.style.borderTop = "1px solid var(--divider)";
 
     var revisionsHeading = document.createElement("p");
     revisionsHeading.className = "detail-item__label";
-    revisionsHeading.style.marginBottom = "6px";
+    revisionsHeading.style.marginBottom = "var(--space-2)";
     revisionsHeading.textContent = "REVISION HISTORY (" + r.revisions.length + ")";
     revisionsWrap.appendChild(revisionsHeading);
 
     if (r.revisions.length === 0) {
       var noRevisions = document.createElement("p");
       noRevisions.className = "text-secondary";
-      noRevisions.style.fontSize = "13px";
+      noRevisions.style.fontSize = "var(--text-sm)";
       noRevisions.style.margin = "0 0 var(--space-2)";
       noRevisions.textContent = "No revision notes logged yet.";
       revisionsWrap.appendChild(noRevisions);
@@ -32078,8 +32078,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         .reverse()
         .forEach(function (rev) {
           var row = document.createElement("div");
-          row.style.fontSize = "13px";
-          row.style.marginBottom = "6px";
+          row.style.fontSize = "var(--text-sm)";
+          row.style.marginBottom = "var(--space-2)";
           row.innerHTML =
             "<span class='mono' style='color:var(--text-secondary)'>" + rev.date + "</span>" +
             (rev.author ? " \u2014 <strong>" + rev.author + "</strong>" : "") +
@@ -32092,8 +32092,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     var revForm = document.createElement("div");
     revForm.style.display = "flex";
-    revForm.style.gap = "6px";
-    revForm.style.marginTop = "6px";
+    revForm.style.gap = "var(--space-2)";
+    revForm.style.marginTop = "var(--space-2)";
     revForm.style.flexWrap = "wrap";
 
     var authorInput = document.createElement("input");
@@ -32172,11 +32172,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var list = document.createElement("div");
     list.style.display = "flex";
     list.style.flexDirection = "column";
-    list.style.gap = "6px";
+    list.style.gap = "var(--space-2)";
 
     overdueItems.slice(0, 8).forEach(function (r) {
       var row = document.createElement("div");
-      row.style.fontSize = "13px";
+      row.style.fontSize = "var(--text-sm)";
       row.style.display = "flex";
       row.style.justifyContent = "space-between";
       row.innerHTML =
@@ -37360,7 +37360,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     panel.style.marginBottom = "var(--space-4)";
 
     var heading = document.createElement("h3");
-    heading.style.marginBottom = "14px";
+    heading.style.marginBottom = "var(--space-4)";
     heading.textContent = isNew ? "Add Resource" : "Edit Resource";
     panel.appendChild(heading);
 
@@ -37427,14 +37427,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     var errorMsg = document.createElement("p");
     errorMsg.style.color = "var(--status-critical)";
-    errorMsg.style.fontSize = "13px";
+    errorMsg.style.fontSize = "var(--text-sm)";
     errorMsg.style.display = "none";
     errorMsg.textContent = "Name is required.";
     form.appendChild(errorMsg);
 
     var actions = document.createElement("div");
     actions.style.display = "flex";
-    actions.style.gap = "10px";
+    actions.style.gap = "var(--space-3)";
     actions.style.marginTop = "var(--space-3)";
 
     var saveBtn = document.createElement("button");
@@ -37578,7 +37578,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         card.style.alignItems = "center";
         card.style.gap = "var(--space-3)";
         card.style.flexWrap = "wrap";
-        card.style.marginBottom = "6px";
+        card.style.marginBottom = "var(--space-2)";
 
         var main = document.createElement("div");
         main.innerHTML =
@@ -37652,7 +37652,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     panel.style.marginBottom = "var(--space-4)";
 
     var heading = document.createElement("h3");
-    heading.style.marginBottom = "14px";
+    heading.style.marginBottom = "var(--space-4)";
     heading.textContent = isNew ? "Add Assignment" : "Edit Assignment";
     panel.appendChild(heading);
 
@@ -37824,14 +37824,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     var errorMsg = document.createElement("p");
     errorMsg.style.color = "var(--status-critical)";
-    errorMsg.style.fontSize = "13px";
+    errorMsg.style.fontSize = "var(--text-sm)";
     errorMsg.style.display = "none";
     errorMsg.textContent = "Resource, Activity, and a positive Quantity are required.";
     form.appendChild(errorMsg);
 
     var actions = document.createElement("div");
     actions.style.display = "flex";
-    actions.style.gap = "10px";
+    actions.style.gap = "var(--space-3)";
     actions.style.marginTop = "var(--space-3)";
 
     var saveBtn = document.createElement("button");
@@ -37926,7 +37926,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     if (uiState.assignmentProjectFilter) {
       var filterNote = document.createElement("span");
       filterNote.className = "text-secondary";
-      filterNote.style.fontSize = "12px";
+      filterNote.style.fontSize = "var(--text-sm)";
       filterNote.style.alignSelf = "center";
       filterNote.textContent = "Filtered to " + projectName(data.projects, uiState.assignmentProjectFilter);
       toolbar.appendChild(filterNote);
@@ -37993,7 +37993,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         card.style.alignItems = "center";
         card.style.gap = "var(--space-3)";
         card.style.flexWrap = "wrap";
-        card.style.marginBottom = "6px";
+        card.style.marginBottom = "var(--space-2)";
 
         var qtyText = "planned " + a.quantity + (a.actual_quantity != null ? ", actual " + a.actual_quantity : "");
         var extraParts = [];
@@ -38071,7 +38071,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     panel.style.marginBottom = "var(--space-4)";
 
     var heading = document.createElement("h3");
-    heading.style.marginBottom = "14px";
+    heading.style.marginBottom = "var(--space-4)";
     heading.textContent = isNew ? "Add Leave / Unavailable Period" : "Edit Leave / Unavailable Period";
     panel.appendChild(heading);
 
@@ -38159,14 +38159,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     var errorMsg = document.createElement("p");
     errorMsg.style.color = "var(--status-critical)";
-    errorMsg.style.fontSize = "13px";
+    errorMsg.style.fontSize = "var(--text-sm)";
     errorMsg.style.display = "none";
     errorMsg.textContent = "Resource, Start Date, End Date (on or after Start Date), and a positive Quantity are required.";
     form.appendChild(errorMsg);
 
     var actions = document.createElement("div");
     actions.style.display = "flex";
-    actions.style.gap = "10px";
+    actions.style.gap = "var(--space-3)";
     actions.style.marginTop = "var(--space-3)";
 
     var saveBtn = document.createElement("button");
@@ -38307,7 +38307,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         card.style.alignItems = "center";
         card.style.gap = "var(--space-3)";
         card.style.flexWrap = "wrap";
-        card.style.marginBottom = "6px";
+        card.style.marginBottom = "var(--space-2)";
 
         var main = document.createElement("div");
         main.innerHTML =
@@ -38368,7 +38368,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     if (!utilisation.available || utilisation.days.length === 0) {
       var empty = document.createElement("p");
       empty.className = "text-secondary";
-      empty.style.fontSize = "13px";
+      empty.style.fontSize = "var(--text-sm)";
       empty.textContent = utilisation.available ? "No dated assignments to chart yet." : "Max Availability isn't set for this resource, so utilisation can't be computed.";
       container.appendChild(empty);
       return;
@@ -38421,7 +38421,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     if (timeline.days.length === 0) {
       var empty = document.createElement("p");
       empty.className = "text-secondary";
-      empty.style.fontSize = "13px";
+      empty.style.fontSize = "var(--text-sm)";
       empty.textContent = "No dated assignments to chart yet.";
       container.appendChild(empty);
       return;
@@ -38482,7 +38482,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     if (portfolioSummary.length === 0) {
       var okP = document.createElement("p");
       okP.className = "text-secondary";
-      okP.style.fontSize = "13px";
+      okP.style.fontSize = "var(--text-sm)";
       okP.textContent = "No resources are currently over-allocated on any dated assignment.";
       summaryPanel.appendChild(okP);
     } else {
@@ -38491,7 +38491,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         row.style.display = "flex";
         row.style.justifyContent = "space-between";
         row.style.alignItems = "center";
-        row.style.fontSize = "13px";
+        row.style.fontSize = "var(--text-sm)";
         row.style.marginBottom = "var(--space-1)";
         var text = document.createElement("span");
         text.innerHTML = "<strong>" + esc(s.resourceName) + "</strong> — " + s.overAllocatedDayCount + " over-allocated day(s), worst +" + s.maxOverBy;
@@ -38566,7 +38566,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     if (utilisation.available && utilisation.totalShortfallUnitDays > 0) {
       var shortageNote = document.createElement("p");
-      shortageNote.style.fontSize = "12px";
+      shortageNote.style.fontSize = "var(--text-sm)";
       shortageNote.style.color = "var(--status-critical)";
       shortageNote.style.marginTop = "-8px";
       shortageNote.style.marginBottom = "var(--space-3)";
@@ -38578,7 +38578,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     if (!overAlloc.available) {
       var noteP = document.createElement("p");
       noteP.className = "text-secondary";
-      noteP.style.fontSize = "12px";
+      noteP.style.fontSize = "var(--text-sm)";
       noteP.style.marginTop = "-8px";
       noteP.style.marginBottom = "var(--space-3)";
       noteP.textContent = "Max Availability isn't set for this resource, so over-allocation can't be computed — set it in the Register tab.";
@@ -38588,8 +38588,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     if (timeline.skippedCount > 0) {
       var skipNote = document.createElement("p");
       skipNote.className = "text-secondary";
-      skipNote.style.fontSize = "12px";
-      skipNote.style.marginBottom = "10px";
+      skipNote.style.fontSize = "var(--text-sm)";
+      skipNote.style.marginBottom = "var(--space-3)";
       skipNote.textContent = timeline.skippedCount + " assignment(s) excluded from this chart (milestone, undated, or zero-quantity activity).";
       container.appendChild(skipNote);
     }
@@ -38628,7 +38628,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       unavPanel.appendChild(unavHeading);
       resourceUnavailability.forEach(function (u) {
         var row = document.createElement("p");
-        row.style.fontSize = "13px";
+        row.style.fontSize = "var(--text-sm)";
         row.style.margin = "var(--space-1) 0";
         row.textContent = u.start_date + " to " + u.end_date + " — " + u.quantity + " unavailable" + (u.reason ? " (" + u.reason + ")" : "");
         unavPanel.appendChild(row);
@@ -38647,7 +38647,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       overAlloc.overAllocatedDays.slice(0, 20).forEach(function (day) {
         var dayRow = document.createElement("div");
         dayRow.className = "detail-card";
-        dayRow.style.marginBottom = "6px";
+        dayRow.style.marginBottom = "var(--space-2)";
         dayRow.innerHTML =
           "<strong>" + day.date + "</strong> — " + day.allocated + " needed vs " + day.available + " available (+" + day.overBy + ")<br/>" +
           "<span class='text-secondary' style='font-size:12px;'>" +
@@ -38660,7 +38660,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       if (overAlloc.count > 20) {
         var more = document.createElement("p");
         more.className = "text-secondary";
-        more.style.fontSize = "12px";
+        more.style.fontSize = "var(--text-sm)";
         more.textContent = "+" + (overAlloc.count - 20) + " more over-allocated day(s) not shown.";
         conflictPanel.appendChild(more);
       }
@@ -38682,12 +38682,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     var h1 = document.createElement("h2");
     h1.textContent = "Resource Management";
-    h1.style.marginBottom = "6px";
+    h1.style.marginBottom = "var(--space-2)";
     outlet.appendChild(h1);
 
     var sub = document.createElement("p");
     sub.className = "text-secondary";
-    sub.style.fontSize = "12px";
+    sub.style.fontSize = "var(--text-sm)";
     sub.style.marginBottom = "var(--space-4)";
     sub.textContent =
       "A shared resource pool assigned to Schedule activities across every project, with cross-project over-allocation, leave-adjusted availability, and utilisation tracking. Quantity/availability only — no cost linkage.";
@@ -39589,7 +39589,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     var h1 = document.createElement("h2");
     h1.textContent = "Settings";
-    h1.style.marginBottom = "20px";
+    h1.style.marginBottom = "var(--space-5)";
     wrap.appendChild(h1);
 
     // --- General ---
@@ -39629,7 +39629,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       var logoPreviewRow = document.createElement("div");
       logoPreviewRow.style.display = "flex";
       logoPreviewRow.style.alignItems = "center";
-      logoPreviewRow.style.gap = "10px";
+      logoPreviewRow.style.gap = "var(--space-3)";
       logoPreviewRow.style.marginBottom = "var(--space-2)";
 
       var logoImg = document.createElement("img");
@@ -39651,7 +39651,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
       var logoName = document.createElement("span");
       logoName.className = "text-secondary";
-      logoName.style.fontSize = "12px";
+      logoName.style.fontSize = "var(--text-sm)";
       logoName.textContent = data.settings.company_logo_filename;
       logoPreviewRow.appendChild(logoName);
 
@@ -39739,7 +39739,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     var upcomingField = document.createElement("div");
     upcomingField.className = "field";
-    upcomingField.style.marginTop = "10px";
+    upcomingField.style.marginTop = "var(--space-3)";
     upcomingField.style.maxWidth = "260px";
     upcomingField.innerHTML = "<label>Action Centre “Upcoming” window (days)</label>";
     var upcomingInput = document.createElement("input");
@@ -39777,7 +39777,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     nomenEnabledLabel.style.display = "flex";
     nomenEnabledLabel.style.alignItems = "center";
     nomenEnabledLabel.style.gap = "var(--space-2)";
-    nomenEnabledLabel.style.fontSize = "13px";
+    nomenEnabledLabel.style.fontSize = "var(--text-sm)";
     nomenEnabledLabel.style.marginTop = "var(--space-2)";
     var nomenEnabledCheckbox = document.createElement("input");
     nomenEnabledCheckbox.type = "checkbox";
@@ -39793,7 +39793,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     var patternField = document.createElement("div");
     patternField.className = "field";
-    patternField.style.marginTop = "10px";
+    patternField.style.marginTop = "var(--space-3)";
     patternField.innerHTML = "<label>Pattern</label>";
     var patternInput = document.createElement("input");
     patternInput.type = "text";
@@ -39823,8 +39823,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     var btnRow = document.createElement("div");
     btnRow.style.display = "flex";
-    btnRow.style.gap = "10px";
-    btnRow.style.marginTop = "10px";
+    btnRow.style.gap = "var(--space-3)";
+    btnRow.style.marginTop = "var(--space-3)";
     btnRow.style.flexWrap = "wrap";
 
     var exportBtn = document.createElement("button");
@@ -39878,7 +39878,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     var lastSaved = document.createElement("p");
     lastSaved.className = "text-secondary mono";
-    lastSaved.style.fontSize = "12px";
+    lastSaved.style.fontSize = "var(--text-sm)";
     lastSaved.style.marginTop = "var(--space-3)";
     lastSaved.textContent =
       "Last autosaved: " + (data.meta.last_saved_at ? new Date(data.meta.last_saved_at).toLocaleString() : "never yet");
@@ -39886,7 +39886,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     var lastExported = document.createElement("p");
     lastExported.className = "text-secondary mono";
-    lastExported.style.fontSize = "12px";
+    lastExported.style.fontSize = "var(--text-sm)";
     lastExported.style.marginTop = "2px";
     lastExported.textContent =
       "Last exported: " + (data.meta.last_exported_at ? new Date(data.meta.last_exported_at).toLocaleString() : "never yet");
@@ -39936,7 +39936,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         row.style.alignItems = "center";
         row.style.gap = "var(--space-2)";
         row.style.marginTop = "var(--space-2)";
-        row.style.fontSize = "13px";
+        row.style.fontSize = "var(--text-sm)";
 
         var label = document.createElement("span");
         label.className = "mono";
@@ -39947,7 +39947,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
         var btnGroup = document.createElement("span");
         btnGroup.style.display = "flex";
-        btnGroup.style.gap = "6px";
+        btnGroup.style.gap = "var(--space-2)";
         btnGroup.style.flexShrink = "0";
 
         var downloadBtn = document.createElement("button");

@@ -121,7 +121,7 @@
     var wrap = document.createElement("label");
     wrap.style.display = "flex";
     wrap.style.alignItems = "center";
-    wrap.style.gap = "6px";
+    wrap.style.gap = "var(--space-2)";
     wrap.style.fontWeight = "normal";
 
     var input = document.createElement("input");
@@ -158,7 +158,7 @@
     panel.style.marginBottom = "var(--space-4)";
 
     var heading = document.createElement("h3");
-    heading.style.marginBottom = "14px";
+    heading.style.marginBottom = "var(--space-4)";
     heading.textContent = isNew ? "Add RFI / Technical Query" : "Edit " + (rfi.number || "Entry");
     panel.appendChild(heading);
 
@@ -169,9 +169,9 @@
       if (sourceMeeting) {
         var linkNote = document.createElement("p");
         linkNote.className = "text-secondary";
-        linkNote.style.fontSize = "12px";
+        linkNote.style.fontSize = "var(--text-sm)";
         linkNote.style.marginTop = "-8px";
-        linkNote.style.marginBottom = "14px";
+        linkNote.style.marginBottom = "var(--space-4)";
         linkNote.textContent = "Linked to meeting: \u201c" + sourceMeeting.title + "\u201d (" + sourceMeeting.meeting_date + ")";
         panel.appendChild(linkNote);
       }
@@ -265,14 +265,14 @@
 
     var errorMsg = document.createElement("p");
     errorMsg.style.color = "var(--status-critical)";
-    errorMsg.style.fontSize = "13px";
+    errorMsg.style.fontSize = "var(--text-sm)";
     errorMsg.style.display = "none";
     errorMsg.textContent = "Subject, Question, and Project are required.";
     form.appendChild(errorMsg);
 
     var actions = document.createElement("div");
     actions.style.display = "flex";
-    actions.style.gap = "10px";
+    actions.style.gap = "var(--space-3)";
     actions.style.marginTop = "var(--space-3)";
 
     var saveBtn = document.createElement("button");
@@ -376,7 +376,7 @@
 
     var badgeWrap = document.createElement("div");
     badgeWrap.style.display = "flex";
-    badgeWrap.style.gap = "6px";
+    badgeWrap.style.gap = "var(--space-2)";
     badgeWrap.style.flexWrap = "wrap";
     badgeWrap.appendChild(statusBadge);
     badgeWrap.appendChild(priorityBadge);
@@ -464,12 +464,12 @@
       if (sourceMeeting) {
         var sourceRow = document.createElement("div");
         sourceRow.style.marginTop = "var(--space-3)";
-        sourceRow.style.paddingTop = "10px";
+        sourceRow.style.paddingTop = "var(--space-3)";
         sourceRow.style.borderTop = "1px solid var(--divider)";
         sourceRow.style.display = "flex";
         sourceRow.style.justifyContent = "space-between";
         sourceRow.style.alignItems = "center";
-        sourceRow.style.fontSize = "13px";
+        sourceRow.style.fontSize = "var(--text-sm)";
 
         var sourceLabel = document.createElement("span");
         sourceLabel.innerHTML = "<span class='detail-item__label'>RAISED IN MEETING</span>" + sourceMeeting.title + " (" + sourceMeeting.meeting_date + ")";
@@ -495,12 +495,12 @@
       if (linkedActivity) {
         var activityRow = document.createElement("div");
         activityRow.style.marginTop = "var(--space-3)";
-        activityRow.style.paddingTop = "10px";
+        activityRow.style.paddingTop = "var(--space-3)";
         activityRow.style.borderTop = "1px solid var(--divider)";
         activityRow.style.display = "flex";
         activityRow.style.justifyContent = "space-between";
         activityRow.style.alignItems = "center";
-        activityRow.style.fontSize = "13px";
+        activityRow.style.fontSize = "var(--text-sm)";
 
         var activityLabel = document.createElement("span");
         activityLabel.innerHTML = "<span class='detail-item__label'>LINKED ACTIVITY</span>" + linkedActivity.name;
@@ -525,13 +525,13 @@
     if (linkedChangeOrders.length > 0) {
       var coHeading = document.createElement("p");
       coHeading.className = "detail-item__label";
-      coHeading.style.marginTop = "14px";
-      coHeading.style.marginBottom = "6px";
+      coHeading.style.marginTop = "var(--space-4)";
+      coHeading.style.marginBottom = "var(--space-2)";
       coHeading.textContent = "CHANGE ORDERS RAISED (" + linkedChangeOrders.length + ")";
       wrap.appendChild(coHeading);
       linkedChangeOrders.forEach(function (co) {
         var row = document.createElement("p");
-        row.style.fontSize = "13px";
+        row.style.fontSize = "var(--text-sm)";
         row.style.margin = "0 0 2px";
         row.innerHTML = "<span class='mono'>" + co.number + "</span> \u2014 " + (co.title || "(untitled)");
         wrap.appendChild(row);
@@ -552,20 +552,20 @@
     // over time. Distinct from the Question/Response fields, which hold the current
     // state; this is the "what changed and when" thread underneath them.
     var revisionsWrap = document.createElement("div");
-    revisionsWrap.style.marginTop = "14px";
-    revisionsWrap.style.paddingTop = "10px";
+    revisionsWrap.style.marginTop = "var(--space-4)";
+    revisionsWrap.style.paddingTop = "var(--space-3)";
     revisionsWrap.style.borderTop = "1px solid var(--divider)";
 
     var revisionsHeading = document.createElement("p");
     revisionsHeading.className = "detail-item__label";
-    revisionsHeading.style.marginBottom = "6px";
+    revisionsHeading.style.marginBottom = "var(--space-2)";
     revisionsHeading.textContent = "REVISION HISTORY (" + r.revisions.length + ")";
     revisionsWrap.appendChild(revisionsHeading);
 
     if (r.revisions.length === 0) {
       var noRevisions = document.createElement("p");
       noRevisions.className = "text-secondary";
-      noRevisions.style.fontSize = "13px";
+      noRevisions.style.fontSize = "var(--text-sm)";
       noRevisions.style.margin = "0 0 var(--space-2)";
       noRevisions.textContent = "No revision notes logged yet.";
       revisionsWrap.appendChild(noRevisions);
@@ -575,8 +575,8 @@
         .reverse()
         .forEach(function (rev) {
           var row = document.createElement("div");
-          row.style.fontSize = "13px";
-          row.style.marginBottom = "6px";
+          row.style.fontSize = "var(--text-sm)";
+          row.style.marginBottom = "var(--space-2)";
           row.innerHTML =
             "<span class='mono' style='color:var(--text-secondary)'>" + rev.date + "</span>" +
             (rev.author ? " \u2014 <strong>" + rev.author + "</strong>" : "") +
@@ -589,8 +589,8 @@
 
     var revForm = document.createElement("div");
     revForm.style.display = "flex";
-    revForm.style.gap = "6px";
-    revForm.style.marginTop = "6px";
+    revForm.style.gap = "var(--space-2)";
+    revForm.style.marginTop = "var(--space-2)";
     revForm.style.flexWrap = "wrap";
 
     var authorInput = document.createElement("input");
@@ -669,11 +669,11 @@
     var list = document.createElement("div");
     list.style.display = "flex";
     list.style.flexDirection = "column";
-    list.style.gap = "6px";
+    list.style.gap = "var(--space-2)";
 
     overdueItems.slice(0, 8).forEach(function (r) {
       var row = document.createElement("div");
-      row.style.fontSize = "13px";
+      row.style.fontSize = "var(--text-sm)";
       row.style.display = "flex";
       row.style.justifyContent = "space-between";
       row.innerHTML =
