@@ -31,6 +31,7 @@ const JS_ORDER = [
   "js/layout.js",
   "js/nativeFile.js",
   "js/fileViewer.js",
+  "js/nativePrint.js",
   "js/archive.js",
   "js/pages/dashboard.js",
   "js/pages/actionCentre.js",

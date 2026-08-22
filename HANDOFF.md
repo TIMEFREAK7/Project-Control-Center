@@ -1347,12 +1347,58 @@ made repeated attempts unreliable) — justified since Electron's renderer is th
 engine already proven clean via the Playwright pass above, and no Electron packaging config
 changed this gate; still worth a real relaunch check next time Electron-specific code changes.
 
-**Not done yet**: Gate 3 (a native print plugin for `window.print()` — Reports/Executive Center
-still don't work on Android). Gate 4 (blob storage format/compression, cross-platform, scoped but
-not started). Android release signing (a dedicated keystore, not reusing Aditya's existing one
-from a different app — confirmed no benefit to reuse across unrelated `applicationId`s). macOS
-`.dmg` still needs a macOS host. Code signing for Windows/Android real releases remains an
-explicit later decision, not needed for personal/internal use.
+**Gate 3 (native print) done, 2026-08-22.** Deliberately not a third-party community plugin — a
+small custom Capacitor plugin built entirely on Android's own `WebView.createPrintDocumentAdapter()`
++ `android.print.PrintManager`, the same OS-level API Chrome itself uses for printing. Ships with
+the platform since API 21 (well under this app's `minSdkVersion` 24), so zero new dependencies.
+The real payoff: Android's native print dialog bundles a "Save as PDF" virtual printer on every
+device by default, alongside real printers — directly the thing Aditya didn't want to lose.
+
+**Why neither `reports.js` nor `executiveCenter.js` needed to change**: both call plain
+`window.print()` (confirmed by grep before building anything — `reports.js:617`,
+`executiveCenter.js:3080`), and the native print adapter operates on the WebView's own rendering
+engine, the same one that already applies the app's existing `@media print` CSS for a desktop
+Ctrl+P. So the fix is entirely additive: `packaging/android/android/app/src/main/java/.../PrintPlugin.java`
+(one `@PluginMethod`, wraps `createPrintDocumentAdapter()`/`PrintManager.print()`, dispatched via
+`getBridge().executeOnMainThread()` since `PrintManager` is a UI-thread API), registered in
+`MainActivity.java` (was a bare 3-line `BridgeActivity` subclass, now calls `registerPlugin()`
+before `super.onCreate()`), and `src/js/nativePrint.js` — a shim that overrides `window.print`
+itself, but only when `window.Capacitor.isNativePlatform()` is true. Web and Electron's real
+`window.print` are left completely untouched (both already worked).
+
+One real design wrinkle, documented directly in the shim: a real Capacitor WebView injects
+`window.Capacitor` before any page script runs, so the override applies correctly at load time in
+production — but a *test* environment necessarily sets `window.Capacitor` up after the page has
+already loaded. Solved by exposing the install step as `window.PCC.nativePrint.install()`, called
+once at load time and re-callable by tests after stubbing `window.Capacitor`, rather than only
+running once inside an unexported IIFE closure.
+
+**Testing**: a new 7-check jsdom e2e file (`tests/test_native_print_gate3_e2e.js`) covers the shim
+installing/leaving-alone correctly under both platform states, a missing-plugin case notifying
+instead of throwing, and — the check that actually matters — clicking the real "Print / Save as
+PDF" buttons on both Reports and Executive Center's Output tab (`viewProject(id, "output")` to
+reach it) and confirming they route through the stubbed native plugin. Full suite (44 files now)
+confirmed 0 failures. **This is the most honest gate yet on live verification**: unlike Gates 1-2,
+there's no structural proxy for "the system print dialog actually opens and produces a correct
+PDF" — no dex-string check can substitute for that. What *was* verified structurally: the APK
+builds clean (Gradle would fail on a Java error in the new plugin/MainActivity), `apksigner`
+confirms a valid signature, the embedded `index.html` is byte-identical, and
+`com/pcc/projectcontrolcenter/PrintPlugin`/`MainActivity` both show up compiled into `classes6.dex`
+(3 and 2 hits respectively) — the class genuinely exists in the build, not just the source tree.
+The actual print dialog behavior is unverified and needs a real device before considering this
+gate genuinely proven, not just structurally built — flagged directly to Aditya, not glossed over.
+Skipped a fresh Electron relaunch for this gate too (same reasoning as Gate 2, doubly true here
+since the shim's own web/Electron path — "leave `window.print` untouched" — is exactly what the
+jsdom test already confirmed directly, with nothing platform-specific left to verify live).
+
+**Not done yet**: Gate 4 (blob storage format/compression, cross-platform, scoped but not
+started). Android release signing (a dedicated keystore, not reusing Aditya's existing one from a
+different app — confirmed no benefit to reuse across unrelated `applicationId`s). macOS `.dmg`
+still needs a macOS host. Code signing for Windows/Android real releases remains an explicit later
+decision, not needed for personal/internal use. With Gates 1-3 done, Android now has the same
+feature set as the desktop builds except printable reports haven't been confirmed live on-device
+and release signing hasn't happened — the packaging initiative's original scope (desktop + mobile)
+is functionally complete pending that on-device confirmation.
 
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 

@@ -51,12 +51,13 @@ Needs a JDK and the Android SDK (`compileSdkVersion`/`platforms;android-36` +
 repo root's `index.html` into `www/` and the shared icon into `assets/` before each
 sync/build — never hand-edit those, they're overwritten every time.
 
-**Gate 1 (bare wrapper) and Gate 2 (Export/Import/Open File) are both done.** Gate 2 added
-`@capacitor/filesystem` + `@capacitor/share` and, more importantly, a shared in-app file viewer
-(`src/js/fileViewer.js`) used on every platform, not just Android — see the "Mobile & Desktop
-Packaging — Gate 2" entry in the main README for the full writeup. `window.print()`
-(Reports/Executive Center) still doesn't work on Android — that's Gate 3, a native print plugin,
-not yet started.
+**Gates 1-3 are all done** — bare wrapper, Export/Import/Open File, and native print. Gate 3 added
+a hand-written `PrintPlugin.java` (registered in `MainActivity.java`) built entirely on Android's
+own `WebView.createPrintDocumentAdapter()` + `PrintManager` — no third-party plugin — plus
+`src/js/nativePrint.js`, which routes `window.print()` through it only under Capacitor, leaving
+web/Electron's real `window.print` untouched. See the "Mobile & Desktop Packaging — Gate 3" entry
+in the main README for the full writeup, including the one thing still unverified: there's no
+emulator/device in this sandbox, so the actual print dialog has never been seen live.
 
 Release signing isn't set up yet — Gate 1 only produces a debug build (signed with the standard
 Android debug key, not for distribution). When that gate happens: generate a **dedicated** keystore

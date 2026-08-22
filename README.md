@@ -2864,6 +2864,30 @@ genuinely compiled into the APK's dex files, not just referenced in a manifest. 
 Filesystem-write-then-Share flow itself is still unverified on a real device — flagged directly,
 not glossed over.
 
+## Mobile & Desktop Packaging — Gate 3: Native Print (2026-08-22)
+
+Reports/Executive Center's `window.print()` doesn't exist in a bare Android WebView. Fixed with a
+small custom Capacitor plugin — deliberately not a third-party package — built on Android's own
+`WebView.createPrintDocumentAdapter()` + `PrintManager`, the exact OS-level API Chrome itself uses
+to print, shipping with the platform since API 21. Its native print dialog includes a "Save as
+PDF" virtual printer on every device by default alongside real printers, directly answering the
+concern about not losing PDF output.
+
+**Neither `reports.js` nor `executiveCenter.js` needed to change**: both just call plain
+`window.print()`, and the native adapter operates on the WebView's own rendering engine — the same
+one already applying the app's existing `@media print` CSS. The fix is a JS shim
+(`src/js/nativePrint.js`) that overrides `window.print` itself, only when running under Capacitor;
+web and Electron's real `window.print` stay untouched. Backed by a new
+`PrintPlugin.java`/updated `MainActivity.java` on the Android side.
+
+**Tested**: a new 7-check jsdom suite confirms the shim's platform-detection logic and — the check
+that matters — that clicking the real Print buttons on both Reports and Executive Center routes
+through the native plugin correctly. Full suite (44 files) passes clean. Structurally verified the
+Android build the same way as Gates 1-2 (valid signature, byte-identical embedded `index.html`,
+the new plugin class confirmed compiled into the APK's dex files) — but this is the most honest
+gate on live verification of the three: there's no structural proxy for "the system print dialog
+actually opens," so the real print flow still needs confirming on an actual device.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
