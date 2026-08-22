@@ -120,7 +120,13 @@ function findButtonByText(dom, text) {
   await check("clicking the pending-decision alert navigates to the Decision Register with that decision expanded", () => {
     // UI/UX Overhaul Gate 5: each diagnostics row is now the whole .attention-item
     // (clickable), not a separate "View" button on a .detail-card row.
-    var rows = Array.from(outlet().querySelectorAll(".attention-item")).filter((r) => r.textContent.indexOf("Confirm precast vendor") !== -1);
+    // Redesign Gate 9 added its own "Key Decisions" panel, which also lists the same
+    // pending decision as its own .attention-item row — scope to the Diagnostics panel
+    // specifically (what this check is actually about) rather than the whole page, so
+    // it doesn't also match that second, intentionally duplicate row.
+    var diagnosticsPanel = Array.from(outlet().querySelectorAll(".panel")).find((p) => p.textContent.indexOf("Project Health Diagnostics") !== -1);
+    assert.ok(diagnosticsPanel, "Diagnostics panel not found");
+    var rows = Array.from(diagnosticsPanel.querySelectorAll(".attention-item")).filter((r) => r.textContent.indexOf("Confirm precast vendor") !== -1);
     assert.strictEqual(rows.length, 1, "expected exactly one diagnostics row for the pending decision");
     rows[0].click();
     win.PCC.router.render();

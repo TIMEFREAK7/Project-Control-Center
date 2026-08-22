@@ -3662,6 +3662,68 @@ narrows its own Assignment-form Activity dropdown rather than scoping the whole 
 pre-existing behavior from before this gate, unrelated to the Workspace nav rework, not fixed here —
 out of this gate's scope).
 
+### Gate 9 — Portfolio + Executive Center Redesign, done, 2026-08-22
+
+Both pages are large and mature (`portfolio.js` 2391 lines, `executiveCenter.js` 3289 lines,
+built across many earlier gates) — delegated a read-only audit against the brief's own two
+checklists (12 Portfolio display fields + 8 filters; 15 Executive Center panels) before writing any
+code, rather than guessing what was missing. Confirmed most of both lists already existed; this
+gate closes only the genuine gaps the audit found.
+
+**Portfolio — 3 missing display fields, 2 missing filters, weak search**:
+- **Schedule Health, Risk Level, Key Milestone** didn't exist on project cards at all (Schedule
+  Health/Risk Level existed only in the separate Compare view, computed via Executive Center's
+  CPM-dependent `getHealthSummary()`; Key Milestone existed nowhere). Added all three as new
+  `.card-stat` chips, deliberately **CPM-engine-free** — the exact same "far too expensive to call
+  once per card in a portfolio list" reasoning Gate 3's own `projectCardStats()` comment already
+  established, made concrete by the fact that the search box already re-renders every visible card
+  on every keystroke. Schedule Health reuses Gate 8/Gate 17's exact "behind its own plan" rule as a
+  cheap boolean; Key Milestone reuses Gate 8's exact soonest-milestone rule; Risk Level is a new but
+  equally cheap computation (highest severity among a project's own open risk-register records, same
+  probability×impact matrix every other module's own `riskSeverity()` copy already uses). The Compare
+  view's own CPM-derived `scheduleRag`/`riskRag` are untouched and stay the more precise figure for a
+  user who explicitly opts into side-by-side comparison — this is a deliberately cheaper, different
+  proxy for the default Cards view, not a replacement, and is documented as such in the code.
+- **Location and Health filters** didn't exist (Location is a genuinely separate field from Country
+  on the project record, never exposed as a filter; Health had no filter at all, distinct from the
+  existing Status filter which only covers the project's own manually-set status). Added both,
+  Health wired to the same cheap Schedule Health computation the cards now show.
+- **Search** only matched name/client/company. Extended to also cover location/sector/project
+  manager/planner — the brief's own "strong search" — matching the fields the filters already narrow.
+
+**Executive Center — 2 missing panels, both genuine gaps**:
+- **Vendor Performance** had zero wiring — not hidden, not deferred, `data.vendors` was never
+  referenced anywhere in the file. Added a panel averaging each vendor's own review ratings
+  project-scoped, since `vendor_performance` rows already carry `project_id` directly — no CPM, no
+  new data model, reusing vendors.js's own `overallRating()` averaging formula exactly (duplicated
+  per this app's per-module-helpers convention).
+- **Key Decisions** had the data computed (`ctx.pendingDecisions`, an existing field on the CPM
+  context object) but no standalone panel — only a passing mention inside the auto-generated
+  Executive Summary text. Added a dedicated panel, placed in the same order the brief's own list
+  gives these items (…Resource concerns, Vendor performance, Key decisions, Required management
+  actions — the existing Management Action List already covers that last one). Both retrofitted onto
+  the same `.attention-list`/`.attention-item` primitive every other panel on this page already uses.
+
+**A real, findable test assumption caught, not silently patched around**: one existing test
+(`test_recovery_decision_reporting_e2e.js`) asserted "exactly one `.attention-item` row" containing
+a pending decision's title anywhere on the Executive Center page — true before this gate, no longer
+true now that Key Decisions intentionally shows the same pending decision the Diagnostics panel
+already flags. Scoped the assertion to the Diagnostics panel specifically (what it was actually
+testing), rather than loosening it — the duplication itself is intentional, correct, new behavior.
+
+**Verified**: `node --check` on both files; full 73-file suite, 2094 checks, 0 failures — including
+the one fixed test above. Real-Chromium pass with a seeded project (an overdue task, an upcoming
+milestone, a high-severity risk, a vendor review with mixed ratings, a pending decision): Portfolio
+card shows all three new chips correctly ("Behind Schedule," "High," "Site Handover · [date]"), both
+new filters present in the toolbar; Executive Center's new Vendor Performance panel shows the
+correct averaged rating, Key Decisions shows the pending item, both clickable through to their
+source records. Zero console errors.
+
+**Not done**: no change to any other module's own business logic or data shape — this gate only adds
+new read-only display/filter surface to these two pages. Resource concerns, Cost position,
+Commitment position, and the other Executive Center items the brief lists were already fully built
+in earlier gates (see the audit above) and untouched here.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →

@@ -60,6 +60,10 @@
     // table gate's own scope note.
     clientFilter: "",
     countryFilter: "",
+    // Redesign Gate 9: Location and Health are the brief's own two Portfolio filters
+    // that had no equivalent yet — see projectMatchesFilters()'s own comments on each.
+    locationFilter: "",
+    healthFilter: "",
     sectorFilter: "",
     pmFilter: "",
     plannerFilter: "",
@@ -407,13 +411,30 @@
     if (uiState.statusFilter && p.status !== uiState.statusFilter) return false;
     if (uiState.clientFilter && p.client !== uiState.clientFilter) return false;
     if (uiState.countryFilter && p.country !== uiState.countryFilter) return false;
+    // Redesign Gate 9: Location is a genuinely separate field from Country on the
+    // project record (see DETAIL_FIELDS) — the brief lists both as distinct Portfolio
+    // filters, so this is a new filter, not a rename of the existing Country one.
+    if (uiState.locationFilter && p.location !== uiState.locationFilter) return false;
     if (uiState.sectorFilter && p.sector !== uiState.sectorFilter) return false;
     if (uiState.pmFilter && p.project_manager !== uiState.pmFilter) return false;
     if (uiState.plannerFilter && p.planner !== uiState.plannerFilter) return false;
     if (uiState.typeFilter && p.project_type !== uiState.typeFilter) return false;
     if (uiState.yearFilter && (p.start_date || "").slice(0, 4) !== uiState.yearFilter) return false;
+    // Redesign Gate 9: the brief's own separate "Health" filter, distinct from "Status"
+    // above (which already filters the project's own manually-set status field) — wired
+    // to the same cheap, CPM-free Schedule Health proxy the cards themselves now show
+    // (computeScheduleHealthCheap), not a second CPM-dependent computation just for
+    // filtering. window.PCC.store.get() is a plain synchronous getter (just returns the
+    // already-loaded data object), so calling it once per candidate project here costs
+    // nothing extra beyond what rendering the cards already does.
+    if (uiState.healthFilter && computeScheduleHealthCheap(window.PCC.store.get(), p.id) !== uiState.healthFilter) return false;
     if (uiState.search) {
-      var haystack = (p.name + " " + p.client + " " + p.company).toLowerCase();
+      // Redesign Gate 9: "strong search" per the brief — extended beyond name/client/
+      // company to also cover location/sector/project manager/planner, the same fields
+      // this page's own filters already narrow by.
+      var haystack = (
+        p.name + " " + p.client + " " + p.company + " " + p.location + " " + p.sector + " " + p.project_manager + " " + p.planner
+      ).toLowerCase();
       if (haystack.indexOf(uiState.search.toLowerCase()) === -1) return false;
     }
     return true;
@@ -598,6 +619,73 @@
     return wrap;
   }
 
+  // Redesign Gate 9 (Portfolio + Executive Center Redesign): Schedule Health, Risk
+  // Level, and Key Milestone are three of the brief's own explicit "show" fields for
+  // Portfolio. All three are deliberately kept CPM-engine-free here, for the exact same
+  // "far too expensive to call once per card in a portfolio list" reason Gate 3's own
+  // projectCardStats() comment below already established \u2014 and the search box's oninput
+  // re-renders every visible card on every keystroke (see renderList() below), which
+  // would make a CPM call per card per keystroke a real, not just theoretical, cost.
+  // Schedule Health reuses the exact same "behind its own plan" rule Gate 8 (Project
+  // Workspace) and Gate 17 (My Work) already established; Key Milestone reuses Gate 8's
+  // exact soonest-by-early_start-or-planned_start rule \u2014 both duplicated here per this
+  // app's per-module-helpers convention, not reimplemented from scratch. The Compare
+  // view's own scheduleRag/riskRag (via executiveCenter.getHealthSummary(), which DOES
+  // run the full CPM engine \u2014 see renderCompareTable() further down) are deliberately
+  // left untouched and stay the more precise, float/critical-path-aware figures for a
+  // user who explicitly opts into comparing projects side by side; this is a cheaper,
+  // different proxy for the default Cards view, not a replacement.
+
+  var SEVERITY_MATRIX = {
+    high: { low: "medium", medium: "high", high: "high" },
+    medium: { low: "low", medium: "medium", high: "high" },
+    low: { low: "low", medium: "low", high: "medium" },
+  };
+  function riskSeverity(r) {
+    return SEVERITY_MATRIX[r.probability] ? SEVERITY_MATRIX[r.probability][r.impact] : "medium";
+  }
+
+  function computeScheduleHealthCheap(data, projectId) {
+    var todayIso = new Date().toISOString().slice(0, 10);
+    var behind = data.activities.some(function (a) {
+      if (a.project_id !== projectId) return false;
+      if (a.activity_type !== "task" && a.activity_type !== "milestone") return false;
+      return (
+        (a.status === "not_started" && a.planned_start && a.planned_start < todayIso) ||
+        (a.status === "in_progress" && a.planned_finish && a.planned_finish < todayIso)
+      );
+    });
+    return behind ? "Behind Schedule" : "On Schedule";
+  }
+
+  /** Highest severity among a project's own OPEN risk-register records \u2014 any type,
+   * since risk/issue/opportunity all carry probability/impact \u2014 "None" when nothing is
+   * open. Same probability\u00d7impact matrix every other module's own riskSeverity() copy
+   * already uses (risks.js, schedule.js, projectWorkspace.js, executiveCenter.js). */
+  function computeRiskLevel(data, projectId) {
+    var openRisks = data.risks.filter(function (r) {
+      return r.project_id === projectId && r.status !== "closed";
+    });
+    if (openRisks.length === 0) return "None";
+    if (openRisks.some(function (r) { return riskSeverity(r) === "high"; })) return "High";
+    if (openRisks.some(function (r) { return riskSeverity(r) === "medium"; })) return "Medium";
+    return "Low";
+  }
+
+  function computeKeyMilestoneCheap(data, projectId) {
+    var scheduleIds = data.schedules
+      .filter(function (s) { return s.project_id === projectId; })
+      .map(function (s) { return s.id; });
+    var candidates = data.activities
+      .filter(function (a) {
+        return scheduleIds.indexOf(a.schedule_id) !== -1 && a.activity_type === "milestone" && a.status !== "complete";
+      })
+      .map(function (a) { return { name: a.name, date: a.early_start || a.planned_start }; })
+      .filter(function (x) { return x.date; });
+    candidates.sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+    return candidates.length > 0 ? candidates[0] : null;
+  }
+
   /** Gate 3 (UI/UX Overhaul, Portfolio): cheap, per-project health counts computed
    * directly from the store for the card's stat chips. Deliberately NOT routed through
    * Executive Center's buildProjectContext() \u2014 that runs the full CPM engine and is far
@@ -664,6 +752,13 @@
       "Budget " + formatMoney(p.budget, p.currency) + "<br>Finish " + (p.finish_date || "\u2014");
 
     var stats = projectCardStats(data, p.id);
+    // Redesign Gate 9: the brief's own three remaining Portfolio "show" fields —
+    // Schedule Health, Risk Level, Key Milestone — see the cheap helper functions'
+    // own comment above for why these are a CPM-free proxy, not routed through
+    // Executive Center's health engine the way Compare view's own columns are.
+    var scheduleHealth = computeScheduleHealthCheap(data, p.id);
+    var riskLevel = computeRiskLevel(data, p.id);
+    var keyMilestone = computeKeyMilestoneCheap(data, p.id);
     var statsRow = document.createElement("div");
     statsRow.className = "project-card__stats";
     statsRow.innerHTML =
@@ -672,7 +767,19 @@
       "<div class='card-stat'><span class='card-stat__label'>Open RFIs / TQs</span>" +
       "<span class='card-stat__value'>" + stats.openRfis + "</span></div>" +
       "<div class='card-stat'><span class='card-stat__label'>Documents</span>" +
-      "<span class='card-stat__value'>" + stats.docsAvailable + "/" + stats.docsTotal + "</span></div>";
+      "<span class='card-stat__value'>" + stats.docsAvailable + "/" + stats.docsTotal + "</span></div>" +
+      "<div class='card-stat'><span class='card-stat__label'>Schedule Health</span>" +
+      "<span class='card-stat__value card-stat__value--text'" +
+      (scheduleHealth === "Behind Schedule" ? " style='color:var(--status-at-risk)'" : "") +
+      ">" + scheduleHealth + "</span></div>" +
+      "<div class='card-stat'><span class='card-stat__label'>Risk Level</span>" +
+      "<span class='card-stat__value card-stat__value--text'" +
+      (riskLevel === "High" ? " style='color:var(--status-critical)'" : riskLevel === "Medium" ? " style='color:var(--status-at-risk)'" : "") +
+      ">" + riskLevel + "</span></div>" +
+      "<div class='card-stat'><span class='card-stat__label'>Key Milestone</span>" +
+      "<span class='card-stat__value card-stat__value--text'>" +
+      (keyMilestone ? (keyMilestone.name || "(unnamed milestone)") + " · " + keyMilestone.date : "None scheduled") +
+      "</span></div>";
 
     var actions = document.createElement("div");
     actions.className = "project-card__actions";
@@ -2208,7 +2315,9 @@
 
     var searchInput = document.createElement("input");
     searchInput.type = "text";
-    searchInput.placeholder = "Search by name, client, or company\u2026";
+    // Redesign Gate 9: "strong search" per the brief \u2014 placeholder updated to match the
+    // wider set of fields projectMatchesFilters() now actually searches.
+    searchInput.placeholder = "Search by name, client, company, location, sector, PM, or planner\u2026";
     searchInput.value = uiState.search;
     searchInput.oninput = function () {
       uiState.search = searchInput.value;
@@ -2272,10 +2381,31 @@
     }
     var clientSelect = filterSelect("clients", "clientFilter", "client");
     var countrySelect = filterSelect("countries", "countryFilter", "country");
+    var locationSelect = filterSelect("locations", "locationFilter", "location");
     var sectorSelect = filterSelect("sectors", "sectorFilter", "sector");
     var pmSelect = filterSelect("PMs", "pmFilter", "project_manager");
     var plannerSelect = filterSelect("planners", "plannerFilter", "planner");
     var typeSelect = filterSelect("types", "typeFilter", "project_type");
+
+    // Redesign Gate 9: Health filter — not a distinct-field select (filterSelect()
+    // above reads real values off the project record itself), since Schedule Health is
+    // computed, not stored. Same two values computeScheduleHealthCheap() ever returns.
+    var healthSelect = document.createElement("select");
+    [
+      { value: "", label: "All health" },
+      { value: "On Schedule", label: "On Schedule" },
+      { value: "Behind Schedule", label: "Behind Schedule" },
+    ].forEach(function (o) {
+      var opt = document.createElement("option");
+      opt.value = o.value;
+      opt.textContent = o.label;
+      healthSelect.appendChild(opt);
+    });
+    healthSelect.value = uiState.healthFilter;
+    healthSelect.onchange = function () {
+      uiState.healthFilter = healthSelect.value;
+      renderList();
+    };
 
     var yearSelect = document.createElement("select");
     var allYearsOpt = document.createElement("option");
@@ -2331,8 +2461,10 @@
 
     toolbar.appendChild(searchInput);
     toolbar.appendChild(statusSelect);
+    toolbar.appendChild(healthSelect);
     toolbar.appendChild(clientSelect);
     toolbar.appendChild(countrySelect);
+    toolbar.appendChild(locationSelect);
     toolbar.appendChild(sectorSelect);
     toolbar.appendChild(pmSelect);
     toolbar.appendChild(plannerSelect);
