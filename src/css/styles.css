@@ -177,12 +177,84 @@ button {
   min-height: 100vh;
 }
 
-/* UI/UX Overhaul Gate 2 revision: Aditya asked for an Outlook-Online-style nav instead
-   of the persistent/collapsible sidebar this used to be — there is no more `.sidebar`
-   element in the DOM at any screen size. Navigation lives entirely in the hamburger-
-   triggered overlay below (.drawer--left), reusing the same .sidebar__nav/.sidebar__link
-   class names (so this file's link/icon styling doesn't need to change), now organized
-   as click-to-expand accordion groups instead of one always-visible flat list. */
+/* Redesign Gate 4: a real persistent sidebar again — reverses UI/UX Overhaul Gate 2's
+   revision (below), which replaced it with the hidden hamburger-overlay .drawer--left at
+   Aditya's own explicit request at the time. That contradiction with a standing prior
+   decision was flagged directly during this redesign's Phase A inspection rather than
+   picked silently, and resolved by Aditya's own explicit "start gate 4" call. Only
+   visible at >=1023px (media query below); the hamburger + .drawer--left overlay stays
+   completely unchanged below that, per the redesign brief's own instruction not to just
+   shrink the desktop sidebar for mobile. Built once in layout.js's mount(), never torn
+   down — unlike the overlay, which still rebuilds fresh every time it opens. */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  width: var(--sidebar-width);
+  flex-shrink: 0;
+  border-right: 1px solid var(--divider);
+  background-color: var(--bg-paper);
+  transition: width var(--transition-base);
+  overflow: hidden;
+}
+
+.sidebar__header {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--divider);
+  flex-shrink: 0;
+}
+
+.sidebar > .sidebar__nav {
+  overflow-y: auto;
+  flex-grow: 1;
+  padding: var(--space-2);
+}
+
+/* .sidebar's own max-width:1023px hide rule lives further down, folded into the
+   existing tablet-tier @media block (see the Gate 8 touch-target comment there) rather
+   than as a second block at the same breakpoint here — keeping one @media block per
+   breakpoint also avoids a second unrelated bug: a test that isolates "the" 1023px
+   block by regex would grab whichever one appears first in source order. The
+   min-width:1024px counterpart hiding .icon-btn--menu lives right after that same
+   block; placing it here instead, before .icon-btn's own base `display: flex` rule (in
+   "Shared components" below), lost the cascade tie on equal specificity to whichever
+   same-specificity rule comes LATER in source order (a real bug, caught by testing this
+   at actual desktop width — the hamburger stayed visible instead of hiding). */
+
+/* Collapsed state: pure CSS on top of the identical accordion markup/JS buildNavList()
+   already produces for the expanded sidebar and the mobile drawer — not a second
+   renderer. Group headers disappear (no room for their text at rail width) and every
+   group is forced open regardless of its own --expanded class, turning the accordion
+   into a flat icon-only rail; accordion interaction and mutual exclusion still work
+   correctly once expanded again; nothing here touches expandedGroups' actual state. */
+.sidebar--collapsed {
+  width: 60px;
+}
+
+.sidebar--collapsed .sidebar__group-toggle {
+  display: none;
+}
+
+.sidebar--collapsed .sidebar__group-items {
+  max-height: none !important;
+  padding: 0;
+}
+
+.sidebar--collapsed .sidebar__label {
+  display: none;
+}
+
+.sidebar--collapsed .sidebar__link {
+  justify-content: center;
+  gap: 0;
+}
+
+/* UI/UX Overhaul Gate 2 revision: the mobile hamburger-triggered overlay (.drawer--left)
+   below reuses these same .sidebar__nav/.sidebar__link class names (so this file's link/
+   icon styling doesn't need separate rules), organized as click-to-expand accordion
+   groups. Redesign Gate 4 above now reuses the identical markup a second way, for the
+   persistent desktop sidebar — everything in this block applies to both. */
 .sidebar__nav {
   list-style: none;
   margin: 0;
@@ -1681,8 +1753,14 @@ a:focus-visible {
    app was sized for a mouse pointer — 32px icon buttons, tightly-padded menu rows —
    comfortably clickable but noticeably below the ~44px touch target platforms
    recommend. Scoped to this tier only: desktop/laptop keep their current, denser
-   sizing untouched, since a mouse doesn't need the extra padding a fingertip does. */
+   sizing untouched, since a mouse doesn't need the extra padding a fingertip does.
+   Redesign Gate 4 folded .sidebar's own hide-below-1024px rule in here too, rather than
+   opening a second @media block at the same breakpoint elsewhere in the file. */
 @media (max-width: 1023px) {
+  .sidebar {
+    display: none;
+  }
+
   .icon-btn {
     width: 44px;
     height: 44px;
@@ -1705,6 +1783,16 @@ a:focus-visible {
   .card-menu__item,
   .card-menu__checkbox-item {
     padding: 11px 14px;
+  }
+}
+
+/* Redesign Gate 4: hides the hamburger once the persistent .sidebar takes over at
+   >=1024px — placed here, after .icon-btn's own base `display: flex` rule above, so this
+   `display: none` actually wins the cascade tie on equal specificity (a real bug when
+   this lived earlier in the file — see the note near .sidebar's own display:none rule). */
+@media (min-width: 1024px) {
+  .icon-btn--menu {
+    display: none;
   }
 }
 

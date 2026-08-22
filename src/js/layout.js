@@ -120,6 +120,12 @@
     densityComfortable: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="4" y="6" width="16" height="2" rx="1"/><rect x="4" y="11" width="16" height="2" rx="1"/><rect x="4" y="16" width="16" height="2" rx="1"/></svg>',
     densitySpacious: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="4" y="3" width="16" height="2" rx="1"/><rect x="4" y="11" width="16" height="2" rx="1"/><rect x="4" y="19" width="16" height="2" rx="1"/></svg>',
     focus: '<svg ' + ICON_SVG_ATTRS + '><polyline points="8 3 3 3 3 8"/><polyline points="16 3 21 3 21 8"/><polyline points="3 16 3 21 8 21"/><polyline points="21 16 21 21 16 21"/></svg>',
+    // Redesign Gate 4 (Navigation Architecture): the persistent sidebar's own collapse/
+    // expand toggle — a chevron pointing the direction the sidebar will move, plus a
+    // vertical bar marking the collapsed rail's edge, the same "chevron + bar" convention
+    // most desktop apps use for this control.
+    sidebarCollapse: '<svg ' + ICON_SVG_ATTRS + '><polyline points="14 6 8 12 14 18"/><line x1="4" y1="4" x2="4" y2="20"/></svg>',
+    sidebarExpand: '<svg ' + ICON_SVG_ATTRS + '><polyline points="10 6 16 12 10 18"/><line x1="20" y1="4" x2="20" y2="20"/></svg>',
   };
 
   // Redesign Gate 3 (Icon System Expansion): the nav list's own per-page icons, the
@@ -243,6 +249,19 @@
     });
     var titleValue = document.getElementById("title-block-sheet");
     if (titleValue) titleValue.textContent = PAGE_TITLES[routeName] || routeName;
+    // Redesign Gate 4: the persistent sidebar is built once in mount() and never torn
+    // down, unlike the mobile overlay's fresh-build-every-open — so its accordion needs
+    // an explicit re-sync on every route change, or navigating via a link inside a
+    // collapsed group (or router.go() called from elsewhere) would leave the sidebar
+    // showing the OLD group open and the new active route hidden inside a collapsed one.
+    var activeGroup = NAV_GROUPS.filter(function (g) {
+      return g.items.some(function (item) { return item.key === routeName; });
+    })[0];
+    if (activeGroup) {
+      expandedGroups = {};
+      expandedGroups[activeGroup.label] = true;
+      syncGroupExpansionDOM();
+    }
     // Every route change closes the nav overlay if it's open — covers navigation
     // triggered by something other than clicking a link inside it (e.g. a button
     // elsewhere in the page calling router.go() directly).
@@ -255,7 +274,26 @@
   // expand/collapse persists across closing and reopening the nav within the same page
   // load (this is a plain module variable, not store-backed), but resets on an actual
   // reload, same as the nav itself always starting closed on a fresh page load.
+  //
+  // Redesign Gate 4: accordion groups are mutually exclusive now (Aditya's explicit ask)
+  // — opening one collapses whichever other group was open, rather than each group's
+  // state being independent. Since the persistent sidebar (added this gate) and the
+  // mobile nav overlay can both exist in the DOM using the SAME expandedGroups object,
+  // re-syncing after any change needs to walk every ".sidebar__group" actually present
+  // in the document rather than only the one that was clicked — see
+  // syncGroupExpansionDOM(). data-group-label on each group's <li> (set in buildNavList)
+  // is what lets this DOM sweep find its way back to the right expandedGroups entry.
   var expandedGroups = {};
+
+  function syncGroupExpansionDOM() {
+    document.querySelectorAll(".sidebar__group").forEach(function (groupLi) {
+      var label = groupLi.getAttribute("data-group-label");
+      var expanded = !!expandedGroups[label];
+      groupLi.classList.toggle("sidebar__group--expanded", expanded);
+      var toggle = groupLi.querySelector(".sidebar__group-toggle");
+      if (toggle) toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+    });
+  }
 
   /** Builds one fresh `<ul class="sidebar__nav">` from NAV_GROUPS as an accordion — each
    * group is a clickable header (button, with a chevron) followed by its items, shown
@@ -279,6 +317,7 @@
 
       var groupLi = document.createElement("li");
       groupLi.className = "sidebar__group";
+      groupLi.setAttribute("data-group-label", group.label);
 
       var toggle = document.createElement("button");
       toggle.type = "button";
@@ -296,9 +335,15 @@
         toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
       }
 
+      // Mutually exclusive: opening a group collapses whichever other one was open,
+      // rather than each group's expanded state being independent (Aditya's explicit
+      // ask, Gate 4). Re-syncs every ".sidebar__group" in the document, not just this
+      // one, since the persistent sidebar and the mobile drawer share expandedGroups.
       toggle.onclick = function () {
-        expandedGroups[group.label] = !expandedGroups[group.label];
-        applyExpandedState();
+        var wasExpanded = !!expandedGroups[group.label];
+        expandedGroups = {};
+        if (!wasExpanded) expandedGroups[group.label] = true;
+        syncGroupExpansionDOM();
       };
       applyExpandedState();
 
@@ -309,7 +354,7 @@
         a.href = "#/" + item.key;
         a.setAttribute("data-route", item.key);
         a.innerHTML =
-          '<span class="sidebar__icon">' + (NAV_ICONS[item.key] || "") + "</span><span>" + item.label + "</span>";
+          '<span class="sidebar__icon">' + (NAV_ICONS[item.key] || "") + '</span><span class="sidebar__label">' + item.label + "</span>";
         a.addEventListener("click", closeNav);
         li.appendChild(a);
         itemsList.appendChild(li);
@@ -665,12 +710,63 @@
     return banner;
   }
 
+  /** Redesign Gate 4 (Navigation Architecture). Reverses UI/UX Overhaul Gate 2's revision
+   * (which replaced an actual persistent sidebar with this hidden hamburger-overlay, at
+   * Aditya's own explicit request then) — flagged directly during this initiative's Phase
+   * A inspection as a contradiction with that earlier decision, not silently picked either
+   * way, and resolved now by Aditya's own "start gate 4" call. Built once here in mount(),
+   * same "built once, CSS/media-queries decide visibility" split every responsive
+   * decision in this codebase already uses (.activities-mobile-cards,
+   * .gantt-mobile-timeline, etc.) — only visible at >=1024px (.sidebar's own CSS media
+   * query); the pre-existing hamburger + overlay drawer stays completely unchanged below
+   * that, per the redesign brief's own "do not simply shrink the desktop sidebar for
+   * mobile" instruction. Reuses buildNavList() as-is — the collapsed (icon-only) visual
+   * state is pure CSS on top of the identical accordion DOM/JS, not a second renderer;
+   * see .sidebar--collapsed in styles.css for how the accordion headers/text disappear
+   * and every group forces open into a flat icon rail. */
+  function buildSidebar() {
+    var collapsed = !!window.PCC.store.get().settings.sidebar_collapsed;
+    var sidebar = document.createElement("nav");
+    sidebar.id = "app-sidebar";
+    sidebar.className = "sidebar" + (collapsed ? " sidebar--collapsed" : "");
+
+    var header = document.createElement("div");
+    header.className = "sidebar__header";
+    var collapseBtn = document.createElement("button");
+    collapseBtn.type = "button";
+    collapseBtn.className = "icon-btn";
+    collapseBtn.id = "sidebar-collapse-btn";
+    collapseBtn.title = collapsed ? "Expand sidebar" : "Collapse sidebar";
+    collapseBtn.innerHTML = collapsed ? ICONS.sidebarExpand : ICONS.sidebarCollapse;
+    collapseBtn.onclick = toggleSidebarCollapse;
+    header.appendChild(collapseBtn);
+    sidebar.appendChild(header);
+
+    sidebar.appendChild(buildNavList());
+    return sidebar;
+  }
+
+  function toggleSidebarCollapse() {
+    var next = !window.PCC.store.get().settings.sidebar_collapsed;
+    window.PCC.store.update(function (data) {
+      data.settings.sidebar_collapsed = next;
+    });
+    var sidebar = document.getElementById("app-sidebar");
+    if (sidebar) sidebar.classList.toggle("sidebar--collapsed", next);
+    var btn = document.getElementById("sidebar-collapse-btn");
+    if (btn) {
+      btn.title = next ? "Expand sidebar" : "Collapse sidebar";
+      btn.innerHTML = next ? ICONS.sidebarExpand : ICONS.sidebarCollapse;
+    }
+  }
+
   function mount() {
     applyTheme(window.PCC.store.get().settings.theme || "dark");
     applyDensity(window.PCC.store.get().settings.density || "comfortable");
 
     var shell = document.createElement("div");
     shell.id = "app-shell";
+    shell.appendChild(buildSidebar());
 
     var mainCol = document.createElement("div");
     mainCol.className = "main-column";

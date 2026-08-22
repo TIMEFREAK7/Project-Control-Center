@@ -3384,6 +3384,53 @@ and confirmed clearly distinct, not a collision like Meetings/Resources was.
 Chromium pass: the fully expanded nav (all 27 icons) screenshotted and visually reviewed, zero
 console errors, the Meetings/Resources fix confirmed with a 4x-device-scale zoomed comparison.
 
+### Gate 4 — Navigation Architecture, done, 2026-08-22
+
+Reinstates the persistent, collapsible desktop sidebar the brief explicitly asks for (expanded =
+icon + label, collapsed = icon-only rail), reversing UI Modernization Gate 2's later revision that
+had replaced it with a hamburger-triggered overlay-only nav at every screen size. Aditya's own
+"start gate 4" call resolved the contradiction Phase A's inspection had flagged between that
+revision and this brief's requirement — the sidebar comes back for desktop/laptop (≥1024px); below
+that, the same hamburger + overlay drawer from Gate 2 stays completely unchanged, including its
+markup, since `buildNavList()` is the one renderer shared by both the persistent sidebar and the
+mobile drawer — no second nav implementation, per the brief's "reuse existing components"
+instruction. A collapse toggle button in the sidebar header persists its state to
+`settings.sidebar_collapsed` (a field that already existed in the schema, unused, from the original
+version of Gate 2 — no migration needed, it just went back into service).
+
+**Explicit addition from Aditya**: accordion groups (OVERVIEW/REGISTERS/PLANNING/OUTPUT) are now
+mutually exclusive — opening one automatically collapses whichever other group was open. Because
+the persistent sidebar, unlike the mobile drawer, is never rebuilt on navigation, `setActiveNav()`
+was also extended to auto-expand the active route's group (and collapse the rest) on every route
+change, so the sidebar doesn't go stale after clicking a link — a gap that would otherwise have
+shipped silently. A shared `expandedGroups` module-level object plus a `syncGroupExpansionDOM()`
+sweep keeps both independently-built DOM trees (sidebar built once in `mount()`, drawer rebuilt
+fresh every open) in sync from one source of truth.
+
+**A real CSS cascade bug caught by testing, not assumed away** — same discipline as Gates 2 and 3's
+write-ups. The rule hiding the hamburger at desktop widths (`@media (min-width:1024px) { .icon-btn
+--menu { display:none; } }`) was first placed early in the file, near `#app-shell`. A real-Chromium
+check at 1400px showed the hamburger still visible. Root cause: that rule appeared in source
+*before* `.icon-btn`'s own base `display:flex` rule (defined later, in "Shared components"). With
+equal selector specificity and no `!important`, CSS resolves the tie in favor of whichever rule is
+*later* in source order — so the later `display:flex` was winning regardless of the media query.
+Fixed by moving the rule to after `.icon-btn`'s base rule. While fixing this, also found (and
+avoided introducing) a second, unrelated collision: the sidebar's own `@media (max-width:1023px)`
+hide rule, if left as its own separate block, would have been a second block at the exact same
+breakpoint as Gate 8's touch-target tier — harmless in the browser, but exactly the kind of
+duplicate a test that isolates "the" 1023px block by regex could latch onto by source-order
+accident. Folded it directly into Gate 8's existing block instead of opening a second one.
+
+**Verified**: `node --check` on `layout.js`; full 73-file suite, 2090 checks, 0 failures — including
+updating `test_uiux_gate2_navigation_e2e.js`'s stale "there is no persistent `.sidebar` element"
+assertion left over from Gate 2's overlay-only revision, now correctly asserting the sidebar exists.
+Real-Chromium pass covering: desktop sidebar visible + hamburger hidden at 1400px; mutual exclusion
+(expanding PLANNING collapses a previously-open REGISTERS); route-change auto-expand (navigating to
+Risk Register auto-expands REGISTERS, collapses PLANNING); collapse toggle brings the rail to 60px
+and persists across reload; mobile at 500px shows the hamburger with the sidebar hidden, and the
+overlay drawer still opens and behaves exactly as it did before this gate. Zero console errors
+across all checks.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
