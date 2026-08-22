@@ -57,17 +57,24 @@
   --font-body: "Inter", ui-sans-serif, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
 
-  --signal-amber: #f0a202;
-  --signal-amber-dark: #c7860a;
-  --status-on-track: #2e9e83;
-  --status-at-risk: #d9a441;
-  --status-warning: #d9822b;
-  --status-critical: #d64545;
-  --status-info: #4c7ea8;
+  /* PCC Redesign Gate 1 (Visual Language Foundation): replaces the amber/blueprint-navy
+     industrial palette with a modern professional accent + neutral slate backgrounds — see
+     PCC-REDESIGN.md (or the session that added this comment) for the full gate plan this is
+     part of. --signal-amber keeps its original name deliberately (many call sites reference
+     it by name, including a test that asserts the reference itself, not its value) even
+     though the color is now blue, not amber — a rename is a separate, later, wider-blast-
+     radius change, not bundled into this token-value-only gate. */
+  --signal-amber: #3d63dd;
+  --signal-amber-dark: #2f4fb8;
+  --status-on-track: #1f9d6c;
+  --status-at-risk: #d69e2e;
+  --status-warning: #dd6b20;
+  --status-critical: #e53e3e;
+  --status-info: #0e9aa7;
 
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
   --sidebar-width: 236px;
 
   --space-1: 4px;
@@ -95,35 +102,31 @@
 }
 
 html[data-theme="dark"] {
-  --bg-default: #0b1420;
-  --bg-paper: #101b2b;
-  --bg-paper-raised: #16243a;
-  --text-primary: #e7ecf2;
-  --text-secondary: #9fb0c3;
-  --divider: rgba(159, 176, 195, 0.16);
-  /* Slightly reduced from 0.07 — grid background should read as a subtle engineering
-     texture behind large empty areas (dashboard/header/empty-state), never compete with
-     table/card/panel content. Panels already mask it with an opaque --bg-paper fill;
-     this only affects the visible gaps between them. */
-  --grid-line: rgba(124, 152, 184, 0.045);
-  --hover-bg: rgba(159, 176, 195, 0.08);
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.28);
-  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.32);
-  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.4);
+  /* Neutral slate, not navy — the old #0b1420/#101b2b/#16243a family read as "blueprint,"
+     which this gate is deliberately moving away from. */
+  --bg-default: #0e1015;
+  --bg-paper: #15171e;
+  --bg-paper-raised: #1d2029;
+  --text-primary: #edeef2;
+  --text-secondary: #9ba1af;
+  --divider: rgba(155, 161, 175, 0.14);
+  --hover-bg: rgba(155, 161, 175, 0.08);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.34);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.42);
 }
 
 html[data-theme="light"] {
-  --bg-default: #edeef0;
+  --bg-default: #f4f5f7;
   --bg-paper: #ffffff;
-  --bg-paper-raised: #f5f6f7;
-  --text-primary: #1b2430;
-  --text-secondary: #54607a;
-  --divider: rgba(27, 36, 48, 0.1);
-  --grid-line: rgba(27, 36, 48, 0.035);
-  --hover-bg: rgba(27, 36, 48, 0.05);
-  --shadow-sm: 0 1px 2px rgba(27, 36, 48, 0.06);
-  --shadow-md: 0 8px 24px rgba(27, 36, 48, 0.12);
-  --shadow-lg: 0 16px 48px rgba(27, 36, 48, 0.18);
+  --bg-paper-raised: #f7f8fa;
+  --text-primary: #1a1d29;
+  --text-secondary: #5b6272;
+  --divider: rgba(26, 29, 41, 0.09);
+  --hover-bg: rgba(26, 29, 41, 0.045);
+  --shadow-sm: 0 1px 2px rgba(20, 24, 38, 0.06);
+  --shadow-md: 0 8px 24px rgba(20, 24, 38, 0.1);
+  --shadow-lg: 0 16px 48px rgba(20, 24, 38, 0.16);
 }
 
 * {
@@ -140,9 +143,6 @@ body {
   font-family: var(--font-body);
   background-color: var(--bg-default);
   color: var(--text-primary);
-  background-image: linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
-  background-size: 24px 24px;
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -215,7 +215,8 @@ button {
 }
 
 .sidebar__group-toggle .sidebar__group-label {
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
+  font-weight: 600;
   font-size: var(--text-xs);
   letter-spacing: 1.5px;
   color: var(--text-secondary);
@@ -293,7 +294,6 @@ button {
 
 .title-block__cell {
   padding: var(--space-2) var(--space-4);
-  border-right: 1px solid var(--divider);
 }
 
 .title-block__cell--grow {
@@ -301,16 +301,21 @@ button {
   min-width: 0;
 }
 
+/* Redesign Gate 1: dropped the ruled cell-divider borders and the mono, letter-spaced
+   "instrument readout" styling both cells used before — a big part of the old technical-
+   drawing title-block identity this gate moves away from. Font-family only changes here
+   (still one shared class for both the page title and metadata cells); giving the page
+   title its own distinct treatment needs a DOM-level class split, deferred to Gate 2. */
 .title-block__label {
   display: block;
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: 10px;
-  letter-spacing: 1.2px;
+  letter-spacing: 0.4px;
   color: var(--text-secondary);
 }
 
 .title-block__value {
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-weight: 600;
   font-size: 13.5px;
   white-space: nowrap;
@@ -398,7 +403,7 @@ footer.app-footer {
   padding: 6px var(--space-4);
   display: flex;
   justify-content: space-between;
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: var(--text-xs);
   color: var(--text-secondary);
 }
@@ -567,7 +572,7 @@ a:focus-visible {
 
 .btn--primary {
   background-color: var(--signal-amber);
-  color: #0b1420;
+  color: #fff;
 }
 
 .btn--primary:hover:not(:disabled) {
@@ -712,9 +717,9 @@ a:focus-visible {
   max-width: 360px;
   padding: var(--space-3) 14px;
   border-radius: var(--radius-sm);
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: 13px;
-  color: #0b1420;
+  color: #12141a;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
   animation: toast-in var(--transition-base);
 }

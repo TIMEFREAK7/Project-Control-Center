@@ -1874,6 +1874,105 @@ the original 6-gate plan's brief impressions — actually suggested.
   while a plain `.attention-item` correctly stays `cursor: auto` — confirming the conditional
   clickability distinction actually renders correctly, not just that the class exists in markup.
 
+## NEW INITIATIVE: PCC Redesign — Complete UI/UX, IA & Cross-Platform Overhaul (started
+## 2026-08-22) — a SIXTH, separate initiative from UI/UX Overhaul and UI Modernization above
+
+Aditya handed over a detailed structured brief (30+ sections) for a major overhaul: move PCC away
+from its "industrial/engineering dashboard" identity toward a modern professional PMO/SaaS look,
+a full information-architecture regrouping, and eventual real cross-platform readiness. The brief's
+own final instruction: inspect first, give a concise assessment (8 specific points), propose the
+smallest sensible first step, build incrementally — matching this project's own standing discipline
+exactly, so followed it as given rather than jumping to implementation.
+
+**Phase A inspection (this session) surfaced two real architectural findings, not just cosmetic
+ones — worth any future session re-reading before touching navigation or project-scoping code:**
+
+1. **Nav pattern contradiction.** The brief wants a persistent collapsible sidebar (icon+label
+   expanded, icon-only collapsed). The current nav is a hidden Outlook-Online-style overlay
+   (hamburger → accordion drawer) — which replaced an actual persistent sidebar at **Aditya's own
+   earlier explicit request**, documented in code comments from that gate (UI/UX Overhaul Gate 2's
+   revision). This is a direct contradiction with a standing prior decision, not resolved yet —
+   flagged to Aditya, will be resolved explicitly in Gate 4, not picked silently.
+2. **No cross-module project context exists.** Confirmed via code read, not assumed: every
+   project-scoped page module (`schedule.js`, `risks.js`, `cost.js`, etc.) keeps its own
+   independent, module-local `var uiState` with its own `projectId`/`projectFilter` — completely
+   separate closures, no shared state. `router.js` is 48 lines with no route params — `go(name)`
+   just sets `#/name`, nothing else passed through. Selecting a project in one module does not
+   carry to another today. Building this for real means touching roughly 15 page files plus
+   extending the router — a genuine architectural addition, not a reskin. Deliberately NOT folded
+   into the IA-regrouping gate; it's Gate 6 on its own.
+
+**Also found during inspection, informing Gate 5's scope**: "Issue Register" as a nav destination
+separate from "Risk Register" doesn't map to PCC's actual architecture — `risks.js` is one unified
+Risk/Issue/Opportunity module by design (the documented "one shape, one `type` field" pattern this
+project uses for RFI/TQ and Change Orders too). Recommended keeping it unified, exposing Risk/
+Issue/Opportunity filtering more prominently in-page rather than fragmenting nav into two
+destinations pointing at the same dataset — not yet explicitly confirmed back by Aditya, revisit at
+Gate 5. "Milestones" and "Backup/Restore" as nav destinations don't have dedicated pages today
+(milestones are an `activity_type` value inside Schedule's activities, already surfaced filtered in
+several pages; backup/restore is title-block icon buttons plus a settings-level reminder banner
+system) — both buildable as thin views over existing data when their gate comes up, not new
+functionality.
+
+**The 12-gate plan**, presented to and accepted by Aditya ("define all the gates and then proceed
+with first step") — mapped from the brief's own Phase A-H structure, expanded where inspection
+found more specific real work than the brief's general phase names implied:
+
+1. Visual Language Foundation — **done, see below**.
+2. Component Restyling (remaining shared components; possible title-block DOM-level split).
+3. Icon System Expansion (all 27 nav items, replacing 2-letter codes — builds on Gate E).
+4. Navigation Architecture (resolves finding #1 above).
+5. Information Architecture Regrouping (resolves the Risk/Issue, Milestones, Backup/Restore
+   questions above; no routes renamed/removed, only regrouped).
+6. Global Project Context (resolves finding #2 above — the biggest non-visual piece of the plan).
+7. Dashboard + My Work + Action Centre Redesign.
+8. Project Workspace as Command Centre.
+9. Portfolio + Executive Center Redesign.
+10. Module Consistency Pass (every remaining module gets the new visual language).
+11. Responsive & Cross-Platform Verification Pass (dedicated tablet/Android testing, not assumed).
+12. App Icon & Branding (new symbol, favicon/PWA/Android/Windows icon prep — packaging itself
+    stays out of scope per the brief; can run in parallel with any other gate).
+
+### Gate 1 — Visual Language Foundation, done, 2026-08-22
+
+CSS-only, zero JS/DOM/route changes, as promised before starting — `src/css/styles.css` is the
+only source file touched.
+
+- **Token values changed, token names did not.** A test (`test_schedule_gantt_e2e.js`) asserts
+  `var(--signal-amber)`/`var(--status-critical)` by reference name, not resolved value — renaming
+  `--signal-amber` (now a blue, not amber) stays a deliberate later decision given its wider blast
+  radius across many files and that one test, not bundled into a token-value-only gate.
+- **New accent** `#3d63dd` (professional blue) replacing amber `#f0a202`; `.btn--primary`'s
+  hardcoded dark-navy text color changed to white to stay readable against the new background.
+- **Status colors** refined for a calmer feel, every semantic meaning and token name unchanged;
+  `--status-info` deliberately moved to teal-cyan so it reads as distinct from the new blue
+  primary accent rather than confusingly similar to it.
+- **Radius scale** 4/8/12px → 6/10/16px, softer/rounder. Cascaded almost everywhere automatically
+  — direct payoff from Gates A-C's earlier token-cleanup work having already tokenized the vast
+  majority of `border-radius` usage across `styles.css` and the page JS files.
+- **Dark theme backgrounds** moved from navy (`#0b1420` family) to neutral slate (`#0e1015`
+  family) — the navy specifically read as "blueprint." Light theme, already fairly neutral, only
+  tuned lightly.
+- **Removed the blueprint grid-line texture entirely** (`body`'s background-image, and the now-
+  unused `--grid-line` token in both theme blocks).
+- **Softened the technical-drawing title-block/footer/sidebar-label chrome**: removed the ruled
+  cell-divider borders in the title-block, switched title-block/footer/sidebar-group-label
+  font-family from mono to body (still one shared title-block class for both the page title and
+  metadata cells — splitting that at the DOM level is deferred to Gate 2). Deliberately **kept**
+  mono font for genuinely numeric/tabular content (`.kpi-card__value`, `.project-card__figures`,
+  `.card-stat__value`, `.progress-bar__value`, the `.mono` utility class) — a legitimate
+  typographic choice for aligning figures, unrelated to the "industrial" complaint, and common in
+  modern SaaS/finance tooling too. Left `.status-badge` and the risk heat-map's mono usage
+  untouched for now — smaller, more defensible choices, lower priority, revisit in Gate 2 if
+  needed.
+- **Verified**: full 78-file suite, 2090 checks, 0 failures (pure token/CSS-property change, no
+  functional risk expected or found). Real-Chromium screenshot pass across Dashboard/Portfolio/
+  Schedule/Risk Register/Executive Center in dark theme plus Dashboard/Portfolio in light theme —
+  zero console errors; visually confirmed the blueprint texture is gone, the new blue accent reads
+  clean in both themes, and the risk heat-map's red/amber/green severity coding still reads
+  clearly despite the calmer palette.
+- **Not started**: Gates 2-12.
+
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
 `main` is fully up to date through **Tier 3, "final polish," Gate 4** (Gantt virtualization for

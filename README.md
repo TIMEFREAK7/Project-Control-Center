@@ -3220,6 +3220,106 @@ background on actual mouse hover, while a plain `.attention-item` correctly stay
 
 **With Gate F done, the full 6-gate UI Modernization initiative (A through F) is complete.**
 
+## PCC Redesign — Complete UI/UX, Information Architecture & Cross-Platform Overhaul (started
+## 2026-08-22) — a NEW, SEPARATE initiative from UI Modernization and UI/UX Overhaul above
+
+Aditya requested a major overhaul: move PCC away from its "industrial/engineering dashboard"
+identity toward a modern professional PMO/SaaS look, plus a full information-architecture
+regrouping and, eventually, real cross-platform (Windows/Android/browser/mobile) readiness. Given
+via a detailed structured brief (30+ sections) with an explicit final instruction: inspect first,
+give a concise assessment, propose the smallest sensible first step, and build incrementally —
+matching this project's own standing discipline exactly.
+
+**Phase A inspection surfaced two real architectural findings, not just cosmetic ones:**
+1. **Nav pattern contradiction**: the brief asks for a persistent collapsible sidebar
+   (icon+label expanded / icon-only collapsed) — but the current nav is a hidden Outlook-Online-
+   style overlay, which replaced an actual persistent sidebar at **Aditya's own earlier explicit
+   request** (documented in code comments from that gate). Flagged directly rather than silently
+   picking a side; to be resolved in Gate 4.
+2. **No cross-module project context exists**: every project-scoped page module keeps its own
+   independent, module-local `uiState.projectId`/`projectFilter` — there's no shared "current
+   project" concept, and `router.js` (48 lines) has no route params to carry one through hash
+   navigation. Building real persistence means touching ~15 page files plus the router — a genuine
+   architectural addition, not a reskin. Its own gate (Gate 6), not folded into IA renaming.
+
+Also found: "Issue Register" as a nav item separate from "Risk Register" doesn't map to PCC's
+architecture (one unified Risk/Issue/Opportunity module by design, per CLAUDE.md's documented
+"one shape distinguished by a type field" pattern) — recommended keeping it unified rather than
+fragmenting the data. "Milestones" and "Backup/Restore" as nav destinations don't have dedicated
+pages today (milestones are an `activity_type` inside Schedule; backup/restore is title-block
+icons + a settings reminder system) — buildable as thin views over existing data, not new
+functionality, when their gate comes up.
+
+**The 12-gate plan** (mapped from the brief's own Phase A-H structure, expanded where inspection
+found more specific real work than the brief's general phase names implied):
+
+1. **Visual Language Foundation** — palette, radius scale, remove the blueprint grid texture,
+   soften technical-drawing chrome (title-block, footer, sidebar labels). **Done, see below.**
+2. **Component Restyling** — apply the new language to remaining shared components; may split
+   the title-block's page-title cell from its metadata cells at the DOM level if warranted.
+3. **Icon System Expansion** — real icons for all 27 nav items (replacing the 2-letter codes),
+   per the brief's icon vocabulary — builds on Gate E's existing 7-icon shell-chrome system.
+4. **Navigation Architecture** — resolve the sidebar-vs-overlay decision (finding #1 above),
+   implement the chosen pattern for desktop + redesign the mobile drawer.
+5. **Information Architecture Regrouping** — remap `NAV_GROUPS` to the brief's conceptual
+   structure; no routes renamed/removed, only regrouped; resolves the Risk/Issue, Milestones, and
+   Backup/Restore questions above.
+6. **Global Project Context** — shared current-project state + router support, threaded through
+   every project-scoped page (finding #2 above) — the biggest non-visual piece of the whole plan.
+7. **Dashboard + My Work + Action Centre Redesign**.
+8. **Project Workspace as Command Centre**.
+9. **Portfolio + Executive Center Redesign**.
+10. **Module Consistency Pass** — apply the new visual language across every remaining module
+    (Schedule, Lookahead, Delays, Cost, Commitments, Resources, Risks, Issues, RFI, Changes,
+    Decisions, Meetings, Vendors, Documents, Daily Log, Lessons Learned, Knowledge Base, Reports).
+11. **Responsive & Cross-Platform Verification Pass** — a dedicated tablet/Android testing pass
+    across everything, not assumed correct from desktop-only checks.
+12. **App Icon & Branding** — a new symbol independent of the "Aditya Abhyankar's..." full text,
+    favicon/PWA/Android/Windows icon prep (packaging itself stays out of scope, per the brief) —
+    can run in parallel with any other gate, doesn't block or get blocked by the rest.
+
+### Gate 1 — Visual Language Foundation, done, 2026-08-22
+
+CSS-only, zero JS/DOM/route changes, as promised before starting. Token **values** changed, token
+**names** did not (a test asserts `var(--signal-amber)`/`var(--status-critical)` by reference name,
+not value — renaming stays a deliberate later decision given its wider blast radius across many
+files, not bundled into this gate).
+
+- **New accent**: `--signal-amber` (kept its name, now holds a professional blue `#3d63dd`, not
+  amber) replacing the construction-adjacent amber `#f0a202`. `.btn--primary`'s text color changed
+  from a hardcoded dark navy to white to stay readable against the new blue background.
+- **Status colors** refined for a calmer, more professional feel while keeping every semantic
+  meaning and token name unchanged: on-track (green), at-risk (amber/gold), warning (orange),
+  critical (red), info (moved to teal-cyan specifically so it reads as distinct from the new blue
+  primary accent, rather than confusingly similar).
+- **Radius scale softened**: 4/8/12px → 6/10/16px — reads as "modern SaaS rounded," not the old
+  sharper "technical drawing" corners. Cascaded automatically almost everywhere thanks to Gates
+  A-C's earlier token-cleanup work already having tokenized the vast majority of `border-radius`
+  usage across both `styles.css` and the page JS files — direct payoff from that "boring" prior
+  work.
+- **Dark theme backgrounds** moved from navy (`#0b1420`/`#101b2b`/`#16243a`) to neutral slate
+  (`#0e1015`/`#15171e`/`#1d2029`) — the navy family read specifically as "blueprint," which this
+  gate is deliberately moving away from. Light theme was already fairly neutral and only tuned
+  lightly.
+- **Removed the blueprint grid-line texture entirely** — `body`'s background-image/background-size
+  rule and the now-unused `--grid-line` token, both theme blocks.
+- **Softened the technical-drawing title-block chrome**: removed the ruled cell-divider borders
+  between title-block cells, switched its label/value font-family from mono to body (still one
+  shared class for both the page title and metadata cells — a DOM-level split to treat the page
+  title distinctly is deferred to Gate 2, not bundled here). Same de-emphasis applied to the
+  sidebar group-section labels ("OVERVIEW", "PLANNING", etc.) and the footer status bar, both of
+  which also used mono+letter-spacing "instrument readout" styling. Left mono font in place for
+  genuinely numeric/tabular content (`.kpi-card__value`, `.project-card__figures`,
+  `.card-stat__value`, `.progress-bar__value`, the `.mono` utility class itself) — that's a
+  legitimate typographic choice for aligning figures, unrelated to the "industrial" complaint, and
+  a common convention in modern SaaS/finance tooling too.
+- **Verified**: full 78-file test suite, 2090 checks, 0 failures — a pure token/CSS-property
+  change, no functional risk. Real-Chromium screenshot pass across Dashboard/Portfolio/Schedule/
+  Risk Register/Executive Center in dark theme plus Dashboard/Portfolio in light theme, zero
+  console errors — visually confirmed the blueprint texture is gone, the new blue accent reads
+  clean against both themes, and the risk heat-map's red/amber/green severity coding still reads
+  clearly despite the calmer palette.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
