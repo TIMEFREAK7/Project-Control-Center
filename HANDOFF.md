@@ -2186,6 +2186,47 @@ against the brief's own list plus a restyling catch-up, not a rewrite.
   correctly. Zero console errors.
 - **Not started**: Gates 8-12.
 
+**Gate 8 — Project Workspace as Command Centre, done, 2026-08-22.** Aditya said "start gate 8"
+directly. Inspected `projectWorkspace.js` (UI/UX Overhaul Gate 4's own page) in full first — already
+a real project-scoped hub, deliberately CPM-engine-free; this gate closed two concrete gaps against
+the brief's own section, not a rebuild.
+
+- **Header vitals strip**: the brief lists Progress/Schedule Status/Key Milestone/Current Health as
+  "at the top" — Progress existed only as a KPI card further down; Schedule Status and Key Milestone
+  didn't exist at all. Added a `.card-stat` chip strip (same primitive Gate 3/Gate 7 already
+  established) under the header. Both new figures stay CPM-free per this page's own discipline:
+  Schedule Status reuses My Work's exact "behind its own plan" rule as a boolean; Key Milestone is
+  the single soonest milestone by `early_start || planned_start` (Gate 5/My Work's own date
+  convention). Added a new `.card-stat__value--text` CSS modifier since these are the chip's first
+  non-numeric values — its mono font is for tabular content only, per Gate 1's own established rule.
+- **Grouped module directory, replacing the flat toolbar + "More" overflow**: the brief asks for
+  PLANNING/CONTROLS/MANAGEMENT/VENDORS/DOCUMENTS/REPORTS grouping. Reused Gate 5's exact global-
+  sidebar group names rather than a second taxonomy — the directory panel's own column headings now
+  read identically to the sidebar's group labels in the same screenshot. Always-visible panel, one
+  `.card-menu__item` link per module (the same component the old "More" dropdown already used, no
+  longer hidden behind a click). Executive Center stays a separate prominent button above the groups
+  (the project's own rollup dashboard, not a "module"). Kept the same real-deep-link-only discipline
+  the original nav had — Document Types/Document Control Dashboard/Delay & Recovery Dashboard/Vendor
+  Performance Centre/Project Lookahead still excluded, re-confirmed none expose a
+  `filterByProject()`/`viewProject()`, not assumed unchanged.
+- **Reports added — a genuinely new gap closed**: missing from the nav entirely before this gate
+  despite being project-scoped since Gate 6. Has no `filterByProject()`/`viewProject()` of its own,
+  so `navigateToModule()` grew a small special case setting the shared project context directly
+  (`window.PCC.projectContext.set()`) — the same thing the shell header's own switcher does, and
+  enough since Gate 6 already made Reports default from that shared context on every render.
+- **Verified**: `node --check` on `projectWorkspace.js`; full 73-file suite, 2094 checks, 0 failures
+  — including updating this page's own dedicated test (`test_uiux_gate4_workspace_e2e.js`)'s
+  `.toolbar`-scoped nav lookups (module buttons live in the directory panel now), replacing the
+  retired "More overflow" test, and adding vitals/Reports checks; also fixed one
+  `test_uiux_gate6_documents_e2e.js` assertion with the identical stale lookup pattern. Real-Chromium
+  pass with a seeded project (overdue task, upcoming milestone, critical risk): vitals strip correct
+  ("Behind Schedule" flagged correctly), all seven groups render with correct items, directory
+  labels visually match the sidebar. Zero console errors.
+- **Not done**: no change to any linked-to module's own business logic. Resources' existing
+  `filterByProject()` still only narrows its own Assignment-form Activity dropdown, not the whole
+  page — pre-existing, unrelated to this gate's own scope, not fixed here.
+- **Not started**: Gates 9-12.
+
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
 `main` is fully up to date through **Tier 3, "final polish," Gate 4** (Gantt virtualization for

@@ -1143,6 +1143,15 @@ a:focus-visible {
   font-weight: 600;
 }
 
+/* Redesign Gate 8 (Project Workspace header vitals: Schedule Status, Key Milestone,
+   Current Health): the first non-numeric use of this chip — every prior .card-stat
+   value has been a count or a ratio. Matches Gate 1's own established distinction
+   (mono stays for genuinely numeric/tabular content only) rather than mono-formatting
+   plain status text. */
+.card-stat__value--text {
+  font-family: var(--font-body);
+}
+
 /* Redesign Gate 7 (Dashboard Portfolio Exceptions panel): a clickable variant of the
    same .card-stat chip, as a real <button> instead of a <div> — reset to look identical
    at rest, with a hover/focus affordance so it doesn't read as inert like the plain

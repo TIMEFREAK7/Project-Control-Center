@@ -1150,6 +1150,15 @@ a:focus-visible {
   font-weight: 600;
 }
 
+/* Redesign Gate 8 (Project Workspace header vitals: Schedule Status, Key Milestone,
+   Current Health): the first non-numeric use of this chip — every prior .card-stat
+   value has been a count or a ratio. Matches Gate 1's own established distinction
+   (mono stays for genuinely numeric/tabular content only) rather than mono-formatting
+   plain status text. */
+.card-stat__value--text {
+  font-family: var(--font-body);
+}
+
 /* Redesign Gate 7 (Dashboard Portfolio Exceptions panel): a clickable variant of the
    same .card-stat chip, as a real <button> instead of a <div> — reset to look identical
    at rest, with a hover/focus affordance so it doesn't read as inert like the plain
@@ -14131,30 +14140,110 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     return SEVERITY_MATRIX[r.probability] ? SEVERITY_MATRIX[r.probability][r.impact] : "medium";
   }
 
-  // Primary project-level nav row + a "More" overflow, mapped onto modules that actually
-  // exist and are actually project-scoped (Vendors/Document Types/Document Control
-  // Dashboard/Delay & Recovery Dashboard are cross-project rollups with no per-project
-  // deep-link — Vendors is the one of those with a real filterByProject(), so it's in
-  // More; the other three are left off the Workspace nav entirely rather than linking
-  // in without real project scoping).
-  var PRIMARY_NAV = [
-    { key: "executiveCenter", label: "Executive Center" },
-    { key: "schedule", label: "Schedule" },
-    { key: "documents", label: "Documents" },
-    { key: "cost", label: "Cost Tracking" },
-    { key: "risks", label: "Risks" },
-    { key: "rfis", label: "RFI / TQ" },
-    { key: "meetings", label: "Meetings" },
-    { key: "changeOrders", label: "Changes" },
-  ];
-  var MORE_NAV = [
-    { key: "dailylog", label: "Daily Log" },
-    { key: "decisionRegister", label: "Decision Register" },
-    { key: "lessonsLearned", label: "Lessons Learned" },
-    { key: "knowledgeBase", label: "Knowledge Base" },
-    { key: "commitments", label: "Commitments" },
-    { key: "resources", label: "Resources" },
-    { key: "vendors", label: "Vendors" },
+  // ---------------------------------------------------------------------------------
+  // Redesign Gate 8: two cheap, CPM-free header vitals the brief's own Project
+  // Workspace section explicitly asks for ("Schedule Status", "Key Milestone") — same
+  // engine-free discipline this whole page already follows (see the file's own header
+  // comment), so both are plain store filters, not new CPM-derived figures.
+  // ---------------------------------------------------------------------------------
+
+  /** Same "behind its own plan and likely needs a status/actuals update" rule myWork.js's
+   * collectActivitiesToUpdate() already established (Gate 17) — reused as a single
+   * boolean here rather than duplicating a second, slightly different heuristic. */
+  function computeScheduleStatus(data, projectId) {
+    var todayIso = today();
+    var behind = data.activities.some(function (a) {
+      if (a.project_id !== projectId) return false;
+      if (a.activity_type !== "task" && a.activity_type !== "milestone") return false;
+      return (
+        (a.status === "not_started" && a.planned_start && a.planned_start < todayIso) ||
+        (a.status === "in_progress" && a.planned_finish && a.planned_finish < todayIso)
+      );
+    });
+    return behind ? "Behind Schedule" : "On Schedule";
+  }
+
+  /** The single soonest milestone (by early_start || planned_start, the same date-
+   * preference convention Gate 5/My Work's own upcoming-milestone logic uses),
+   * whether already overdue or still upcoming — whichever is most relevant right now.
+   * Excludes completed milestones. Returns null when nothing qualifies (no schedule, or
+   * every milestone is either complete or undated). */
+  function computeKeyMilestone(data, projectId) {
+    var scheduleIds = data.schedules
+      .filter(function (s) { return s.project_id === projectId; })
+      .map(function (s) { return s.id; });
+    var candidates = data.activities
+      .filter(function (a) {
+        return scheduleIds.indexOf(a.schedule_id) !== -1 && a.activity_type === "milestone" && a.status !== "complete";
+      })
+      .map(function (a) { return { activity: a, date: a.early_start || a.planned_start }; })
+      .filter(function (x) { return x.date; });
+    candidates.sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+    return candidates.length > 0 ? candidates[0] : null;
+  }
+
+  // Redesign Gate 8: replaces the old flat "8 primary buttons + a More overflow"
+  // toolbar with the brief's own explicit Project Workspace grouping (PLANNING/
+  // CONTROLS/MANAGEMENT/VENDORS/DOCUMENTS/REPORTS), reusing Gate 5's exact global-nav
+  // group names/taxonomy (PLANNING & SCHEDULE, PROJECT CONTROLS, PROJECT MANAGEMENT,
+  // SITE & KNOWLEDGE) rather than inventing a second, slightly different vocabulary for
+  // the same modules — a user learns the grouping once and it applies both in the
+  // sidebar and here. "OVERVIEW" isn't a group here (this page IS the overview) and
+  // "SYSTEM" doesn't apply to a single project, so those two are dropped; Executive
+  // Center stays a separate, prominent standalone link above the groups (it's the
+  // project's own rollup dashboard, not a "module" the way Schedule/Cost/Risks are).
+  //
+  // Every item below is still only ones with a REAL per-project deep-link — Document
+  // Types/Document Control Dashboard/Delay & Recovery Dashboard/Vendor Performance
+  // Centre/Project Lookahead stay off this list entirely, same as before this gate,
+  // because none of them expose a filterByProject()/viewProject() to land on (they're
+  // genuine cross-project rollups, not linking in without real project scoping would be
+  // misleading). Reports is a NEW addition — it was missing from the old nav entirely
+  // despite being genuinely project-scoped since Gate 6 (Global Project Context) gave it
+  // a shared-context default; see navigateToModule()'s own "reports" branch below.
+  var NAV_GROUPS = [
+    {
+      label: "PLANNING & SCHEDULE",
+      items: [{ key: "schedule", label: "Schedule" }],
+    },
+    {
+      label: "PROJECT CONTROLS",
+      items: [
+        { key: "cost", label: "Cost Tracking" },
+        { key: "commitments", label: "Commitments" },
+        { key: "resources", label: "Resources" },
+      ],
+    },
+    {
+      label: "PROJECT MANAGEMENT",
+      items: [
+        { key: "risks", label: "Risks / Issues" },
+        { key: "rfis", label: "RFI / TQ" },
+        { key: "changeOrders", label: "Change Mgmt" },
+        { key: "decisionRegister", label: "Decision Register" },
+        { key: "meetings", label: "Meetings" },
+      ],
+    },
+    {
+      label: "VENDORS",
+      items: [{ key: "vendors", label: "Vendors" }],
+    },
+    {
+      label: "DOCUMENTS",
+      items: [{ key: "documents", label: "Documents" }],
+    },
+    {
+      label: "SITE & KNOWLEDGE",
+      items: [
+        { key: "dailylog", label: "Daily Log" },
+        { key: "lessonsLearned", label: "Lessons Learned" },
+        { key: "knowledgeBase", label: "Knowledge Base" },
+      ],
+    },
+    {
+      label: "REPORTING",
+      items: [{ key: "reports", label: "Reports" }],
+    },
   ];
 
   function navigateToModule(key, projectId) {
@@ -14166,6 +14255,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       // the generic window.PCC[key] lookup below — it now has a real filterByProject()
       // (the gap this comment used to describe is closed).
       window.PCC.files.filterByProject(projectId);
+    } else if (key === "reports") {
+      // Redesign Gate 8: reports.js has no filterByProject()/viewProject() of its own —
+      // Redesign Gate 6 already wired it to default from the shared project context on
+      // every render, so setting that context directly is enough to land it on this
+      // project, the same way the shell header's own PROJECT switcher does.
+      window.PCC.projectContext.set(projectId);
     } else if (window.PCC[key] && typeof window.PCC[key].filterByProject === "function") {
       window.PCC[key].filterByProject(projectId);
     } else if (window.PCC[key] && typeof window.PCC[key].viewProject === "function") {
@@ -14458,7 +14553,17 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   // Header + nav
   // ---------------------------------------------------------------------------------
 
-  function renderHeader(project, rerender) {
+  function vitalChip(label, value, colorVar) {
+    var chip = document.createElement("div");
+    chip.className = "card-stat";
+    var valueStyle = colorVar ? ' style="color:var(' + colorVar + ')"' : "";
+    chip.innerHTML =
+      "<span class='card-stat__label'>" + esc(label) + "</span>" +
+      "<span class='card-stat__value card-stat__value--text'" + valueStyle + ">" + esc(value) + "</span>";
+    return chip;
+  }
+
+  function renderHeader(project, data, rerender) {
     var header = document.createElement("div");
     header.className = "panel";
     header.style.marginBottom = "16px";
@@ -14484,67 +14589,116 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     top.appendChild(badge);
 
     header.appendChild(top);
+
+    // Redesign Gate 8: the brief's own "at the top show" vitals strip for the Project
+    // Workspace header — Progress, Schedule Status, Key Milestone, Current Health.
+    // Reuses the same .card-stat chip Portfolio's own project cards (Gate 3) and
+    // Dashboard's Portfolio Exceptions panel (Gate 7) already established, rather than a
+    // third stat-chip style. Progress/Health were already computed elsewhere on this
+    // page (the KPI grid, the status badge above) — Schedule Status and Key Milestone
+    // are the two genuinely new, CPM-free figures this gate adds (see their own helper
+    // comments above).
+    var scheduleStatus = computeScheduleStatus(data, project.id);
+    var keyMilestone = computeKeyMilestone(data, project.id);
+
+    var vitals = document.createElement("div");
+    vitals.className = "project-card__stats";
+    vitals.style.marginTop = "14px";
+    vitals.style.paddingTop = "14px";
+    vitals.style.borderTop = "1px solid var(--divider)";
+
+    vitals.appendChild(vitalChip("PROGRESS", Math.max(0, Math.min(100, project.progress || 0)) + "%"));
+    vitals.appendChild(
+      vitalChip("SCHEDULE STATUS", scheduleStatus, scheduleStatus === "Behind Schedule" ? "--status-at-risk" : "--status-on-track")
+    );
+    vitals.appendChild(
+      vitalChip(
+        "KEY MILESTONE",
+        keyMilestone ? (keyMilestone.activity.name || "(unnamed milestone)") + " · " + keyMilestone.date : "None scheduled"
+      )
+    );
+    vitals.appendChild(
+      vitalChip(
+        "CURRENT HEALTH",
+        STATUS_LABELS[project.status] || project.status,
+        project.status === "critical" ? "--status-critical" : project.status === "at_risk" ? "--status-at-risk" : project.status === "complete" ? null : "--status-on-track"
+      )
+    );
+
+    header.appendChild(vitals);
     return header;
   }
 
+  // Redesign Gate 8: the module directory — replaces the old flat "8 primary buttons +
+  // a More overflow" toolbar with the brief's own grouped Project Workspace layout (see
+  // NAV_GROUPS's own comment above for the full reasoning). Rendered as one panel with a
+  // labeled column per group, every item a plain `.card-menu__item` link (the same
+  // component the old "More" dropdown already used, just always visible now instead of
+  // hidden behind a click) — reuses an existing primitive rather than inventing new nav-
+  // link styling. Executive Center stays a separate, prominent button above the groups.
   function renderNav(projectId, rerender) {
-    var nav = document.createElement("div");
-    nav.className = "toolbar no-print";
-    nav.style.marginBottom = "16px";
-    nav.style.flexWrap = "wrap";
+    var wrap = document.createElement("div");
+    wrap.className = "no-print";
+    wrap.style.marginBottom = "16px";
+
+    var topRow = document.createElement("div");
+    topRow.className = "toolbar";
+    topRow.style.marginBottom = "12px";
 
     var overviewBtn = document.createElement("button");
     overviewBtn.className = "btn btn--primary";
     overviewBtn.textContent = "Overview";
-    nav.appendChild(overviewBtn);
+    topRow.appendChild(overviewBtn);
 
-    PRIMARY_NAV.forEach(function (t) {
-      var btn = document.createElement("button");
-      btn.className = "btn btn--ghost";
-      btn.textContent = t.label;
-      btn.onclick = function () {
-        navigateToModule(t.key, projectId);
-      };
-      nav.appendChild(btn);
+    var execBtn = document.createElement("button");
+    execBtn.className = "btn btn--ghost";
+    execBtn.textContent = "Executive Center";
+    execBtn.onclick = function () {
+      navigateToModule("executiveCenter", projectId);
+    };
+    topRow.appendChild(execBtn);
+
+    wrap.appendChild(topRow);
+
+    var directory = document.createElement("div");
+    directory.className = "panel";
+
+    var grid = document.createElement("div");
+    grid.style.display = "grid";
+    grid.style.gridTemplateColumns = "repeat(auto-fit, minmax(160px, 1fr))";
+    grid.style.gap = "16px";
+
+    NAV_GROUPS.forEach(function (group) {
+      var col = document.createElement("div");
+
+      var heading = document.createElement("p");
+      heading.className = "text-secondary";
+      heading.style.fontSize = "11px";
+      heading.style.fontWeight = "600";
+      heading.style.letterSpacing = "0.04em";
+      heading.style.margin = "0 0 6px";
+      heading.textContent = group.label;
+      col.appendChild(heading);
+
+      group.items.forEach(function (item) {
+        var link = document.createElement("button");
+        link.className = "card-menu__item";
+        link.style.display = "block";
+        link.style.width = "100%";
+        link.textContent = item.label;
+        link.onclick = function () {
+          navigateToModule(item.key, projectId);
+        };
+        col.appendChild(link);
+      });
+
+      grid.appendChild(col);
     });
 
-    var moreWrap = document.createElement("div");
-    moreWrap.className = "card-menu";
-    var moreBtn = document.createElement("button");
-    moreBtn.className = "btn btn--ghost";
-    moreBtn.textContent = "More ⌄";
-    moreBtn.onclick = function () {
-      uiState.moreOpen = !uiState.moreOpen;
-      rerender();
-    };
-    moreWrap.appendChild(moreBtn);
+    directory.appendChild(grid);
+    wrap.appendChild(directory);
 
-    if (uiState.moreOpen) {
-      var overlay = document.createElement("button");
-      overlay.className = "card-menu__overlay";
-      overlay.setAttribute("aria-label", "Close menu");
-      overlay.onclick = function () {
-        uiState.moreOpen = false;
-        rerender();
-      };
-      moreWrap.appendChild(overlay);
-
-      var dropdown = document.createElement("div");
-      dropdown.className = "card-menu__dropdown";
-      MORE_NAV.forEach(function (t) {
-        var item = document.createElement("button");
-        item.className = "card-menu__item";
-        item.textContent = t.label;
-        item.onclick = function () {
-          navigateToModule(t.key, projectId);
-        };
-        dropdown.appendChild(item);
-      });
-      moreWrap.appendChild(dropdown);
-    }
-
-    nav.appendChild(moreWrap);
-    return nav;
+    return wrap;
   }
 
   function kpiCard(label, value, colorVar) {
@@ -14561,7 +14715,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     var kpiGrid = document.createElement("div");
     kpiGrid.className = "kpi-grid";
-    kpiGrid.appendChild(kpiCard("PROGRESS", Math.max(0, Math.min(100, project.progress || 0)) + "%"));
+    // Redesign Gate 8: PROGRESS moved into the header's own vitals strip (see
+    // renderHeader()) — dropped here rather than showing the identical figure twice.
     kpiGrid.appendChild(kpiCard("FINISH", project.finish_date || "—"));
     kpiGrid.appendChild(kpiCard("BUDGET", fmtMoney(project.budget, project.currency)));
     kpiGrid.appendChild(kpiCard("OPEN RISKS / ISSUES", stats.openRisks, stats.openRisks > 0 ? "--status-at-risk" : null));
@@ -14635,7 +14790,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     projSelect.value = uiState.projectId;
     projSelect.onchange = function () {
       uiState.projectId = projSelect.value;
-      uiState.moreOpen = false;
       window.PCC.projectContext.set(uiState.projectId);
       rerender();
     };
@@ -14646,7 +14800,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       return p.id === uiState.projectId;
     });
 
-    outlet.appendChild(renderHeader(project, rerender));
+    outlet.appendChild(renderHeader(project, data, rerender));
     outlet.appendChild(renderNav(project.id, rerender));
     renderOverview(outlet, data, project, rerender);
   }
@@ -14655,7 +14809,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   window.PCC.projectWorkspace = {
     viewProject: function (projectId) {
       uiState.projectId = projectId;
-      uiState.moreOpen = false;
       window.PCC.projectContext.set(projectId);
     },
   };

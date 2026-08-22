@@ -1,7 +1,11 @@
 // End-to-end jsdom test against the ACTUAL bundled index.html for UI/UX Overhaul Gate 4
-// (Project Workspace). New page projectWorkspace.js: a project header, a project-level
-// nav row (Overview + primary module tabs + a "More" overflow), and an Overview built
-// entirely from cheap, CPM-engine-free store filters (health tiles, Management
+// (Project Workspace), later restructured by PCC Redesign Gate 8. New page
+// projectWorkspace.js: a project header (now with a Progress/Schedule Status/Key
+// Milestone/Current Health vitals strip, added by Gate 8), a project-level nav (Overview
+// + Executive Center buttons, then Gate 8's always-visible grouped module directory —
+// PLANNING & SCHEDULE/PROJECT CONTROLS/PROJECT MANAGEMENT/VENDORS/DOCUMENTS/SITE &
+// KNOWLEDGE/REPORTING, replacing the original flat "primary tabs + a More overflow"),
+// and an Overview built entirely from cheap, CPM-engine-free store filters (Management
 // Attention, Upcoming, Recent Activity) — see that file's own header comment for why
 // the CPM-derived Forecast Finish / progress chart are deliberately NOT duplicated here
 // and are left to Executive Center instead. Portfolio's card gains a new "Open
@@ -148,13 +152,27 @@ function kpiValue(container, label) {
     assert.ok(text.indexOf("At Risk") !== -1, "header must show the status badge");
   });
 
-  await check("Overview KPI tiles reflect real seeded figures (Progress/Finish/Budget/Risks/RFIs/Documents)", () => {
-    assert.strictEqual(kpiValue(outlet(), "PROGRESS"), "62%");
+  await check("Overview KPI tiles reflect real seeded figures (Finish/Budget/Risks/RFIs/Documents)", () => {
     assert.strictEqual(kpiValue(outlet(), "FINISH"), "2027-03-15");
     assert.ok(kpiValue(outlet(), "BUDGET").indexOf("100,000") !== -1);
     assert.strictEqual(kpiValue(outlet(), "OPEN RISKS / ISSUES"), "2");
     assert.strictEqual(kpiValue(outlet(), "OPEN RFIs / TQs"), "1");
     assert.strictEqual(kpiValue(outlet(), "DOCUMENTS"), "1/2");
+  });
+
+  await check("Redesign Gate 8: the header vitals strip shows Progress/Schedule Status/Key Milestone/Current Health", () => {
+    const vitals = Array.from(outlet().querySelectorAll(".card-stat"));
+    function vitalValue(label) {
+      const chip = vitals.find((c) => c.textContent.indexOf(label) !== -1);
+      const valueEl = chip && chip.querySelector(".card-stat__value");
+      return valueEl ? valueEl.textContent : undefined;
+    }
+    // PROGRESS moved here from the KPI grid (see the check above, which no longer
+    // asserts it) — same 62% figure, seeded on Riverside Tower below.
+    assert.strictEqual(vitalValue("PROGRESS"), "62%");
+    assert.ok(vitalValue("SCHEDULE STATUS"), "Schedule Status vital not found");
+    assert.ok(vitalValue("KEY MILESTONE") && vitalValue("KEY MILESTONE").indexOf("Site Handover") !== -1, "Key Milestone must show the seeded milestone");
+    assert.strictEqual(vitalValue("CURRENT HEALTH"), "At Risk", "must match the project's own status, same figure the header badge already shows");
   });
 
   await check("Management Attention surfaces every cheap, non-CPM signal: critical risk, overdue RFI, overdue document, overdue meeting action, pending CO, cost warning", () => {
@@ -198,45 +216,52 @@ function kpiValue(container, label) {
     assert.ok(panel.textContent.indexOf("CO-001") !== -1);
   });
 
-  await check("clicking the Schedule nav tab lands directly on this project's Gantt tab", async () => {
-    const nav = Array.from(outlet().querySelectorAll(".toolbar")).find((t) => t.textContent.indexOf("Executive Center") !== -1);
-    assert.ok(nav, "project nav row not found");
-    const schedBtn = findButtonByText(dom, "Schedule", nav);
-    assert.ok(schedBtn);
+  await check("Redesign Gate 8: clicking the Schedule module-directory link lands directly on this project's Gantt tab", async () => {
+    const schedBtn = findButtonByText(dom, "Schedule");
+    assert.ok(schedBtn, "Schedule link not found in the module directory");
     schedBtn.click();
     await flush();
     assert.strictEqual(win.PCC.router.currentRouteName(), "schedule");
     assert.ok(outlet().textContent.indexOf("Site Handover") !== -1, "must land on Riverside Tower's own schedule, not an empty/other one");
   });
 
-  await check("clicking the Risks nav tab pre-filters Risk Register to this project", async () => {
+  await check("Redesign Gate 8: clicking the Risks / Issues module-directory link pre-filters Risk Register to this project", async () => {
     win.PCC.projectWorkspace.viewProject(projA);
     win.PCC.router.go("projectWorkspace");
     win.PCC.router.render();
-    const nav = Array.from(outlet().querySelectorAll(".toolbar")).find((t) => t.textContent.indexOf("Executive Center") !== -1);
-    findButtonByText(dom, "Risks", nav).click();
+    findButtonByText(dom, "Risks / Issues").click();
     await flush();
     assert.strictEqual(win.PCC.router.currentRouteName(), "risks");
     assert.ok(outlet().textContent.indexOf("Weather delay") !== -1);
     assert.ok(outlet().textContent.indexOf("Harbor Bridge") === -1 || true); // sanity only, Harbor Bridge has no risks anyway
   });
 
-  await check("the 'More' overflow opens with the remaining modules and navigates on click", async () => {
+  await check("Redesign Gate 8: the module directory is always visible (no 'More' overflow any more) and every group's links navigate correctly", async () => {
     win.PCC.projectWorkspace.viewProject(projA);
     win.PCC.router.go("projectWorkspace");
     win.PCC.router.render();
-    const moreBtn = findButtonByText(dom, "More ⌄");
-    assert.ok(moreBtn, "'More' overflow button not found");
-    moreBtn.click();
-    await flush();
-    const dropdown = outlet().querySelector(".card-menu__dropdown");
-    assert.ok(dropdown, "'More' dropdown did not open");
-    ["Daily Log", "Decision Register", "Lessons Learned", "Knowledge Base", "Commitments", "Resources", "Vendors"].forEach((label) => {
-      assert.ok(dropdown.textContent.indexOf(label) !== -1, "'More' menu missing " + label);
+    const directory = Array.from(outlet().querySelectorAll(".panel")).find((p) => p.textContent.indexOf("PLANNING & SCHEDULE") !== -1);
+    assert.ok(directory, "module directory panel not found");
+    ["PLANNING & SCHEDULE", "PROJECT CONTROLS", "PROJECT MANAGEMENT", "VENDORS", "DOCUMENTS", "SITE & KNOWLEDGE", "REPORTING"].forEach((label) => {
+      assert.ok(directory.textContent.indexOf(label) !== -1, "module directory missing group " + label);
     });
-    findButtonByText(dom, "Vendors", dropdown).click();
+    ["Daily Log", "Decision Register", "Lessons Learned", "Knowledge Base", "Commitments", "Resources", "Vendors", "Reports"].forEach((label) => {
+      assert.ok(directory.textContent.indexOf(label) !== -1, "module directory missing item " + label);
+    });
+    assert.ok(!findButtonByText(dom, "More ⌄"), "the old 'More' overflow button must be gone");
+    findButtonByText(dom, "Vendors").click();
     await flush();
     assert.strictEqual(win.PCC.router.currentRouteName(), "vendors");
+  });
+
+  await check("Redesign Gate 8: clicking Reports (new to the directory) lands on Reports with this project as the shared active context", async () => {
+    win.PCC.projectWorkspace.viewProject(projA);
+    win.PCC.router.go("projectWorkspace");
+    win.PCC.router.render();
+    findButtonByText(dom, "Reports").click();
+    await flush();
+    assert.strictEqual(win.PCC.router.currentRouteName(), "reports");
+    assert.strictEqual(win.PCC.projectContext.get(), projA, "Reports has no filterByProject of its own — Gate 8 sets the shared context directly");
   });
 
   await check("the project switcher dropdown changes which project the Workspace shows", async () => {
