@@ -3431,6 +3431,46 @@ and persists across reload; mobile at 500px shows the hamburger with the sidebar
 overlay drawer still opens and behaves exactly as it did before this gate. Zero console errors
 across all checks.
 
+### Gate 5 — Information Architecture Regrouping, done, 2026-08-22
+
+Replaces the ad hoc OVERVIEW/REGISTERS/PLANNING/OUTPUT grouping (built for findability, not for
+matching how the work actually flows) with the brief's own workflow-based structure: OVERVIEW,
+PLANNING & SCHEDULE, PROJECT CONTROLS, PROJECT MANAGEMENT, VENDORS, DOCUMENTS, SITE & KNOWLEDGE,
+REPORTING, SYSTEM — pulled from the brief's own "GLOBAL APPLICATION INFORMATION ARCHITECTURE"
+section verbatim, then mapped onto PCC's real 27 routes. Pure regroup: no route added, removed, or
+renamed — `NAV_GROUPS` in `layout.js` is the only thing that changed shape, `app.js`'s router
+registrations and every page module are untouched.
+
+**Three items the brief lists don't map to a real destination, and none were built to fill the
+gap** — consistent with the brief's own "do not invent functionality merely to satisfy the design"
+instruction and Gate 5's own no-new-routes scope, and consistent with Phase A's inspection findings
+from before Gate 1:
+- **"Issue Register"** (the brief's PROJECT MANAGEMENT group lists Risk Register and Issue Register
+  separately) — `risks` stays the single nav destination it already was. It's one unified Risk/
+  Issue/Opportunity module by design (the same "one shape, one `type` field" pattern this app uses
+  for RFI/TQ and Change Orders); fragmenting nav into two destinations pointing at the same dataset
+  would be worse UX, not better IA, so this was a confirm-and-keep, not a build.
+- **"Milestones"** (PLANNING & SCHEDULE) — not a page. Milestones are an `activity_type` value
+  inside Schedule's own activities, already filterable there.
+- **"Backup / Restore"** (SYSTEM) — not a page. It's the title-block export/import icon buttons
+  plus a Settings-level reminder banner, not a dedicated view.
+- (Also confirmed while mapping: the brief's PROJECT CONTROLS group lists "Progress & EVM" — this
+  maps onto the existing `cost` page, which already includes the EVM engine from Tier 2, not a
+  separate route.)
+
+**A stale test assertion updated, not a regression**: `test_uiux_gate2_navigation_e2e.js` hardcoded
+the old 4-group structure (group count, the four labels by name, and several tests that navigated
+to a specific group like "REGISTERS" to exercise expand/collapse and auto-expand behavior). Updated
+all of it to the new 9-group structure and relabeled which group each test exercises (Risk Register
+moved from REGISTERS to PROJECT MANAGEMENT; Documents moved from REGISTERS to DOCUMENTS) — the
+underlying behavior under test (mutual exclusion, manual-expand persistence, route-change
+auto-expand) is Gate 4's, untouched here, only which group's label the assertions look for changed.
+
+**Verified**: `node --check` on `layout.js`; full 73-file suite, 2090 checks, 0 failures. Real-
+Chromium pass: all 9 group labels present in the correct order, all 27 nav items still reachable,
+navigating to Risk Register auto-expands PROJECT MANAGEMENT and collapses whichever group was open
+before, zero console errors.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →

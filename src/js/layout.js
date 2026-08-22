@@ -3,11 +3,28 @@
   window.PCC = window.PCC || {};
 
   // Grouped for findability now that there are a dozen+ items. Rendered by
-  // buildNavList() into the nav overlay (openNav/closeNav) — UI/UX Overhaul Gate 2's
-  // persistent/collapsible sidebar was replaced by an Outlook-Online-style pattern at
-  // Aditya's explicit request: the nav is hidden at every screen size until the
-  // hamburger button is clicked, and each group below is its own expand/collapse
-  // accordion rather than always showing every item at once.
+  // buildNavList() — shared by both the persistent desktop sidebar (Redesign Gate 4)
+  // and the mobile hamburger/overlay drawer (UI/UX Overhaul Gate 2) — each group below is
+  // its own mutually-exclusive expand/collapse accordion rather than always showing
+  // every item at once.
+  //
+  // Redesign Gate 5 (Information Architecture Regrouping): replaces the earlier ad hoc
+  // OVERVIEW/REGISTERS/PLANNING/OUTPUT grouping with the brief's own conceptual structure
+  // (workflow-based groups matching how a Project Planner/PM actually works), mapped onto
+  // PCC's real routes — no route added, removed, or renamed, only regrouped/relabeled.
+  // Two items the brief lists don't exist as separate destinations and were deliberately
+  // NOT created (per the brief's own "do not invent functionality merely to satisfy the
+  // design" instruction, and Gate 5's own "no routes added" scope):
+  //   - "Milestones" (PLANNING & SCHEDULE) — not a page; milestones are an activity_type
+  //     value inside Schedule's own activities, already filterable there.
+  //   - "Backup / Restore" (SYSTEM) — not a page; it's the title-block export/import icon
+  //     buttons plus a Settings-level reminder banner, not a dedicated view.
+  // "Issue Register" (PROJECT MANAGEMENT) also isn't a separate destination — `risks` is
+  // one unified Risk/Issue/Opportunity module by design (the same "one shape, one `type`
+  // field" pattern this app uses for RFI/TQ and Change Orders); kept unified rather than
+  // fragmenting nav into two destinations pointing at the same dataset, per Phase A's
+  // inspection note. "Progress & EVM" (PROJECT CONTROLS) similarly maps onto the existing
+  // `cost` page, which already includes the EVM engine — not a separate route.
   var NAV_GROUPS = [
     {
       label: "OVERVIEW",
@@ -15,46 +32,67 @@
         { key: "dashboard", label: "Dashboard", code: "DB" },
         { key: "myWork", label: "My Work", code: "MW" },
         { key: "actionCentre", label: "Action Centre", code: "AC" },
-        { key: "projectLookahead", label: "Project Lookahead", code: "LA" },
         { key: "portfolio", label: "Portfolio", code: "PF" },
         { key: "projectWorkspace", label: "Project Workspace", code: "PW" },
         { key: "executiveCenter", label: "Executive Center", code: "EC" },
-        { key: "vendors", label: "Vendors", code: "VN" },
-        { key: "vendorPerformanceCentre", label: "Vendor Performance Centre", code: "VP" },
       ],
     },
     {
-      label: "REGISTERS",
-      items: [
-        { key: "documents", label: "Documents", code: "DC" },
-        { key: "documentTypes", label: "Document Types", code: "DT" },
-        { key: "documentControlDashboard", label: "Document Control Dashboard", code: "DD" },
-        { key: "dailylog", label: "Daily Log", code: "DL" },
-        { key: "risks", label: "Risk Register", code: "RK" },
-        { key: "meetings", label: "Meetings", code: "MT" },
-        { key: "rfis", label: "RFI / TQ", code: "RQ" },
-        { key: "changeOrders", label: "Change Mgmt", code: "CM" },
-        { key: "decisionRegister", label: "Decision Register", code: "DE" },
-        { key: "lessonsLearned", label: "Lessons Learned", code: "LL" },
-        { key: "knowledgeBase", label: "Knowledge Base", code: "KB" },
-      ],
-    },
-    {
-      label: "PLANNING",
+      label: "PLANNING & SCHEDULE",
       items: [
         { key: "schedule", label: "Schedule", code: "SC" },
+        { key: "projectLookahead", label: "Project Lookahead", code: "LA" },
         { key: "delayRecoveryDashboard", label: "Delay & Recovery Dashboard", code: "DR" },
+      ],
+    },
+    {
+      label: "PROJECT CONTROLS",
+      items: [
         { key: "cost", label: "Cost Tracking", code: "CT" },
         { key: "commitments", label: "Commitments", code: "CN" },
         { key: "resources", label: "Resources", code: "RS" },
       ],
     },
     {
-      label: "OUTPUT",
+      label: "PROJECT MANAGEMENT",
       items: [
-        { key: "reports", label: "Reports", code: "RP" },
-        { key: "settings", label: "Settings", code: "ST" },
+        { key: "risks", label: "Risk Register", code: "RK" },
+        { key: "rfis", label: "RFI / TQ", code: "RQ" },
+        { key: "changeOrders", label: "Change Mgmt", code: "CM" },
+        { key: "decisionRegister", label: "Decision Register", code: "DE" },
+        { key: "meetings", label: "Meetings", code: "MT" },
       ],
+    },
+    {
+      label: "VENDORS",
+      items: [
+        { key: "vendors", label: "Vendors", code: "VN" },
+        { key: "vendorPerformanceCentre", label: "Vendor Performance Centre", code: "VP" },
+      ],
+    },
+    {
+      label: "DOCUMENTS",
+      items: [
+        { key: "documents", label: "Documents", code: "DC" },
+        { key: "documentTypes", label: "Document Types", code: "DT" },
+        { key: "documentControlDashboard", label: "Document Control Dashboard", code: "DD" },
+      ],
+    },
+    {
+      label: "SITE & KNOWLEDGE",
+      items: [
+        { key: "dailylog", label: "Daily Log", code: "DL" },
+        { key: "lessonsLearned", label: "Lessons Learned", code: "LL" },
+        { key: "knowledgeBase", label: "Knowledge Base", code: "KB" },
+      ],
+    },
+    {
+      label: "REPORTING",
+      items: [{ key: "reports", label: "Reports", code: "RP" }],
+    },
+    {
+      label: "SYSTEM",
+      items: [{ key: "settings", label: "Settings", code: "ST" }],
     },
   ];
 

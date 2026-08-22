@@ -80,7 +80,7 @@ async function check(label, fn) {
     assert.ok(!win.document.getElementById("nav-overlay"), "no nav overlay should be open before it's triggered");
   });
 
-  await check("clicking the hamburger opens the nav overlay with all four groups present but collapsed except the one containing the current route", () => {
+  await check("clicking the hamburger opens the nav overlay with all nine nav groups present but collapsed except the one containing the current route", () => {
     win.PCC.router.go("dashboard");
     win.PCC.router.render();
     const menuBtn = win.document.querySelector(".icon-btn--menu");
@@ -91,9 +91,19 @@ async function check(label, fn) {
     assert.ok(drawer, "left-anchored drawer panel not found inside the overlay");
 
     const groups = Array.from(drawer.querySelectorAll(".sidebar__group"));
-    assert.strictEqual(groups.length, 4, "expected all four nav groups present");
+    assert.strictEqual(groups.length, 9, "expected all nine Redesign Gate 5 nav groups present");
     const groupLabels = groups.map((g) => g.querySelector(".sidebar__group-label").textContent);
-    assert.deepStrictEqual(groupLabels, ["OVERVIEW", "REGISTERS", "PLANNING", "OUTPUT"]);
+    assert.deepStrictEqual(groupLabels, [
+      "OVERVIEW",
+      "PLANNING & SCHEDULE",
+      "PROJECT CONTROLS",
+      "PROJECT MANAGEMENT",
+      "VENDORS",
+      "DOCUMENTS",
+      "SITE & KNOWLEDGE",
+      "REPORTING",
+      "SYSTEM",
+    ]);
 
     // Dashboard lives in OVERVIEW — that group should start expanded, the rest collapsed.
     const overviewGroup = groups[0];
@@ -112,22 +122,22 @@ async function check(label, fn) {
   await check("clicking a collapsed group's header expands it, and clicking again collapses it", () => {
     const overlay = win.document.getElementById("nav-overlay");
     const groups = Array.from(overlay.querySelectorAll(".sidebar__group"));
-    const registersGroup = groups.find((g) => g.querySelector(".sidebar__group-label").textContent === "REGISTERS");
-    assert.ok(!registersGroup.classList.contains("sidebar__group--expanded"), "REGISTERS should start collapsed (dashboard is in OVERVIEW)");
+    const pmGroup = groups.find((g) => g.querySelector(".sidebar__group-label").textContent === "PROJECT MANAGEMENT");
+    assert.ok(!pmGroup.classList.contains("sidebar__group--expanded"), "PROJECT MANAGEMENT should start collapsed (dashboard is in OVERVIEW)");
 
-    registersGroup.querySelector(".sidebar__group-toggle").click();
-    assert.ok(registersGroup.classList.contains("sidebar__group--expanded"), "clicking a collapsed group's header should expand it");
+    pmGroup.querySelector(".sidebar__group-toggle").click();
+    assert.ok(pmGroup.classList.contains("sidebar__group--expanded"), "clicking a collapsed group's header should expand it");
 
-    registersGroup.querySelector(".sidebar__group-toggle").click();
-    assert.ok(!registersGroup.classList.contains("sidebar__group--expanded"), "clicking an expanded group's header should collapse it");
+    pmGroup.querySelector(".sidebar__group-toggle").click();
+    assert.ok(!pmGroup.classList.contains("sidebar__group--expanded"), "clicking an expanded group's header should collapse it");
   });
 
   await check("a manually expanded group stays expanded across closing and reopening the nav (same page load)", () => {
     const overlay1 = win.document.getElementById("nav-overlay");
     const groups1 = Array.from(overlay1.querySelectorAll(".sidebar__group"));
-    const registersGroup1 = groups1.find((g) => g.querySelector(".sidebar__group-label").textContent === "REGISTERS");
-    registersGroup1.querySelector(".sidebar__group-toggle").click();
-    assert.ok(registersGroup1.classList.contains("sidebar__group--expanded"));
+    const pmGroup1 = groups1.find((g) => g.querySelector(".sidebar__group-label").textContent === "PROJECT MANAGEMENT");
+    pmGroup1.querySelector(".sidebar__group-toggle").click();
+    assert.ok(pmGroup1.classList.contains("sidebar__group--expanded"));
 
     // Close and reopen.
     win.document.getElementById("nav-overlay").querySelector(".icon-btn").click();
@@ -136,8 +146,8 @@ async function check(label, fn) {
 
     const overlay2 = win.document.getElementById("nav-overlay");
     const groups2 = Array.from(overlay2.querySelectorAll(".sidebar__group"));
-    const registersGroup2 = groups2.find((g) => g.querySelector(".sidebar__group-label").textContent === "REGISTERS");
-    assert.ok(registersGroup2.classList.contains("sidebar__group--expanded"), "a manually expanded group should still be expanded after closing and reopening the nav");
+    const pmGroup2 = groups2.find((g) => g.querySelector(".sidebar__group-label").textContent === "PROJECT MANAGEMENT");
+    assert.ok(pmGroup2.classList.contains("sidebar__group--expanded"), "a manually expanded group should still be expanded after closing and reopening the nav");
   });
 
   await check("clicking the overlay backdrop (not the drawer itself) closes it", () => {
@@ -156,13 +166,13 @@ async function check(label, fn) {
   await check("clicking a nav link inside the overlay navigates to that route and closes the overlay", async () => {
     win.document.querySelector(".icon-btn--menu").click();
     const overlay = win.document.getElementById("nav-overlay");
-    // Risk Register is in REGISTERS — expand its group first if it isn't already (a
-    // real user would need to; a prior test in this file may have already left it
+    // Risk Register is in PROJECT MANAGEMENT — expand its group first if it isn't already
+    // (a real user would need to; a prior test in this file may have already left it
     // expanded, so only click the toggle if that's not already the case).
     const groups = Array.from(overlay.querySelectorAll(".sidebar__group"));
-    const registersGroup = groups.find((g) => g.querySelector(".sidebar__group-label").textContent === "REGISTERS");
-    if (!registersGroup.classList.contains("sidebar__group--expanded")) {
-      registersGroup.querySelector(".sidebar__group-toggle").click();
+    const pmGroup = groups.find((g) => g.querySelector(".sidebar__group-label").textContent === "PROJECT MANAGEMENT");
+    if (!pmGroup.classList.contains("sidebar__group--expanded")) {
+      pmGroup.querySelector(".sidebar__group-toggle").click();
     }
     const risksLink = Array.from(overlay.querySelectorAll(".sidebar__link")).find(
       (a) => a.getAttribute("data-route") === "risks"
@@ -197,10 +207,10 @@ async function check(label, fn) {
     const activeLink = overlay.querySelector('.sidebar__link[data-route="documents"]');
     assert.ok(activeLink, "documents link not found");
     assert.ok(activeLink.classList.contains("active"), "the active route's link should be highlighted");
-    const registersGroup = Array.from(overlay.querySelectorAll(".sidebar__group")).find(
-      (g) => g.querySelector(".sidebar__group-label").textContent === "REGISTERS"
+    const documentsGroup = Array.from(overlay.querySelectorAll(".sidebar__group")).find(
+      (g) => g.querySelector(".sidebar__group-label").textContent === "DOCUMENTS"
     );
-    assert.ok(registersGroup.classList.contains("sidebar__group--expanded"), "REGISTERS (containing Documents) should be expanded — it was manually expanded earlier in this test too, so this also covers that overlap");
+    assert.ok(documentsGroup.classList.contains("sidebar__group--expanded"), "DOCUMENTS (containing Documents) should be auto-expanded by setActiveNav — nothing else in this test manually expanded it first, so this proves auto-expand on its own");
     overlay.querySelector(".icon-btn").click(); // close via the × button
     assert.ok(!win.document.getElementById("nav-overlay"));
   });

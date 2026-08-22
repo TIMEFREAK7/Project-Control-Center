@@ -2069,6 +2069,35 @@ one explicit addition: *"when i open one group other open group should collapse.
   and behaves exactly as before this gate. Zero console errors throughout.
 - **Not started**: Gates 5-12.
 
+**Gate 5 — Information Architecture Regrouping, done, 2026-08-22.** Aditya said "start gate 5"
+directly.
+
+- Replaced the ad hoc OVERVIEW/REGISTERS/PLANNING/OUTPUT grouping with the brief's own workflow-
+  based structure, pulled verbatim from its "GLOBAL APPLICATION INFORMATION ARCHITECTURE" section
+  and mapped onto PCC's real 27 routes: OVERVIEW, PLANNING & SCHEDULE, PROJECT CONTROLS, PROJECT
+  MANAGEMENT, VENDORS, DOCUMENTS, SITE & KNOWLEDGE, REPORTING, SYSTEM. Pure regroup — `NAV_GROUPS`
+  in `layout.js` is the only thing that changed shape; no route added, removed, or renamed, `app.js`
+  and every page module untouched.
+- **Three brief items confirmed as NOT real destinations, none built to fill the gap** — per the
+  brief's own "do not invent functionality merely to satisfy the design" instruction and this
+  gate's no-new-routes scope: "Issue Register" (kept unified with `risks` — one Risk/Issue/
+  Opportunity module by design, same pattern as RFI/TQ and Change Orders, fragmenting nav into two
+  destinations over one dataset would be worse IA not better); "Milestones" (not a page — an
+  `activity_type` value inside Schedule, already filterable there); "Backup / Restore" (not a page
+  — title-block export/import buttons + a Settings-level banner). Also confirmed "Progress & EVM"
+  maps onto the existing `cost` page (already has the EVM engine from Tier 2), not a new route.
+- **Updated a stale test, not a regression**: `test_uiux_gate2_navigation_e2e.js` hardcoded the old
+  4-group structure (count, all four labels by name, and several tests that navigated a specific
+  group like "REGISTERS" to exercise expand/collapse/auto-expand). Updated to the new 9-group
+  structure, relabeling which group each test exercises (Risk Register: REGISTERS → PROJECT
+  MANAGEMENT; Documents: REGISTERS → DOCUMENTS) — the underlying behavior under test is Gate 4's
+  own mutual-exclusion/auto-expand logic, untouched here.
+- **Verified**: `node --check` on `layout.js`; full 73-file suite, 2090 checks, 0 failures. Real-
+  Chromium pass: all 9 group labels present in the correct order, all 27 nav items still reachable,
+  navigating to Risk Register auto-expands PROJECT MANAGEMENT and collapses whatever was open
+  before, zero console errors.
+- **Not started**: Gates 6-12.
+
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
 `main` is fully up to date through **Tier 3, "final polish," Gate 4** (Gantt virtualization for
