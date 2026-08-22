@@ -1143,6 +1143,27 @@ a:focus-visible {
   font-weight: 600;
 }
 
+/* Redesign Gate 7 (Dashboard Portfolio Exceptions panel): a clickable variant of the
+   same .card-stat chip, as a real <button> instead of a <div> — reset to look identical
+   at rest, with a hover/focus affordance so it doesn't read as inert like the plain
+   per-project-card stats above it. */
+.card-stat--link {
+  border: none;
+  background: transparent;
+  padding: 6px 8px;
+  margin: -6px -8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+
+.card-stat--link:hover,
+.card-stat--link:focus {
+  background-color: var(--hover-bg);
+}
+
 /* Contextual "..." menu (Edit/Archive) — PCC's first menu/dropdown component. Gate 1
    shipped modal/drawer primitives but no menu; this is small and net-new, scoped to
    this gate's own need rather than a general-purpose menu system. */

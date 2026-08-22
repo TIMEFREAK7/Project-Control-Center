@@ -179,7 +179,12 @@
     { key: "today", label: "Due Today", badgeClass: "at_risk", emptyText: "Nothing due today." },
     { key: "week", label: "Due This Week", badgeClass: "at_risk", emptyText: "Nothing due in the next 7 days." },
     { key: "upcoming", label: "Upcoming (8–" + windowDays + " Days)", badgeClass: "info", emptyText: "Nothing due in the 8–" + windowDays + " day window." },
-    { key: "waiting", label: "Waiting For", badgeClass: "info", emptyText: "Nothing outstanding without a due date." },
+    // Redesign Gate 7: relabeled from "Waiting For" — that label collided with My
+    // Work's own "WAITING FOR" section, which means something different there (items
+    // with an explicit waiting_on_party set, grouped by who). This bucket has always
+    // meant "no due date at all to bucket by" (see emptyText, unchanged) — functionally
+    // identical, only the label changed, so it stops reading as the same concept.
+    { key: "waiting", label: "No Due Date", badgeClass: "info", emptyText: "Nothing outstanding without a due date." },
     ];
   }
 
@@ -192,50 +197,38 @@
     return card;
   }
 
+  // Redesign Gate 7: retrofitted onto the same .attention-list/.attention-item
+  // primitive myWork.js's own item rows now use (and Executive Center's Diagnostics/
+  // Management Action panels, Dashboard's Management Attention panel) — same "whole row
+  // is the click target" behavior, only when a linked project still exists (a deleted
+  // project's items stay listed but non-clickable, same as before this gate).
   function itemRow(item, badgeClass, projectsById) {
     var project = projectsById[item.projectId];
 
     var row = document.createElement("div");
-    row.style.display = "flex";
-    row.style.justifyContent = "space-between";
-    row.style.alignItems = "center";
-    row.style.fontSize = "13px";
-    row.style.gap = "8px";
-    row.style.padding = "6px 0";
-    row.style.borderBottom = "1px solid var(--divider)";
+    row.className = "attention-item" + (project ? " attention-item--clickable" : "");
+    if (project) row.onclick = item.view;
 
-    var text = document.createElement("span");
-    text.textContent =
-      "[" + item.kind + "] " +
-      item.title +
-      " — " +
+    var icon = document.createElement("span");
+    icon.className = "attention-item__icon attention-item__icon--" + badgeClass;
+    row.appendChild(icon);
+
+    var body = document.createElement("div");
+    body.className = "attention-item__body";
+    var text = document.createElement("div");
+    text.className = "attention-item__text";
+    text.textContent = "[" + item.kind + "] " + item.title;
+    body.appendChild(text);
+    var meta = document.createElement("div");
+    meta.className = "attention-item__meta";
+    meta.textContent =
       (project ? project.name || "(unnamed project)" : "(deleted project)") +
-      " — " +
+      " · " +
       item.owner +
-      (item.dueDate ? " — due " + item.dueDate : "");
-    row.appendChild(text);
+      (item.dueDate ? " · due " + item.dueDate : "");
+    body.appendChild(meta);
+    row.appendChild(body);
 
-    var right = document.createElement("div");
-    right.style.display = "flex";
-    right.style.alignItems = "center";
-    right.style.gap = "8px";
-    right.style.flexShrink = "0";
-
-    var badge = document.createElement("span");
-    badge.className = "status-badge status-badge--" + badgeClass;
-    badge.style.fontSize = "11px";
-    badge.textContent = item.kind;
-    right.appendChild(badge);
-
-    if (project) {
-      var viewBtn = document.createElement("button");
-      viewBtn.className = "btn btn--ghost";
-      viewBtn.textContent = "View";
-      viewBtn.onclick = item.view;
-      right.appendChild(viewBtn);
-    }
-
-    row.appendChild(right);
     return row;
   }
 
@@ -258,9 +251,12 @@
       return panel;
     }
 
+    var list = document.createElement("div");
+    list.className = "attention-list";
     items.forEach(function (item) {
-      panel.appendChild(itemRow(item, bucketDef.badgeClass, projectsById));
+      list.appendChild(itemRow(item, bucketDef.badgeClass, projectsById));
     });
+    panel.appendChild(list);
 
     return panel;
   }
@@ -333,7 +329,7 @@
     kpiGrid.appendChild(kpiCard("OVERDUE", byBucket.overdue.length, byBucket.overdue.length > 0 ? "--status-critical" : null));
     kpiGrid.appendChild(kpiCard("DUE TODAY", byBucket.today.length, byBucket.today.length > 0 ? "--status-at-risk" : null));
     kpiGrid.appendChild(kpiCard("DUE THIS WEEK", byBucket.week.length, byBucket.week.length > 0 ? "--status-at-risk" : null));
-    kpiGrid.appendChild(kpiCard("WAITING FOR", byBucket.waiting.length, null));
+    kpiGrid.appendChild(kpiCard("NO DUE DATE", byBucket.waiting.length, null));
     wrap.appendChild(kpiGrid);
 
     buckets.forEach(function (b) {

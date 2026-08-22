@@ -52,6 +52,15 @@ function todayPlusDays(days) {
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
+// Redesign Gate 7 added a "Portfolio Exceptions" panel to Dashboard with a "Pending
+// RFIs / TQs" stat chip — its label text happens to contain the substring "RFIs", which
+// collides with this file's own whole-page "RFIs" substring checks (there's a document
+// TYPE literally named "RFIs" in the seed data, unrelated to that chip). Scopes a check
+// to the Document Reminders panel specifically instead of the whole page's text.
+function remindersPanelText(dom) {
+  const heading = Array.from(dom.window.document.querySelectorAll("h3")).find((h) => h.textContent.indexOf("Document Reminders") === 0);
+  return heading ? heading.closest(".panel").textContent : "";
+}
 
 (async () => {
   const html = fs.readFileSync(INDEX_PATH, "utf8");
@@ -126,7 +135,7 @@ function todayPlusDays(days) {
   });
 
   await check("the panel shows exactly the overdue and due-soon rows, excluding the far-future one and the available one", () => {
-    var text = outlet().textContent;
+    var text = remindersPanelText(dom);
     assert.ok(text.indexOf("Document Reminders (2)") !== -1, "only 2 of the 4 seeded requirements should qualify; got: " + text.match(/Document Reminders \(\d+\)/));
     assert.ok(text.indexOf("BOQ") !== -1, "the overdue BOQ requirement must appear");
     assert.ok(text.indexOf("ITP") !== -1, "the due-soon ITP requirement must appear");

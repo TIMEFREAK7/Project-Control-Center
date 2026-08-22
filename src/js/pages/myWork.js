@@ -451,44 +451,38 @@
 
   // ---- Rendering --------------------------------------------------------------------
 
+  // Redesign Gate 7: retrofitted onto the same .attention-list/.attention-item
+  // primitive Executive Center's Diagnostics/Management Action panels and Dashboard's
+  // own Management Attention panel already use, replacing this page's original hand-
+  // built flex-row+ghost-button markup — same "whole row is the click target" behavior
+  // those panels established, rather than a separate "View" button. No change to which
+  // items appear or what clicking them does, only how the row itself looks.
   function itemRow(item, badgeClass, projectsById) {
     var project = item.projectId ? projectsById[item.projectId] : null;
 
     var row = document.createElement("div");
-    row.style.display = "flex";
-    row.style.justifyContent = "space-between";
-    row.style.alignItems = "center";
-    row.style.fontSize = "13px";
-    row.style.gap = "8px";
-    row.style.padding = "6px 0";
-    row.style.borderBottom = "1px solid var(--divider)";
+    row.className = "attention-item attention-item--clickable";
+    row.onclick = item.view;
 
-    var text = document.createElement("span");
-    text.textContent =
-      item.title +
-      (project ? " — " + (project.name || "(unnamed project)") : "") +
-      (item.extra ? " — " + item.extra : "");
-    row.appendChild(text);
+    var icon = document.createElement("span");
+    icon.className = "attention-item__icon attention-item__icon--" + badgeClass;
+    row.appendChild(icon);
 
-    var right = document.createElement("div");
-    right.style.display = "flex";
-    right.style.alignItems = "center";
-    right.style.gap = "8px";
-    right.style.flexShrink = "0";
+    var body = document.createElement("div");
+    body.className = "attention-item__body";
+    var text = document.createElement("div");
+    text.className = "attention-item__text";
+    text.textContent = item.title;
+    body.appendChild(text);
+    var meta = document.createElement("div");
+    meta.className = "attention-item__meta";
+    meta.textContent =
+      item.kind +
+      (project ? " · " + (project.name || "(unnamed project)") : "") +
+      (item.extra ? " · " + item.extra : "");
+    body.appendChild(meta);
+    row.appendChild(body);
 
-    var badge = document.createElement("span");
-    badge.className = "status-badge status-badge--" + badgeClass;
-    badge.style.fontSize = "11px";
-    badge.textContent = item.kind;
-    right.appendChild(badge);
-
-    var viewBtn = document.createElement("button");
-    viewBtn.className = "btn btn--ghost";
-    viewBtn.textContent = "View";
-    viewBtn.onclick = item.view;
-    right.appendChild(viewBtn);
-
-    row.appendChild(right);
     return row;
   }
 
@@ -510,9 +504,12 @@
       return panel;
     }
 
+    var list = document.createElement("div");
+    list.className = "attention-list";
     items.forEach(function (item) {
-      panel.appendChild(itemRow(item, badgeClass, projectsById));
+      list.appendChild(itemRow(item, badgeClass, projectsById));
     });
+    panel.appendChild(list);
     return panel;
   }
 

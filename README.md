@@ -3533,6 +3533,70 @@ gate is entirely about which project a page *defaults* to, never about restricti
 show. The GLOBAL vs PROJECT navigation distinction the brief also describes (visually marking which
 pages are portfolio-wide vs single-project) is a separate, later concern, not bundled into this gate.
 
+### Gate 7 — Dashboard + My Work + Action Centre Redesign, done, 2026-08-22
+
+Inspected all three pages in full before touching anything, per this initiative's own standing
+discipline. Both My Work and Action Centre turned out to already be mature, substantial pages (614
+and 347 lines) built in earlier gates — this was never a from-scratch build, it's closing real gaps
+against the brief's own explicit list plus a shared-component restyling pass, exactly the "smallest
+sensible step" scope this gate needed, not a rewrite.
+
+**Dashboard — a real content gap, not just visual**: the brief's own Dashboard section explicitly
+lists Open Risks, Open Issues, Pending RFIs, Pending Decisions, Delayed Projects, and Upcoming
+Milestones — none of which were visible anywhere on the page before this gate (only project-status
+counts and document reminders existed). Added a new **Portfolio Exceptions** panel with all six,
+computed portfolio-wide directly from the store — Open Risks/Issues reuse the exact same
+`status !== "closed"` open-record convention Portfolio's own project-card stat chips already
+established (Gate 3), not a new invention; Delayed Projects reuses Executive Center's exported
+`getSchedulePerformanceSummary()` (its own `unaddressedDelayDays` figure from Gate 26), not a new
+delay heuristic. Deliberately used the smaller `.card-stat` chip primitive (the same one Portfolio's
+per-project cards already use), not full `.kpi-card`s — six more full-size KPI cards on top of the
+existing six would have directly contradicted the brief's own "do not turn everything into a card"
+instruction; the smaller chip treatment keeps a clear visual hierarchy (primary status KPIs stay
+big, secondary exception counts stay small) while still surfacing every number the brief asked for.
+Each chip is clickable, navigating straight to its source register. Cost/Resource/Vendor "Position"
+(also on the brief's list) were deliberately deferred — a shallow raw-sum figure without the context
+Executive Center/Portfolio Performance's own per-project rollups already provide risks being
+misleading, and building a real portfolio-wide aggregation for them is meaningfully bigger scope
+than this gate's other additions; the brief's own "where applicable" wording doesn't mandate all ten.
+
+**My Work / Action Centre — real, distinct value, confirmed by reading both in full, not assumed**:
+the brief asks to review the overlap and determine the cleanest relationship, explicitly warning not
+to remove functionality without understanding what it does first. Confirmed they're genuinely
+different in shape: My Work is a broader personal cockpit (Approvals, Reviews, Recently Updated,
+Waiting-by-party) while Action Centre is a strict due-date exception view over a slightly different
+record set (includes Document Requirements, which My Work doesn't; excludes Approvals/Reviews/
+Recently-Updated, which Action Centre doesn't have) — different enough to justify both existing.
+Decision: keep both, don't merge or remove either.
+
+**A real, findable UX collision fixed along the way**: Action Centre's dateless bucket was labeled
+"Waiting For" — reading as the exact same concept as My Work's own "WAITING FOR" section, which
+actually means something different (items with an explicit `waiting_on_party` set, grouped by who).
+Action Centre's bucket has always just meant "no due date to sort by at all." Relabeled to **"No Due
+Date"** (bucket label + its own KPI card) — functionally identical, zero behavior change, just no
+longer reads as the same thing My Work's section already means.
+
+**Component restyling catch-up**: both pages' item rows still used their original hand-built
+flex-row-plus-ghost-button markup from when they first shipped, never retrofitted onto the
+`.attention-list`/`.attention-item` primitive Gate 1 shipped and Executive Center's Diagnostics/
+Management Action panels (UI/UX Overhaul Gate 5) and Dashboard's own Management Attention panel
+already adopted. Retrofitted both — rows are now the whole click target (matching every other panel
+using this primitive), record-type badges moved into the meta line rather than a separate
+`.status-badge`. No change to which items appear or what clicking them does, only how the row itself
+looks and where the click target is.
+
+**Verified**: `node --check` on all three page files; full 73-file suite, 2092 checks, 0 failures —
+including updating `test_my_work_e2e.js`'s and `test_action_centre_e2e.js`'s row-interaction tests
+(finding the row itself instead of a nested "View" button no longer there) and the label rename, plus
+scoping one `test_dashboard_reminders_e2e.js` assertion to the Document Reminders panel specifically
+after the new Portfolio Exceptions panel's "Pending RFIs / TQs" chip label started colliding with a
+whole-page substring check for "RFIs" (a document *type* literally named "RFIs" in that test's seed
+data — a real, if narrow, test-fragility interaction, not a functional bug). Real-Chromium pass
+across all three pages with a seeded project (risk, issue, RFI, pending decision, overdue meeting
+action, pending Change Order): Portfolio Exceptions panel shows correct counts and its chips
+navigate to the right register; My Work and Action Centre rows are whole-row-clickable; Action
+Centre's relabeled "No Due Date" bucket renders correctly. Zero console errors.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →

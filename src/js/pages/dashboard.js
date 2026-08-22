@@ -129,6 +129,100 @@
     return reminders;
   }
 
+  // Redesign Gate 7 (Dashboard + My Work + Action Centre Redesign): the brief's own
+  // Dashboard section explicitly asks for Open Risks/Issues, Pending RFIs, Pending
+  // Decisions, Delayed Projects, and Upcoming Milestones alongside the existing project-
+  // status/document-reminder KPIs — none of these were visible anywhere on this page
+  // before this gate. Cheap portfolio-wide counts computed directly from the store, same
+  // "status !== closed" open-record convention portfolio.js's own project-card stat
+  // chips already established (not this file's own invention) — kept in exact agreement
+  // with what a project's own card already shows. Delayed Projects reuses Executive
+  // Center's exported getSchedulePerformanceSummary() (its own unaddressedDelayDays
+  // figure, the same one Gate 26 defined) rather than a new delay heuristic.
+  function countPortfolioExceptions(data, activeProjects) {
+    var activeProjectIds = {};
+    activeProjects.forEach(function (p) {
+      activeProjectIds[p.id] = true;
+    });
+    var openRisks = 0;
+    var openIssues = 0;
+    data.risks.forEach(function (r) {
+      if (!activeProjectIds[r.project_id] || r.status === "closed") return;
+      if (r.type === "risk") openRisks++;
+      else if (r.type === "issue") openIssues++;
+    });
+    var pendingRfis = data.rfis.filter(function (r) {
+      return activeProjectIds[r.project_id] && r.status !== "closed";
+    }).length;
+    var pendingDecisions = data.decisions.filter(function (d) {
+      return activeProjectIds[d.project_id] && d.status === "pending";
+    }).length;
+
+    var today = todayIso();
+    var weekEnd = addDaysIso(today, 7);
+    var upcomingMilestones = data.activities.filter(function (a) {
+      if (!activeProjectIds[a.project_id] || a.activity_type !== "milestone" || a.status === "complete") return false;
+      var date = a.early_start || a.planned_start;
+      return date && date >= today && date <= weekEnd;
+    }).length;
+
+    var delayedProjects = 0;
+    if (window.PCC.executiveCenter && window.PCC.executiveCenter.getSchedulePerformanceSummary) {
+      activeProjects.forEach(function (p) {
+        var summary = window.PCC.executiveCenter.getSchedulePerformanceSummary(p.id);
+        if (summary.unaddressedDelayDays > 0) delayedProjects++;
+      });
+    }
+
+    return {
+      openRisks: openRisks,
+      openIssues: openIssues,
+      pendingRfis: pendingRfis,
+      pendingDecisions: pendingDecisions,
+      upcomingMilestones: upcomingMilestones,
+      delayedProjects: delayedProjects,
+    };
+  }
+
+  function renderPortfolioExceptionsPanel(exceptions) {
+    var panel = document.createElement("div");
+    panel.className = "panel";
+    panel.style.marginBottom = "16px";
+
+    var heading = document.createElement("h3");
+    heading.style.marginBottom = "10px";
+    heading.textContent = "Portfolio Exceptions";
+    panel.appendChild(heading);
+
+    var row = document.createElement("div");
+    row.className = "project-card__stats";
+
+    [
+      { label: "Open Risks", value: exceptions.openRisks, route: "risks" },
+      { label: "Open Issues", value: exceptions.openIssues, route: "risks" },
+      { label: "Pending RFIs / TQs", value: exceptions.pendingRfis, route: "rfis" },
+      { label: "Pending Decisions", value: exceptions.pendingDecisions, route: "decisionRegister" },
+      { label: "Milestones Due (7d)", value: exceptions.upcomingMilestones, route: "projectLookahead" },
+      { label: "Delayed Projects", value: exceptions.delayedProjects, route: "delayRecoveryDashboard" },
+    ].forEach(function (stat) {
+      var chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "card-stat card-stat--link";
+      var valueStyle = stat.value > 0 ? ' style="color:var(--status-at-risk)"' : "";
+      chip.innerHTML =
+        "<span class='card-stat__label'>" + stat.label + "</span>" +
+        "<span class='card-stat__value'" + valueStyle + ">" + stat.value + "</span>";
+      chip.onclick = function () {
+        window.PCC.router.go(stat.route);
+        window.PCC.router.render();
+      };
+      row.appendChild(chip);
+    });
+
+    panel.appendChild(row);
+    return panel;
+  }
+
   // Gate 31 (PCC Evolution Roadmap Gate 3: Management Attention). Reuses Executive
   // Center's existing rule-based diagnostics (via its exported getDiagnostics(projectId)
   // — see that file's own comment for why this is a composed export rather than a
@@ -477,6 +571,7 @@
     wrap.appendChild(kpiGrid);
 
     if (active.length > 0) {
+      wrap.appendChild(renderPortfolioExceptionsPanel(countPortfolioExceptions(data, filtered)));
       var attentionGroups = computeManagementAttention(data, filtered);
       wrap.appendChild(renderManagementAttentionPanel(attentionGroups));
       wrap.appendChild(renderRemindersPanel(reminders, data));
