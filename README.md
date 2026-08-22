@@ -3597,6 +3597,71 @@ action, pending Change Order): Portfolio Exceptions panel shows correct counts a
 navigate to the right register; My Work and Action Centre rows are whole-row-clickable; Action
 Centre's relabeled "No Due Date" bucket renders correctly. Zero console errors.
 
+### Gate 8 — Project Workspace as Command Centre, done, 2026-08-22
+
+Inspected `projectWorkspace.js` in full before touching it — it's UI/UX Overhaul Gate 4's own page,
+already a real project-scoped hub (header, nav, Overview with Management Attention/Upcoming/Recent
+Activity), deliberately CPM-engine-free. This gate closes the two concrete gaps against the brief's
+own Project Workspace section: the header's missing vitals, and a flat nav that never matched the
+brief's own grouped structure.
+
+**Header vitals strip**: the brief explicitly lists Project Name, Client, Status, Overall Progress,
+Schedule Status, Key Milestone, and Current Health as what should show "at the top." Name/Client/
+Status already did; Progress existed only as a KPI card further down the page. Added a vitals strip
+directly under the header's name/status row using the same `.card-stat` chip Portfolio's project
+cards (Gate 3) and Dashboard's Portfolio Exceptions panel (Gate 7) already established — Progress
+moved up from the KPI grid (removed there, not duplicated), Current Health reads the same
+`project.status` the badge already shows. **Schedule Status** and **Key Milestone** are the two
+genuinely new figures, both kept CPM-free per this page's own standing discipline: Schedule Status
+reuses My Work's exact "behind its own plan" rule (not_started past its planned_start, or
+in_progress past its planned_finish) as a single boolean, not a new heuristic; Key Milestone is the
+single soonest milestone by `early_start || planned_start` (Gate 5/My Work's own date-preference
+convention), whichever is more relevant right now — overdue or upcoming — excluding completed ones.
+A new `.card-stat__value--text` CSS modifier was added since these are the first non-numeric values
+this chip has ever held — the class's own mono font is for tabular/numeric content only, per Gate 1's
+already-established distinction, so plain status text needed to opt out rather than being forced mono.
+
+**Grouped module directory, replacing the flat toolbar + "More" overflow**: the brief's own section
+explicitly asks for the project organized into PLANNING/CONTROLS/MANAGEMENT/VENDORS/DOCUMENTS/
+REPORTS. Rather than inventing a second, slightly different taxonomy for the same modules, this
+reuses Gate 5's exact global-sidebar group names (PLANNING & SCHEDULE, PROJECT CONTROLS, PROJECT
+MANAGEMENT, VENDORS, DOCUMENTS, SITE & KNOWLEDGE, REPORTING) — a user learns the grouping once and it
+now applies both in the sidebar and here (visibly, in the same screenshot: the sidebar's own group
+labels down the left edge read identically to the directory panel's own column headings). Rendered
+as one always-visible panel with a labeled column per group, each item a plain `.card-menu__item`
+link — the exact component the old "More" dropdown already used, just no longer hidden behind a
+click. Executive Center stays a separate, prominent button above the groups (it's the project's own
+rollup dashboard, not a "module" the way Schedule/Cost/Risks are — matches how the brief treats it as
+its own top-level destination elsewhere, not folded into any of the seven groups).
+
+Every item kept the same real-deep-link-only discipline the original nav already established:
+Document Types/Document Control Dashboard/Delay & Recovery Dashboard/Vendor Performance Centre/
+Project Lookahead stay off the directory entirely, because none of them expose a
+`filterByProject()`/`viewProject()` to land on — confirmed by re-checking, not assumed unchanged.
+**Reports is a genuinely new addition**: it was missing from the nav entirely before this gate
+despite being project-scoped since Redesign Gate 6 gave it a shared-context default. It has no
+`filterByProject()`/`viewProject()` of its own, so `navigateToModule()` grew a small special case
+that sets the shared project context directly (`window.PCC.projectContext.set(projectId)`) — the
+same thing the shell header's own PROJECT switcher does — which is enough, since Reports already
+reads its default project from that shared context on every render.
+
+**Verified**: `node --check` on `projectWorkspace.js`; full 73-file suite, 2094 checks, 0 failures
+— including updating `test_uiux_gate4_workspace_e2e.js`'s (this page's own dedicated test) nav-lookup
+assertions that searched inside `.toolbar` for module buttons no longer there, replacing the retired
+"More overflow" test with one confirming the module directory is always visible with every group and
+item present, and adding checks for the new vitals strip and the new Reports link; also fixed one
+`test_uiux_gate6_documents_e2e.js` assertion with the identical `.toolbar`-lookup pattern. Real-
+Chromium pass with a seeded project (an overdue task, an upcoming milestone, a critical risk):
+vitals strip shows the correct Progress/Schedule Status ("Behind Schedule")/Key Milestone/Health;
+module directory renders all seven groups with correct items; the directory's own group labels
+visually match the sidebar's group labels in the same screenshot. Zero console errors.
+
+**Not done**: no change to any linked-to module's own business logic — this gate is entirely about
+the Workspace page's own header and nav structure. Resources' existing `filterByProject()` still only
+narrows its own Assignment-form Activity dropdown rather than scoping the whole Resources page (a
+pre-existing behavior from before this gate, unrelated to the Workspace nav rework, not fixed here —
+out of this gate's scope).
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →

@@ -207,9 +207,9 @@ function findButtonByText(dom, text, root) {
     win.PCC.projectWorkspace.viewProject(projB);
     win.PCC.router.go("projectWorkspace");
     win.PCC.router.render();
-    var nav = Array.from(outlet().querySelectorAll(".toolbar")).find((t) => t.textContent.indexOf("Executive Center") !== -1);
-    assert.ok(nav, "workspace nav not found");
-    findButtonByText(dom, "Documents", nav).click();
+    // Redesign Gate 8 replaced the flat toolbar nav with an always-visible grouped
+    // module directory — "Documents" now lives there, not in a ".toolbar".
+    findButtonByText(dom, "Documents").click();
     await flush();
     assert.strictEqual(win.PCC.router.currentRouteName(), "documents");
     var items = outlet().querySelectorAll(".doc-register-item");
