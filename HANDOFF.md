@@ -3585,79 +3585,78 @@ breakdown from Aditya directly, the same way Tier D's came, rather than guessing
   the real "today" at test-run time, not the file's other fixed 2026 dates) confirm both labels
   stay clear of the tick row and stagger correctly when close. Full suite: 64 files, 1820 checks.
 
-## Repo/branch state
+## Repo/branch state (rewritten in full this round — the previous version of this section was
+## badly stale, predating roughly 80 commits of real work across three entire initiatives)
 
-`main` is fully up to date through **Gate 25: Advanced Schedule Performance**
-(`8f2eab8`, a direct merge — no PR, per Aditya's now-standing "always merge after completing a
-gate/phase" instruction, see above) — **Tiers A-E are all fully complete; Tier F (Advanced Project
-Planning & Project Controls) is now underway, eight of its nine named gates done plus one
-follow-on round closing a gap in the second — only Gate 26 remains.** Seventeen rounds have landed
-on `main` this session, all via the same designated remote-session branch,
-`claude/tier-c-code-inspection-jysweb` (name is stale now — it's carried Tier C, D, E, and F gates
-alike), restarted from the new `main` between each per the standing "restart before the next gate"
-instruction: the Tier C inspection + `physical_progress` fix first (merge `fba3d42`), then Vendor
-Performance Centre (merge `0801b10`), then Delay & Recovery Management (merge `4882f79`), then
-Decision Register (merge `d57a056`), then Weekly Project Review (merge `c3af1d9`), then the
-Recovery Actions/Decisions reporting-wiring follow-on (merge `fef89f6`), then Gate 16 Portfolio
-Performance (merge `c4959e2`), then Gate 17 Personal Workbench (merge `332b505`), then Gate 18
-Resource Management (merge `ec8c638`), then Gate 19 Commitment Management (merge `a0a9e5b`), then
-the Gate 19 Schedule↔Commitment follow-on (merge `4690a58`), then Gate 20 Status-Date Control
-(merge `33a3551`), then Gate 21 Status-Date Reforecasting (merge `bd825a0`), then Gate 22 Baseline
-& Schedule Revision Control (merge `d14f9ef`), then Gate 23 Advanced Delay Analysis (merge
-`1050733`), then Gate 24 Recovery & Mitigation Planning (merge `e3ef313`), then Gate 25 Advanced
-Schedule Performance (merge `8f2eab8`). Aditya confirmed via `AskUserQuestion` to proceed with
-each merge given the branch's own "never push elsewhere without permission" constraint; see the
-git log for the exact sequence if that matters later. This builds on top of **Tier B (Control
-Integration)**, complete as of Gate 33, and the already-complete 14-gate Document Control sub-spec.
-`schema_version` on `main` is now **47** — Gate 25 needed a real schema change, the fifth in a row
-(see the "Where things stand" section above for full detail). `claude/tier-c-code-inspection-jysweb`
-carries the same history as `main` as of this merge (nothing unmerged on it) — restart it from the
-new `main` before starting the next gate, and verify with `git log origin/main..HEAD` and
-`git status` before assuming this is still true by the time you read this.
+`main` is fully up to date through **UI Modernization Gate F** (`851e883`), pushed directly (no
+PR, standing "merge immediately, don't ask" instruction). The working branch,
+`claude/new-session-knj62z`, is restarted from `main` after every gate per the standing
+"restart before the next gate" instruction and currently carries the exact same history as `main`
+— nothing unmerged on it. **Verify this is still true by the time you read this**
+(`git log origin/main..HEAD` and `git status`), rather than trusting this paragraph blindly.
 
-**Zip delivered this round:** `Project-Control-Center.zip` — `index.html` + `README.md` +
-`data/`/`files/` (existing `README.txt` placeholders), verified via a fresh extraction
-(`/tmp/pcc_zip_verify12/`, not the dev working copy) opened in real Chromium — zero console errors;
-screenshots taken and sent per the standing instruction.
+**Since the previous version of this section (written at Gate 25/`8f2eab8`), three entire
+initiatives have shipped, in this order:**
 
-**Next steps, in likely priority order:**
-1. **Tier F has exactly 1 named gate left — Gate 26, Integrated Project Controls — get scope
-   confirmation from Aditya before building it. This is the LAST gate in the whole Tier F
-   spec.** Full spec text for all 9 Tier F gates was handed over conversationally this session
-   and is preserved in this conversation's history but was never saved as a file in this repo —
-   don't assume a future session can find it; get it re-confirmed from Aditya if it's not still in
-   context. Inspect each gate against the real code before proposing anything, same discipline as
-   every gate so far — Gates 18 through 25 all turned out to have substantial real prior art or
-   overlap, so don't assume Gate 26 is starting from zero either. **Gate 26 ("Integrated Project
-   Controls") is flagged as likely to be an INTEGRATION/rollup gate by its own name** — i.e. it
-   may not introduce much genuinely new calculation the way Gates 20-25 each did, but instead pull
-   together Schedule + Cost + Delay + Recovery + Schedule Performance (all now built) into one
-   unified control-centre view or report. Inspect Executive Center, the Snapshot & Management
-   Pack, and reports.js carefully first — this gate may turn out to be mostly about surfacing
-   connections between already-built pieces (e.g. does the new Schedule Performance Score feed
-   Project Health? does Delay Analysis cross-reference Recovery Actions and What-If explicitly
-   anywhere yet?) rather than a new engine or register. After Gate 26 ships, Tier F is COMPLETE —
-   check with Aditya on what's next (Tier 3 per the roadmap's own numbering, or a new phase
-   entirely).
-2. **Watch for the exact "local DOM element mutated for validation display, then discarded by the
-   very next rerender()" bug pattern flagged in the Gate 24 section above** (a second instance of
-   the same root problem as the Gate 22 notify()-reads-a-mutated-object bug) when writing any new
-   inline form validation in this codebase — the error text MUST live in `uiState` and be re-read
-   on the next build, never left as a local variable's `style.display` mutation, since nearly
-   every button handler here ends with `rerender()`.
-3. Older still-open items, none blocking daily use: category-scheme reconciliation
-   (Documents/Vendor/Document-Types), the Gantt-bar readiness flag, the two hardcoded reminder/
-   lookahead windows (14-day Document Reminders, 30-day Action Centre Upcoming), Resource
-   Management rate × usage into Cost/EVM (still explicitly deferred), Commitments' own Budget →
-   Commitments → Actual → Forecast wiring into `costEvmEngine.js`'s EAC/CPI/SPI math (explicitly
-   "eventually" per Gate 19's own spec — not started), portfolio dashboard filtering.
-4. Optional cleanup: these branches on `origin` are all fully merged into `main` and safe to
-   delete (not urgent) — `integration/gates-8-13`, `claude/phase-11c-planning-executive-frty7j`,
-   `claude/excel-schedule-pcc-editing-dgyy9m`, `claude/doc-control-gate14-master-repo`,
-   `claude/doc-control-gate15-project-requirements`,
-   `claude/doc-control-gate16-classification-nomenclature`,
-   `claude/doc-control-gate17-status-version-control`. `claude/project-setup-tooling-gcwsu3`
-   also still exists on origin — verify it's merged before deleting it, since this handoff round
-   didn't touch it.
-5. Tier 3 (AI Document Processing, Knowledge Base, AI Project Assistant, Lessons Learned, final
-   polish) remains deferred until Tier 1/2 are in daily use.
+1. **Tier F's final gate + all of Tier 3 + final polish** — Gate 26 (Integrated Project Controls,
+   closing out Tier F), Tier 3 Gates 1-2 (Lessons Learned, Knowledge Base), Final Polish Gates 1-4
+   (configurable reminder windows + Gantt readiness flag, Report Template System, Dashboard-level
+   filtering, Gantt virtualization for 10,000+ activities), then an explicit close-out commit
+   deferring the remaining lower-priority items (Vendor↔Cost, Commitments→EVM, category-scheme
+   reconciliation — still deferred, not forgotten, see item 3 below). **This closes out the
+   original feature roadmap in full — Tiers 1, 2, A-F, and 3 are all now complete.**
+   `schema_version` is now **53** (was 47 as of the last version of this section).
+2. **UI/UX Overhaul** (a separate initiative from UI Modernization below, despite the similar
+   name) — Gate 1 (Design System tokens/primitives), Gate 2 (Global Navigation, later revised to
+   an Outlook-Online-style hidden overlay with accordion groups), Gate 3 (Portfolio card
+   redesign), Gate 4 (Project Workspace), Gate 5 (Executive Center redesign), Gate 6 (Documents,
+   Risk Register, Schedule — one module at a time, then put on hold after three), Gate 7
+   (Desktop/Laptop Productivity: Density Control, Better Data Grids, Focus Mode/Resizable
+   Panels/Side-by-Side Views), Gate 8 (Tablet/Mobile Optimization: grid/Gantt mobile alternatives,
+   touch targets). Also a standalone fix in this window: overlapping Today/Data Date labels on the
+   Gantt chart.
+3. **Mobile & Desktop Packaging** — Electron desktop (Linux AppImage + Windows NSIS installer),
+   Android (Capacitor, app id `com.pcc.projectcontrolcenter`), Gate 2 (Export/Import/Open File —
+   in-app file viewer, native save/share), Gate 3 (native print via a custom Capacitor plugin),
+   Gate 4 (blob storage compression), a desktop cosmetics fix (window icon, Linux WM_CLASS/app
+   identity), **Android release signing** (a dedicated keystore generated and delivered directly
+   to Aditya — see its own section above for the fingerprint and what's still needed for Windows/
+   macOS code signing, which Aditya explicitly declined pursuing further, personal-use-only
+   decision), and finally **UI Modernization Gates A-F** (design-token cleanup across `styles.css`
+   and all ten page files, a shared loading-state component, an inline-SVG icon system, empty-state
+   copy + motion polish) — see that initiative's own section above for full gate-by-gate detail.
+
+**Test suite**: 73 files (not 78 — that number appeared in several of this round's own gate
+write-ups above and was already stale by the time it was written; 73 is the actual count as of
+this HEAD, confirmed by both `ls tests/*.js` and counting the chained `node test_*.js` calls in
+`tests/package.json`'s own `test` script — trust neither number blindly, recount if it matters).
+
+**Artifacts delivered this round** (after UI Modernization Gate F): a freshly rebuilt, signed
+Android APK (`app-release.apk`, sha256 `01ecbfd2b880ef47b928ecd37a28ff802d35c1d030946e4cb4d91331293a12e7`)
+and a freshly rebuilt Windows installer (`Project Control Center Setup 1.0.0.exe`, unsigned per
+Aditya's standing decision, sha256 `5baaab705e760520fba31d66d0fa885c958a4a3b0baf906dedad8b3cb7d7d6c5`,
+split into 5 parts for delivery — see the packaging section above for the reassembly command). Both
+verified structurally (APK: `apksigner`/`zipalign`, embedded `index.html` byte-identical to this
+build; EXE: extracted `app.asar`, embedded `index.html`/`icon.png`/`main.js` all byte-identical) —
+neither was opened on a real device/Windows machine from this sandbox, same limitation as every
+prior packaging round.
+
+**Next steps — Aditya's own words: "once its completed i will give next upgrade."** There is no
+committed-to next feature as of this HEAD. When a fresh session picks this up:
+1. **Don't assume Gate 26/Tier 3/UI-Modernization context survives** — re-read this section and
+   the two initiative sections above (UI/UX Overhaul is a separate, older initiative from Mobile &
+   Desktop Packaging's own UI Modernization Gates A-F; don't conflate the two despite similar
+   names) before proposing anything.
+2. **Genuinely deferred, not forgotten** (per the Tier 3 close-out commit `bd88c4b`): Vendor↔Cost
+   wiring, Commitments→EVM wiring (Resource Management rate × usage into Cost/EVM, Commitments'
+   Budget → Commitments → Actual → Forecast into `costEvmEngine.js`'s EAC/CPI/SPI math), and
+   category-scheme reconciliation (Documents/Vendor/Document-Types) — none blocking daily use, all
+   explicitly left for "later" by Aditya's own prior call, not something to silently pick up
+   without asking first.
+3. **The "local DOM element mutated for validation display, then discarded by the very next
+   rerender()" bug pattern** (flagged from Gate 22/24 — see the "Recently fixed bugs" section
+   above) is still worth watching for in any new inline form validation: the error text MUST live
+   in `uiState` and be re-read on the next build, never left as a local variable's `style.display`
+   mutation.
+4. Windows/macOS code signing is a **closed** decision (personal use only, no cert, no Mac
+   hardware) — don't re-raise it unless Aditya explicitly reopens the topic himself.
