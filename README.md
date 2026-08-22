@@ -3355,6 +3355,35 @@ cards read visibly flatter without looking bare.
 treatment from the metadata cells) — still deferred, no call site needed it urgently enough to pull
 forward from later gates.
 
+### Gate 3 — Icon System Expansion, done, 2026-08-22
+
+Replaced the nav list's 27 two-letter mono codes (DB/MW/AC/…) with real inline SVG icons, one per
+route — the "separate, much bigger design effort" flagged as out of scope back in UI Modernization
+Gate E, now in scope. Same construction as that gate's 7 shell-chrome icons
+(`stroke="currentColor"`, 24×24 viewBox, inherits `.sidebar__link`'s color automatically). Zero
+test risk confirmed before starting — nothing in `tests/` references `.sidebar__icon` or
+`item.code`.
+
+**A real lookalike collision caught by testing, not assumed away** — same lesson as Gate E's
+density/hamburger mixup. A real-Chromium screenshot of the fully expanded nav at actual render
+size found Meetings and Resources' icons read as near-duplicates (both a generic "two round heads
++ shoulders" silhouette). Fixed by redesigning Resources as a 3-person group (one prominent figure,
+two smaller ones behind) — a genuinely different overall shape, not just a re-skin. Re-verified
+with a zoomed side-by-side screenshot after the fix.
+
+The four Documents-family icons (Documents, Document Types, Document Control Dashboard, Reports)
+deliberately share a base file-outline silhouette, differentiated only by their secondary mark
+(two lines / a layered-copy shape / a checkmark / bar chart) — the same convention real icon
+libraries use for file-text/file-check/files, checked specifically for legibility at actual size
+and confirmed clearly distinct, not a collision like Meetings/Resources was.
+
+`item.code` stays in `NAV_GROUPS`'s data (harmless, no longer rendered) rather than being deleted
+— removing a data field for a purely cosmetic change is unnecessary scope.
+
+**Verified**: `node --check` on `layout.js`; full 78-file suite, 2090 checks, 0 failures. Real-
+Chromium pass: the fully expanded nav (all 27 icons) screenshotted and visually reviewed, zero
+console errors, the Meetings/Resources fix confirmed with a 4x-device-scale zoomed comparison.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →

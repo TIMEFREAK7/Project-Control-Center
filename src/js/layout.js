@@ -91,9 +91,9 @@
 
   // UI Modernization, Gate E. Replaces the shell chrome's Unicode glyphs (close, menu,
   // export, import, theme, density, focus mode) with inline SVG — scoped deliberately to
-  // just these seven title-block/nav icon-btns, not a page-by-page icon rollout (the nav
-  // list's own two-letter .sidebar__icon codes above are a separate, much bigger design
-  // effort — 25+ distinct pages needing real per-page icons — and stay untouched here).
+  // just these seven title-block/nav icon-btns, not a page-by-page icon rollout at the
+  // time. The nav list's own two-letter codes got their own real icons later, in PCC
+  // Redesign Gate 3 — see NAV_ICONS below.
   // stroke="currentColor" is the reason these need no color rule of their own: they
   // inherit .icon-btn's `color` (including the amber .icon-btn--active state) exactly the
   // way the old text glyphs did via `color` on the button itself. aria-hidden on the <svg>
@@ -120,6 +120,50 @@
     densityComfortable: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="4" y="6" width="16" height="2" rx="1"/><rect x="4" y="11" width="16" height="2" rx="1"/><rect x="4" y="16" width="16" height="2" rx="1"/></svg>',
     densitySpacious: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="4" y="3" width="16" height="2" rx="1"/><rect x="4" y="11" width="16" height="2" rx="1"/><rect x="4" y="19" width="16" height="2" rx="1"/></svg>',
     focus: '<svg ' + ICON_SVG_ATTRS + '><polyline points="8 3 3 3 3 8"/><polyline points="16 3 21 3 21 8"/><polyline points="3 16 3 21 8 21"/><polyline points="21 16 21 21 16 21"/></svg>',
+  };
+
+  // Redesign Gate 3 (Icon System Expansion): the nav list's own per-page icons, the
+  // "separate, much bigger design effort" flagged as out of scope back in Gate E — now in
+  // scope. One SVG per route key, same construction as ICONS above (stroke="currentColor",
+  // 24x24 viewBox), keyed to buildNavList()'s item.key rather than item.code. item.code
+  // stays in NAV_GROUPS (harmless, no longer rendered) rather than being ripped out —
+  // deleting a data field a future gate might still want is a bigger, unnecessary edit for
+  // a purely cosmetic change. Where two nav items are conceptually close (the four
+  // Documents-family entries; meetings vs. resources as "people" icons), the base shape is
+  // deliberately shared and only the secondary mark differs — the same convention real icon
+  // libraries use for file-text/file-check/files, not an oversight.
+  var NAV_ICONS = {
+    dashboard: '<svg ' + ICON_SVG_ATTRS + '><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg>',
+    myWork: '<svg ' + ICON_SVG_ATTRS + '><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 8l1.5 1.5L11 7"/><line x1="13" y1="8" x2="18" y2="8"/><path d="M7 13.5l1.5 1.5L11 12.5"/><line x1="13" y1="14" x2="18" y2="14"/></svg>',
+    actionCentre: '<svg ' + ICON_SVG_ATTRS + '><path d="M12 3a5 5 0 0 0-5 5v3.5c0 .8-.3 1.6-.9 2.2L4.5 15.5A1 1 0 0 0 5.2 17h13.6a1 1 0 0 0 .7-1.7l-1.6-1.8c-.6-.6-.9-1.4-.9-2.2V8a5 5 0 0 0-5-5z"/><path d="M9.5 20a2.5 2.5 0 0 0 5 0"/></svg>',
+    projectLookahead: '<svg ' + ICON_SVG_ATTRS + '><polyline points="6 5 12 12 6 19"/><polyline points="13 5 19 12 13 19"/></svg>',
+    portfolio: '<svg ' + ICON_SVG_ATTRS + '><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M8 8V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="3" y1="13" x2="21" y2="13"/></svg>',
+    projectWorkspace: '<svg ' + ICON_SVG_ATTRS + '><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>',
+    executiveCenter: '<svg ' + ICON_SVG_ATTRS + '><rect x="3" y="4" width="18" height="12" rx="2"/><line x1="8" y1="20" x2="16" y2="20"/><line x1="12" y1="16" x2="12" y2="20"/><polyline points="7 13 10 9 13 12 17 7"/></svg>',
+    vendors: '<svg ' + ICON_SVG_ATTRS + '><rect x="5" y="3" width="14" height="18" rx="1"/><line x1="9" y1="7" x2="9" y2="7.01"/><line x1="15" y1="7" x2="15" y2="7.01"/><line x1="9" y1="12" x2="9" y2="12.01"/><line x1="15" y1="12" x2="15" y2="12.01"/><rect x="10" y="16" width="4" height="5"/></svg>',
+    vendorPerformanceCentre: '<svg ' + ICON_SVG_ATTRS + '><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="0.75" fill="currentColor"/></svg>',
+    documents: '<svg ' + ICON_SVG_ATTRS + '><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><polyline points="14 3 14 8 19 8"/><line x1="8.5" y1="13" x2="15.5" y2="13"/><line x1="8.5" y1="16.5" x2="15.5" y2="16.5"/></svg>',
+    documentTypes: '<svg ' + ICON_SVG_ATTRS + '><rect x="4" y="7" width="13" height="14" rx="1.5"/><path d="M8 7V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-2"/></svg>',
+    documentControlDashboard: '<svg ' + ICON_SVG_ATTRS + '><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><polyline points="14 3 14 8 19 8"/><polyline points="9 14 11 16 15.5 11.5"/></svg>',
+    dailylog: '<svg ' + ICON_SVG_ATTRS + '><rect x="5" y="4" width="14" height="17" rx="2"/><rect x="9" y="2" width="6" height="4" rx="1"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="16" y2="15"/></svg>',
+    risks: '<svg ' + ICON_SVG_ATTRS + '><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="16" x2="12" y2="16.01"/></svg>',
+    meetings: '<svg ' + ICON_SVG_ATTRS + '><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="8" r="2.5"/><path d="M15.5 14.3c2.6.6 4.5 2.9 4.5 5.7"/></svg>',
+    rfis: '<svg ' + ICON_SVG_ATTRS + '><path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9l-5 4v-4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/><path d="M9.5 9.5a2.5 2.5 0 0 1 5 0c0 1.5-2.5 1.8-2.5 3.5"/><line x1="12" y1="15.5" x2="12" y2="15.51"/></svg>',
+    changeOrders: '<svg ' + ICON_SVG_ATTRS + '><polyline points="17 2 21 6 17 10"/><line x1="3" y1="6" x2="21" y2="6"/><polyline points="7 22 3 18 7 14"/><line x1="3" y1="18" x2="21" y2="18"/></svg>',
+    decisionRegister: '<svg ' + ICON_SVG_ATTRS + '><line x1="12" y1="3" x2="12" y2="21"/><line x1="7" y1="7" x2="17" y2="7"/><path d="M3 7l4 7a4 4 0 0 1-8 0z"/><path d="M17 7l4 7a4 4 0 0 1-8 0z"/><line x1="9" y1="21" x2="15" y2="21"/></svg>',
+    lessonsLearned: '<svg ' + ICON_SVG_ATTRS + '><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 0 0-4 10.5c.6.6 1 1.4 1 2.5h6c0-1.1.4-1.9 1-2.5A6 6 0 0 0 12 3z"/></svg>',
+    knowledgeBase: '<svg ' + ICON_SVG_ATTRS + '><path d="M3 5.5C3 4.7 3.7 4 4.5 4H11v16H4.5A1.5 1.5 0 0 1 3 18.5z"/><path d="M21 5.5c0-.8-.7-1.5-1.5-1.5H13v16h6.5a1.5 1.5 0 0 0 1.5-1.5z"/></svg>',
+    schedule: '<svg ' + ICON_SVG_ATTRS + '><rect x="3" y="5" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="3" x2="8" y2="7"/><line x1="16" y1="3" x2="16" y2="7"/><line x1="7" y1="14" x2="7" y2="14.01"/><line x1="12" y1="14" x2="12" y2="14.01"/><line x1="17" y1="14" x2="17" y2="14.01"/></svg>',
+    delayRecoveryDashboard: '<svg ' + ICON_SVG_ATTRS + '><circle cx="12" cy="13" r="8"/><polyline points="12 9 12 13 15 15"/><path d="M4.2 9A8 8 0 0 1 9 4.2"/><polyline points="3 6 4.2 9 7.2 8"/></svg>',
+    cost: '<svg ' + ICON_SVG_ATTRS + '><circle cx="12" cy="12" r="9"/><path d="M12 6v12"/><path d="M15.5 9a3 3 0 0 0-3-1.5h-1a2.5 2.5 0 0 0 0 5h1a2.5 2.5 0 0 1 0 5h-1a3 3 0 0 1-3-1.5"/></svg>',
+    commitments: '<svg ' + ICON_SVG_ATTRS + '><path d="M6 3h12v17l-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5-2 1.5z"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="9" y1="12" x2="15" y2="12"/></svg>',
+    // A first real-Chromium check at actual render size found this too close to meetings'
+    // 2-person icon (same "two round heads + shoulders" silhouette). A 3-person group —
+    // one prominent figure in front, two smaller ones peeking from behind — reads as
+    // distinctly different in overall shape/weight, not just a re-skinned duplicate.
+    resources: '<svg ' + ICON_SVG_ATTRS + '><circle cx="12" cy="7" r="3"/><path d="M6 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="5" cy="9" r="2.2"/><path d="M2 19c0-2.5 1.3-4.5 3-5.3"/><circle cx="19" cy="9" r="2.2"/><path d="M22 19c0-2.5-1.3-4.5-3-5.3"/></svg>',
+    reports: '<svg ' + ICON_SVG_ATTRS + '><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><polyline points="14 3 14 8 19 8"/><line x1="9" y1="17" x2="9" y2="13"/><line x1="12" y1="17" x2="12" y2="11"/><line x1="15" y1="17" x2="15" y2="14"/></svg>',
+    settings: '<svg ' + ICON_SVG_ATTRS + '><circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M3 12h2M19 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></svg>',
   };
 
   function applyTheme(theme) {
@@ -265,7 +309,7 @@
         a.href = "#/" + item.key;
         a.setAttribute("data-route", item.key);
         a.innerHTML =
-          '<span class="sidebar__icon mono">' + item.code + "</span><span>" + item.label + "</span>";
+          '<span class="sidebar__icon">' + (NAV_ICONS[item.key] || "") + "</span><span>" + item.label + "</span>";
         a.addEventListener("click", closeNav);
         li.appendChild(a);
         itemsList.appendChild(li);

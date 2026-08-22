@@ -2003,6 +2003,31 @@ gate), then built.
   cell vs. metadata cells) — no call site needed it pulled forward from later gates yet.
 - **Not started**: Gates 3-12.
 
+**Gate 3 — Icon System Expansion, done, 2026-08-22.** Aditya said "start gate 3" directly.
+Confirmed zero test risk before touching anything — grepped `tests/` for `.sidebar__icon`/
+`item.code`, found nothing.
+
+- Replaced the nav list's 27 two-letter mono codes with real inline SVG icons, one per route,
+  same construction as Gate E's 7 shell-chrome icons (`stroke="currentColor"`, 24×24 viewBox).
+  Added a `NAV_ICONS` map in `layout.js`, wired into `buildNavList()`'s item rendering.
+  `item.code` stays in `NAV_GROUPS` (unused now, not deleted — no reason to remove a data field
+  for a purely cosmetic change).
+- **A real lookalike collision, caught by testing, not assumed away — same class of mistake as
+  Gate E's density/hamburger mixup, and the same fix discipline applied**: a real-Chromium
+  screenshot of the fully expanded nav at actual render size showed Meetings and Resources' icons
+  reading as near-duplicates (both a generic 2-head-and-shoulders silhouette). Fixed by
+  redesigning Resources as a 3-person group (one prominent front figure, two smaller ones behind)
+  — genuinely different shape, not a re-skin. Re-verified with a 4x-device-scale zoomed
+  side-by-side screenshot confirming the fix actually worked.
+- Checked the four Documents-family icons (Documents/Document Types/Document Control Dashboard/
+  Reports) specifically too, since they deliberately share a base file-outline shape — confirmed
+  each secondary mark (lines/layered-copy/checkmark/bar-chart) reads clearly distinct at actual
+  size, unlike the Meetings/Resources pair.
+- **Verified**: `node --check` on `layout.js`; full 78-file suite, 2090 checks, 0 failures.
+  Real-Chromium: all 27 icons render with zero console errors, confirmed via `svgCount === 27`
+  assertion in the check script, not just eyeballed.
+- **Not started**: Gates 4-12.
+
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
 `main` is fully up to date through **Tier 3, "final polish," Gate 4** (Gantt virtualization for

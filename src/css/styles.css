@@ -270,10 +270,20 @@ button {
   border-left-color: var(--signal-amber);
 }
 
+/* Redesign Gate 3: was a 2-char mono text code, now an inline SVG — display:flex + a fixed
+   svg size replaces the old text-align:center centering trick, which only worked for text. */
 .sidebar__icon {
-  width: 16px;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  flex-shrink: 0;
   opacity: 0.85;
+}
+
+.sidebar__icon svg {
+  width: 18px;
+  height: 18px;
 }
 
 .main-column {
