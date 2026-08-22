@@ -1207,6 +1207,13 @@
     twoCol.appendChild(renderUpcomingItemsPanel(ctx, rerender));
     outlet.appendChild(twoCol);
 
+    // Redesign Gate 9: Vendor Performance and Key Decisions, in the same order the
+    // brief's own Executive Center list gives them (…Resource concerns, Vendor
+    // performance, Key decisions, Required management actions) — placed right before
+    // Management Action List, which already covers "Required management actions".
+    outlet.appendChild(renderVendorPerformancePanel(data, p.id));
+    outlet.appendChild(renderKeyDecisionsPanel(ctx));
+
     outlet.appendChild(renderManagementActionListPanel(ctx));
   }
 
@@ -1917,6 +1924,9 @@
       // pick EVM/Summary directly) — acceptable here since the project filter still
       // gets the user to the right place; they switch tabs themselves from there.
       window.PCC.cost.filterByProject(uiState.projectId);
+    } else if (link.module === "vendors" && window.PCC.vendors) {
+      // Redesign Gate 9: new Vendor Performance panel's own click-through.
+      if (link.recordId && window.PCC.vendors.openProfile) window.PCC.vendors.openProfile(link.recordId);
     }
     window.PCC.router.go(link.module);
   }
@@ -2301,6 +2311,132 @@
     });
     card.appendChild(list);
     return card;
+  }
+
+  // Redesign Gate 9 (Portfolio + Executive Center Redesign): two of the brief's own
+  // explicit Executive Center items that this page never had a panel for — Vendor
+  // Performance and Key Decisions. Both retrofitted onto the same .attention-list/
+  // .attention-item primitive every other Overview panel here already uses.
+
+  /** Same overallRating() averaging formula vendors.js's own vendor profile uses
+   * (average of the four non-zero sub-ratings across every review row) — duplicated
+   * here per this app's per-module-helpers convention, scoped to just this project's
+   * own vendor_performance rows rather than a vendor's portfolio-wide history. No CPM
+   * engine involved; vendor_performance rows already carry project_id directly. */
+  function overallRating(perf) {
+    var vals = [perf.quality_rating, perf.delivery_rating, perf.communication_rating, perf.safety_rating].filter(function (v) {
+      return v > 0;
+    });
+    if (vals.length === 0) return 0;
+    var sum = vals.reduce(function (a, b) { return a + b; }, 0);
+    return Math.round((sum / vals.length) * 10) / 10;
+  }
+
+  function renderVendorPerformancePanel(data, projectId) {
+    var panel = document.createElement("div");
+    panel.className = "panel";
+    panel.style.marginTop = "var(--space-4)";
+    var h = document.createElement("h3");
+    h.style.marginBottom = "var(--space-3)";
+    h.textContent = "Vendor Performance";
+    panel.appendChild(h);
+
+    var reviewsByVendor = {};
+    data.vendor_performance
+      .filter(function (r) { return r.project_id === projectId; })
+      .forEach(function (r) {
+        (reviewsByVendor[r.vendor_id] = reviewsByVendor[r.vendor_id] || []).push(r);
+      });
+    var vendorsById = {};
+    data.vendors.forEach(function (v) { vendorsById[v.id] = v; });
+
+    var vendorIds = Object.keys(reviewsByVendor);
+    if (vendorIds.length === 0) {
+      var okP = document.createElement("p");
+      okP.className = "text-secondary";
+      okP.style.fontSize = "var(--text-sm)";
+      okP.textContent = "No vendor performance reviews logged for this project yet.";
+      panel.appendChild(okP);
+      return panel;
+    }
+
+    var items = vendorIds.map(function (vendorId) {
+      var reviews = reviewsByVendor[vendorId];
+      var avg = Math.round((reviews.reduce(function (sum, r) { return sum + overallRating(r); }, 0) / reviews.length) * 10) / 10;
+      var vendor = vendorsById[vendorId];
+      return {
+        severity: avg > 0 && avg < 3 ? "critical" : avg >= 3 && avg < 4 ? "warning" : "info",
+        text: (vendor ? vendor.vendor_name || "(unnamed vendor)" : "(deleted vendor)") + ": " + (avg > 0 ? avg.toFixed(1).replace(/\.0$/, "") + " / 5" : "Not rated") + " (" + reviews.length + " review" + (reviews.length === 1 ? "" : "s") + ")",
+        link: { module: "vendors", recordId: vendorId },
+      };
+    });
+
+    var list = document.createElement("div");
+    list.className = "attention-list";
+    items.forEach(function (i) {
+      var row = document.createElement("div");
+      row.className = "attention-item attention-item--clickable";
+      row.onclick = function () { navigateToLink(i.link); };
+
+      var icon = document.createElement("span");
+      icon.className = "attention-item__icon attention-item__icon--" + i.severity;
+      row.appendChild(icon);
+
+      var body = document.createElement("div");
+      body.className = "attention-item__body";
+      var text = document.createElement("div");
+      text.className = "attention-item__text";
+      text.textContent = i.text;
+      body.appendChild(text);
+      row.appendChild(body);
+
+      list.appendChild(row);
+    });
+    panel.appendChild(list);
+    return panel;
+  }
+
+  function renderKeyDecisionsPanel(ctx) {
+    var panel = document.createElement("div");
+    panel.className = "panel";
+    panel.style.marginTop = "var(--space-4)";
+    var h = document.createElement("h3");
+    h.style.marginBottom = "var(--space-3)";
+    h.textContent = "Key Decisions (" + ctx.pendingDecisions.length + ")";
+    panel.appendChild(h);
+
+    if (ctx.pendingDecisions.length === 0) {
+      var okP = document.createElement("p");
+      okP.className = "text-secondary";
+      okP.style.fontSize = "var(--text-sm)";
+      okP.textContent = "Nothing pending in the Decision Register.";
+      panel.appendChild(okP);
+      return panel;
+    }
+
+    var list = document.createElement("div");
+    list.className = "attention-list";
+    ctx.pendingDecisions.forEach(function (d) {
+      var row = document.createElement("div");
+      row.className = "attention-item attention-item--clickable";
+      row.onclick = function () { navigateToLink({ module: "decisionRegister", recordId: d.id }); };
+
+      var icon = document.createElement("span");
+      icon.className = "attention-item__icon attention-item__icon--info";
+      row.appendChild(icon);
+
+      var body = document.createElement("div");
+      body.className = "attention-item__body";
+      var text = document.createElement("div");
+      text.className = "attention-item__text";
+      text.textContent = d.title || "(untitled decision)";
+      body.appendChild(text);
+      row.appendChild(body);
+
+      list.appendChild(row);
+    });
+    panel.appendChild(list);
+    return panel;
   }
 
   function renderManagementActionListPanel(ctx) {
