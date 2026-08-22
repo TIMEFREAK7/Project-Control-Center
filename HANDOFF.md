@@ -1714,6 +1714,26 @@ rendering shifts (0.5-4px per instance), not a zero-visual-change gate like A/B1
   visual diff that wasn't actually checked; a future verification pass with seeded data would give a
   real before/after comparison if that matters later.
 
+**Gate C1 — Page Inline-Style Cleanup, Batch 2, done, 2026-08-22.** Aditya asked to start with C1
+(exact-match only, same split as Gate B/B1) for the remaining six page files: `documents.js`,
+`meetings.js`, `resources.js`, `delayRecoveryDashboard.js`, `settings.js`, `rfis.js`.
+
+- Audited exact-match and near-miss values together in one pass this time, rather than re-auditing
+  afterward the way Gate B2 had to — the process change flagged as a lesson from that oversight was
+  actually applied here, not just noted for later.
+- Same dominant pattern as Gate B's four files: 12px/13px font-sizes (no exact token — near-miss
+  target for a future C2), mixed exact/near-miss spacing. One new value: `documents.js` had
+  `padding: "5px 10px"` — 5px wasn't seen in Gate B's files; nearest-token rule (5→`--space-1`,
+  distance 1) applied cleanly, no new judgment call needed. Also the first genuine exact
+  `borderRadius` matches in the page-JS gates: `documents.js`'s `8px`→`--radius-md`,
+  `settings.js`'s `4px`→`--radius-sm` (Gate B's four files had none).
+- **Verified**: all six files pass `node --check`; grepped every remaining literal after the sweep
+  to confirm each one is an intended near-miss/exclusion, not a missed exact match (the same check
+  that would have caught the Gate B2 oversight earlier if done then); full 78-file test suite — 2089
+  checks, 0 failures; real-Chromium pass across all six touched pages, zero console errors.
+- **Not started**: C2 (scale-snapping for these six files, parallel to Gate B2) and Gates D-F
+  (loading-state pattern, icon system, empty-state/motion polish) — pending Aditya's call.
+
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
 `main` is fully up to date through **Tier 3, "final polish," Gate 4** (Gantt virtualization for

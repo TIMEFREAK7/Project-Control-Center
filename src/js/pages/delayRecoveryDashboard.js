@@ -94,8 +94,8 @@
     row.style.display = "flex";
     row.style.justifyContent = "space-between";
     row.style.alignItems = "flex-start";
-    row.style.gap = "8px";
-    row.style.padding = "8px 0";
+    row.style.gap = "var(--space-2)";
+    row.style.padding = "var(--space-2) 0";
     row.style.borderBottom = "1px solid var(--divider)";
     row.style.fontSize = "13px";
 
@@ -117,7 +117,7 @@
     var right = document.createElement("div");
     right.style.display = "flex";
     right.style.alignItems = "center";
-    right.style.gap = "8px";
+    right.style.gap = "var(--space-2)";
     right.style.flexShrink = "0";
 
     if (showBadge) {
@@ -125,7 +125,7 @@
       badge.className =
         "status-badge status-badge--" +
         (overdue ? "critical" : r.status === "completed" ? "complete" : r.status === "cancelled" ? "info" : "at_risk");
-      badge.style.fontSize = "11px";
+      badge.style.fontSize = "var(--text-xs)";
       badge.textContent = overdue ? "Overdue" : RECOVERY_ACTION_STATUS_LABELS[r.status];
       right.appendChild(badge);
     }
@@ -157,7 +157,7 @@
     var wrap = document.createElement("div");
     var h1 = document.createElement("h2");
     h1.textContent = "Delay & Recovery Dashboard";
-    h1.style.marginBottom = "4px";
+    h1.style.marginBottom = "var(--space-1)";
     wrap.appendChild(h1);
 
     var sub = document.createElement("p");
@@ -194,9 +194,9 @@
 
       var breakdownPanel = document.createElement("div");
       breakdownPanel.className = "panel";
-      breakdownPanel.style.marginTop = "16px";
+      breakdownPanel.style.marginTop = "var(--space-4)";
       var breakdownHeading = document.createElement("h3");
-      breakdownHeading.style.marginBottom = "8px";
+      breakdownHeading.style.marginBottom = "var(--space-2)";
       breakdownHeading.textContent = "Delay Analysis — by Cause and Severity";
       breakdownPanel.appendChild(breakdownHeading);
 
@@ -232,9 +232,9 @@
 
       var delayListPanel = document.createElement("div");
       delayListPanel.className = "panel";
-      delayListPanel.style.marginTop = "16px";
+      delayListPanel.style.marginTop = "var(--space-4)";
       var delayListHeading = document.createElement("h3");
-      delayListHeading.style.marginBottom = "8px";
+      delayListHeading.style.marginBottom = "var(--space-2)";
       delayListHeading.textContent = "Delay Records (worst first)";
       delayListPanel.appendChild(delayListHeading);
 
@@ -248,8 +248,8 @@
           row.style.display = "flex";
           row.style.justifyContent = "space-between";
           row.style.alignItems = "flex-start";
-          row.style.gap = "8px";
-          row.style.padding = "8px 0";
+          row.style.gap = "var(--space-2)";
+          row.style.padding = "var(--space-2) 0";
           row.style.borderBottom = "1px solid var(--divider)";
           row.style.fontSize = "13px";
 
@@ -268,12 +268,12 @@
           var right = document.createElement("div");
           right.style.display = "flex";
           right.style.alignItems = "center";
-          right.style.gap = "8px";
+          right.style.gap = "var(--space-2)";
           right.style.flexShrink = "0";
 
           var badge = document.createElement("span");
           badge.className = "status-badge status-badge--" + (r.is_excusable ? "complete" : "at_risk");
-          badge.style.fontSize = "11px";
+          badge.style.fontSize = "var(--text-xs)";
           badge.textContent = r.is_excusable ? "Excusable" : "Non-Excusable";
           right.appendChild(badge);
 
@@ -324,9 +324,9 @@
       if (gapActivities.length > 0) {
         var gapPanel = document.createElement("div");
         gapPanel.className = "panel";
-        gapPanel.style.marginTop = "16px";
+        gapPanel.style.marginTop = "var(--space-4)";
         var gapHeading = document.createElement("h3");
-        gapHeading.style.marginBottom = "8px";
+        gapHeading.style.marginBottom = "var(--space-2)";
         gapHeading.textContent = "Activities With Unaddressed Delay (worst first)";
         gapPanel.appendChild(gapHeading);
         gapActivities.forEach(function (g) {
@@ -334,8 +334,8 @@
           row.style.display = "flex";
           row.style.justifyContent = "space-between";
           row.style.alignItems = "flex-start";
-          row.style.gap = "8px";
-          row.style.padding = "8px 0";
+          row.style.gap = "var(--space-2)";
+          row.style.padding = "var(--space-2) 0";
           row.style.borderBottom = "1px solid var(--divider)";
           row.style.fontSize = "13px";
           var left = document.createElement("div");
@@ -361,7 +361,7 @@
     } else {
       var noDelay = document.createElement("div");
       noDelay.className = "panel empty-state";
-      noDelay.style.marginBottom = "16px";
+      noDelay.style.marginBottom = "var(--space-4)";
       noDelay.textContent = "No delay records logged across the active portfolio yet.";
       wrap.appendChild(noDelay);
     }
@@ -413,9 +413,9 @@
 
     var openPanel = document.createElement("div");
     openPanel.className = "panel";
-    openPanel.style.marginTop = "16px";
+    openPanel.style.marginTop = "var(--space-4)";
     var openHeading = document.createElement("h3");
-    openHeading.style.marginBottom = "8px";
+    openHeading.style.marginBottom = "var(--space-2)";
     openHeading.textContent = "Open Recovery Actions (overdue first)";
     openPanel.appendChild(openHeading);
 
@@ -434,9 +434,9 @@
 
     var closedPanel = document.createElement("div");
     closedPanel.className = "panel";
-    closedPanel.style.marginTop = "16px";
+    closedPanel.style.marginTop = "var(--space-4)";
     var closedHeading = document.createElement("h3");
-    closedHeading.style.marginBottom = "8px";
+    closedHeading.style.marginBottom = "var(--space-2)";
     closedHeading.textContent = "Completed / Cancelled (" + closed.length + ")";
     closedPanel.appendChild(closedHeading);
 

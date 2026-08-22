@@ -49,7 +49,7 @@
     // app stores already follows — only the filename/mime_type live in settings.
     var logoField = document.createElement("div");
     logoField.className = "field";
-    logoField.style.marginTop = "12px";
+    logoField.style.marginTop = "var(--space-3)";
     logoField.innerHTML = "<label>Company logo (used on printed reports)</label>";
 
     if (data.settings.company_logo_filename) {
@@ -57,14 +57,14 @@
       logoPreviewRow.style.display = "flex";
       logoPreviewRow.style.alignItems = "center";
       logoPreviewRow.style.gap = "10px";
-      logoPreviewRow.style.marginBottom = "8px";
+      logoPreviewRow.style.marginBottom = "var(--space-2)";
 
       var logoImg = document.createElement("img");
       logoImg.style.height = "36px";
       logoImg.style.maxWidth = "120px";
       logoImg.style.objectFit = "contain";
       logoImg.style.background = "var(--surface-2, #2a2a2a)";
-      logoImg.style.borderRadius = "4px";
+      logoImg.style.borderRadius = "var(--radius-sm)";
       logoImg.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1' height='1'%3E%3C/svg%3E";
       window.PCC.blobStore
         .getBlob("company_logo")
@@ -203,9 +203,9 @@
     var nomenEnabledLabel = document.createElement("label");
     nomenEnabledLabel.style.display = "flex";
     nomenEnabledLabel.style.alignItems = "center";
-    nomenEnabledLabel.style.gap = "8px";
+    nomenEnabledLabel.style.gap = "var(--space-2)";
     nomenEnabledLabel.style.fontSize = "13px";
-    nomenEnabledLabel.style.marginTop = "8px";
+    nomenEnabledLabel.style.marginTop = "var(--space-2)";
     var nomenEnabledCheckbox = document.createElement("input");
     nomenEnabledCheckbox.type = "checkbox";
     nomenEnabledCheckbox.checked = data.settings.document_nomenclature_enabled !== false;
@@ -306,7 +306,7 @@
     var lastSaved = document.createElement("p");
     lastSaved.className = "text-secondary mono";
     lastSaved.style.fontSize = "12px";
-    lastSaved.style.marginTop = "12px";
+    lastSaved.style.marginTop = "var(--space-3)";
     lastSaved.textContent =
       "Last autosaved: " + (data.meta.last_saved_at ? new Date(data.meta.last_saved_at).toLocaleString() : "never yet");
     dataPanel.appendChild(lastSaved);
@@ -321,7 +321,7 @@
 
     var reminderField = document.createElement("div");
     reminderField.className = "field";
-    reminderField.style.marginTop = "12px";
+    reminderField.style.marginTop = "var(--space-3)";
     reminderField.style.maxWidth = "220px";
     reminderField.innerHTML = "<label>Remind me to export after (days)</label>";
     var reminderInput = document.createElement("input");
@@ -361,8 +361,8 @@
         row.style.display = "flex";
         row.style.justifyContent = "space-between";
         row.style.alignItems = "center";
-        row.style.gap = "8px";
-        row.style.marginTop = "8px";
+        row.style.gap = "var(--space-2)";
+        row.style.marginTop = "var(--space-2)";
         row.style.fontSize = "13px";
 
         var label = document.createElement("span");

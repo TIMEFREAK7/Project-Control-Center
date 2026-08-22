@@ -127,8 +127,8 @@
     row.className = "action-editor-row";
     row.dataset.actionId = action.id;
     row.style.display = "flex";
-    row.style.gap = "8px";
-    row.style.marginBottom = "8px";
+    row.style.gap = "var(--space-2)";
+    row.style.marginBottom = "var(--space-2)";
     row.style.flexWrap = "wrap";
     row.style.alignItems = "center";
 
@@ -281,8 +281,8 @@
     row.dataset.recordingId = recording.id;
     row.dataset.uploadedAt = recording.uploaded_at;
     row.style.display = "flex";
-    row.style.gap = "8px";
-    row.style.marginBottom = "8px";
+    row.style.gap = "var(--space-2)";
+    row.style.marginBottom = "var(--space-2)";
     row.style.flexWrap = "wrap";
     row.style.alignItems = "center";
 
@@ -331,7 +331,7 @@
     var note = document.createElement("p");
     note.className = "text-secondary";
     note.style.fontSize = "12px";
-    note.style.margin = "0 0 8px";
+    note.style.margin = "0 0 var(--space-2)";
     note.textContent =
       "Reference only \u2014 tracks the filename and details, but the actual audio/video file has to be " +
       "placed in /files yourself. Recordings are too large to safely store inside the app's own data.";
@@ -381,7 +381,7 @@
     var isNew = uiState.editingId === "new";
     var panel = document.createElement("div");
     panel.className = "panel";
-    panel.style.marginBottom = "16px";
+    panel.style.marginBottom = "var(--space-4)";
 
     var heading = document.createElement("h3");
     heading.style.marginBottom = "14px";
@@ -506,7 +506,7 @@
     var actionsRow2 = document.createElement("div");
     actionsRow2.style.display = "flex";
     actionsRow2.style.gap = "10px";
-    actionsRow2.style.marginTop = "12px";
+    actionsRow2.style.marginTop = "var(--space-3)";
 
     var saveBtn = document.createElement("button");
     saveBtn.type = "submit";
@@ -674,7 +674,7 @@
       });
       if (linkedActivity) {
         var activityRow = document.createElement("div");
-        activityRow.style.marginTop = "12px";
+        activityRow.style.marginTop = "var(--space-3)";
         activityRow.style.paddingTop = "10px";
         activityRow.style.borderTop = "1px solid var(--divider)";
         activityRow.style.display = "flex";
@@ -719,7 +719,7 @@
         row.style.justifyContent = "space-between";
         row.style.alignItems = "center";
         row.style.fontSize = "13px";
-        row.style.gap = "8px";
+        row.style.gap = "var(--space-2)";
 
         var overdue = isOverdue(a);
         var label = document.createElement("span");
@@ -771,7 +771,7 @@
       var recList = document.createElement("div");
       recList.style.display = "flex";
       recList.style.flexDirection = "column";
-      recList.style.gap = "4px";
+      recList.style.gap = "var(--space-1)";
 
       m.recordings.forEach(function (r) {
         var row = document.createElement("p");
@@ -788,8 +788,8 @@
 
       var recNote = document.createElement("p");
       recNote.className = "text-secondary";
-      recNote.style.fontSize = "11px";
-      recNote.style.marginTop = "4px";
+      recNote.style.fontSize = "var(--text-xs)";
+      recNote.style.marginTop = "var(--space-1)";
       recNote.textContent = "Reference only \u2014 actual files live in /files.";
       wrap.appendChild(recNote);
     }
@@ -918,7 +918,7 @@
     // pre-linked to this meeting and project.
     var quickActions = document.createElement("div");
     quickActions.style.display = "flex";
-    quickActions.style.gap = "8px";
+    quickActions.style.gap = "var(--space-2)";
     quickActions.style.marginTop = "14px";
     quickActions.style.paddingTop = "10px";
     quickActions.style.borderTop = "1px solid var(--divider)";
@@ -1001,11 +1001,11 @@
 
     var panel = document.createElement("div");
     panel.className = "panel";
-    panel.style.marginBottom = "16px";
+    panel.style.marginBottom = "var(--space-4)";
     panel.style.borderColor = "var(--status-critical)";
 
     var heading = document.createElement("h3");
-    heading.style.marginBottom = "8px";
+    heading.style.marginBottom = "var(--space-2)";
     heading.style.color = "var(--status-critical)";
     heading.textContent = "Overdue Action Items (" + overdueItems.length + ")";
     panel.appendChild(heading);
@@ -1033,8 +1033,8 @@
     if (overdueItems.length > 8) {
       var more = document.createElement("p");
       more.className = "text-secondary";
-      more.style.fontSize = "11px";
-      more.style.marginTop = "4px";
+      more.style.fontSize = "var(--text-xs)";
+      more.style.marginTop = "var(--space-1)";
       more.textContent = "+" + (overdueItems.length - 8) + " more overdue.";
       panel.appendChild(more);
     }
@@ -1053,7 +1053,7 @@
 
     var h1 = document.createElement("h2");
     h1.textContent = "Meetings";
-    h1.style.marginBottom = "16px";
+    h1.style.marginBottom = "var(--space-4)";
     outlet.appendChild(h1);
 
     var overduePanel = renderOverduePanel(data.meetings, projects);

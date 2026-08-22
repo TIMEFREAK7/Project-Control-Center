@@ -155,7 +155,7 @@
     var isNew = uiState.editingId === "new";
     var panel = document.createElement("div");
     panel.className = "panel";
-    panel.style.marginBottom = "16px";
+    panel.style.marginBottom = "var(--space-4)";
 
     var heading = document.createElement("h3");
     heading.style.marginBottom = "14px";
@@ -273,7 +273,7 @@
     var actions = document.createElement("div");
     actions.style.display = "flex";
     actions.style.gap = "10px";
-    actions.style.marginTop = "12px";
+    actions.style.marginTop = "var(--space-3)";
 
     var saveBtn = document.createElement("button");
     saveBtn.type = "submit";
@@ -463,7 +463,7 @@
       });
       if (sourceMeeting) {
         var sourceRow = document.createElement("div");
-        sourceRow.style.marginTop = "12px";
+        sourceRow.style.marginTop = "var(--space-3)";
         sourceRow.style.paddingTop = "10px";
         sourceRow.style.borderTop = "1px solid var(--divider)";
         sourceRow.style.display = "flex";
@@ -494,7 +494,7 @@
       });
       if (linkedActivity) {
         var activityRow = document.createElement("div");
-        activityRow.style.marginTop = "12px";
+        activityRow.style.marginTop = "var(--space-3)";
         activityRow.style.paddingTop = "10px";
         activityRow.style.borderTop = "1px solid var(--divider)";
         activityRow.style.display = "flex";
@@ -540,7 +540,7 @@
 
     var addCoBtn = document.createElement("button");
     addCoBtn.className = "btn btn--ghost";
-    addCoBtn.style.marginTop = "8px";
+    addCoBtn.style.marginTop = "var(--space-2)";
     addCoBtn.textContent = "+ Raise Change Order from this Entry";
     addCoBtn.onclick = function () {
       if (window.PCC.changeOrders) window.PCC.changeOrders.createFromRfi(r.project_id, r.id);
@@ -566,7 +566,7 @@
       var noRevisions = document.createElement("p");
       noRevisions.className = "text-secondary";
       noRevisions.style.fontSize = "13px";
-      noRevisions.style.margin = "0 0 8px";
+      noRevisions.style.margin = "0 0 var(--space-2)";
       noRevisions.textContent = "No revision notes logged yet.";
       revisionsWrap.appendChild(noRevisions);
     } else {
@@ -657,11 +657,11 @@
 
     var panel = document.createElement("div");
     panel.className = "panel";
-    panel.style.marginBottom = "16px";
+    panel.style.marginBottom = "var(--space-4)";
     panel.style.borderColor = "var(--status-critical)";
 
     var heading = document.createElement("h3");
-    heading.style.marginBottom = "8px";
+    heading.style.marginBottom = "var(--space-2)";
     heading.style.color = "var(--status-critical)";
     heading.textContent = "Overdue RFIs / Technical Queries (" + overdueItems.length + ")";
     panel.appendChild(heading);
@@ -687,8 +687,8 @@
     if (overdueItems.length > 8) {
       var more = document.createElement("p");
       more.className = "text-secondary";
-      more.style.fontSize = "11px";
-      more.style.marginTop = "4px";
+      more.style.fontSize = "var(--text-xs)";
+      more.style.marginTop = "var(--space-1)";
       more.textContent = "+" + (overdueItems.length - 8) + " more overdue.";
       panel.appendChild(more);
     }
@@ -707,7 +707,7 @@
 
     var h1 = document.createElement("h2");
     h1.textContent = "RFI / Technical Query Management";
-    h1.style.marginBottom = "16px";
+    h1.style.marginBottom = "var(--space-4)";
     outlet.appendChild(h1);
 
     var overduePanel = renderOverduePanel(data.rfis, projects);

@@ -3091,6 +3091,31 @@ pre-B2 screenshots was inconclusive on the empty-state dashboards used for verif
 data to exercise dense tables/lists, where the actual 0.5–4px shifts would be visible) — flagged
 honestly rather than claimed as a confirmed visual diff.
 
+## UI Modernization — Gate C1: Page Inline-Style Cleanup, Batch 2 (2026-08-22)
+
+Same exact-match-only treatment as Gate B1, now applied to the remaining six page files:
+`documents.js`, `meetings.js`, `resources.js`, `delayRecoveryDashboard.js`, `settings.js`, `rfis.js`.
+Same pattern held: dominant font-sizes are 12px/13px (no exact token, near-miss target for a future
+C2), dominant spacing is a mix of exact matches and near-misses. One new value surfaced —
+`documents.js` had a `padding: "5px 10px"` not seen in Gate B's four files; the nearest-token rule
+(5px→`--space-1`, distance 1, vs `--space-2` at distance 3) applied without any new judgment call.
+Also found genuine exact `borderRadius` matches for the first time in the page-JS gates —
+`documents.js`'s `8px`→`--radius-md` and `settings.js`'s `4px`→`--radius-sm`.
+
+**Method:** audited exact-match and near-miss values together in one pass this time (rather than
+re-auditing after the fact, the way Gate B2 caught its oversight), applying only the exact matches
+via literal `sed` substitution — same reasoning as Gate B: `.style.PROPERTY = "VALUE"` in JS already
+disambiguates by property name, so no risk of the same value needing a different token in different
+contexts.
+
+**Verified:** all six files pass `node --check`; every remaining literal value after the sweep was
+confirmed (via grep) to be exactly the intended near-miss/exclusion set, not a missed exact match;
+full 78-file test suite — 2089 checks, 0 failures; real-Chromium pass across all six touched pages
+(Documents, Meetings, Resources, Delay & Recovery, Settings, RFI/TQ), zero console errors.
+
+**Not done:** the C2 scale-snapping pass for these same six files (parallel to Gate B2), and Gates
+D-F (loading-state pattern, icon system, empty-state/motion polish) — all pending Aditya's call.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →

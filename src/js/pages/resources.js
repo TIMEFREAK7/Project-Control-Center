@@ -115,7 +115,7 @@
     var isNew = uiState.editingResourceId === "new";
     var panel = document.createElement("div");
     panel.className = "panel";
-    panel.style.marginBottom = "16px";
+    panel.style.marginBottom = "var(--space-4)";
 
     var heading = document.createElement("h3");
     heading.style.marginBottom = "14px";
@@ -193,7 +193,7 @@
     var actions = document.createElement("div");
     actions.style.display = "flex";
     actions.style.gap = "10px";
-    actions.style.marginTop = "12px";
+    actions.style.marginTop = "var(--space-3)";
 
     var saveBtn = document.createElement("button");
     saveBtn.type = "submit";
@@ -334,7 +334,7 @@
         card.style.display = "flex";
         card.style.justifyContent = "space-between";
         card.style.alignItems = "center";
-        card.style.gap = "12px";
+        card.style.gap = "var(--space-3)";
         card.style.flexWrap = "wrap";
         card.style.marginBottom = "6px";
 
@@ -351,7 +351,7 @@
 
         var actions = document.createElement("div");
         actions.style.display = "flex";
-        actions.style.gap = "8px";
+        actions.style.gap = "var(--space-2)";
 
         var levelBtn = document.createElement("button");
         levelBtn.className = "btn btn--ghost";
@@ -407,7 +407,7 @@
     var isNew = uiState.editingAssignmentId === "new";
     var panel = document.createElement("div");
     panel.className = "panel";
-    panel.style.marginBottom = "16px";
+    panel.style.marginBottom = "var(--space-4)";
 
     var heading = document.createElement("h3");
     heading.style.marginBottom = "14px";
@@ -590,7 +590,7 @@
     var actions = document.createElement("div");
     actions.style.display = "flex";
     actions.style.gap = "10px";
-    actions.style.marginTop = "12px";
+    actions.style.marginTop = "var(--space-3)";
 
     var saveBtn = document.createElement("button");
     saveBtn.type = "submit";
@@ -749,7 +749,7 @@
         card.style.display = "flex";
         card.style.justifyContent = "space-between";
         card.style.alignItems = "center";
-        card.style.gap = "12px";
+        card.style.gap = "var(--space-3)";
         card.style.flexWrap = "wrap";
         card.style.marginBottom = "6px";
 
@@ -771,7 +771,7 @@
 
         var actions = document.createElement("div");
         actions.style.display = "flex";
-        actions.style.gap = "8px";
+        actions.style.gap = "var(--space-2)";
 
         if (activity) {
           var viewBtn = document.createElement("button");
@@ -826,7 +826,7 @@
     var isNew = uiState.editingUnavailabilityId === "new";
     var panel = document.createElement("div");
     panel.className = "panel";
-    panel.style.marginBottom = "16px";
+    panel.style.marginBottom = "var(--space-4)";
 
     var heading = document.createElement("h3");
     heading.style.marginBottom = "14px";
@@ -925,7 +925,7 @@
     var actions = document.createElement("div");
     actions.style.display = "flex";
     actions.style.gap = "10px";
-    actions.style.marginTop = "12px";
+    actions.style.marginTop = "var(--space-3)";
 
     var saveBtn = document.createElement("button");
     saveBtn.type = "submit";
@@ -1063,7 +1063,7 @@
         card.style.display = "flex";
         card.style.justifyContent = "space-between";
         card.style.alignItems = "center";
-        card.style.gap = "12px";
+        card.style.gap = "var(--space-3)";
         card.style.flexWrap = "wrap";
         card.style.marginBottom = "6px";
 
@@ -1078,7 +1078,7 @@
 
         var actions = document.createElement("div");
         actions.style.display = "flex";
-        actions.style.gap = "8px";
+        actions.style.gap = "var(--space-2)";
 
         var editBtn = document.createElement("button");
         editBtn.className = "btn btn--ghost";
@@ -1167,8 +1167,8 @@
 
     var legend = document.createElement("p");
     legend.className = "text-secondary";
-    legend.style.fontSize = "11px";
-    legend.style.marginTop = "4px";
+    legend.style.fontSize = "var(--text-xs)";
+    legend.style.marginTop = "var(--space-1)";
     legend.textContent =
       (bucketSize === 1 ? "Daily" : bucketSize === 7 ? "Weekly" : "Monthly") +
       " average utilisation (allocated ÷ availability after leave). Dashed line is 100%; red bars exceed it.";
@@ -1219,8 +1219,8 @@
 
     var legend = document.createElement("p");
     legend.className = "text-secondary";
-    legend.style.fontSize = "11px";
-    legend.style.marginTop = "4px";
+    legend.style.fontSize = "var(--text-xs)";
+    legend.style.marginTop = "var(--space-1)";
     legend.textContent =
       (bucketSize === 1 ? "Daily" : bucketSize === 7 ? "Weekly (worst day per week)" : "Monthly (worst day per month)") +
       " allocation. Red bars exceed max availability" + (maxAvailability != null ? " (dashed line, " + maxAvailability + "/day)" : "") + ".";
@@ -1232,9 +1232,9 @@
 
     var summaryPanel = document.createElement("div");
     summaryPanel.className = "panel";
-    summaryPanel.style.marginBottom = "16px";
+    summaryPanel.style.marginBottom = "var(--space-4)";
     var summaryHeading = document.createElement("h3");
-    summaryHeading.style.marginBottom = "8px";
+    summaryHeading.style.marginBottom = "var(--space-2)";
     summaryHeading.textContent = "Over-Allocated Resources (Portfolio-Wide)";
     summaryPanel.appendChild(summaryHeading);
     if (portfolioSummary.length === 0) {
@@ -1250,7 +1250,7 @@
         row.style.justifyContent = "space-between";
         row.style.alignItems = "center";
         row.style.fontSize = "13px";
-        row.style.marginBottom = "4px";
+        row.style.marginBottom = "var(--space-1)";
         var text = document.createElement("span");
         text.innerHTML = "<strong>" + esc(s.resourceName) + "</strong> — " + s.overAllocatedDayCount + " over-allocated day(s), worst +" + s.maxOverBy;
         row.appendChild(text);
@@ -1327,7 +1327,7 @@
       shortageNote.style.fontSize = "12px";
       shortageNote.style.color = "var(--status-critical)";
       shortageNote.style.marginTop = "-8px";
-      shortageNote.style.marginBottom = "12px";
+      shortageNote.style.marginBottom = "var(--space-3)";
       shortageNote.textContent =
         "Shortfall: " + utilisation.totalShortfallUnitDays + " unit-day(s) of demand exceed availability across this resource's active date range.";
       container.appendChild(shortageNote);
@@ -1338,7 +1338,7 @@
       noteP.className = "text-secondary";
       noteP.style.fontSize = "12px";
       noteP.style.marginTop = "-8px";
-      noteP.style.marginBottom = "12px";
+      noteP.style.marginBottom = "var(--space-3)";
       noteP.textContent = "Max Availability isn't set for this resource, so over-allocation can't be computed — set it in the Register tab.";
       container.appendChild(noteP);
     }
@@ -1354,9 +1354,9 @@
 
     var histPanel = document.createElement("div");
     histPanel.className = "panel";
-    histPanel.style.marginBottom = "16px";
+    histPanel.style.marginBottom = "var(--space-4)";
     var histHeading = document.createElement("h4");
-    histHeading.style.marginBottom = "8px";
+    histHeading.style.marginBottom = "var(--space-2)";
     histHeading.textContent = "Usage Histogram";
     histPanel.appendChild(histHeading);
     renderHistogram(histPanel, timeline, resource.max_availability);
@@ -1364,9 +1364,9 @@
 
     var trendPanel = document.createElement("div");
     trendPanel.className = "panel";
-    trendPanel.style.marginBottom = "16px";
+    trendPanel.style.marginBottom = "var(--space-4)";
     var trendHeading = document.createElement("h4");
-    trendHeading.style.marginBottom = "8px";
+    trendHeading.style.marginBottom = "var(--space-2)";
     trendHeading.textContent = "Utilisation Trend";
     trendPanel.appendChild(trendHeading);
     renderUtilisationTrend(trendPanel, utilisation);
@@ -1379,15 +1379,15 @@
     if (resourceUnavailability.length > 0) {
       var unavPanel = document.createElement("div");
       unavPanel.className = "panel";
-      unavPanel.style.marginBottom = "16px";
+      unavPanel.style.marginBottom = "var(--space-4)";
       var unavHeading = document.createElement("h4");
-      unavHeading.style.marginBottom = "8px";
+      unavHeading.style.marginBottom = "var(--space-2)";
       unavHeading.textContent = "Leave / Unavailable Periods (" + resourceUnavailability.length + ")";
       unavPanel.appendChild(unavHeading);
       resourceUnavailability.forEach(function (u) {
         var row = document.createElement("p");
         row.style.fontSize = "13px";
-        row.style.margin = "4px 0";
+        row.style.margin = "var(--space-1) 0";
         row.textContent = u.start_date + " to " + u.end_date + " — " + u.quantity + " unavailable" + (u.reason ? " (" + u.reason + ")" : "");
         unavPanel.appendChild(row);
       });
@@ -1398,7 +1398,7 @@
       var conflictPanel = document.createElement("div");
       conflictPanel.className = "panel";
       var conflictHeading = document.createElement("h4");
-      conflictHeading.style.marginBottom = "8px";
+      conflictHeading.style.marginBottom = "var(--space-2)";
       conflictHeading.textContent = "Over-Allocated Days (" + overAlloc.count + ")";
       conflictPanel.appendChild(conflictHeading);
 
@@ -1446,7 +1446,7 @@
     var sub = document.createElement("p");
     sub.className = "text-secondary";
     sub.style.fontSize = "12px";
-    sub.style.marginBottom = "16px";
+    sub.style.marginBottom = "var(--space-4)";
     sub.textContent =
       "A shared resource pool assigned to Schedule activities across every project, with cross-project over-allocation, leave-adjusted availability, and utilisation tracking. Quantity/availability only — no cost linkage.";
     outlet.appendChild(sub);
@@ -1474,7 +1474,7 @@
     outlet.appendChild(tabBar);
 
     var tabContent = document.createElement("div");
-    tabContent.style.marginTop = "16px";
+    tabContent.style.marginTop = "var(--space-4)";
     outlet.appendChild(tabContent);
 
     if (uiState.tab === "register") renderRegisterTab(tabContent, data, rerender);

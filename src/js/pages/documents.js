@@ -391,7 +391,7 @@
     var note = document.createElement("p");
     note.className = "text-secondary";
     note.style.fontSize = "12px";
-    note.style.marginBottom = "8px";
+    note.style.marginBottom = "var(--space-2)";
     note.textContent =
       "Extracted from sheet \u201c" +
       extraction.sheet_name +
@@ -451,8 +451,8 @@
     if (extraction.rows.length > 15) {
       var more = document.createElement("p");
       more.className = "text-secondary";
-      more.style.fontSize = "11px";
-      more.style.marginTop = "4px";
+      more.style.fontSize = "var(--text-xs)";
+      more.style.marginTop = "var(--space-1)";
       more.textContent = "+" + (extraction.rows.length - 15) + " more row(s) not shown here, but saved.";
       wrap.appendChild(more);
     }
@@ -467,7 +467,7 @@
     var note = document.createElement("p");
     note.className = "text-secondary";
     note.style.fontSize = "12px";
-    note.style.marginBottom = "8px";
+    note.style.marginBottom = "var(--space-2)";
     note.textContent =
       extraction.char_count.toLocaleString() +
       " character" +
@@ -486,7 +486,7 @@
     box.style.overflowY = "auto";
     box.style.border = "1px solid var(--divider)";
     box.style.borderRadius = "var(--radius-sm)";
-    box.style.padding = "10px 12px";
+    box.style.padding = "10px var(--space-3)";
     box.style.backgroundColor = "var(--bg-default)";
     box.textContent = extraction.text.trim() ? extraction.text : "(No extractable text found in this file.)";
     wrap.appendChild(box);
@@ -500,15 +500,15 @@
   function renderDuplicateWarning(matches, data, rerender) {
     var box = document.createElement("div");
     box.style.border = "1px solid var(--status-at-risk)";
-    box.style.borderRadius = "8px";
-    box.style.padding = "12px";
+    box.style.borderRadius = "var(--radius-md)";
+    box.style.padding = "var(--space-3)";
     box.style.marginTop = "10px";
     box.style.background = "rgba(230, 162, 60, 0.08)";
 
     var title = document.createElement("p");
     title.style.fontWeight = "600";
     title.style.fontSize = "13px";
-    title.style.marginBottom = "8px";
+    title.style.marginBottom = "var(--space-2)";
     title.textContent =
       "Possible duplicate " + (matches.length === 1 ? "record" : "records") + " found";
     box.appendChild(title);
@@ -530,7 +530,7 @@
 
       var rowActions = document.createElement("div");
       rowActions.style.display = "flex";
-      rowActions.style.gap = "8px";
+      rowActions.style.gap = "var(--space-2)";
       rowActions.style.marginTop = "6px";
 
       var openExistingBtn = document.createElement("button");
@@ -614,9 +614,9 @@
     var result = window.PCC.documentNomenclatureEngine.checkFilename(pattern, uiState.pendingFile.name, tokens);
 
     var box = document.createElement("div");
-    box.style.borderRadius = "8px";
-    box.style.padding = "10px 12px";
-    box.style.marginTop = "8px";
+    box.style.borderRadius = "var(--radius-md)";
+    box.style.padding = "10px var(--space-3)";
+    box.style.marginTop = "var(--space-2)";
     box.style.fontSize = "12px";
 
     if (result.matches) {
@@ -637,7 +637,7 @@
   function renderUploadForm(container, data, rerender) {
     var panel = document.createElement("div");
     panel.className = "panel";
-    panel.style.marginBottom = "16px";
+    panel.style.marginBottom = "var(--space-4)";
 
     var heading = document.createElement("h3");
     heading.style.marginBottom = "14px";
@@ -746,7 +746,7 @@
     // own labeled sub-section below the core Project/Activity/Category grid above so
     // this doesn't read as more mandatory fields than it is.
     var classHeading = document.createElement("h4");
-    classHeading.style.margin = "14px 0 8px";
+    classHeading.style.margin = "14px 0 var(--space-2)";
     classHeading.style.fontSize = "13px";
     classHeading.className = "text-secondary";
     classHeading.textContent = "Classification (optional)";
@@ -943,7 +943,7 @@
 
     var remarksField = document.createElement("div");
     remarksField.className = "field";
-    remarksField.style.marginTop = "8px";
+    remarksField.style.marginTop = "var(--space-2)";
     remarksField.innerHTML = "<label>Remarks</label>";
     var remarksArea = document.createElement("textarea");
     remarksArea.rows = 2;
@@ -987,7 +987,7 @@
     if (uiState.pendingFile) {
       var fileInfo = document.createElement("p");
       fileInfo.style.fontSize = "13px";
-      fileInfo.style.marginTop = "8px";
+      fileInfo.style.marginTop = "var(--space-2)";
       fileInfo.innerHTML =
         "<strong>" + uiState.pendingFile.name + "</strong> \u00b7 " + formatBytes(uiState.pendingFile.size);
       panel.appendChild(fileInfo);
@@ -996,7 +996,7 @@
         var sizeWarning = document.createElement("p");
         sizeWarning.style.fontSize = "12px";
         sizeWarning.style.color = "var(--status-at-risk)";
-        sizeWarning.style.marginTop = "4px";
+        sizeWarning.style.marginTop = "var(--space-1)";
         sizeWarning.textContent =
           "This is a fairly large file. The original is stored with this document, and browsers " +
           "typically cap local storage around 5\u201310MB total \u2014 export your data soon after saving " +
@@ -1022,7 +1022,7 @@
         var noExtraction = document.createElement("p");
         noExtraction.className = "text-secondary";
         noExtraction.style.fontSize = "12px";
-        noExtraction.style.marginTop = "8px";
+        noExtraction.style.marginTop = "var(--space-2)";
         noExtraction.textContent = "No data could be extracted from this file.";
         panel.appendChild(noExtraction);
       }
@@ -1285,7 +1285,7 @@
     header.style.display = "flex";
     header.style.justifyContent = "space-between";
     header.style.alignItems = "flex-start";
-    header.style.marginBottom = "12px";
+    header.style.marginBottom = "var(--space-3)";
     var titleWrap = document.createElement("div");
     titleWrap.innerHTML = "<h3 style='margin-bottom:2px;word-break:break-word;'>" + esc(doc.filename) + "</h3>";
     header.appendChild(titleWrap);
@@ -1318,7 +1318,7 @@
     statusRow.appendChild(statusLabel);
     var statusSelect = document.createElement("select");
     statusSelect.style.display = "block";
-    statusSelect.style.marginTop = "4px";
+    statusSelect.style.marginTop = "var(--space-1)";
     window.PCC.store.DOCUMENT_STATUSES.forEach(function (s) {
       var opt = document.createElement("option");
       opt.value = s;
@@ -1513,7 +1513,7 @@
       histWrap.style.paddingTop = "14px";
       histWrap.style.borderTop = "1px solid var(--divider)";
       var histHeading = document.createElement("h4");
-      histHeading.style.marginBottom = "8px";
+      histHeading.style.marginBottom = "var(--space-2)";
       histHeading.textContent = "Revision History";
       histWrap.appendChild(histHeading);
       // allRevisions[0] is doc itself (already shown above) — only older ones here.
@@ -1523,8 +1523,8 @@
         revRow.style.justifyContent = "space-between";
         revRow.style.alignItems = "center";
         revRow.style.fontSize = "12px";
-        revRow.style.gap = "8px";
-        revRow.style.marginBottom = "4px";
+        revRow.style.gap = "var(--space-2)";
+        revRow.style.marginBottom = "var(--space-1)";
 
         var revLabel = document.createElement("span");
         revLabel.textContent =
@@ -1577,7 +1577,7 @@
     var h1 = document.createElement("h2");
     h1.className = "focus-mode-hide";
     h1.textContent = "Documents";
-    h1.style.marginBottom = "16px";
+    h1.style.marginBottom = "var(--space-4)";
     outlet.appendChild(h1);
 
     // UI/UX Overhaul Gate 7 (Focus Mode): matches the brief's own Documents Focus Mode
@@ -1585,7 +1585,7 @@
     // useful once, not on every visit, so it's the first thing to go for more workspace.
     var infoPanel = document.createElement("div");
     infoPanel.className = "panel focus-mode-hide";
-    infoPanel.style.marginBottom = "16px";
+    infoPanel.style.marginBottom = "var(--space-4)";
     infoPanel.innerHTML =
       "<p class='text-secondary' style='margin:0; font-size:13px;'>Excel, Word, and PDF files are read " +
       "client-side, and both the extracted data/text and the original file itself are saved with the " +
@@ -1609,7 +1609,7 @@
         var addBtnEmpty = document.createElement("button");
         addBtnEmpty.className = "btn btn--primary";
         addBtnEmpty.textContent = "+ Add Document";
-        addBtnEmpty.style.marginBottom = "16px";
+        addBtnEmpty.style.marginBottom = "var(--space-4)";
         addBtnEmpty.disabled = !hasActiveProjectsForDoc;
         addBtnEmpty.title = hasActiveProjectsForDoc ? "" : "Add a project in Portfolio first";
         addBtnEmpty.onclick = function () {
