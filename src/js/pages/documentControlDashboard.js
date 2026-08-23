@@ -198,7 +198,6 @@
         onClick = function () {
           window.PCC.portfolio.viewProject(project.id);
           window.PCC.router.go("portfolio");
-          window.PCC.router.render();
         };
       }
       projectList.appendChild(renderComplianceRow(project ? project.name || "(unnamed project)" : "(deleted project)", g, onClick));

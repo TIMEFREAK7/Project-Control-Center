@@ -91,7 +91,6 @@
           view: function () {
             window.PCC.meetings.expandMeeting(m.id);
             window.PCC.router.go("meetings");
-            window.PCC.router.render();
           },
         });
       });
@@ -112,7 +111,6 @@
         view: function () {
           window.PCC.rfis.expandRfi(r.id);
           window.PCC.router.go("rfis");
-          window.PCC.router.render();
         },
       });
     });
@@ -144,7 +142,6 @@
         view: function () {
           window.PCC.portfolio.viewProject(req.project_id);
           window.PCC.router.go("portfolio");
-          window.PCC.router.render();
         },
       });
     });
@@ -162,7 +159,6 @@
         view: function () {
           window.PCC.changeOrders.expandChangeOrder(co.id);
           window.PCC.router.go("changeOrders");
-          window.PCC.router.render();
         },
       });
     });

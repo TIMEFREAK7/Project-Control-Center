@@ -877,13 +877,24 @@
     refreshBackupNudge();
     window.setInterval(refreshBackupNudge, 60 * 60 * 1000);
 
+    // Bug fix (Daily-Use Audit, Phase 1): the "SAVED" label used to update right here,
+    // synchronously the instant data changed \u2014 but the real localStorage write is
+    // debounced 250ms (see store.js's scheduleSave()), so it could claim data was saved
+    // before it actually had been. Show "Saving\u2026" immediately (still accurate \u2014 a write
+    // really is pending), and only claim "SAVED" once store.onPersisted() confirms the
+    // debounced write actually ran.
     window.PCC.store.onChange(function () {
       var status = document.getElementById("footer-save-status");
-      if (status) status.textContent = "SAVED \u00b7 " + new Date().toLocaleTimeString();
+      if (status) status.textContent = "Saving\u2026";
       var companyEl = document.getElementById("title-block-company");
       if (companyEl) companyEl.textContent = window.PCC.store.get().settings.company_name || "\u2014";
       var projectSelect = document.getElementById("title-block-project-select");
       if (projectSelect) populateProjectContextSelect(projectSelect);
+    });
+
+    window.PCC.store.onPersisted(function (data, ok) {
+      var status = document.getElementById("footer-save-status");
+      if (status) status.textContent = ok ? "SAVED \u00b7 " + new Date().toLocaleTimeString() : "NOT SAVED \u2014 see notification";
     });
   }
 

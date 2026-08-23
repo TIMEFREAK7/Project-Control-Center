@@ -3911,6 +3911,135 @@ browsers this app was never targeting).
 
 **This closes the 12-gate PCC Redesign plan.** Gates 1-12 are all done, verified, merged.
 
+## Daily-Use Audit — a SEVENTH, separate initiative from the PCC Redesign above (started
+## 2026-08-23)
+
+With the 12-gate PCC Redesign closed out, requested a full pass across the whole app and
+codebase for quality-of-life issues, framed explicitly around its actual primary daily users — a
+Project Manager, Project Coordinator, and Project Planner who will use this tool every day for
+real work, not a one-off audit for its own sake.
+
+**Method**: four parallel read-only investigations, each scoped to a different slice of daily use
+— front-office screens (Dashboard/My Work/Action Centre/Project Workspace/Lookahead/nav), the
+Planner's Schedule/Gantt/CPM/Resources world, the daily data-entry registers (Daily Log/Meetings/
+RFI/Risks/Change Orders/Decisions/Documents), and cross-cutting UX + code quality (keyboard
+support, delete safety, autosave clarity, validation consistency, performance, accessibility, dead
+code). Each reported concrete, file:line-evidenced findings ranked by daily-use impact, explicitly
+told not to re-flag anything the 12-gate redesign already fixed. Synthesized into 39 findings — 9
+real bugs, 7 high-impact, 15 medium, 6 low-impact quality-of-life gaps — plus four areas explicitly
+checked and confirmed already solid (validation consistency, accessibility basics, zero TODO/FIXME
+debt, no meaningful code duplication). Presented as a filterable report, not started blind — a
+5-phase sequencing was proposed (bugs first, then wiring up redesign infrastructure that isn't
+fully connected yet, then daily-entry speed, then Planner power tools, then polish), and Aditya
+chose to start with Phase 1.
+
+### Phase 1 — the 9 real bugs, done, 2026-08-23
+
+Every fix here is a correctness or data-safety issue the audit surfaced, not a preference — real
+double-computation, real silent data loss, or real corrupted state, each fixed at its actual root
+cause rather than patched around.
+
+**1. Every navigation rendered the destination page twice.** `router.go(name)` only ever set
+`location.hash`, relying on the async `hashchange` listener to render — but ~89 call sites across
+every page module *also* called `render()` explicitly right after `go()`, for instant feedback
+instead of waiting on the event. That meant every single click-through in the app rendered its
+destination twice: once immediately from the explicit call, once again moments later when
+`hashchange` actually fired. On CPM-recomputing pages like Executive Center this doubled real work
+on every navigation, all day. Fixed centrally in `router.js`: `go()` now renders synchronously
+itself and arms a flag so the `hashchange` event this same navigation triggers doesn't render a
+second time — the ~39 call sites whose trailing `render()` call was now truly redundant had that
+line mechanically removed; the other ~50 call sites that only ever called `go()` alone (previously
+relying solely on the async event) now get the same instant, synchronous render for free. Manual
+hash edits and real browser back/forward still go through the listener exactly as before.
+
+**2. Critical-path data could go stale with nothing telling the planner.** Editing an activity
+through the normal form, editing a relationship, importing Excel, or applying the Excel grid editor
+never re-ran CPM (deliberately — recalculating on every keystroke would be its own real cost on a
+large schedule) — but the Activity Detail Panel kept showing the last-calculated float/critical-path
+numbers labeled "Calculated (read-only)" as if they were still current. The single most dangerous
+finding in the whole audit: a planner could be looking at a critical path that no longer matched
+the schedule's actual state. Fixed with a cheap fingerprint of each schedule's own CPM-relevant
+input fields (duration/dates/predecessor-successor/lag), captured at the moment "Calculate
+Schedule" last ran successfully and compared against the current fields wherever staleness matters
+— rather than chasing down and flagging every mutation call site individually (real risk of missing
+one). Surfaced two ways: the Activity Detail Panel now labels stale numbers "Calculated (out of
+date)" in amber instead of "(read-only)," and the Schedule toolbar shows a "⚠ Critical path out of
+date" note next to the Calculate Schedule button so a planner can tell without opening any specific
+activity first. New `cpm_calculated_fingerprint` field on schedules (`schema_version` 54→55) — an
+existing schedule with no recorded fingerprint correctly reads as "never calculated," not assumed
+fresh.
+
+**3. Closing an RFI/TQ directly lost its answered-date audit trail.** `date_answered` only ever got
+backfilled on an explicit `open`→`answered` transition — answering something verbally and marking
+it closed directly (a very normal flow) skipped that state and silently lost the field, with no way
+to backfill it after the fact. Fixed: the same backfill now also fires on a direct transition to
+`closed`, since closing implies it was answered too; an already-set `date_answered` is still never
+overwritten.
+
+**4. The Gantt search box lost focus on every keystroke.** Its `oninput` handler rebuilt the entire
+Gantt tab (toolbar, detail panel, and the whole SVG chart via `computeLayout()`) on every character
+— the Activities tab's own search had already solved this exact problem with a dedicated lighter
+render path specifically to preserve focus while typing, but the Gantt search never got the same
+treatment, making it effectively unusable for typing more than one character. Splitting the Gantt
+tab's render the same way would mean restructuring the chart-building pipeline; instead, let the
+existing full rerender happen and restore focus + caret position on the freshly-built input
+afterward, via a stable id — same practical outcome (typing actually works) without touching the
+chart code. Verified with real keyboard events in Chromium (typed "Foundation" character-by-character,
+input stayed focused and correct throughout).
+
+**5. A circular relationship could be created by hand with no warning.** Manually adding a
+predecessor→successor pair that closed a loop (A→B→C→A) was silently accepted — only ever caught
+later, silently, when "Calculate Schedule" ran, which then just drops the cyclic activities from the
+result. Added a cycle check at the moment of adding the relationship (BFS over the schedule's other
+existing relationships): a would-be-cyclic edge is now rejected with a clear explanation instead of
+saved.
+
+**6. Activity Duration accepted negative numbers.** No floor on the field at all, in either the
+hand-entry form or the Excel import parser — a negative value saved (or imported) without warning
+and corrupted CPM output downstream. Added a `min="0"` browser-level hint plus a real validation
+check on the Activities form (rejects the save with a clear message), and the Excel importer now
+treats a negative Duration the same as an unreadable one — a warning, left blank, not silently
+imported.
+
+**7. The "SAVED" footer label could claim data was saved before it actually was.** `store.js`'s
+autosave debounces the real `localStorage` write by 250ms, but the footer updated its "SAVED · time"
+label off the *synchronous* change signal that fires immediately, ahead of that write — closing the
+tab inside that 250ms window meant the UI had already claimed "saved" while nothing was actually
+persisted. Added a second, distinct `store.onPersisted()` signal that only fires once the real write
+has actually been attempted; the footer now shows "Saving…" on the immediate change and only claims
+"SAVED · time" once that write genuinely completes (or "NOT SAVED — see notification" if it failed).
+Verified in real Chromium: label reads "Saving…" immediately after a store update, flips to
+"SAVED · &lt;time&gt;" only after the debounce window passes.
+
+**8. No warning before closing a tab with an unsaved form open.** Zero `beforeunload` handling
+anywhere in the app — interrupting a half-filled RFI and closing the tab lost it with no prompt at
+all. Rather than threading a "dirty" flag through the ~20 page modules that each maintain their own
+separate editing state, added one `beforeunload` handler at the app level that checks for the
+presence of a `&lt;form&gt;` element in the page outlet — every register module in this app only ever
+renders a real `&lt;form&gt;` for exactly an open Add/Edit flow, confirmed across risks/rfis/changeOrders/
+schedule/etc., so its mere presence is already a reliable, zero-maintenance signal. Can't know
+whether any individual field was actually changed (a blank untouched form still warns), but that's
+still real, new protection where there was previously none. Verified in real Chromium: no warning
+with no form open, warning correctly fires with one open.
+
+**9. Daily Log had no duplicate-entry guard.** The page's own subtitle claims "one entry per
+project per day," but nothing enforced it — an accidental double-click on "+ Add Daily Log," a
+near-daily action for a Coordinator, silently created two entries for the same project and date.
+Added a same-project/same-date check on save: the first submit of a genuine duplicate warns instead
+of saving ("already exists... click Add Log again to add another anyway"); a deliberate second
+submit is treated as confirmation and goes through. Changing the project or date after the warning
+resets it, so a corrected date doesn't require re-confirming a stale warning.
+
+**Verified**: `node --check` on every touched file; full 76-file suite (73 existing + 3 new
+regression test files scoped to bugs #3/#5+#6/#9, since none of Daily Log/RFI/Relationships had
+dedicated test coverage before this), 0 failures. A full 27-route real-Chromium sweep plus a live
+Calculate Schedule click, zero console errors throughout.
+
+**Not done**: Phases 2-5 of the audit's own proposed sequencing (wiring up Global Project Context to
+the front-office screens; keyboard shortcuts; portfolio-wide search; bulk actions/clone/field-memory
+in the daily registers; Planner power tools; polish items) — all still open, to be picked up
+individually as their own scoped pieces of work.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →

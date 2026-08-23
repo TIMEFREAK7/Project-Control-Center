@@ -36,6 +36,31 @@ automatically go through LFS. Don't reach for this as the default path: GitHub's
 1GB storage + 1GB bandwidth/month, and a single desktop installer is already 100MB+, so routine
 use here would exhaust it in a handful of builds.
 
+**The routine path, since neither of the above is available to a Claude Code session by
+default**: split the built file and send it directly through the session's own file-delivery tool,
+in chunks under its transfer limit (~30MB). Standing method (see CLAUDE.md's PR/shipping
+conventions — this is a documented, don't-ask-first convention, not a one-off):
+
+```
+split -b 25M -d -a 2 "release/Project Control Center Setup 1.0.0.exe" \
+  "Project Control Center Setup 1.0.0.exe.part"
+sha256sum "release/Project Control Center Setup 1.0.0.exe"     # record this before sending
+```
+
+Verify the split is exact by reassembling locally and re-checksumming before sending anything —
+`cat *.part* > /tmp/check.exe && sha256sum /tmp/check.exe` should match the line above exactly.
+Send every `.part` file, plus the expected SHA-256 and this reassembly command for Aditya's side
+(Windows Command Prompt, since the `.exe` is the recurring case here):
+
+```
+copy /b "Setup.exe.part00"+"Setup.exe.part01"+"Setup.exe.part02"+... "Project Control Center Setup 1.0.0.exe"
+```
+
+(adjust the `+`-joined part list to however many parts this particular build actually split into —
+`part00`, `part01`, ... in order). On macOS/Linux, `cat Setup.exe.part* > "Project Control Center Setup 1.0.0.exe"`
+does the same thing. Always give the SHA-256 alongside the parts so Aditya can confirm the
+reassembled file is byte-identical before installing it.
+
 ## Android (Capacitor)
 
 ```

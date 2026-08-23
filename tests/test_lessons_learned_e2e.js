@@ -226,7 +226,6 @@ function findButtonByText(dom, text) {
     win.PCC.router.go("meetings");
     win.PCC.router.render();
     findButtonByText(dom, "+ Add Lesson Learned").click();
-    win.PCC.router.render();
 
     assert.strictEqual(win.PCC.router.currentRouteName(), "lessonsLearned");
     var text = outlet().textContent;

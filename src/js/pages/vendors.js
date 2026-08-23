@@ -1858,7 +1858,6 @@
       openBtn.textContent = "View Meeting";
       openBtn.onclick = function () {
         window.PCC.router.go("meetings");
-        window.PCC.router.render();
         if (window.PCC.meetings) window.PCC.meetings.expandMeeting(m.id);
         window.PCC.router.render();
       };
@@ -1984,7 +1983,6 @@
       openBtn.textContent = "View RFI / TQ";
       openBtn.onclick = function () {
         window.PCC.router.go("rfis");
-        window.PCC.router.render();
         if (window.PCC.rfis) window.PCC.rfis.expandRfi(r.id);
         window.PCC.router.render();
       };
@@ -2089,7 +2087,6 @@
       openBtn.textContent = "View Risk";
       openBtn.onclick = function () {
         window.PCC.router.go("risks");
-        window.PCC.router.render();
         if (window.PCC.risks) window.PCC.risks.expandRisk(r.id);
         window.PCC.router.render();
       };
@@ -2556,7 +2553,6 @@
             return function () {
               window.PCC.schedule.viewActivity(projectId, scheduleId, activityId);
               window.PCC.router.go("schedule");
-              window.PCC.router.render();
             };
           })(a.project_id, a.schedule_id, a.id);
           card.appendChild(viewBtn);

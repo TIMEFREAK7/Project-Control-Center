@@ -64,6 +64,15 @@ that override default behavior).
   Playwright script: actually call `page.screenshot()` at meaningful states (empty state,
   populated state, and again on the zip-verification pass) and send the PNGs via `SendUserFile`
   before or alongside the written report. Applies to every gate from here on, not just this one.
+- **A packaging build that exceeds the ~30MB file-transfer limit (the Windows `.exe`, recurring at
+  ~100-105MB) gets split into parts and sent directly, not routed through Git LFS by default or
+  skipped.** Standing instruction as of 2026-08-23 (Aditya, verbatim: *"divide the exe in part and
+  give it to me... update this into claude.md, handoff.md, and README so as to never lose it
+  again"*): `split -b 25M -d -a 2 "<file>" "<file>.part"`, verify the reassembled file's SHA-256
+  matches the original *before* sending, send every part via the session's file-delivery tool, and
+  give Aditya both the SHA-256 and the exact Windows Command Prompt reassembly command
+  (`copy /b part00+part01+...+partNN "output.exe"`). Full worked example in
+  `packaging/README.md`'s "Distributing a build" section. Also written into `CLAUDE.md` itself now.
 
 ## NEW INITIATIVE: UI/UX Overhaul (started 2026-08-20) — a THIRD, separate roadmap
 
@@ -2395,6 +2404,56 @@ Windows icon prep (packaging itself stays out of scope, per the brief)."
   the new files' relative paths resolve correctly from outside the dev tree.
 - **Not done**: no change to the already-shipped Electron/Android native icons (out of scope,
   already correct); no `.ico` multi-res file (modern browsers all support SVG favicons directly).
+
+## NEW INITIATIVE: Daily-Use Audit (started 2026-08-23) — a SEVENTH, separate initiative
+
+With the 12-gate PCC Redesign closed out, Aditya asked for a full pass across the whole app/code
+for quality-of-life issues, explicitly framed around its actual daily users — a PM, Coordinator,
+and Planner who use this tool every day for real work, not a one-off audit.
+
+**Method**: 4 parallel read-only Explore investigations (front-office screens; Planner's
+Schedule/Gantt/CPM/Resources; daily data-entry registers; cross-cutting UX + code quality), each
+told not to re-flag anything the redesign already fixed. Synthesized into 39 findings — 9 real
+bugs, 7 high/15 medium/6 low-impact QoL gaps, 4 areas confirmed already solid — published as a
+filterable artifact report with a proposed 5-phase sequencing (bugs → wire up redesign
+infrastructure not fully connected yet → daily-entry speed → Planner power tools → polish). Aditya
+chose Phase 1.
+
+**Phase 1 — the 9 real bugs, done, 2026-08-23.** Full detail and rationale for each in README.md's
+own entry (same section header) — summary here:
+
+1. **Every navigation rendered twice** — `router.go()` fix (renders synchronously + suppresses the
+   redundant `hashchange` render); ~39 now-redundant explicit `render()` calls removed mechanically
+   across 9 files, the other ~50 `go()`-alone call sites now get the same instant render for free.
+2. **CPM could go stale with nothing telling the planner** — the most dangerous finding in the
+   audit. New `cpm_calculated_fingerprint` field on schedules (`schema_version` 54→55) drives a
+   staleness check shown both on the Activity Detail Panel ("Calculated (out of date)") and the
+   Schedule toolbar ("⚠ Critical path out of date").
+3. **Closing an RFI directly lost `date_answered`** — backfill now also fires on a direct
+   `open`→`closed` transition, not just `→answered`.
+4. **Gantt search lost focus every keystroke** — full rerender kept, but focus/caret restored on
+   the fresh input afterward via a stable id. Verified with real keyboard events in Chromium.
+5. **Manual circular relationships were silently accepted** — BFS cycle check added at save time,
+   rejected with a clear message instead.
+6. **Activity Duration accepted negative numbers** — `min="0"` + real validation on the form; Excel
+   import now treats a negative Duration like an unreadable one (warning, left blank).
+7. **The "SAVED" footer label could lie ahead of the actual write** — new `store.onPersisted()`
+   signal, separate from the existing synchronous `onChange`; footer shows "Saving…" immediately,
+   only claims "SAVED" once the debounced write genuinely completes.
+8. **No warning before closing a tab with an unsaved form open** — one `beforeunload` handler at
+   the app level, keyed off the presence of a `<form>` in the page outlet (every register module
+   only ever renders one for an open Add/Edit flow — a reliable, zero-maintenance signal without
+   threading a dirty flag through ~20 separate modules' own editing state).
+9. **Daily Log had no duplicate-entry guard** — same-project/same-date check on save; first submit
+   of a genuine duplicate warns, a deliberate second submit is treated as confirmation.
+
+**Verified**: `node --check` on every touched file; full 76-file suite (73 existing + 3 new
+regression test files — `test_rfi_date_answered_bugfix_e2e.js`,
+`test_schedule_validation_bugfixes_e2e.js` (bugs #5+#6), `test_daily_log_duplicate_guard_bugfix_e2e.js`
+— since none of Daily Log/RFI/Relationships had dedicated coverage before this), 0 failures. Full
+27-route real-Chromium sweep + a live Calculate Schedule click, zero console errors.
+
+**Not done**: Phases 2-5 of the audit's own sequencing — still open, to be picked up individually.
 
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 

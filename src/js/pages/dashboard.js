@@ -214,7 +214,6 @@
         "<span class='card-stat__value'" + valueStyle + ">" + stat.value + "</span>";
       chip.onclick = function () {
         window.PCC.router.go(stat.route);
-        window.PCC.router.render();
       };
       row.appendChild(chip);
     });
@@ -299,7 +298,6 @@
         return function () {
           window.PCC.executiveCenter.viewProject(projectId);
           window.PCC.router.go("executiveCenter");
-          window.PCC.router.render();
         };
       })(g.project.id);
       groupHeader.appendChild(viewBtn);
@@ -421,7 +419,6 @@
         viewBtn.onclick = function () {
           window.PCC.portfolio.viewProject(project.id);
           window.PCC.router.go("portfolio");
-          window.PCC.router.render();
         };
         right.appendChild(viewBtn);
       }

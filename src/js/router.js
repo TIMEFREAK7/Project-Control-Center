@@ -33,11 +33,36 @@
     renderFn(outlet);
   }
 
+  // Bug fix (Daily-Use Audit, Phase 1): go() used to just set location.hash, relying on the
+  // async "hashchange" listener below to actually render — but nearly every call site also
+  // called render() explicitly right after go(), for instant feedback instead of waiting on
+  // the event. That meant every navigation rendered the destination page TWICE: once from the
+  // call site's explicit render(), once again moments later when hashchange fired. go() now
+  // renders synchronously itself (so every call site gets the same instant feedback, including
+  // the ones that previously relied on the async event alone) and arms a flag so the hashchange
+  // this same navigation triggers doesn't render a second time. Manual hash edits and real
+  // browser back/forward navigation never go through go(), so they still render via the
+  // listener exactly as before.
+  var suppressNextHashRender = false;
+
   function go(name) {
-    window.location.hash = "#/" + name;
+    var target = "#/" + name;
+    if (window.location.hash === target) {
+      render();
+      return;
+    }
+    suppressNextHashRender = true;
+    window.location.hash = target;
+    render();
   }
 
-  window.addEventListener("hashchange", render);
+  window.addEventListener("hashchange", function () {
+    if (suppressNextHashRender) {
+      suppressNextHashRender = false;
+      return;
+    }
+    render();
+  });
 
   window.PCC.router = {
     register: register,

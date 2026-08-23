@@ -184,7 +184,6 @@ function findButtonByText(dom, text) {
     win.PCC.router.go("meetings");
     win.PCC.router.render();
     findButtonByText(dom, "+ Add Decision").click();
-    win.PCC.router.render();
 
     assert.strictEqual(win.PCC.router.currentRouteName(), "decisionRegister");
     var text = outlet().textContent;

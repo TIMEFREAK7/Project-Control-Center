@@ -149,7 +149,6 @@
         row.onclick = function () {
           window.PCC.vendors.openProfile(s.vendor.id, "performance");
           window.PCC.router.go("vendors");
-          window.PCC.router.render();
         };
 
         var icon = document.createElement("span");
@@ -200,7 +199,6 @@
         row.onclick = function () {
           window.PCC.vendors.openProfile(s.vendor.id, "performance");
           window.PCC.router.go("vendors");
-          window.PCC.router.render();
         };
 
         var icon = document.createElement("span");

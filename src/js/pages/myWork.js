@@ -71,7 +71,6 @@
           view: function () {
             window.PCC.meetings.expandMeeting(m.id);
             window.PCC.router.go("meetings");
-            window.PCC.router.render();
           },
         });
       });
@@ -87,7 +86,6 @@
         view: function () {
           window.PCC.rfis.expandRfi(r.id);
           window.PCC.router.go("rfis");
-          window.PCC.router.render();
         },
       });
     });
@@ -112,7 +110,6 @@
           view: function () {
             window.PCC.meetings.expandMeeting(m.id);
             window.PCC.router.go("meetings");
-            window.PCC.router.render();
           },
         };
       });
@@ -131,7 +128,6 @@
         view: function () {
           window.PCC.changeOrders.expandChangeOrder(co.id);
           window.PCC.router.go("changeOrders");
-          window.PCC.router.render();
         },
       });
     });
@@ -146,7 +142,6 @@
         view: function () {
           window.PCC.decisionRegister.expandDecision(d.id);
           window.PCC.router.go("decisionRegister");
-          window.PCC.router.render();
         },
       });
     });
@@ -177,7 +172,6 @@
         view: function () {
           window.PCC.schedule.viewActivity(a.project_id, a.schedule_id, a.id);
           window.PCC.router.go("schedule");
-          window.PCC.router.render();
         },
       });
     });
@@ -204,7 +198,6 @@
           view: function () {
             window.PCC.meetings.expandMeeting(m.id);
             window.PCC.router.go("meetings");
-            window.PCC.router.render();
           },
         };
       });
@@ -236,7 +229,6 @@
         view: function () {
           window.PCC.schedule.viewActivity(a.project_id, a.schedule_id, a.id);
           window.PCC.router.go("schedule");
-          window.PCC.router.render();
         },
       });
     });
@@ -263,7 +255,6 @@
         view: function () {
           window.PCC.vendors.openProfile(v.id);
           window.PCC.router.go("vendors");
-          window.PCC.router.render();
         },
       });
     });
@@ -305,7 +296,6 @@
         view: function () {
           window.PCC.executiveCenter.viewProject(p.id, "weeklyReviews");
           window.PCC.router.go("executiveCenter");
-          window.PCC.router.render();
         },
       });
     });
@@ -333,7 +323,6 @@
         view: function () {
           window.PCC.rfis.expandRfi(r.id);
           window.PCC.router.go("rfis");
-          window.PCC.router.render();
         },
       });
     });
@@ -347,7 +336,6 @@
         view: function () {
           window.PCC.changeOrders.expandChangeOrder(co.id);
           window.PCC.router.go("changeOrders");
-          window.PCC.router.render();
         },
       });
     });
@@ -361,7 +349,6 @@
         view: function () {
           window.PCC.decisionRegister.expandDecision(d.id);
           window.PCC.router.go("decisionRegister");
-          window.PCC.router.render();
         },
       });
     });
@@ -390,7 +377,6 @@
           view: function () {
             window.PCC.executiveCenter.viewProject(p.id);
             window.PCC.router.go("executiveCenter");
-            window.PCC.router.render();
           },
         };
       }),
@@ -403,7 +389,6 @@
           view: function () {
             window.PCC.schedule.viewActivity(a.project_id, a.schedule_id, a.id);
             window.PCC.router.go("schedule");
-            window.PCC.router.render();
           },
         };
       }),
@@ -416,7 +401,6 @@
           view: function () {
             window.PCC.rfis.expandRfi(r.id);
             window.PCC.router.go("rfis");
-            window.PCC.router.render();
           },
         };
       }),
@@ -429,7 +413,6 @@
           view: function () {
             window.PCC.risks.expandRisk(r.id);
             window.PCC.router.go("risks");
-            window.PCC.router.render();
           },
         };
       }),
@@ -442,7 +425,6 @@
           view: function () {
             window.PCC.meetings.expandMeeting(m.id);
             window.PCC.router.go("meetings");
-            window.PCC.router.render();
           },
         };
       }),
