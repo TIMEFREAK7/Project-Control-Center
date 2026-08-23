@@ -3837,6 +3837,80 @@ layouts, no leftover ghost content.
 touch-target sizing (already correct, unchanged) — this gate only fixed genuine overflow bugs it
 found, not a re-architecture of the responsive system.
 
+### Gate 12 — App Icon & Branding, done, 2026-08-23
+
+Per the brief: "a new symbol independent of the 'Aditya Abhyankar's...' full text, favicon/PWA/
+Android/Windows icon prep (packaging itself stays out of scope, per the brief)." The last of the
+12 gates — it ran independently of Gates 1-11, no dependency either direction.
+
+**Inspection first**: there was no favicon or PWA manifest anywhere — `src/index.html` had no icon
+links at all. The personal-name string only existed in two places: the document `<title>` and an
+unused `app_name` default field in `store.js`'s initial data shape (grepped confirmed nothing in
+`src/js` ever reads it — dead data, not a rendered UI string). The app's own visible chrome (the
+sidebar footer) already said the generic "PROJECT CONTROL CENTER — LOCAL, OFFLINE INSTANCE," not
+the personal name — so the fix was narrowly scoped to the two places that actually said otherwise.
+Separately, a full native app icon *already exists* — the Mobile & Desktop Packaging initiative's
+own earlier gate used a real icon Aditya supplied directly (`packaging/icons/pcc-icon-source.png`:
+a white rounded-square card, a teal→blue→navy ascending-bar mark, "PCC" wordmark, "PLAN | CONTROL
+| DELIVER" tagline), already fully wired into the Electron window icon and the generated Android
+launcher icon set. That work is out of this gate's scope (packaging itself, per the brief) and
+already satisfies "Android/Windows icon prep" — the genuine gap was specifically the **browser**-
+facing pieces: favicon, apple-touch-icon, PWA manifest.
+
+**New symbol**: rather than inventing an unrelated second mark, derived a small glyph from the
+existing icon's own ascending-bar motif (dropping the wordmark/tagline, illegible at 16-32px
+anyway) — same visual identity across the native app icon and the new browser favicon, not two
+competing marks. Built at `src/icons/favicon.svg` (source of truth) using the app's own actual CSS
+tokens (`--status-info`, `--signal-amber`, plus a matching dark navy) rather than the source PNG's
+separately-chosen hex values, so the symbol is pixel-consistent with the running app's palette.
+
+**A real scope decision, checked rather than assumed**: a full PWA manifest needs separate icon PNG
+files shipped alongside `index.html` — a genuine (if small) departure from this project's "one
+dependency-free file" architecture, and PWA installability itself needs HTTPS/localhost anyway
+(meaningless for the primary `file://` use case). Asked directly rather than picking a side; Aditya
+chose to add `manifest.json` + icon PNGs as new top-level shipped files for the case PCC is ever
+served over a local server rather than double-clicked.
+
+**What shipped**:
+- `src/icons/favicon.svg` — the master symbol, source of truth.
+- `generate-icons.js` (repo root, dev-only tool alongside `build.js`) — rasterizes the SVG to the
+  PNG sizes PWA/Apple need via the environment's real Chromium (no new image-processing npm
+  dependency added to the project). Outputs to `icons/`: `icon-192.png`, `icon-512.png`,
+  `apple-touch-icon.png`. Re-run after editing the source SVG, same "edit source, then rebuild"
+  discipline as `index.html` itself.
+- `manifest.json` (repo root) — name/short_name/icons/theme_color/background_color/display, the
+  latter two matching the app's own dark-theme default tokens.
+- `src/index.html`: `<title>` changed to "Project Control Center" (no personal name); favicon
+  embedded as an inline base64 SVG data URI directly in the `<head>` (keeps `index.html` itself
+  fully self-contained — no new file dependency for the favicon specifically, only for
+  apple-touch-icon/manifest which are inherently separate-file by spec); `apple-touch-icon` and
+  `manifest` links pointing to the new root-level files; a `theme-color` meta tag.
+- `src/js/store.js`: `app_name` default changed to match — no schema bump, since it's an unread
+  default value, not a new field or structural change.
+- `CLAUDE.md`'s own zip-packaging instructions updated to include `manifest.json`/`icons/` in every
+  future handoff zip (and `generate-icons.js` added to the dev-only exclusion list alongside
+  `build.js`), since this gate introduces new top-level deliverable files the standing instruction
+  didn't previously know about.
+
+**Verified**: `node --check` on every touched JS file; full 73-file suite, 0 failures.
+`manifest.json` validated as well-formed JSON. Generated PNGs checked for correct alpha
+transparency on the rounded-square corners (screenshotted composited over three different
+background colors — dark, white, and the app's own accent blue — confirms clean, theme-agnostic
+edges, not an opaque white square). Real-Chromium pass loading the built `index.html` directly:
+`<title>` and all four new `<head>` links (icon/apple-touch-icon/manifest/theme-color) present and
+correct, zero console errors. **Assembled and tested the actual updated handoff package** per
+CLAUDE.md's own "verify the zip actually works" convention: extracted a fresh copy (`index.html`,
+`README.md`, `manifest.json`, `icons/`, empty `data/`/`files/` placeholders) and opened it via
+`file://` in real Chromium — boots cleanly, router works, zero errors, confirming the new files'
+relative paths resolve correctly from a genuinely separate, non-dev-tree location.
+
+**Not done**: no change to the already-shipped Electron/Android native icons (out of scope, already
+correct, sourced from Aditya's own PNG); no `.ico` multi-resolution file generated (modern browsers
+all support SVG favicons directly — an `.ico` fallback would only matter for legacy IE-class
+browsers this app was never targeting).
+
+**This closes the 12-gate PCC Redesign plan.** Gates 1-12 are all done, verified, merged.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →

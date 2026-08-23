@@ -2351,6 +2351,51 @@ assumed correct from desktop-only checks." Gates 1-10 verified real-Chromium at 
   overflow bugs actually found, not a re-architecture of the responsive system.
 - **Not started**: Gate 12 (App Icon & Branding) — the last gate in the 12-gate plan.
 
+**Gate 12 — App Icon & Branding, done, 2026-08-23. This CLOSES OUT the 12-gate PCC Redesign
+plan — Gates 1-12 all done, verified, merged.** Aditya said "Start gate 12" directly. Per the
+brief: "a new symbol independent of the 'Aditya Abhyankar's...' full text, favicon/PWA/Android/
+Windows icon prep (packaging itself stays out of scope, per the brief)."
+
+- **Inspection found**: no favicon/manifest anywhere (`src/index.html` had zero icon links). The
+  personal-name string existed in only two places — the document `&lt;title&gt;` and an unused
+  `app_name` default in `store.js` (confirmed nothing in `src/js` ever reads it). The app's own
+  visible chrome (sidebar footer) already said the generic "Project Control Center," not the
+  personal name. Also found a real native app icon **already exists and already ships** —
+  Mobile & Desktop Packaging's own earlier gate used a PNG Aditya supplied directly
+  (`packaging/icons/pcc-icon-source.png`: white card, teal→blue→navy ascending bars, "PCC"
+  wordmark, tagline), already wired into the Electron window icon and generated Android launcher
+  set. That already satisfies "Android/Windows icon prep" and is out of this gate's scope
+  (packaging itself) — the real gap was just the browser-facing pieces.
+- **New symbol**: derived from the existing icon's own ascending-bar motif (dropped the
+  wordmark/tagline — illegible at 16-32px) rather than inventing an unrelated second mark — one
+  consistent identity across the native app icon and the new favicon. `src/icons/favicon.svg`
+  (source of truth) uses the app's own actual CSS tokens (`--status-info`, `--signal-amber`, a
+  matching navy), not the source PNG's separately-chosen hex values.
+- **Checked with Aditya rather than assumed**: a full PWA manifest needs separate icon PNGs shipped
+  alongside `index.html` — a real (if small) departure from the "one dependency-free file"
+  architecture, and PWA install itself needs HTTPS/localhost anyway (moot for `file://`). Asked via
+  `AskUserQuestion`; Aditya chose to add `manifest.json` + icon PNGs as new top-level shipped files.
+- **Shipped**: `src/icons/favicon.svg` (source); `generate-icons.js` (repo root, dev-only like
+  `build.js` — rasterizes the SVG via the environment's real Chromium, no new npm dependency,
+  outputs `icons/icon-192.png`, `icon-512.png`, `apple-touch-icon.png`); `manifest.json` (repo
+  root); `src/index.html` gets a new `&lt;title&gt;` ("Project Control Center," no personal name), an
+  inline base64-SVG-data-URI favicon (keeps `index.html` itself still fully self-contained),
+  apple-touch-icon/manifest `&lt;link&gt;`s, and a `theme-color` meta; `store.js`'s `app_name` default
+  updated to match (no schema bump — unread default, not a structural change). **Updated
+  `CLAUDE.md`'s own zip-packaging instructions** to include `manifest.json`/`icons/` in every future
+  handoff zip and added `generate-icons.js` to the dev-only exclusion list — this gate introduces
+  new top-level deliverable files the standing instruction didn't know about yet.
+- **Verified**: `node --check` on every touched file; full 73-file suite, 0 failures.
+  `manifest.json` validated as well-formed JSON. Generated PNGs checked for correct alpha
+  transparency (composited over three different background colors — confirmed clean edges, not an
+  opaque white square). Real-Chromium load of the built `index.html`: title and all four new head
+  links present and correct, zero console errors. **Assembled and tested the actual updated zip
+  package** per CLAUDE.md's own "verify the zip actually works" convention — extracted a fresh copy
+  and opened it via `file://` in real Chromium: boots clean, router works, zero errors, confirming
+  the new files' relative paths resolve correctly from outside the dev tree.
+- **Not done**: no change to the already-shipped Electron/Android native icons (out of scope,
+  already correct); no `.ico` multi-res file (modern browsers all support SVG favicons directly).
+
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
 `main` is fully up to date through **Tier 3, "final polish," Gate 4** (Gantt virtualization for

@@ -1,0 +1,17 @@
+<!-- PCC Redesign Gate 12 (App Icon & Branding): the app's small-size symbol — three
+     ascending bars, deriving the same motif as Aditya's own supplied native app icon
+     (packaging/icons/pcc-icon-source.png) so the browser favicon/PWA icon and the
+     Electron/Android app icon read as one consistent identity, rather than introducing
+     a second unrelated mark. Colors are the app's own actual CSS tokens (--status-info,
+     --signal-amber, and a matching dark navy), not the source PNG's separately-chosen
+     hex values, so the symbol is pixel-consistent with the running app's palette.
+     This file is the source of truth; generate-icons.js rasterizes it to the PNG sizes
+     manifest.json/apple-touch-icon need — regenerate with `node generate-icons.js`
+     after editing this file, the same "edit source, then rebuild" discipline as
+     build.js/index.html. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect x="0" y="0" width="32" height="32" rx="7" fill="#ffffff" />
+  <polygon points="5,24 11,24 11,18" fill="#0e9aa7" />
+  <rect x="13" y="12" width="6" height="12" rx="1" fill="#3d63dd" />
+  <rect x="21" y="6" width="6" height="18" rx="1" fill="#14203a" />
+</svg>
