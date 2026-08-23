@@ -37,6 +37,18 @@
   var WEEK_WINDOW_DAYS = 7;
   var RECENT_LIMIT = 5;
 
+  // Daily-Use Audit Phase 2: this page had no filter of any kind before — the shared
+  // Global Project Context (Redesign Gate 6) never reached it. Live-syncs with it
+  // (compares against the last context value this page actually observed, not a plain
+  // "seeded once ever" flag — see the schema/reasoning note in render() below) so a
+  // context change anywhere else in the app is picked up the next time this page
+  // renders, while a local "All Projects" override stays put until context genuinely
+  // changes again.
+  var uiState = {
+    projectFilter: "",
+    lastSyncedContextId: undefined,
+  };
+
   var WAITING_ON_LABELS = { vendor: "Vendor", client: "Client", consultant: "Consultant", management: "Management" };
 
   function todayIso() {
@@ -517,12 +529,29 @@
 
   function render(outlet) {
     var data = window.PCC.store.get();
-    var activeProjects = data.projects.filter(function (p) { return !p.archived; });
-    var activeProjectIds = {};
+    var allActiveProjects = data.projects.filter(function (p) { return !p.archived; });
     var projectsById = {};
+    allActiveProjects.forEach(function (p) {
+      projectsById[p.id] = p;
+    });
+
+    // See dashboard.js's identical block for the full reasoning on why this compares
+    // against the last-observed context value rather than a one-time seed flag.
+    var ctxProjectId = window.PCC.projectContext.get();
+    if (ctxProjectId !== uiState.lastSyncedContextId) {
+      uiState.lastSyncedContextId = ctxProjectId;
+      uiState.projectFilter = ctxProjectId && allActiveProjects.some(function (p) { return p.id === ctxProjectId; }) ? ctxProjectId : "";
+    }
+    if (uiState.projectFilter && !allActiveProjects.some(function (p) { return p.id === uiState.projectFilter; })) {
+      uiState.projectFilter = "";
+    }
+
+    var activeProjects = uiState.projectFilter
+      ? allActiveProjects.filter(function (p) { return p.id === uiState.projectFilter; })
+      : allActiveProjects;
+    var activeProjectIds = {};
     activeProjects.forEach(function (p) {
       activeProjectIds[p.id] = true;
-      projectsById[p.id] = p;
     });
 
     var wrap = document.createElement("div");
@@ -536,8 +565,39 @@
     sub.className = "text-secondary";
     sub.style.marginTop = "0";
     sub.style.marginBottom = "8px";
-    sub.textContent = "Your personal cockpit across " + activeProjects.length + " active project" + (activeProjects.length === 1 ? "" : "s") + ".";
+    sub.textContent = uiState.projectFilter
+      ? "Your personal cockpit for " + (projectsById[uiState.projectFilter].name || "(unnamed project)") + "."
+      : "Your personal cockpit across " + allActiveProjects.length + " active project" + (allActiveProjects.length === 1 ? "" : "s") + ".";
     wrap.appendChild(sub);
+
+    if (allActiveProjects.length > 0) {
+      var toolbar = document.createElement("div");
+      toolbar.className = "toolbar no-print";
+      toolbar.style.marginBottom = "8px";
+      var projSelect = document.createElement("select");
+      var allOpt = document.createElement("option");
+      allOpt.value = "";
+      allOpt.textContent = "All Projects";
+      projSelect.appendChild(allOpt);
+      allActiveProjects
+        .slice()
+        .sort(function (a, b) { return (a.name || "").localeCompare(b.name || ""); })
+        .forEach(function (p) {
+          var opt = document.createElement("option");
+          opt.value = p.id;
+          opt.textContent = p.name || "(unnamed project)";
+          projSelect.appendChild(opt);
+        });
+      projSelect.value = uiState.projectFilter;
+      projSelect.onchange = function () {
+        uiState.projectFilter = projSelect.value;
+        uiState.lastSyncedContextId = projSelect.value;
+        window.PCC.projectContext.set(projSelect.value);
+        window.PCC.router.render();
+      };
+      toolbar.appendChild(projSelect);
+      wrap.appendChild(toolbar);
+    }
 
     // ---- TODAY ----
     wrap.appendChild(sectionHeading("TODAY"));

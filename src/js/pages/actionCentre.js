@@ -20,6 +20,15 @@
   // PCC Evolution Roadmap, Tier 3 ("final polish"): this used to be a hardcoded
   // constant — now reads data.settings.action_centre_upcoming_days (edited on the
   // Settings page), defaulting to the same 30 this constant always was.
+  // Daily-Use Audit Phase 2: live-syncs with the shared Global Project Context
+  // (Redesign Gate 6) — see dashboard.js's identical block for the full reasoning on
+  // why this compares against the last-observed context value rather than a one-time
+  // seed flag.
+  var uiState = {
+    projectFilter: "",
+    lastSyncedContextId: undefined,
+  };
+
   function upcomingWindowDays(data) {
     return data.settings.action_centre_upcoming_days == null ? 30 : data.settings.action_centre_upcoming_days;
   }
@@ -260,14 +269,29 @@
   function render(outlet) {
     var data = window.PCC.store.get();
     var buckets = buildBuckets(upcomingWindowDays(data));
-    var activeProjects = data.projects.filter(function (p) {
+    var allActiveProjects = data.projects.filter(function (p) {
       return !p.archived;
     });
-    var activeProjectIds = {};
     var projectsById = {};
+    allActiveProjects.forEach(function (p) {
+      projectsById[p.id] = p;
+    });
+
+    var ctxProjectId = window.PCC.projectContext.get();
+    if (ctxProjectId !== uiState.lastSyncedContextId) {
+      uiState.lastSyncedContextId = ctxProjectId;
+      uiState.projectFilter = ctxProjectId && allActiveProjects.some(function (p) { return p.id === ctxProjectId; }) ? ctxProjectId : "";
+    }
+    if (uiState.projectFilter && !allActiveProjects.some(function (p) { return p.id === uiState.projectFilter; })) {
+      uiState.projectFilter = "";
+    }
+
+    var activeProjects = uiState.projectFilter
+      ? allActiveProjects.filter(function (p) { return p.id === uiState.projectFilter; })
+      : allActiveProjects;
+    var activeProjectIds = {};
     activeProjects.forEach(function (p) {
       activeProjectIds[p.id] = true;
-      projectsById[p.id] = p;
     });
 
     var items = collectItems(data, activeProjectIds);
@@ -285,10 +309,39 @@
     sub.style.marginBottom = "20px";
     sub.textContent =
       items.length === 0
-        ? "Nothing outstanding across the active portfolio right now."
+        ? (uiState.projectFilter ? "Nothing outstanding for this project right now." : "Nothing outstanding across the active portfolio right now.")
         : "Meeting actions, RFI/TQ responses, document submissions, and pending Change Orders across " +
           activeProjects.length + " active project" + (activeProjects.length === 1 ? "" : "s") + ".";
     wrap.appendChild(sub);
+
+    if (allActiveProjects.length > 0) {
+      var toolbar = document.createElement("div");
+      toolbar.className = "toolbar no-print";
+      toolbar.style.marginBottom = "8px";
+      var projSelect = document.createElement("select");
+      var allOpt = document.createElement("option");
+      allOpt.value = "";
+      allOpt.textContent = "All Projects";
+      projSelect.appendChild(allOpt);
+      allActiveProjects
+        .slice()
+        .sort(function (a, b) { return (a.name || "").localeCompare(b.name || ""); })
+        .forEach(function (p) {
+          var opt = document.createElement("option");
+          opt.value = p.id;
+          opt.textContent = p.name || "(unnamed project)";
+          projSelect.appendChild(opt);
+        });
+      projSelect.value = uiState.projectFilter;
+      projSelect.onchange = function () {
+        uiState.projectFilter = projSelect.value;
+        uiState.lastSyncedContextId = projSelect.value;
+        window.PCC.projectContext.set(projSelect.value);
+        window.PCC.router.render();
+      };
+      toolbar.appendChild(projSelect);
+      wrap.appendChild(toolbar);
+    }
 
     if (items.length === 0) {
       var empty = document.createElement("div");

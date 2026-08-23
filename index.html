@@ -8478,6 +8478,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     // most desktop apps use for this control.
     sidebarCollapse: '<svg ' + ICON_SVG_ATTRS + '><polyline points="14 6 8 12 14 18"/><line x1="4" y1="4" x2="4" y2="20"/></svg>',
     sidebarExpand: '<svg ' + ICON_SVG_ATTRS + '><polyline points="10 6 16 12 10 18"/><line x1="20" y1="4" x2="20" y2="20"/></svg>',
+    // Daily-Use Audit Phase 2: title-block entry point for keyboardShortcuts.js's help
+    // overlay — a plain keyboard glyph (outline + a row of keys) in the same stroke
+    // vocabulary as every other icon above.
+    keyboard: '<svg ' + ICON_SVG_ATTRS + '><rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="10" x2="6" y2="10"/><line x1="10" y1="10" x2="10" y2="10"/><line x1="14" y1="10" x2="14" y2="10"/><line x1="18" y1="10" x2="18" y2="10"/><line x1="6" y1="14" x2="18" y2="14"/></svg>',
   };
 
   // Redesign Gate 3 (Icon System Expansion): the nav list's own per-page icons, the
@@ -8946,11 +8950,23 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     focusModeBtn.innerHTML = ICONS.focus;
     focusModeBtn.onclick = toggleFocusMode;
 
+    // Daily-Use Audit Phase 2: the only discoverability path into keyboardShortcuts.js
+    // besides already knowing to press "?" — same icon-btn row every other shell-level
+    // action lives in.
+    var shortcutsBtn = document.createElement("button");
+    shortcutsBtn.className = "icon-btn";
+    shortcutsBtn.title = "Keyboard shortcuts";
+    shortcutsBtn.innerHTML = ICONS.keyboard;
+    shortcutsBtn.onclick = function () {
+      if (window.PCC.keyboardShortcuts) window.PCC.keyboardShortcuts.showHelp();
+    };
+
     actions.appendChild(exportBtn);
     actions.appendChild(importBtn);
     actions.appendChild(importInput);
     actions.appendChild(densityBtn);
     actions.appendChild(focusModeBtn);
+    actions.appendChild(shortcutsBtn);
     actions.appendChild(themeBtn);
 
     header.appendChild(actions);
@@ -9228,6 +9244,161 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     refreshBackupNudge: refreshBackupNudge,
     isFocusMode: isFocusMode,
   };
+})();
+
+
+/* ---- js/keyboardShortcuts.js ---- */
+/** Keyboard shortcuts — Daily-Use Audit Phase 2. Before this, the only keyboard
+ * handling anywhere in the app was Escape closing the mobile nav drawer (layout.js);
+ * every action was mouse-only. A first, deliberately small pass covering the two
+ * highest-frequency daily actions the audit named — find something, add something —
+ * plus a way to discover the shortcuts exist at all:
+ *
+ *   /   focus this page's own primary search box (the first text input in its toolbar)
+ *   n   click this page's own primary "+ Add X" button
+ *   ?   show this help overlay
+ *
+ * Deliberately generic rather than wired per-page: every page module already follows
+ * the exact same conventions (a `.toolbar` with a plain text search input first; a "+
+ * Add X" button for the primary create action), so one small heuristic here covers all
+ * ~20 page modules without touching any of them individually. A page with neither is
+ * simply a no-op — nothing to focus or click, not an error.
+ */
+(function () {
+  "use strict";
+  window.PCC = window.PCC || {};
+
+  function isTypingTarget(el) {
+    if (!el) return false;
+    var tag = el.tagName;
+    return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable;
+  }
+
+  function focusPrimarySearch() {
+    var outlet = document.getElementById("page-outlet");
+    if (!outlet) return false;
+    var input = outlet.querySelector(".toolbar input[type='text']");
+    if (!input || input.disabled) return false;
+    input.focus();
+    if (input.select) input.select();
+    return true;
+  }
+
+  function clickPrimaryAddButton() {
+    var outlet = document.getElementById("page-outlet");
+    if (!outlet) return false;
+    var buttons = Array.from(outlet.querySelectorAll("button"));
+    var addBtn = buttons.find(function (b) {
+      return !b.disabled && /^\+\s*Add\b/.test(b.textContent.trim());
+    });
+    if (!addBtn) return false;
+    addBtn.click();
+    return true;
+  }
+
+  var SHORTCUTS = [
+    { key: "/", desc: "Focus this page's search box" },
+    { key: "n", desc: "Add a new entry on this page" },
+    { key: "Esc", desc: "Close the open menu or dialog" },
+    { key: "?", desc: "Show this list" },
+  ];
+
+  function closeHelp() {
+    var overlay = document.getElementById("shortcuts-help-overlay");
+    if (overlay) overlay.remove();
+    document.removeEventListener("keydown", handleHelpEscape);
+  }
+
+  function handleHelpEscape(e) {
+    if (e.key === "Escape") closeHelp();
+  }
+
+  function showShortcutsHelp() {
+    closeHelp();
+
+    var overlay = document.createElement("div");
+    overlay.id = "shortcuts-help-overlay";
+    overlay.className = "modal-overlay";
+    overlay.onclick = function (e) {
+      if (e.target === overlay) closeHelp();
+    };
+
+    var modal = document.createElement("div");
+    modal.className = "modal";
+    modal.style.maxWidth = "360px";
+    modal.style.width = "min(360px, 92vw)";
+
+    var header = document.createElement("div");
+    header.className = "modal__header";
+    var title = document.createElement("div");
+    title.className = "modal__title";
+    title.textContent = "Keyboard shortcuts";
+    header.appendChild(title);
+    var closeBtn = document.createElement("button");
+    closeBtn.className = "icon-btn";
+    closeBtn.setAttribute("aria-label", "Close");
+    closeBtn.textContent = "✕";
+    closeBtn.onclick = closeHelp;
+    header.appendChild(closeBtn);
+    modal.appendChild(header);
+
+    var body = document.createElement("div");
+    body.className = "modal__body";
+    SHORTCUTS.forEach(function (s) {
+      var row = document.createElement("div");
+      row.style.display = "flex";
+      row.style.justifyContent = "space-between";
+      row.style.alignItems = "center";
+      row.style.padding = "8px 0";
+      row.style.borderBottom = "1px solid var(--divider)";
+      var kbd = document.createElement("kbd");
+      kbd.style.fontFamily = "var(--font-mono)";
+      kbd.style.fontSize = "12.5px";
+      kbd.style.padding = "3px 8px";
+      kbd.style.borderRadius = "var(--radius-sm)";
+      kbd.style.border = "1px solid var(--divider)";
+      kbd.style.background = "var(--bg-raised)";
+      kbd.textContent = s.key;
+      var desc = document.createElement("span");
+      desc.className = "text-secondary";
+      desc.style.fontSize = "13px";
+      desc.textContent = s.desc;
+      row.appendChild(desc);
+      row.appendChild(kbd);
+      body.appendChild(row);
+    });
+    var note = document.createElement("p");
+    note.className = "text-secondary";
+    note.style.fontSize = "12px";
+    note.style.marginTop = "12px";
+    note.style.marginBottom = "0";
+    note.textContent = "Shortcuts are ignored while typing in a field.";
+    body.appendChild(note);
+    modal.appendChild(body);
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    document.addEventListener("keydown", handleHelpEscape);
+  }
+
+  document.addEventListener("keydown", function (e) {
+    // Never hijack a real browser/OS shortcut, typing in a field, or input while the
+    // mobile nav drawer or this same help overlay is already open.
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (isTypingTarget(document.activeElement)) return;
+    if (document.getElementById("nav-overlay") || document.getElementById("shortcuts-help-overlay")) return;
+
+    if (e.key === "/") {
+      if (focusPrimarySearch()) e.preventDefault();
+    } else if (e.key === "n") {
+      if (clickPrimaryAddButton()) e.preventDefault();
+    } else if (e.key === "?") {
+      showShortcutsHelp();
+      e.preventDefault();
+    }
+  });
+
+  window.PCC.keyboardShortcuts = { showHelp: showShortcutsHelp };
 })();
 
 
@@ -9853,6 +10024,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     plannerFilter: "",
     typeFilter: "",
     yearFilter: "", // filters by start_date's year
+    // Daily-Use Audit Phase 2: live-syncs with the shared Global Project Context
+    // (Redesign Gate 6) — see render()'s own comment for why this isn't just a
+    // seed-once flag. Exposed as a dismissible banner rather than an 8th filter
+    // dropdown, since this page's filter row deliberately mirrors Portfolio's own
+    // attribute set (client/country/sector/etc, confirmed via AskUserQuestion at Tier
+    // 3) — a project-identity filter is a different kind of narrowing than those.
+    projectFilter: "",
+    lastSyncedContextId: undefined,
   };
 
   function projectMatchesFilters(p) {
@@ -10268,9 +10447,31 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     }
 
     var data = window.PCC.store.get();
-    var active = data.projects.filter(function (p) {
+    var allActive = data.projects.filter(function (p) {
       return !p.archived;
     });
+
+    // Live-sync, not seed-once: a plain "seed on first render" flag missed the very
+    // common case of the header's project switcher (or another page's own switcher)
+    // changing context AFTER this page's first render this session but BEFORE its next
+    // visit — the exact daily flow the audit flagged. Comparing against the last
+    // context value this page actually observed (undefined, not "", so the very first
+    // render always syncs) means a genuine context change anywhere in the app is picked
+    // up next time this page renders, while an explicit local "Show All Projects" stays
+    // put until the context actually changes again — it deliberately updates
+    // lastSyncedContextId too, see that button's own handler below.
+    var ctxProjectId = window.PCC.projectContext.get();
+    if (ctxProjectId !== uiState.lastSyncedContextId) {
+      uiState.lastSyncedContextId = ctxProjectId;
+      uiState.projectFilter = ctxProjectId && allActive.some(function (p) { return p.id === ctxProjectId; }) ? ctxProjectId : "";
+    }
+    if (uiState.projectFilter && !allActive.some(function (p) { return p.id === uiState.projectFilter; })) {
+      uiState.projectFilter = "";
+    }
+
+    var active = uiState.projectFilter
+      ? allActive.filter(function (p) { return p.id === uiState.projectFilter; })
+      : allActive;
     var filtered = active.filter(projectMatchesFilters);
 
     var wrap = document.createElement("div");
@@ -10292,6 +10493,27 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     wrap.appendChild(h1);
     wrap.appendChild(sub);
+
+    if (uiState.projectFilter) {
+      var focusBanner = document.createElement("div");
+      focusBanner.className = "toolbar no-print";
+      focusBanner.style.marginBottom = "12px";
+      var focusLabel = document.createElement("span");
+      var focusedProject = data.projects.find(function (p) { return p.id === uiState.projectFilter; });
+      focusLabel.textContent = "Focused on " + (focusedProject ? (focusedProject.name || "(unnamed project)") : "");
+      focusBanner.appendChild(focusLabel);
+      var showAllBtn = document.createElement("button");
+      showAllBtn.className = "btn btn--ghost";
+      showAllBtn.textContent = "Show All Projects";
+      showAllBtn.onclick = function () {
+        uiState.projectFilter = "";
+        uiState.lastSyncedContextId = "";
+        window.PCC.projectContext.set("");
+        rerender();
+      };
+      focusBanner.appendChild(showAllBtn);
+      wrap.appendChild(focusBanner);
+    }
 
     // PCC Evolution Roadmap, Tier 3 ("final polish"): Dashboard-level filtering. Same
     // filterSelect() pattern portfolio.js's own filter row already established \u2014 every
@@ -10484,6 +10706,15 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   // PCC Evolution Roadmap, Tier 3 ("final polish"): this used to be a hardcoded
   // constant — now reads data.settings.action_centre_upcoming_days (edited on the
   // Settings page), defaulting to the same 30 this constant always was.
+  // Daily-Use Audit Phase 2: live-syncs with the shared Global Project Context
+  // (Redesign Gate 6) — see dashboard.js's identical block for the full reasoning on
+  // why this compares against the last-observed context value rather than a one-time
+  // seed flag.
+  var uiState = {
+    projectFilter: "",
+    lastSyncedContextId: undefined,
+  };
+
   function upcomingWindowDays(data) {
     return data.settings.action_centre_upcoming_days == null ? 30 : data.settings.action_centre_upcoming_days;
   }
@@ -10724,14 +10955,29 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   function render(outlet) {
     var data = window.PCC.store.get();
     var buckets = buildBuckets(upcomingWindowDays(data));
-    var activeProjects = data.projects.filter(function (p) {
+    var allActiveProjects = data.projects.filter(function (p) {
       return !p.archived;
     });
-    var activeProjectIds = {};
     var projectsById = {};
+    allActiveProjects.forEach(function (p) {
+      projectsById[p.id] = p;
+    });
+
+    var ctxProjectId = window.PCC.projectContext.get();
+    if (ctxProjectId !== uiState.lastSyncedContextId) {
+      uiState.lastSyncedContextId = ctxProjectId;
+      uiState.projectFilter = ctxProjectId && allActiveProjects.some(function (p) { return p.id === ctxProjectId; }) ? ctxProjectId : "";
+    }
+    if (uiState.projectFilter && !allActiveProjects.some(function (p) { return p.id === uiState.projectFilter; })) {
+      uiState.projectFilter = "";
+    }
+
+    var activeProjects = uiState.projectFilter
+      ? allActiveProjects.filter(function (p) { return p.id === uiState.projectFilter; })
+      : allActiveProjects;
+    var activeProjectIds = {};
     activeProjects.forEach(function (p) {
       activeProjectIds[p.id] = true;
-      projectsById[p.id] = p;
     });
 
     var items = collectItems(data, activeProjectIds);
@@ -10749,10 +10995,39 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     sub.style.marginBottom = "20px";
     sub.textContent =
       items.length === 0
-        ? "Nothing outstanding across the active portfolio right now."
+        ? (uiState.projectFilter ? "Nothing outstanding for this project right now." : "Nothing outstanding across the active portfolio right now.")
         : "Meeting actions, RFI/TQ responses, document submissions, and pending Change Orders across " +
           activeProjects.length + " active project" + (activeProjects.length === 1 ? "" : "s") + ".";
     wrap.appendChild(sub);
+
+    if (allActiveProjects.length > 0) {
+      var toolbar = document.createElement("div");
+      toolbar.className = "toolbar no-print";
+      toolbar.style.marginBottom = "8px";
+      var projSelect = document.createElement("select");
+      var allOpt = document.createElement("option");
+      allOpt.value = "";
+      allOpt.textContent = "All Projects";
+      projSelect.appendChild(allOpt);
+      allActiveProjects
+        .slice()
+        .sort(function (a, b) { return (a.name || "").localeCompare(b.name || ""); })
+        .forEach(function (p) {
+          var opt = document.createElement("option");
+          opt.value = p.id;
+          opt.textContent = p.name || "(unnamed project)";
+          projSelect.appendChild(opt);
+        });
+      projSelect.value = uiState.projectFilter;
+      projSelect.onchange = function () {
+        uiState.projectFilter = projSelect.value;
+        uiState.lastSyncedContextId = projSelect.value;
+        window.PCC.projectContext.set(projSelect.value);
+        window.PCC.router.render();
+      };
+      toolbar.appendChild(projSelect);
+      wrap.appendChild(toolbar);
+    }
 
     if (items.length === 0) {
       var empty = document.createElement("div");
@@ -10842,6 +11117,18 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
   var WEEK_WINDOW_DAYS = 7;
   var RECENT_LIMIT = 5;
+
+  // Daily-Use Audit Phase 2: this page had no filter of any kind before — the shared
+  // Global Project Context (Redesign Gate 6) never reached it. Live-syncs with it
+  // (compares against the last context value this page actually observed, not a plain
+  // "seeded once ever" flag — see the schema/reasoning note in render() below) so a
+  // context change anywhere else in the app is picked up the next time this page
+  // renders, while a local "All Projects" override stays put until context genuinely
+  // changes again.
+  var uiState = {
+    projectFilter: "",
+    lastSyncedContextId: undefined,
+  };
 
   var WAITING_ON_LABELS = { vendor: "Vendor", client: "Client", consultant: "Consultant", management: "Management" };
 
@@ -11323,12 +11610,29 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
   function render(outlet) {
     var data = window.PCC.store.get();
-    var activeProjects = data.projects.filter(function (p) { return !p.archived; });
-    var activeProjectIds = {};
+    var allActiveProjects = data.projects.filter(function (p) { return !p.archived; });
     var projectsById = {};
+    allActiveProjects.forEach(function (p) {
+      projectsById[p.id] = p;
+    });
+
+    // See dashboard.js's identical block for the full reasoning on why this compares
+    // against the last-observed context value rather than a one-time seed flag.
+    var ctxProjectId = window.PCC.projectContext.get();
+    if (ctxProjectId !== uiState.lastSyncedContextId) {
+      uiState.lastSyncedContextId = ctxProjectId;
+      uiState.projectFilter = ctxProjectId && allActiveProjects.some(function (p) { return p.id === ctxProjectId; }) ? ctxProjectId : "";
+    }
+    if (uiState.projectFilter && !allActiveProjects.some(function (p) { return p.id === uiState.projectFilter; })) {
+      uiState.projectFilter = "";
+    }
+
+    var activeProjects = uiState.projectFilter
+      ? allActiveProjects.filter(function (p) { return p.id === uiState.projectFilter; })
+      : allActiveProjects;
+    var activeProjectIds = {};
     activeProjects.forEach(function (p) {
       activeProjectIds[p.id] = true;
-      projectsById[p.id] = p;
     });
 
     var wrap = document.createElement("div");
@@ -11342,8 +11646,39 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     sub.className = "text-secondary";
     sub.style.marginTop = "0";
     sub.style.marginBottom = "8px";
-    sub.textContent = "Your personal cockpit across " + activeProjects.length + " active project" + (activeProjects.length === 1 ? "" : "s") + ".";
+    sub.textContent = uiState.projectFilter
+      ? "Your personal cockpit for " + (projectsById[uiState.projectFilter].name || "(unnamed project)") + "."
+      : "Your personal cockpit across " + allActiveProjects.length + " active project" + (allActiveProjects.length === 1 ? "" : "s") + ".";
     wrap.appendChild(sub);
+
+    if (allActiveProjects.length > 0) {
+      var toolbar = document.createElement("div");
+      toolbar.className = "toolbar no-print";
+      toolbar.style.marginBottom = "8px";
+      var projSelect = document.createElement("select");
+      var allOpt = document.createElement("option");
+      allOpt.value = "";
+      allOpt.textContent = "All Projects";
+      projSelect.appendChild(allOpt);
+      allActiveProjects
+        .slice()
+        .sort(function (a, b) { return (a.name || "").localeCompare(b.name || ""); })
+        .forEach(function (p) {
+          var opt = document.createElement("option");
+          opt.value = p.id;
+          opt.textContent = p.name || "(unnamed project)";
+          projSelect.appendChild(opt);
+        });
+      projSelect.value = uiState.projectFilter;
+      projSelect.onchange = function () {
+        uiState.projectFilter = projSelect.value;
+        uiState.lastSyncedContextId = projSelect.value;
+        window.PCC.projectContext.set(projSelect.value);
+        window.PCC.router.render();
+      };
+      toolbar.appendChild(projSelect);
+      wrap.appendChild(toolbar);
+    }
 
     // ---- TODAY ----
     wrap.appendChild(sectionHeading("TODAY"));
@@ -11440,6 +11775,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
   var uiState = {
     windowDays: DEFAULT_WINDOW_DAYS,
+    // Daily-Use Audit Phase 2: live-syncs with the shared Global Project Context
+    // (Redesign Gate 6) — see dashboard.js's identical block for the full reasoning on
+    // why this compares against the last-observed context value rather than a one-time
+    // seed flag. This page's name implied per-project scoping it never actually had.
+    projectFilter: "",
+    lastSyncedContextId: undefined,
   };
 
   function todayIso() {
@@ -11668,14 +12009,29 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
   function render(outlet) {
     var data = window.PCC.store.get();
-    var activeProjects = data.projects.filter(function (p) {
+    var allActiveProjects = data.projects.filter(function (p) {
       return !p.archived;
     });
-    var activeProjectIds = {};
     var projectsById = {};
+    allActiveProjects.forEach(function (p) {
+      projectsById[p.id] = p;
+    });
+
+    var ctxProjectId = window.PCC.projectContext.get();
+    if (ctxProjectId !== uiState.lastSyncedContextId) {
+      uiState.lastSyncedContextId = ctxProjectId;
+      uiState.projectFilter = ctxProjectId && allActiveProjects.some(function (p) { return p.id === ctxProjectId; }) ? ctxProjectId : "";
+    }
+    if (uiState.projectFilter && !allActiveProjects.some(function (p) { return p.id === uiState.projectFilter; })) {
+      uiState.projectFilter = "";
+    }
+
+    var activeProjects = uiState.projectFilter
+      ? allActiveProjects.filter(function (p) { return p.id === uiState.projectFilter; })
+      : allActiveProjects;
+    var activeProjectIds = {};
     activeProjects.forEach(function (p) {
       activeProjectIds[p.id] = true;
-      projectsById[p.id] = p;
     });
 
     function rerender() {
@@ -11699,11 +12055,43 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     sub.className = "text-secondary";
     sub.style.marginTop = "0";
     sub.style.marginBottom = "16px";
-    sub.textContent =
-      "Schedule activities, milestones, meetings, RFI/TQ, and document submissions due in the next " +
-      uiState.windowDays + " day" + (uiState.windowDays === 1 ? "" : "s") +
-      " across " + activeProjects.length + " active project" + (activeProjects.length === 1 ? "" : "s") + ".";
+    sub.textContent = uiState.projectFilter
+      ? "Schedule activities, milestones, meetings, RFI/TQ, and document submissions due in the next " +
+        uiState.windowDays + " day" + (uiState.windowDays === 1 ? "" : "s") +
+        " for " + (projectsById[uiState.projectFilter].name || "(unnamed project)") + "."
+      : "Schedule activities, milestones, meetings, RFI/TQ, and document submissions due in the next " +
+        uiState.windowDays + " day" + (uiState.windowDays === 1 ? "" : "s") +
+        " across " + allActiveProjects.length + " active project" + (allActiveProjects.length === 1 ? "" : "s") + ".";
     wrap.appendChild(sub);
+
+    if (allActiveProjects.length > 0) {
+      var toolbar = document.createElement("div");
+      toolbar.className = "toolbar no-print";
+      toolbar.style.marginBottom = "8px";
+      var projSelect = document.createElement("select");
+      var allOpt = document.createElement("option");
+      allOpt.value = "";
+      allOpt.textContent = "All Projects";
+      projSelect.appendChild(allOpt);
+      allActiveProjects
+        .slice()
+        .sort(function (a, b) { return (a.name || "").localeCompare(b.name || ""); })
+        .forEach(function (p) {
+          var opt = document.createElement("option");
+          opt.value = p.id;
+          opt.textContent = p.name || "(unnamed project)";
+          projSelect.appendChild(opt);
+        });
+      projSelect.value = uiState.projectFilter;
+      projSelect.onchange = function () {
+        uiState.projectFilter = projSelect.value;
+        uiState.lastSyncedContextId = projSelect.value;
+        window.PCC.projectContext.set(projSelect.value);
+        rerender();
+      };
+      toolbar.appendChild(projSelect);
+      wrap.appendChild(toolbar);
+    }
 
     wrap.appendChild(windowToggle(rerender));
 
@@ -11719,7 +12107,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       var empty = document.createElement("p");
       empty.className = "text-secondary";
       empty.style.margin = "0";
-      empty.textContent = "Nothing scheduled, due, or required in the next " + uiState.windowDays + " days across the active portfolio.";
+      empty.textContent = "Nothing scheduled, due, or required in the next " + uiState.windowDays + " days" +
+        (uiState.projectFilter ? " for this project." : " across the active portfolio.");
       panel.appendChild(empty);
     } else {
       var list = document.createElement("div");
