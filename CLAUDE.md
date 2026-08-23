@@ -100,6 +100,16 @@ node --check src/js/whatever.js   # quick syntax check on a single file
   no dependency on this repo or Claude Code being present. Verify the zip actually works before sending it: extract it
   fresh (not the dev working copy) and open `index.html` in real Chromium — see the Testing
   conventions section above for why that matters here specifically.
+- **Any single file being handed to Aditya that exceeds the ~30MB file-transfer limit (the Windows
+  `.exe` installer is the recurring case, ~100-105MB) gets split, not skipped or routed through Git
+  LFS by default** — LFS's free tier is only 1GB storage + 1GB bandwidth/month, too small to spend
+  on routine, repeated builds. Standing method, don't ask first: `split -b 25M -d -a 2 "<file>"
+  "<file>.part"` (produces `.part00`, `.part01`, ...), verify the reassembled file's SHA-256 matches
+  the original *before* sending, send every part, and give Aditya both the exact Windows Command
+  Prompt reassembly command (`copy /b part00+part01+...+partNN "output.exe"`) and the expected
+  SHA-256 to verify against after reassembling. See `packaging/README.md`'s "Distributing a build"
+  section for the full worked example. Git LFS stays the documented fallback for the rare case this
+  doesn't fit (e.g. the file needs to live in git history directly), not the routine path.
 - If the branch backing an already-merged PR is reused for the next piece of work, restart it from
   the latest `main` first (`git fetch origin main && git reset --hard origin/main`, or rebase if
   there's already unmerged work sitting on the branch) rather than stacking new commits on old

@@ -1463,6 +1463,26 @@
     };
     bar.appendChild(calcBtn);
 
+    // Bug fix (Daily-Use Audit, Phase 1): a schedule-level version of the same
+    // staleness flag the Activity Detail Panel shows, so a planner can tell the
+    // critical path needs recalculating without opening any specific activity first.
+    // A separate element rather than changing calcBtn's own label/attributes — keeps
+    // the button itself a stable, predictable target (including for tests that find it
+    // by its text) while still surfacing the warning right next to it.
+    var currentScheduleForCalc = data.schedules.find(function (s) {
+      return s.id === uiState.scheduleId;
+    });
+    if (currentScheduleForCalc && isCpmStale(currentScheduleForCalc, data)) {
+      var staleNote = document.createElement("span");
+      staleNote.className = "text-secondary";
+      staleNote.style.color = "var(--status-at-risk)";
+      staleNote.style.fontSize = "12.5px";
+      staleNote.style.alignSelf = "center";
+      staleNote.title = "Activities, dates, or relationships have changed since the critical path was last calculated.";
+      staleNote.textContent = "⚠ Critical path out of date";
+      bar.appendChild(staleNote);
+    }
+
     var saveBaselineBtn = document.createElement("button");
     saveBaselineBtn.className = "btn btn--ghost";
     saveBaselineBtn.textContent = uiState.baselineSaving ? "Saving Baseline\u2026" : "Save Baseline";
@@ -1534,6 +1554,55 @@
       });
   }
 
+  /** Bug fix (Daily-Use Audit, Phase 1): the CRUD forms, Excel import, and the Excel
+   * grid editor can all change duration/dates/predecessors without ever re-running CPM
+   * (deliberately \u2014 recalculating on every keystroke would be its own real cost on a
+   * large schedule), but the Activity Detail Panel used to show the last-calculated
+   * float/critical-path numbers as if they were always current, with nothing telling a
+   * planner otherwise. Rather than chase down and flag every mutation call site (easy to
+   * miss one), this compares a cheap fingerprint of the CPM-relevant input fields against
+   * the fingerprint captured at the moment of the last successful "Calculate Schedule" \u2014
+   * if anything that would change the calculation has changed since, the numbers are
+   * stale, however they got that way. Not cryptographic, just change-detection. */
+  function cheapFingerprint(str) {
+    var hash = 0;
+    for (var i = 0; i < str.length; i++) {
+      hash = (hash * 31 + str.charCodeAt(i)) | 0;
+    }
+    return hash;
+  }
+
+  function cpmInputFingerprint(activities, relationships) {
+    var actPart = activities
+      .map(function (a) {
+        return [a.id, a.activity_type, a.duration, a.planned_start, a.planned_finish, a.actual_start, a.actual_finish, a.percent_complete, a.remaining_duration].join(":");
+      })
+      .sort()
+      .join("|");
+    var relPart = relationships
+      .map(function (r) {
+        return [r.predecessor_id, r.successor_id, r.type, r.lag].join(":");
+      })
+      .sort()
+      .join("|");
+    return cheapFingerprint(actPart + "##" + relPart);
+  }
+
+  /** True once anything CPM-relevant has changed since the schedule's own
+   * cpm_calculated_fingerprint was captured (or the schedule has never been calculated
+   * at all). Cheap \u2014 O(activities+relationships) for this one schedule, only computed
+   * where it's actually displayed, not on every render of every page. */
+  function isCpmStale(schedule, data) {
+    if (!schedule || schedule.cpm_calculated_fingerprint == null) return true;
+    var activities = data.activities.filter(function (a) {
+      return a.schedule_id === schedule.id;
+    });
+    var relationships = data.relationships.filter(function (r) {
+      return r.schedule_id === schedule.id;
+    });
+    return cpmInputFingerprint(activities, relationships) !== schedule.cpm_calculated_fingerprint;
+  }
+
   /** Runs the CPM engine over the current schedule's activities/relationships and
    * writes the results back onto each activity. Read-only fields per Gate 1's own
    * comment (early/late start/finish, float) \u2014 this is the only code path allowed to
@@ -1561,6 +1630,7 @@
       nearCriticalThresholdDays: schedule.near_critical_threshold_days,
       calculationMode: schedule.calculation_mode,
     });
+    var freshFingerprint = cpmInputFingerprint(scheduleActivities, scheduleRelationships);
 
     window.PCC.store.update(function (d) {
       d.activities.forEach(function (a) {
@@ -1581,6 +1651,10 @@
         a.is_out_of_sequence = r.is_out_of_sequence;
         a.updated_at = new Date().toISOString();
       });
+      var s = d.schedules.find(function (x) {
+        return x.id === uiState.scheduleId;
+      });
+      if (s) s.cpm_calculated_fingerprint = freshFingerprint;
     });
 
     var insufficientCount = Object.keys(result.results).filter(function (id) {
@@ -1731,6 +1805,10 @@
       grid.appendChild(buildActivityField(cfg, activity));
     });
     form.appendChild(grid);
+    // Bug fix (Daily-Use Audit, Phase 1): browser-level hint alongside the real
+    // validation in onsubmit below — negative duration doesn't make sense for CPM.
+    var durationFieldEl = grid.querySelector("#actfield-duration");
+    if (durationFieldEl) durationFieldEl.min = "0";
 
     if (!isNew) {
       var calcBox = document.createElement("div");
@@ -1748,12 +1826,26 @@
           activity.total_float <= 0
             ? "Critical (0 float)"
             : activity.total_float + " day(s) float";
+        // Bug fix (Daily-Use Audit, Phase 1): these numbers can silently go stale \u2014
+        // editing dates/duration/predecessors, importing Excel, or applying the Excel
+        // grid editor never re-runs CPM. Flag it plainly rather than showing a possibly-
+        // wrong critical path as if it were current. See isCpmStale()'s own comment.
+        var scheduleForStaleCheck = window.PCC.store.get().schedules.find(function (s) {
+          return s.id === activity.schedule_id;
+        });
+        var stale = isCpmStale(scheduleForStaleCheck, window.PCC.store.get());
         calcBox.innerHTML =
-          "<strong>Calculated (read-only)</strong> \u2014 " + floatLabel + "<br/>" +
+          (stale
+            ? "<strong style='color:var(--status-at-risk)'>Calculated (out of date)</strong> \u2014 changed since the last " +
+              "\u201cCalculate Schedule\u201d run; these numbers may no longer be correct. \u2014 "
+            : "<strong>Calculated (read-only)</strong> \u2014 ") + floatLabel + "<br/>" +
           "<span class='text-secondary' style='font-size:12px;'>" +
           "ES " + activity.early_start + " \u00b7 EF " + activity.early_finish + " \u00b7 " +
           "LS " + activity.late_start + " \u00b7 LF " + activity.late_finish + " \u00b7 " +
           "Free Float " + activity.free_float + " day(s)</span>";
+        if (stale) {
+          calcBox.style.borderColor = "var(--status-at-risk)";
+        }
       }
       form.appendChild(calcBox);
     }
@@ -1762,7 +1854,6 @@
     errorMsg.style.color = "var(--status-critical)";
     errorMsg.style.fontSize = "var(--text-sm)";
     errorMsg.style.display = "none";
-    errorMsg.textContent = "Activity name is required.";
     form.appendChild(errorMsg);
 
     var actions = document.createElement("div");
@@ -1792,6 +1883,16 @@
       e.preventDefault();
       var name = form.querySelector("#actfield-name").value.trim();
       if (!name) {
+        errorMsg.textContent = "Activity name is required.";
+        errorMsg.style.display = "block";
+        return;
+      }
+      // Bug fix (Daily-Use Audit, Phase 1): the Duration field had no floor at all — a
+      // negative value saved silently and corrupted CPM output downstream with nothing
+      // flagging it here, where it's actually easy to catch.
+      var durationEl = form.querySelector("#actfield-duration");
+      if (durationEl && durationEl.value !== "" && Number(durationEl.value) < 0) {
+        errorMsg.textContent = "Duration can't be negative.";
         errorMsg.style.display = "block";
         return;
       }
@@ -2653,6 +2754,34 @@
   // Relationships tab
   // ---------------------------------------------------------------------------------
 
+  /** Bug fix (Daily-Use Audit, Phase 1): true if adding predecessor_id -> successor_id
+   * would close a cycle given the schedule's other existing relationships — i.e.
+   * successor_id can already reach predecessor_id by following existing predecessor ->
+   * successor edges forward. Previously a manually-built cycle was only ever caught
+   * later, silently, when "Calculate Schedule" ran (the cyclic activities just get
+   * dropped from the result — see runCalculation()'s own comment) — nothing stopped a
+   * planner from creating one by hand in the first place. */
+  function wouldCreateRelationshipCycle(predId, succId, existingRelationships) {
+    if (predId === succId) return true;
+    var adjacency = {};
+    existingRelationships.forEach(function (r) {
+      if (!adjacency[r.predecessor_id]) adjacency[r.predecessor_id] = [];
+      adjacency[r.predecessor_id].push(r.successor_id);
+    });
+    var visited = {};
+    var queue = [succId];
+    while (queue.length) {
+      var current = queue.shift();
+      if (current === predId) return true;
+      if (visited[current]) continue;
+      visited[current] = true;
+      (adjacency[current] || []).forEach(function (next) {
+        if (!visited[next]) queue.push(next);
+      });
+    }
+    return false;
+  }
+
   function renderRelationshipForm(container, relationship, activities, rerender) {
     var isNew = uiState.editingRelationshipId === "new";
     var panel = document.createElement("div");
@@ -2743,7 +2872,6 @@
     errorMsg.style.color = "var(--status-critical)";
     errorMsg.style.fontSize = "var(--text-sm)";
     errorMsg.style.display = "none";
-    errorMsg.textContent = "Predecessor and successor must be different activities.";
     form.appendChild(errorMsg);
 
     var actions = document.createElement("div");
@@ -2772,6 +2900,15 @@
     form.onsubmit = function (e) {
       e.preventDefault();
       if (predSelect.value === succSelect.value) {
+        errorMsg.textContent = "Predecessor and successor must be different activities.";
+        errorMsg.style.display = "block";
+        return;
+      }
+      var otherRelationshipsThisSchedule = window.PCC.store.get().relationships.filter(function (r) {
+        return r.schedule_id === uiState.scheduleId && r.id !== relationship.id;
+      });
+      if (wouldCreateRelationshipCycle(predSelect.value, succSelect.value, otherRelationshipsThisSchedule)) {
+        errorMsg.textContent = "This would create a circular dependency (the successor already leads back to the predecessor through other relationships) — CPM can't calculate a schedule with a loop in it.";
         errorMsg.style.display = "block";
         return;
       }
@@ -3038,12 +3175,28 @@
 
     var search = document.createElement("input");
     search.type = "text";
+    search.id = "gantt-search-input";
     search.placeholder = "Search ID, name, WBS, contractor, discipline…";
     search.value = uiState.ganttFilter.search;
     search.style.minWidth = "220px";
+    // Bug fix (Daily-Use Audit, Phase 1): rerender() here rebuilds the whole Gantt tab
+    // (toolbar, detail panel, and the full SVG chart via computeLayout()) — unlike the
+    // Activities tab's own search, which deliberately calls a lighter list-only
+    // render specifically to keep the input focused while typing (see that field's own
+    // comment above). Splitting the Gantt tab's render the same way would mean a much
+    // larger restructure of computeLayout()/the chart-building code below; simpler and
+    // just as effective to let the full rerender happen and then restore focus/caret
+    // position on the freshly-built input, via the stable id above — same end result
+    // (typing multiple characters actually works) without touching the chart pipeline.
     search.oninput = function () {
+      var caretPos = search.selectionStart;
       uiState.ganttFilter.search = search.value;
       rerender();
+      var freshSearch = document.getElementById("gantt-search-input");
+      if (freshSearch) {
+        freshSearch.focus();
+        freshSearch.setSelectionRange(caretPos, caretPos);
+      }
     };
     bar.appendChild(search);
 

@@ -36,6 +36,23 @@
     window.PCC.layout.mount();
     router.render();
 
+    // Bug fix (Daily-Use Audit, Phase 1): warn before closing/reloading the tab while an
+    // Add/Edit form is open and not yet submitted. Every register module across this app
+    // (confirmed across risks/rfis/changeOrders/schedule/etc.) only ever renders a real
+    // <form> element for exactly that purpose, so its mere presence in the outlet is
+    // already a reliable signal — no need to thread a "dirty" flag through the ~20
+    // modules that each have their own separate editingId-style state. Can't (from here)
+    // tell whether any field was actually changed, so a blank untouched form still
+    // warns — but losing a form the user opened is exactly the case this app had zero
+    // protection against before.
+    window.addEventListener("beforeunload", function (e) {
+      var outlet = document.getElementById("page-outlet");
+      if (outlet && outlet.querySelector("form")) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    });
+
     // One-time, best-effort: moves any blobs from before this migration existed out of
     // the primary JSON and into IndexedDB, shrinking what autosave has to write from
     // here on. Deliberately not awaited before mount()/render() — the app is fully

@@ -165,8 +165,20 @@
     errorMsg.style.color = "var(--status-critical)";
     errorMsg.style.fontSize = "13px";
     errorMsg.style.display = "none";
-    errorMsg.textContent = "Project and Date are required.";
     form.appendChild(errorMsg);
+
+    // Bug fix (Daily-Use Audit, Phase 1): this page's own subtitle claims "one entry per
+    // project per day," but nothing enforced it — an accidental double-click on "+ Add
+    // Daily Log" silently created two. Scoped to a local variable (not uiState) so it
+    // only ever applies to this one open form instance and resets automatically the
+    // next time the form is opened fresh — no state to remember to clear elsewhere.
+    var duplicateWarningAcknowledged = false;
+    function resetDuplicateWarning() {
+      duplicateWarningAcknowledged = false;
+    }
+    projSelect.addEventListener("change", resetDuplicateWarning);
+    var dateFieldEl = form.querySelector("#dlfield-log_date");
+    if (dateFieldEl) dateFieldEl.addEventListener("change", resetDuplicateWarning);
 
     var actions = document.createElement("div");
     actions.style.display = "flex";
@@ -198,8 +210,25 @@
       values.project_id = projSelect.value;
       values.activity_id = activitySelect.value;
       if (!values.project_id || !values.log_date) {
+        errorMsg.textContent = "Project and Date are required.";
+        errorMsg.style.color = "var(--status-critical)";
         errorMsg.style.display = "block";
         return;
+      }
+
+      if (isNew && !duplicateWarningAcknowledged) {
+        var duplicate = window.PCC.store.get().daily_logs.find(function (d) {
+          return d.project_id === values.project_id && d.log_date === values.log_date;
+        });
+        if (duplicate) {
+          errorMsg.textContent =
+            "A daily log already exists for this project on " + values.log_date +
+            ". Click “" + saveBtn.textContent + "” again to add another entry anyway.";
+          errorMsg.style.color = "var(--status-at-risk)";
+          errorMsg.style.display = "block";
+          duplicateWarningAcknowledged = true;
+          return;
+        }
       }
       errorMsg.style.display = "none";
 

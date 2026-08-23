@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 54;
+  var SCHEMA_VERSION = 55;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -1117,6 +1117,11 @@
       near_critical_threshold_days: 5,
       // Gate 21: see CALCULATION_MODES above for what this controls.
       calculation_mode: "progress_override",
+      // Daily-Use Audit Phase 1 (schema 54->55): a fingerprint of this schedule's own
+      // CPM-relevant activity/relationship fields at the moment "Calculate Schedule"
+      // last ran successfully — see schedule.js's isCpmStale()/cpmInputFingerprint().
+      // null means "never calculated," which correctly reads as stale.
+      cpm_calculated_fingerprint: null,
       created_at: now,
       updated_at: now,
     };
@@ -2604,11 +2609,24 @@
       loaded.schema_version = 54;
     }
 
+    if (loaded.schema_version < 55) {
+      // Daily-Use Audit Phase 1: new cpm_calculated_fingerprint field (see
+      // newSchedule()'s own comment). undefined on every existing schedule reads as
+      // "never calculated" — correctly stale until the next real "Calculate Schedule",
+      // since there's no way to know from here whether an old schedule's stored
+      // float/critical-path values still match its current activities.
+      (loaded.schedules || []).forEach(function (s) {
+        if (s.cpm_calculated_fingerprint === undefined) s.cpm_calculated_fingerprint = null;
+      });
+      loaded.schema_version = 55;
+    }
+
     return loaded;
   }
 
   var data = null;
   var listeners = [];
+  var persistListeners = [];
   var saveTimer = null;
   var corruptionRecovery = null; // { key, timestamp } set once, only if load() hits unparseable JSON
 
@@ -2624,11 +2642,29 @@
     });
   }
 
+  // Bug fix (Daily-Use Audit, Phase 1): separate from notifyListeners() above, which
+  // fires synchronously the instant data changes — layout.js used to update the
+  // footer's "SAVED · <time>" label straight off that signal, so it could claim data
+  // was saved up to 250ms before persistToLocalStorage() (debounced below) actually
+  // ran. This fires only once the real write has been attempted, so a listener can
+  // show an accurate "Saving…" -> "SAVED" transition instead.
+  function notifyPersistListeners(ok) {
+    persistListeners.forEach(function (fn) {
+      try {
+        fn(data, ok);
+      } catch (e) {
+        console.error("PCC store onPersisted listener error", e);
+      }
+    });
+  }
+
   function persistToLocalStorage() {
+    var ok = true;
     try {
       window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
       data.meta.last_saved_at = new Date().toISOString();
     } catch (e) {
+      ok = false;
       console.error("Could not save to browser storage", e);
       if (window.PCC.notify) {
         window.PCC.notify(
@@ -2637,6 +2673,7 @@
         );
       }
     }
+    notifyPersistListeners(ok);
   }
 
   function scheduleSave() {
@@ -2681,6 +2718,12 @@
 
   function onChange(fn) {
     listeners.push(fn);
+  }
+
+  /** See notifyPersistListeners()'s own comment — fires once the debounced write has
+   * actually been attempted, not the instant data changes. fn receives (data, ok). */
+  function onPersisted(fn) {
+    persistListeners.push(fn);
   }
 
   /** Mutate data via a callback, then autosave + notify. */
@@ -2887,6 +2930,7 @@
     get: get,
     update: update,
     onChange: onChange,
+    onPersisted: onPersisted,
     exportToFile: exportToFile,
     migrateLegacyInlineBlobsToIndexedDb: migrateLegacyInlineBlobsToIndexedDb,
     getCorruptionRecovery: getCorruptionRecovery,

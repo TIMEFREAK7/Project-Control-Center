@@ -325,7 +325,12 @@
             return r.id === rfi.id;
           });
           if (existing) {
-            var wasAnswered = existing.status !== "answered" && existing.status !== "closed" && values.status === "answered";
+            // Bug fix (Daily-Use Audit, Phase 1): this used to only fire on an explicit
+            // ...->"answered" transition, so an RFI answered verbally and closed directly
+            // (a very normal flow) never got date_answered recorded at all, with no way
+            // to backfill it afterward. "closed" implies it was answered too.
+            var wasAnswered = existing.status !== "answered" && existing.status !== "closed" &&
+              (values.status === "answered" || values.status === "closed");
             Object.assign(existing, values);
             if (wasAnswered && !existing.date_answered) existing.date_answered = today();
             existing.updated_at = new Date().toISOString();

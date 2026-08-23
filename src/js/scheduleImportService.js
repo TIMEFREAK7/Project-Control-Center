@@ -223,6 +223,13 @@
       var duration = parseNumber(rec.duration);
       if (!duration.valid) {
         warnings.push({ row: lineNo, message: 'Unreadable Duration "' + rec.duration + '" \u2014 left blank.' });
+      } else if (duration.value != null && duration.value < 0) {
+        // Bug fix (Daily-Use Audit, Phase 1): a negative duration doesn't make sense for
+        // CPM and would corrupt calculation output downstream \u2014 same "questionable data
+        // gets a warning and is left blank rather than silently imported" treatment as
+        // an unreadable value above, not a hard import failure.
+        warnings.push({ row: lineNo, message: "Negative Duration (" + duration.value + ") \u2014 left blank." });
+        duration = { value: null, valid: true };
       }
       var pctComplete = parseNumber(rec.percent_complete);
       if (!pctComplete.valid) {

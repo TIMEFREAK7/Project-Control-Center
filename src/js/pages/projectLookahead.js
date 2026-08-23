@@ -110,7 +110,6 @@
             return function () {
               window.PCC.schedule.viewActivity(pId, schedId, actId);
               window.PCC.router.go("schedule");
-              window.PCC.router.render();
             };
           })(projectId, schedule.id, a.id),
         });
@@ -131,7 +130,6 @@
             return function () {
               window.PCC.meetings.expandMeeting(id);
               window.PCC.router.go("meetings");
-              window.PCC.router.render();
             };
           })(m.id),
         });
@@ -150,7 +148,6 @@
             return function () {
               window.PCC.meetings.expandMeeting(id);
               window.PCC.router.go("meetings");
-              window.PCC.router.render();
             };
           })(m.id),
         });
@@ -172,7 +169,6 @@
           return function () {
             window.PCC.rfis.expandRfi(id);
             window.PCC.router.go("rfis");
-            window.PCC.router.render();
           };
         })(r.id),
       });
@@ -205,7 +201,6 @@
           return function () {
             window.PCC.portfolio.viewProject(pId);
             window.PCC.router.go("portfolio");
-            window.PCC.router.render();
           };
         })(req.project_id),
       });

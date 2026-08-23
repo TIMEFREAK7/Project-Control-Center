@@ -84,7 +84,6 @@
     btn.onclick = function () {
       window.PCC.schedule.viewActivity(activity.project_id, activity.schedule_id, activity.id);
       window.PCC.router.go("schedule");
-      window.PCC.router.render();
     };
     return btn;
   }

@@ -2936,6 +2936,13 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       var duration = parseNumber(rec.duration);
       if (!duration.valid) {
         warnings.push({ row: lineNo, message: 'Unreadable Duration "' + rec.duration + '" \u2014 left blank.' });
+      } else if (duration.value != null && duration.value < 0) {
+        // Bug fix (Daily-Use Audit, Phase 1): a negative duration doesn't make sense for
+        // CPM and would corrupt calculation output downstream \u2014 same "questionable data
+        // gets a warning and is left blank rather than silently imported" treatment as
+        // an unreadable value above, not a hard import failure.
+        warnings.push({ row: lineNo, message: "Negative Duration (" + duration.value + ") \u2014 left blank." });
+        duration = { value: null, valid: true };
       }
       var pctComplete = parseNumber(rec.percent_complete);
       if (!pctComplete.valid) {
@@ -5120,7 +5127,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 54;
+  var SCHEMA_VERSION = 55;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -6228,6 +6235,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       near_critical_threshold_days: 5,
       // Gate 21: see CALCULATION_MODES above for what this controls.
       calculation_mode: "progress_override",
+      // Daily-Use Audit Phase 1 (schema 54->55): a fingerprint of this schedule's own
+      // CPM-relevant activity/relationship fields at the moment "Calculate Schedule"
+      // last ran successfully — see schedule.js's isCpmStale()/cpmInputFingerprint().
+      // null means "never calculated," which correctly reads as stale.
+      cpm_calculated_fingerprint: null,
       created_at: now,
       updated_at: now,
     };
@@ -7715,11 +7727,24 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       loaded.schema_version = 54;
     }
 
+    if (loaded.schema_version < 55) {
+      // Daily-Use Audit Phase 1: new cpm_calculated_fingerprint field (see
+      // newSchedule()'s own comment). undefined on every existing schedule reads as
+      // "never calculated" — correctly stale until the next real "Calculate Schedule",
+      // since there's no way to know from here whether an old schedule's stored
+      // float/critical-path values still match its current activities.
+      (loaded.schedules || []).forEach(function (s) {
+        if (s.cpm_calculated_fingerprint === undefined) s.cpm_calculated_fingerprint = null;
+      });
+      loaded.schema_version = 55;
+    }
+
     return loaded;
   }
 
   var data = null;
   var listeners = [];
+  var persistListeners = [];
   var saveTimer = null;
   var corruptionRecovery = null; // { key, timestamp } set once, only if load() hits unparseable JSON
 
@@ -7735,11 +7760,29 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     });
   }
 
+  // Bug fix (Daily-Use Audit, Phase 1): separate from notifyListeners() above, which
+  // fires synchronously the instant data changes — layout.js used to update the
+  // footer's "SAVED · <time>" label straight off that signal, so it could claim data
+  // was saved up to 250ms before persistToLocalStorage() (debounced below) actually
+  // ran. This fires only once the real write has been attempted, so a listener can
+  // show an accurate "Saving…" -> "SAVED" transition instead.
+  function notifyPersistListeners(ok) {
+    persistListeners.forEach(function (fn) {
+      try {
+        fn(data, ok);
+      } catch (e) {
+        console.error("PCC store onPersisted listener error", e);
+      }
+    });
+  }
+
   function persistToLocalStorage() {
+    var ok = true;
     try {
       window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
       data.meta.last_saved_at = new Date().toISOString();
     } catch (e) {
+      ok = false;
       console.error("Could not save to browser storage", e);
       if (window.PCC.notify) {
         window.PCC.notify(
@@ -7748,6 +7791,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         );
       }
     }
+    notifyPersistListeners(ok);
   }
 
   function scheduleSave() {
@@ -7792,6 +7836,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
   function onChange(fn) {
     listeners.push(fn);
+  }
+
+  /** See notifyPersistListeners()'s own comment — fires once the debounced write has
+   * actually been attempted, not the instant data changes. fn receives (data, ok). */
+  function onPersisted(fn) {
+    persistListeners.push(fn);
   }
 
   /** Mutate data via a callback, then autosave + notify. */
@@ -7998,6 +8048,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     get: get,
     update: update,
     onChange: onChange,
+    onPersisted: onPersisted,
     exportToFile: exportToFile,
     migrateLegacyInlineBlobsToIndexedDb: migrateLegacyInlineBlobsToIndexedDb,
     getCorruptionRecovery: getCorruptionRecovery,
@@ -8220,11 +8271,36 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     renderFn(outlet);
   }
 
+  // Bug fix (Daily-Use Audit, Phase 1): go() used to just set location.hash, relying on the
+  // async "hashchange" listener below to actually render — but nearly every call site also
+  // called render() explicitly right after go(), for instant feedback instead of waiting on
+  // the event. That meant every navigation rendered the destination page TWICE: once from the
+  // call site's explicit render(), once again moments later when hashchange fired. go() now
+  // renders synchronously itself (so every call site gets the same instant feedback, including
+  // the ones that previously relied on the async event alone) and arms a flag so the hashchange
+  // this same navigation triggers doesn't render a second time. Manual hash edits and real
+  // browser back/forward navigation never go through go(), so they still render via the
+  // listener exactly as before.
+  var suppressNextHashRender = false;
+
   function go(name) {
-    window.location.hash = "#/" + name;
+    var target = "#/" + name;
+    if (window.location.hash === target) {
+      render();
+      return;
+    }
+    suppressNextHashRender = true;
+    window.location.hash = target;
+    render();
   }
 
-  window.addEventListener("hashchange", render);
+  window.addEventListener("hashchange", function () {
+    if (suppressNextHashRender) {
+      suppressNextHashRender = false;
+      return;
+    }
+    render();
+  });
 
   window.PCC.router = {
     register: register,
@@ -9115,13 +9191,24 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     refreshBackupNudge();
     window.setInterval(refreshBackupNudge, 60 * 60 * 1000);
 
+    // Bug fix (Daily-Use Audit, Phase 1): the "SAVED" label used to update right here,
+    // synchronously the instant data changed \u2014 but the real localStorage write is
+    // debounced 250ms (see store.js's scheduleSave()), so it could claim data was saved
+    // before it actually had been. Show "Saving\u2026" immediately (still accurate \u2014 a write
+    // really is pending), and only claim "SAVED" once store.onPersisted() confirms the
+    // debounced write actually ran.
     window.PCC.store.onChange(function () {
       var status = document.getElementById("footer-save-status");
-      if (status) status.textContent = "SAVED \u00b7 " + new Date().toLocaleTimeString();
+      if (status) status.textContent = "Saving\u2026";
       var companyEl = document.getElementById("title-block-company");
       if (companyEl) companyEl.textContent = window.PCC.store.get().settings.company_name || "\u2014";
       var projectSelect = document.getElementById("title-block-project-select");
       if (projectSelect) populateProjectContextSelect(projectSelect);
+    });
+
+    window.PCC.store.onPersisted(function (data, ok) {
+      var status = document.getElementById("footer-save-status");
+      if (status) status.textContent = ok ? "SAVED \u00b7 " + new Date().toLocaleTimeString() : "NOT SAVED \u2014 see notification";
     });
   }
 
@@ -9957,7 +10044,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         "<span class='card-stat__value'" + valueStyle + ">" + stat.value + "</span>";
       chip.onclick = function () {
         window.PCC.router.go(stat.route);
-        window.PCC.router.render();
       };
       row.appendChild(chip);
     });
@@ -10042,7 +10128,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         return function () {
           window.PCC.executiveCenter.viewProject(projectId);
           window.PCC.router.go("executiveCenter");
-          window.PCC.router.render();
         };
       })(g.project.id);
       groupHeader.appendChild(viewBtn);
@@ -10164,7 +10249,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         viewBtn.onclick = function () {
           window.PCC.portfolio.viewProject(project.id);
           window.PCC.router.go("portfolio");
-          window.PCC.router.render();
         };
         right.appendChild(viewBtn);
       }
@@ -10471,7 +10555,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           view: function () {
             window.PCC.meetings.expandMeeting(m.id);
             window.PCC.router.go("meetings");
-            window.PCC.router.render();
           },
         });
       });
@@ -10492,7 +10575,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         view: function () {
           window.PCC.rfis.expandRfi(r.id);
           window.PCC.router.go("rfis");
-          window.PCC.router.render();
         },
       });
     });
@@ -10524,7 +10606,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         view: function () {
           window.PCC.portfolio.viewProject(req.project_id);
           window.PCC.router.go("portfolio");
-          window.PCC.router.render();
         },
       });
     });
@@ -10542,7 +10623,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         view: function () {
           window.PCC.changeOrders.expandChangeOrder(co.id);
           window.PCC.router.go("changeOrders");
-          window.PCC.router.render();
         },
       });
     });
@@ -10797,7 +10877,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           view: function () {
             window.PCC.meetings.expandMeeting(m.id);
             window.PCC.router.go("meetings");
-            window.PCC.router.render();
           },
         });
       });
@@ -10813,7 +10892,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         view: function () {
           window.PCC.rfis.expandRfi(r.id);
           window.PCC.router.go("rfis");
-          window.PCC.router.render();
         },
       });
     });
@@ -10838,7 +10916,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           view: function () {
             window.PCC.meetings.expandMeeting(m.id);
             window.PCC.router.go("meetings");
-            window.PCC.router.render();
           },
         };
       });
@@ -10857,7 +10934,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         view: function () {
           window.PCC.changeOrders.expandChangeOrder(co.id);
           window.PCC.router.go("changeOrders");
-          window.PCC.router.render();
         },
       });
     });
@@ -10872,7 +10948,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         view: function () {
           window.PCC.decisionRegister.expandDecision(d.id);
           window.PCC.router.go("decisionRegister");
-          window.PCC.router.render();
         },
       });
     });
@@ -10903,7 +10978,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         view: function () {
           window.PCC.schedule.viewActivity(a.project_id, a.schedule_id, a.id);
           window.PCC.router.go("schedule");
-          window.PCC.router.render();
         },
       });
     });
@@ -10930,7 +11004,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           view: function () {
             window.PCC.meetings.expandMeeting(m.id);
             window.PCC.router.go("meetings");
-            window.PCC.router.render();
           },
         };
       });
@@ -10962,7 +11035,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         view: function () {
           window.PCC.schedule.viewActivity(a.project_id, a.schedule_id, a.id);
           window.PCC.router.go("schedule");
-          window.PCC.router.render();
         },
       });
     });
@@ -10989,7 +11061,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         view: function () {
           window.PCC.vendors.openProfile(v.id);
           window.PCC.router.go("vendors");
-          window.PCC.router.render();
         },
       });
     });
@@ -11031,7 +11102,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         view: function () {
           window.PCC.executiveCenter.viewProject(p.id, "weeklyReviews");
           window.PCC.router.go("executiveCenter");
-          window.PCC.router.render();
         },
       });
     });
@@ -11059,7 +11129,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         view: function () {
           window.PCC.rfis.expandRfi(r.id);
           window.PCC.router.go("rfis");
-          window.PCC.router.render();
         },
       });
     });
@@ -11073,7 +11142,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         view: function () {
           window.PCC.changeOrders.expandChangeOrder(co.id);
           window.PCC.router.go("changeOrders");
-          window.PCC.router.render();
         },
       });
     });
@@ -11087,7 +11155,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         view: function () {
           window.PCC.decisionRegister.expandDecision(d.id);
           window.PCC.router.go("decisionRegister");
-          window.PCC.router.render();
         },
       });
     });
@@ -11116,7 +11183,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           view: function () {
             window.PCC.executiveCenter.viewProject(p.id);
             window.PCC.router.go("executiveCenter");
-            window.PCC.router.render();
           },
         };
       }),
@@ -11129,7 +11195,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           view: function () {
             window.PCC.schedule.viewActivity(a.project_id, a.schedule_id, a.id);
             window.PCC.router.go("schedule");
-            window.PCC.router.render();
           },
         };
       }),
@@ -11142,7 +11207,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           view: function () {
             window.PCC.rfis.expandRfi(r.id);
             window.PCC.router.go("rfis");
-            window.PCC.router.render();
           },
         };
       }),
@@ -11155,7 +11219,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           view: function () {
             window.PCC.risks.expandRisk(r.id);
             window.PCC.router.go("risks");
-            window.PCC.router.render();
           },
         };
       }),
@@ -11168,7 +11231,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           view: function () {
             window.PCC.meetings.expandMeeting(m.id);
             window.PCC.router.go("meetings");
-            window.PCC.router.render();
           },
         };
       }),
@@ -11450,7 +11512,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
             return function () {
               window.PCC.schedule.viewActivity(pId, schedId, actId);
               window.PCC.router.go("schedule");
-              window.PCC.router.render();
             };
           })(projectId, schedule.id, a.id),
         });
@@ -11471,7 +11532,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
             return function () {
               window.PCC.meetings.expandMeeting(id);
               window.PCC.router.go("meetings");
-              window.PCC.router.render();
             };
           })(m.id),
         });
@@ -11490,7 +11550,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
             return function () {
               window.PCC.meetings.expandMeeting(id);
               window.PCC.router.go("meetings");
-              window.PCC.router.render();
             };
           })(m.id),
         });
@@ -11512,7 +11571,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           return function () {
             window.PCC.rfis.expandRfi(id);
             window.PCC.router.go("rfis");
-            window.PCC.router.render();
           };
         })(r.id),
       });
@@ -11545,7 +11603,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           return function () {
             window.PCC.portfolio.viewProject(pId);
             window.PCC.router.go("portfolio");
-            window.PCC.router.render();
           };
         })(req.project_id),
       });
@@ -20253,7 +20310,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       openBtn.textContent = "View Meeting";
       openBtn.onclick = function () {
         window.PCC.router.go("meetings");
-        window.PCC.router.render();
         if (window.PCC.meetings) window.PCC.meetings.expandMeeting(m.id);
         window.PCC.router.render();
       };
@@ -20379,7 +20435,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       openBtn.textContent = "View RFI / TQ";
       openBtn.onclick = function () {
         window.PCC.router.go("rfis");
-        window.PCC.router.render();
         if (window.PCC.rfis) window.PCC.rfis.expandRfi(r.id);
         window.PCC.router.render();
       };
@@ -20484,7 +20539,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       openBtn.textContent = "View Risk";
       openBtn.onclick = function () {
         window.PCC.router.go("risks");
-        window.PCC.router.render();
         if (window.PCC.risks) window.PCC.risks.expandRisk(r.id);
         window.PCC.router.render();
       };
@@ -20951,7 +21005,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
             return function () {
               window.PCC.schedule.viewActivity(projectId, scheduleId, activityId);
               window.PCC.router.go("schedule");
-              window.PCC.router.render();
             };
           })(a.project_id, a.schedule_id, a.id);
           card.appendChild(viewBtn);
@@ -21270,7 +21323,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         row.onclick = function () {
           window.PCC.vendors.openProfile(s.vendor.id, "performance");
           window.PCC.router.go("vendors");
-          window.PCC.router.render();
         };
 
         var icon = document.createElement("span");
@@ -21321,7 +21373,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         row.onclick = function () {
           window.PCC.vendors.openProfile(s.vendor.id, "performance");
           window.PCC.router.go("vendors");
-          window.PCC.router.render();
         };
 
         var icon = document.createElement("span");
@@ -23852,7 +23903,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         onClick = function () {
           window.PCC.portfolio.viewProject(project.id);
           window.PCC.router.go("portfolio");
-          window.PCC.router.render();
         };
       }
       projectList.appendChild(renderComplianceRow(project ? project.name || "(unnamed project)" : "(deleted project)", g, onClick));
@@ -24055,8 +24105,20 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     errorMsg.style.color = "var(--status-critical)";
     errorMsg.style.fontSize = "13px";
     errorMsg.style.display = "none";
-    errorMsg.textContent = "Project and Date are required.";
     form.appendChild(errorMsg);
+
+    // Bug fix (Daily-Use Audit, Phase 1): this page's own subtitle claims "one entry per
+    // project per day," but nothing enforced it — an accidental double-click on "+ Add
+    // Daily Log" silently created two. Scoped to a local variable (not uiState) so it
+    // only ever applies to this one open form instance and resets automatically the
+    // next time the form is opened fresh — no state to remember to clear elsewhere.
+    var duplicateWarningAcknowledged = false;
+    function resetDuplicateWarning() {
+      duplicateWarningAcknowledged = false;
+    }
+    projSelect.addEventListener("change", resetDuplicateWarning);
+    var dateFieldEl = form.querySelector("#dlfield-log_date");
+    if (dateFieldEl) dateFieldEl.addEventListener("change", resetDuplicateWarning);
 
     var actions = document.createElement("div");
     actions.style.display = "flex";
@@ -24088,8 +24150,25 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       values.project_id = projSelect.value;
       values.activity_id = activitySelect.value;
       if (!values.project_id || !values.log_date) {
+        errorMsg.textContent = "Project and Date are required.";
+        errorMsg.style.color = "var(--status-critical)";
         errorMsg.style.display = "block";
         return;
+      }
+
+      if (isNew && !duplicateWarningAcknowledged) {
+        var duplicate = window.PCC.store.get().daily_logs.find(function (d) {
+          return d.project_id === values.project_id && d.log_date === values.log_date;
+        });
+        if (duplicate) {
+          errorMsg.textContent =
+            "A daily log already exists for this project on " + values.log_date +
+            ". Click “" + saveBtn.textContent + "” again to add another entry anyway.";
+          errorMsg.style.color = "var(--status-at-risk)";
+          errorMsg.style.display = "block";
+          duplicateWarningAcknowledged = true;
+          return;
+        }
       }
       errorMsg.style.display = "none";
 
@@ -26132,6 +26211,26 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     };
     bar.appendChild(calcBtn);
 
+    // Bug fix (Daily-Use Audit, Phase 1): a schedule-level version of the same
+    // staleness flag the Activity Detail Panel shows, so a planner can tell the
+    // critical path needs recalculating without opening any specific activity first.
+    // A separate element rather than changing calcBtn's own label/attributes — keeps
+    // the button itself a stable, predictable target (including for tests that find it
+    // by its text) while still surfacing the warning right next to it.
+    var currentScheduleForCalc = data.schedules.find(function (s) {
+      return s.id === uiState.scheduleId;
+    });
+    if (currentScheduleForCalc && isCpmStale(currentScheduleForCalc, data)) {
+      var staleNote = document.createElement("span");
+      staleNote.className = "text-secondary";
+      staleNote.style.color = "var(--status-at-risk)";
+      staleNote.style.fontSize = "12.5px";
+      staleNote.style.alignSelf = "center";
+      staleNote.title = "Activities, dates, or relationships have changed since the critical path was last calculated.";
+      staleNote.textContent = "⚠ Critical path out of date";
+      bar.appendChild(staleNote);
+    }
+
     var saveBaselineBtn = document.createElement("button");
     saveBaselineBtn.className = "btn btn--ghost";
     saveBaselineBtn.textContent = uiState.baselineSaving ? "Saving Baseline\u2026" : "Save Baseline";
@@ -26203,6 +26302,55 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       });
   }
 
+  /** Bug fix (Daily-Use Audit, Phase 1): the CRUD forms, Excel import, and the Excel
+   * grid editor can all change duration/dates/predecessors without ever re-running CPM
+   * (deliberately \u2014 recalculating on every keystroke would be its own real cost on a
+   * large schedule), but the Activity Detail Panel used to show the last-calculated
+   * float/critical-path numbers as if they were always current, with nothing telling a
+   * planner otherwise. Rather than chase down and flag every mutation call site (easy to
+   * miss one), this compares a cheap fingerprint of the CPM-relevant input fields against
+   * the fingerprint captured at the moment of the last successful "Calculate Schedule" \u2014
+   * if anything that would change the calculation has changed since, the numbers are
+   * stale, however they got that way. Not cryptographic, just change-detection. */
+  function cheapFingerprint(str) {
+    var hash = 0;
+    for (var i = 0; i < str.length; i++) {
+      hash = (hash * 31 + str.charCodeAt(i)) | 0;
+    }
+    return hash;
+  }
+
+  function cpmInputFingerprint(activities, relationships) {
+    var actPart = activities
+      .map(function (a) {
+        return [a.id, a.activity_type, a.duration, a.planned_start, a.planned_finish, a.actual_start, a.actual_finish, a.percent_complete, a.remaining_duration].join(":");
+      })
+      .sort()
+      .join("|");
+    var relPart = relationships
+      .map(function (r) {
+        return [r.predecessor_id, r.successor_id, r.type, r.lag].join(":");
+      })
+      .sort()
+      .join("|");
+    return cheapFingerprint(actPart + "##" + relPart);
+  }
+
+  /** True once anything CPM-relevant has changed since the schedule's own
+   * cpm_calculated_fingerprint was captured (or the schedule has never been calculated
+   * at all). Cheap \u2014 O(activities+relationships) for this one schedule, only computed
+   * where it's actually displayed, not on every render of every page. */
+  function isCpmStale(schedule, data) {
+    if (!schedule || schedule.cpm_calculated_fingerprint == null) return true;
+    var activities = data.activities.filter(function (a) {
+      return a.schedule_id === schedule.id;
+    });
+    var relationships = data.relationships.filter(function (r) {
+      return r.schedule_id === schedule.id;
+    });
+    return cpmInputFingerprint(activities, relationships) !== schedule.cpm_calculated_fingerprint;
+  }
+
   /** Runs the CPM engine over the current schedule's activities/relationships and
    * writes the results back onto each activity. Read-only fields per Gate 1's own
    * comment (early/late start/finish, float) \u2014 this is the only code path allowed to
@@ -26230,6 +26378,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       nearCriticalThresholdDays: schedule.near_critical_threshold_days,
       calculationMode: schedule.calculation_mode,
     });
+    var freshFingerprint = cpmInputFingerprint(scheduleActivities, scheduleRelationships);
 
     window.PCC.store.update(function (d) {
       d.activities.forEach(function (a) {
@@ -26250,6 +26399,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         a.is_out_of_sequence = r.is_out_of_sequence;
         a.updated_at = new Date().toISOString();
       });
+      var s = d.schedules.find(function (x) {
+        return x.id === uiState.scheduleId;
+      });
+      if (s) s.cpm_calculated_fingerprint = freshFingerprint;
     });
 
     var insufficientCount = Object.keys(result.results).filter(function (id) {
@@ -26400,6 +26553,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       grid.appendChild(buildActivityField(cfg, activity));
     });
     form.appendChild(grid);
+    // Bug fix (Daily-Use Audit, Phase 1): browser-level hint alongside the real
+    // validation in onsubmit below — negative duration doesn't make sense for CPM.
+    var durationFieldEl = grid.querySelector("#actfield-duration");
+    if (durationFieldEl) durationFieldEl.min = "0";
 
     if (!isNew) {
       var calcBox = document.createElement("div");
@@ -26417,12 +26574,26 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           activity.total_float <= 0
             ? "Critical (0 float)"
             : activity.total_float + " day(s) float";
+        // Bug fix (Daily-Use Audit, Phase 1): these numbers can silently go stale \u2014
+        // editing dates/duration/predecessors, importing Excel, or applying the Excel
+        // grid editor never re-runs CPM. Flag it plainly rather than showing a possibly-
+        // wrong critical path as if it were current. See isCpmStale()'s own comment.
+        var scheduleForStaleCheck = window.PCC.store.get().schedules.find(function (s) {
+          return s.id === activity.schedule_id;
+        });
+        var stale = isCpmStale(scheduleForStaleCheck, window.PCC.store.get());
         calcBox.innerHTML =
-          "<strong>Calculated (read-only)</strong> \u2014 " + floatLabel + "<br/>" +
+          (stale
+            ? "<strong style='color:var(--status-at-risk)'>Calculated (out of date)</strong> \u2014 changed since the last " +
+              "\u201cCalculate Schedule\u201d run; these numbers may no longer be correct. \u2014 "
+            : "<strong>Calculated (read-only)</strong> \u2014 ") + floatLabel + "<br/>" +
           "<span class='text-secondary' style='font-size:12px;'>" +
           "ES " + activity.early_start + " \u00b7 EF " + activity.early_finish + " \u00b7 " +
           "LS " + activity.late_start + " \u00b7 LF " + activity.late_finish + " \u00b7 " +
           "Free Float " + activity.free_float + " day(s)</span>";
+        if (stale) {
+          calcBox.style.borderColor = "var(--status-at-risk)";
+        }
       }
       form.appendChild(calcBox);
     }
@@ -26431,7 +26602,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     errorMsg.style.color = "var(--status-critical)";
     errorMsg.style.fontSize = "var(--text-sm)";
     errorMsg.style.display = "none";
-    errorMsg.textContent = "Activity name is required.";
     form.appendChild(errorMsg);
 
     var actions = document.createElement("div");
@@ -26461,6 +26631,16 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       e.preventDefault();
       var name = form.querySelector("#actfield-name").value.trim();
       if (!name) {
+        errorMsg.textContent = "Activity name is required.";
+        errorMsg.style.display = "block";
+        return;
+      }
+      // Bug fix (Daily-Use Audit, Phase 1): the Duration field had no floor at all — a
+      // negative value saved silently and corrupted CPM output downstream with nothing
+      // flagging it here, where it's actually easy to catch.
+      var durationEl = form.querySelector("#actfield-duration");
+      if (durationEl && durationEl.value !== "" && Number(durationEl.value) < 0) {
+        errorMsg.textContent = "Duration can't be negative.";
         errorMsg.style.display = "block";
         return;
       }
@@ -27322,6 +27502,34 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   // Relationships tab
   // ---------------------------------------------------------------------------------
 
+  /** Bug fix (Daily-Use Audit, Phase 1): true if adding predecessor_id -> successor_id
+   * would close a cycle given the schedule's other existing relationships — i.e.
+   * successor_id can already reach predecessor_id by following existing predecessor ->
+   * successor edges forward. Previously a manually-built cycle was only ever caught
+   * later, silently, when "Calculate Schedule" ran (the cyclic activities just get
+   * dropped from the result — see runCalculation()'s own comment) — nothing stopped a
+   * planner from creating one by hand in the first place. */
+  function wouldCreateRelationshipCycle(predId, succId, existingRelationships) {
+    if (predId === succId) return true;
+    var adjacency = {};
+    existingRelationships.forEach(function (r) {
+      if (!adjacency[r.predecessor_id]) adjacency[r.predecessor_id] = [];
+      adjacency[r.predecessor_id].push(r.successor_id);
+    });
+    var visited = {};
+    var queue = [succId];
+    while (queue.length) {
+      var current = queue.shift();
+      if (current === predId) return true;
+      if (visited[current]) continue;
+      visited[current] = true;
+      (adjacency[current] || []).forEach(function (next) {
+        if (!visited[next]) queue.push(next);
+      });
+    }
+    return false;
+  }
+
   function renderRelationshipForm(container, relationship, activities, rerender) {
     var isNew = uiState.editingRelationshipId === "new";
     var panel = document.createElement("div");
@@ -27412,7 +27620,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     errorMsg.style.color = "var(--status-critical)";
     errorMsg.style.fontSize = "var(--text-sm)";
     errorMsg.style.display = "none";
-    errorMsg.textContent = "Predecessor and successor must be different activities.";
     form.appendChild(errorMsg);
 
     var actions = document.createElement("div");
@@ -27441,6 +27648,15 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     form.onsubmit = function (e) {
       e.preventDefault();
       if (predSelect.value === succSelect.value) {
+        errorMsg.textContent = "Predecessor and successor must be different activities.";
+        errorMsg.style.display = "block";
+        return;
+      }
+      var otherRelationshipsThisSchedule = window.PCC.store.get().relationships.filter(function (r) {
+        return r.schedule_id === uiState.scheduleId && r.id !== relationship.id;
+      });
+      if (wouldCreateRelationshipCycle(predSelect.value, succSelect.value, otherRelationshipsThisSchedule)) {
+        errorMsg.textContent = "This would create a circular dependency (the successor already leads back to the predecessor through other relationships) — CPM can't calculate a schedule with a loop in it.";
         errorMsg.style.display = "block";
         return;
       }
@@ -27707,12 +27923,28 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     var search = document.createElement("input");
     search.type = "text";
+    search.id = "gantt-search-input";
     search.placeholder = "Search ID, name, WBS, contractor, discipline…";
     search.value = uiState.ganttFilter.search;
     search.style.minWidth = "220px";
+    // Bug fix (Daily-Use Audit, Phase 1): rerender() here rebuilds the whole Gantt tab
+    // (toolbar, detail panel, and the full SVG chart via computeLayout()) — unlike the
+    // Activities tab's own search, which deliberately calls a lighter list-only
+    // render specifically to keep the input focused while typing (see that field's own
+    // comment above). Splitting the Gantt tab's render the same way would mean a much
+    // larger restructure of computeLayout()/the chart-building code below; simpler and
+    // just as effective to let the full rerender happen and then restore focus/caret
+    // position on the freshly-built input, via the stable id above — same end result
+    // (typing multiple characters actually works) without touching the chart pipeline.
     search.oninput = function () {
+      var caretPos = search.selectionStart;
       uiState.ganttFilter.search = search.value;
       rerender();
+      var freshSearch = document.getElementById("gantt-search-input");
+      if (freshSearch) {
+        freshSearch.focus();
+        freshSearch.setSelectionRange(caretPos, caretPos);
+      }
     };
     bar.appendChild(search);
 
@@ -30393,7 +30625,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     btn.onclick = function () {
       window.PCC.schedule.viewActivity(activity.project_id, activity.schedule_id, activity.id);
       window.PCC.router.go("schedule");
-      window.PCC.router.render();
     };
     return btn;
   }
@@ -33139,7 +33370,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
             return r.id === rfi.id;
           });
           if (existing) {
-            var wasAnswered = existing.status !== "answered" && existing.status !== "closed" && values.status === "answered";
+            // Bug fix (Daily-Use Audit, Phase 1): this used to only fire on an explicit
+            // ...->"answered" transition, so an RFI answered verbally and closed directly
+            // (a very normal flow) never got date_answered recorded at all, with no way
+            // to backfill it afterward. "closed" implies it was answered too.
+            var wasAnswered = existing.status !== "answered" && existing.status !== "closed" &&
+              (values.status === "answered" || values.status === "closed");
             Object.assign(existing, values);
             if (wasAnswered && !existing.date_answered) existing.date_answered = today();
             existing.updated_at = new Date().toISOString();
@@ -38447,7 +38683,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
               if (activity && window.PCC.schedule) {
                 window.PCC.schedule.viewActivity(activity.project_id, activity.schedule_id, activity.id);
                 window.PCC.router.go("schedule");
-                window.PCC.router.render();
               }
             };
             right.appendChild(viewActivityBtn);
@@ -41618,6 +41853,23 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     window.PCC.layout.mount();
     router.render();
+
+    // Bug fix (Daily-Use Audit, Phase 1): warn before closing/reloading the tab while an
+    // Add/Edit form is open and not yet submitted. Every register module across this app
+    // (confirmed across risks/rfis/changeOrders/schedule/etc.) only ever renders a real
+    // <form> element for exactly that purpose, so its mere presence in the outlet is
+    // already a reliable signal — no need to thread a "dirty" flag through the ~20
+    // modules that each have their own separate editingId-style state. Can't (from here)
+    // tell whether any field was actually changed, so a blank untouched form still
+    // warns — but losing a form the user opened is exactly the case this app had zero
+    // protection against before.
+    window.addEventListener("beforeunload", function (e) {
+      var outlet = document.getElementById("page-outlet");
+      if (outlet && outlet.querySelector("form")) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    });
 
     // One-time, best-effort: moves any blobs from before this migration existed out of
     // the primary JSON and into IndexedDB, shrinking what autosave has to write from
