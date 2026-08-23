@@ -38,6 +38,12 @@
 
   var uiState = {
     windowDays: DEFAULT_WINDOW_DAYS,
+    // Daily-Use Audit Phase 2: live-syncs with the shared Global Project Context
+    // (Redesign Gate 6) — see dashboard.js's identical block for the full reasoning on
+    // why this compares against the last-observed context value rather than a one-time
+    // seed flag. This page's name implied per-project scoping it never actually had.
+    projectFilter: "",
+    lastSyncedContextId: undefined,
   };
 
   function todayIso() {
@@ -266,14 +272,29 @@
 
   function render(outlet) {
     var data = window.PCC.store.get();
-    var activeProjects = data.projects.filter(function (p) {
+    var allActiveProjects = data.projects.filter(function (p) {
       return !p.archived;
     });
-    var activeProjectIds = {};
     var projectsById = {};
+    allActiveProjects.forEach(function (p) {
+      projectsById[p.id] = p;
+    });
+
+    var ctxProjectId = window.PCC.projectContext.get();
+    if (ctxProjectId !== uiState.lastSyncedContextId) {
+      uiState.lastSyncedContextId = ctxProjectId;
+      uiState.projectFilter = ctxProjectId && allActiveProjects.some(function (p) { return p.id === ctxProjectId; }) ? ctxProjectId : "";
+    }
+    if (uiState.projectFilter && !allActiveProjects.some(function (p) { return p.id === uiState.projectFilter; })) {
+      uiState.projectFilter = "";
+    }
+
+    var activeProjects = uiState.projectFilter
+      ? allActiveProjects.filter(function (p) { return p.id === uiState.projectFilter; })
+      : allActiveProjects;
+    var activeProjectIds = {};
     activeProjects.forEach(function (p) {
       activeProjectIds[p.id] = true;
-      projectsById[p.id] = p;
     });
 
     function rerender() {
@@ -297,11 +318,43 @@
     sub.className = "text-secondary";
     sub.style.marginTop = "0";
     sub.style.marginBottom = "16px";
-    sub.textContent =
-      "Schedule activities, milestones, meetings, RFI/TQ, and document submissions due in the next " +
-      uiState.windowDays + " day" + (uiState.windowDays === 1 ? "" : "s") +
-      " across " + activeProjects.length + " active project" + (activeProjects.length === 1 ? "" : "s") + ".";
+    sub.textContent = uiState.projectFilter
+      ? "Schedule activities, milestones, meetings, RFI/TQ, and document submissions due in the next " +
+        uiState.windowDays + " day" + (uiState.windowDays === 1 ? "" : "s") +
+        " for " + (projectsById[uiState.projectFilter].name || "(unnamed project)") + "."
+      : "Schedule activities, milestones, meetings, RFI/TQ, and document submissions due in the next " +
+        uiState.windowDays + " day" + (uiState.windowDays === 1 ? "" : "s") +
+        " across " + allActiveProjects.length + " active project" + (allActiveProjects.length === 1 ? "" : "s") + ".";
     wrap.appendChild(sub);
+
+    if (allActiveProjects.length > 0) {
+      var toolbar = document.createElement("div");
+      toolbar.className = "toolbar no-print";
+      toolbar.style.marginBottom = "8px";
+      var projSelect = document.createElement("select");
+      var allOpt = document.createElement("option");
+      allOpt.value = "";
+      allOpt.textContent = "All Projects";
+      projSelect.appendChild(allOpt);
+      allActiveProjects
+        .slice()
+        .sort(function (a, b) { return (a.name || "").localeCompare(b.name || ""); })
+        .forEach(function (p) {
+          var opt = document.createElement("option");
+          opt.value = p.id;
+          opt.textContent = p.name || "(unnamed project)";
+          projSelect.appendChild(opt);
+        });
+      projSelect.value = uiState.projectFilter;
+      projSelect.onchange = function () {
+        uiState.projectFilter = projSelect.value;
+        uiState.lastSyncedContextId = projSelect.value;
+        window.PCC.projectContext.set(projSelect.value);
+        rerender();
+      };
+      toolbar.appendChild(projSelect);
+      wrap.appendChild(toolbar);
+    }
 
     wrap.appendChild(windowToggle(rerender));
 
@@ -317,7 +370,8 @@
       var empty = document.createElement("p");
       empty.className = "text-secondary";
       empty.style.margin = "0";
-      empty.textContent = "Nothing scheduled, due, or required in the next " + uiState.windowDays + " days across the active portfolio.";
+      empty.textContent = "Nothing scheduled, due, or required in the next " + uiState.windowDays + " days" +
+        (uiState.projectFilter ? " for this project." : " across the active portfolio.");
       panel.appendChild(empty);
     } else {
       var list = document.createElement("div");

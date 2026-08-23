@@ -180,6 +180,14 @@ function findButtonInPanelByText(panel, text) {
         return a.project_id !== projA;
       });
     });
+    // Daily-Use Audit Phase 2: the earlier "View Project" check above navigated into
+    // Project A's own Executive Center, which sets the shared Global Project Context
+    // (Redesign Gate 6) to Project A — Dashboard now correctly narrows to just that
+    // project on its next render (the exact behavior Phase 2 added). This check is
+    // about the diagnostics engine recomputing CPM live, not context-based filtering,
+    // so clear the context back to "All Projects" first, same as a real user would via
+    // Dashboard's own "Show All Projects" control.
+    win.PCC.projectContext.set("");
     win.PCC.router.go("dashboard");
     win.PCC.router.render();
     var panel = attentionPanel(dom);

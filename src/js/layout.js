@@ -164,6 +164,10 @@
     // most desktop apps use for this control.
     sidebarCollapse: '<svg ' + ICON_SVG_ATTRS + '><polyline points="14 6 8 12 14 18"/><line x1="4" y1="4" x2="4" y2="20"/></svg>',
     sidebarExpand: '<svg ' + ICON_SVG_ATTRS + '><polyline points="10 6 16 12 10 18"/><line x1="20" y1="4" x2="20" y2="20"/></svg>',
+    // Daily-Use Audit Phase 2: title-block entry point for keyboardShortcuts.js's help
+    // overlay — a plain keyboard glyph (outline + a row of keys) in the same stroke
+    // vocabulary as every other icon above.
+    keyboard: '<svg ' + ICON_SVG_ATTRS + '><rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="10" x2="6" y2="10"/><line x1="10" y1="10" x2="10" y2="10"/><line x1="14" y1="10" x2="14" y2="10"/><line x1="18" y1="10" x2="18" y2="10"/><line x1="6" y1="14" x2="18" y2="14"/></svg>',
   };
 
   // Redesign Gate 3 (Icon System Expansion): the nav list's own per-page icons, the
@@ -632,11 +636,23 @@
     focusModeBtn.innerHTML = ICONS.focus;
     focusModeBtn.onclick = toggleFocusMode;
 
+    // Daily-Use Audit Phase 2: the only discoverability path into keyboardShortcuts.js
+    // besides already knowing to press "?" — same icon-btn row every other shell-level
+    // action lives in.
+    var shortcutsBtn = document.createElement("button");
+    shortcutsBtn.className = "icon-btn";
+    shortcutsBtn.title = "Keyboard shortcuts";
+    shortcutsBtn.innerHTML = ICONS.keyboard;
+    shortcutsBtn.onclick = function () {
+      if (window.PCC.keyboardShortcuts) window.PCC.keyboardShortcuts.showHelp();
+    };
+
     actions.appendChild(exportBtn);
     actions.appendChild(importBtn);
     actions.appendChild(importInput);
     actions.appendChild(densityBtn);
     actions.appendChild(focusModeBtn);
+    actions.appendChild(shortcutsBtn);
     actions.appendChild(themeBtn);
 
     header.appendChild(actions);

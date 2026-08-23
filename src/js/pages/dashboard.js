@@ -23,6 +23,14 @@
     plannerFilter: "",
     typeFilter: "",
     yearFilter: "", // filters by start_date's year
+    // Daily-Use Audit Phase 2: live-syncs with the shared Global Project Context
+    // (Redesign Gate 6) — see render()'s own comment for why this isn't just a
+    // seed-once flag. Exposed as a dismissible banner rather than an 8th filter
+    // dropdown, since this page's filter row deliberately mirrors Portfolio's own
+    // attribute set (client/country/sector/etc, confirmed via AskUserQuestion at Tier
+    // 3) — a project-identity filter is a different kind of narrowing than those.
+    projectFilter: "",
+    lastSyncedContextId: undefined,
   };
 
   function projectMatchesFilters(p) {
@@ -438,9 +446,31 @@
     }
 
     var data = window.PCC.store.get();
-    var active = data.projects.filter(function (p) {
+    var allActive = data.projects.filter(function (p) {
       return !p.archived;
     });
+
+    // Live-sync, not seed-once: a plain "seed on first render" flag missed the very
+    // common case of the header's project switcher (or another page's own switcher)
+    // changing context AFTER this page's first render this session but BEFORE its next
+    // visit — the exact daily flow the audit flagged. Comparing against the last
+    // context value this page actually observed (undefined, not "", so the very first
+    // render always syncs) means a genuine context change anywhere in the app is picked
+    // up next time this page renders, while an explicit local "Show All Projects" stays
+    // put until the context actually changes again — it deliberately updates
+    // lastSyncedContextId too, see that button's own handler below.
+    var ctxProjectId = window.PCC.projectContext.get();
+    if (ctxProjectId !== uiState.lastSyncedContextId) {
+      uiState.lastSyncedContextId = ctxProjectId;
+      uiState.projectFilter = ctxProjectId && allActive.some(function (p) { return p.id === ctxProjectId; }) ? ctxProjectId : "";
+    }
+    if (uiState.projectFilter && !allActive.some(function (p) { return p.id === uiState.projectFilter; })) {
+      uiState.projectFilter = "";
+    }
+
+    var active = uiState.projectFilter
+      ? allActive.filter(function (p) { return p.id === uiState.projectFilter; })
+      : allActive;
     var filtered = active.filter(projectMatchesFilters);
 
     var wrap = document.createElement("div");
@@ -462,6 +492,27 @@
 
     wrap.appendChild(h1);
     wrap.appendChild(sub);
+
+    if (uiState.projectFilter) {
+      var focusBanner = document.createElement("div");
+      focusBanner.className = "toolbar no-print";
+      focusBanner.style.marginBottom = "12px";
+      var focusLabel = document.createElement("span");
+      var focusedProject = data.projects.find(function (p) { return p.id === uiState.projectFilter; });
+      focusLabel.textContent = "Focused on " + (focusedProject ? (focusedProject.name || "(unnamed project)") : "");
+      focusBanner.appendChild(focusLabel);
+      var showAllBtn = document.createElement("button");
+      showAllBtn.className = "btn btn--ghost";
+      showAllBtn.textContent = "Show All Projects";
+      showAllBtn.onclick = function () {
+        uiState.projectFilter = "";
+        uiState.lastSyncedContextId = "";
+        window.PCC.projectContext.set("");
+        rerender();
+      };
+      focusBanner.appendChild(showAllBtn);
+      wrap.appendChild(focusBanner);
+    }
 
     // PCC Evolution Roadmap, Tier 3 ("final polish"): Dashboard-level filtering. Same
     // filterSelect() pattern portfolio.js's own filter row already established \u2014 every
