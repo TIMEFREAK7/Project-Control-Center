@@ -17,7 +17,7 @@
     return {
       schema_version: SCHEMA_VERSION,
       meta: {
-        app_name: "Aditya Abhyankar's Project Control Center",
+        app_name: "Project Control Center",
         created_at: new Date().toISOString(),
         last_saved_at: null,
         last_exported_at: null,

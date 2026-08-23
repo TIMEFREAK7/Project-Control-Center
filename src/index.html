@@ -3,7 +3,19 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Aditya Abhyankar's Project Control Center</title>
+    <title>Project Control Center</title>
+    <!-- PCC Redesign Gate 12 (App Icon & Branding): the favicon is embedded as an inline
+         data URI (source: src/icons/favicon.svg) rather than a linked file, keeping
+         index.html fully self-contained per this project's "one dependency-free file"
+         architecture. apple-touch-icon and the PWA manifest icons can't be inlined the
+         same way (manifest.json is inherently its own file per spec, and Apple's install
+         flow wants a real image URL) — those live in icons/ and manifest.json at the repo
+         root, shipped alongside index.html. Regenerate the PNGs with
+         `node generate-icons.js` after editing the source SVG. -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+CiAgPHJlY3QgeD0iMCIgeT0iMCIgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiByeD0iNyIgZmlsbD0iI2ZmZmZmZiIgLz4KICA8cG9seWdvbiBwb2ludHM9IjUsMjQgMTEsMjQgMTEsMTgiIGZpbGw9IiMwZTlhYTciIC8+CiAgPHJlY3QgeD0iMTMiIHk9IjEyIiB3aWR0aD0iNiIgaGVpZ2h0PSIxMiIgcng9IjEiIGZpbGw9IiMzZDYzZGQiIC8+CiAgPHJlY3QgeD0iMjEiIHk9IjYiIHdpZHRoPSI2IiBoZWlnaHQ9IjE4IiByeD0iMSIgZmlsbD0iIzE0MjAzYSIgLz4KPC9zdmc+Cg==" />
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#3d63dd" />
     <link rel="stylesheet" href="css/styles.css" />
   </head>
   <body>

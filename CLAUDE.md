@@ -91,11 +91,13 @@ node --check src/js/whatever.js   # quick syntax check on a single file
 - **After every gate/phase/tier, compile everything and hand over a zip file Aditya can send to a
   laptop or to other people and they can use directly** — not just push to `main`. Rebuild
   (`node build.js`), run the full suite, then assemble a clean end-user package: `index.html`,
-  `README.md`, and empty `data/`/`files/` placeholder folders (with their own `README.txt`) — **not**
-  `src/`, `build.js`, `tests/`, `.claude/`, `CLAUDE.md`, or `HANDOFF.md`, which are dev-only and just
-  add confusion for someone who isn't going to edit the code. The whole point is that the recipient
-  needs zero setup — extract and double-click `index.html`, nothing to install, no dependency on this
-  repo or Claude Code being present. Verify the zip actually works before sending it: extract it
+  `README.md`, `manifest.json`, `icons/` (favicon/PWA icon PNGs — added Gate 12, "App Icon &
+  Branding"; regenerate with `node generate-icons.js` if `src/icons/favicon.svg` ever changes), and
+  empty `data/`/`files/` placeholder folders (with their own `README.txt`) — **not** `src/`,
+  `build.js`, `generate-icons.js`, `tests/`, `.claude/`, `CLAUDE.md`, or `HANDOFF.md`, which are
+  dev-only and just add confusion for someone who isn't going to edit the code. The whole point is
+  that the recipient needs zero setup — extract and double-click `index.html`, nothing to install,
+  no dependency on this repo or Claude Code being present. Verify the zip actually works before sending it: extract it
   fresh (not the dev working copy) and open `index.html` in real Chromium — see the Testing
   conventions section above for why that matters here specifically.
 - If the branch backing an already-merged PR is reused for the next piece of work, restart it from
