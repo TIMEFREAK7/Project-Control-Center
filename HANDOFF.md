@@ -2453,7 +2453,50 @@ regression test files — `test_rfi_date_answered_bugfix_e2e.js`,
 — since none of Daily Log/RFI/Relationships had dedicated coverage before this), 0 failures. Full
 27-route real-Chromium sweep + a live Calculate Schedule click, zero console errors.
 
-**Not done**: Phases 2-5 of the audit's own sequencing — still open, to be picked up individually.
+**Not done** (at Phase 1 cutoff): Phases 2-5 of the audit's own sequencing — still open, to be picked
+up individually.
+
+**Phase 2 — wire up Global Project Context + a first keyboard-shortcut pass, done, 2026-08-23.** Full
+detail and rationale in README.md's own entry (same section header) — summary here:
+
+**Part A — Global Project Context reaches Dashboard/My Work/Action Centre/Project Lookahead.** These
+4 screens previously ignored `settings.active_project_id` entirely, unlike Schedule/Project Workspace
+(live-sync since Gate 6) and Portfolio/Risks/RFI/Change Orders (one-time seed since Gate 6). New
+mechanism used on all 4: `uiState.lastSyncedContextId` (starts `undefined`) is compared against the
+live context on every render — different means re-sync the local filter and update the stored value;
+same means leave any local override alone. This is a deliberate upgrade over the older "seed once,
+never again" pattern — caught via Playwright screenshot that a first-pass one-time-flag version left
+Dashboard unfiltered after switching context, because Dashboard renders automatically at boot before
+the context switch often happens, and a one-time flag never re-checks after that. Each page's own
+project control also mirrors back to shared context two-way, matching Schedule/Project Workspace.
+Dashboard shows a dismissible "Focused on X / Show All Projects" banner rather than an 8th filter
+dropdown (preserves the deliberate Portfolio-filter-parity decision from Tier 3); My Work/Action
+Centre/Project Lookahead each get a new "Project: [dropdown]" toolbar control (none had one before).
+
+**Part B — keyboard shortcuts, new `keyboardShortcuts.js`.** `/` focuses the page's primary search,
+`n` clicks its primary "+ Add X" button, `?` opens a help overlay (reuses fileViewer's
+`.modal-overlay` pattern). Deliberately generic — exploits the existing `.toolbar`/"+ Add X"
+convention already common to ~20 page modules instead of per-page wiring. Guards: ignores any
+Ctrl/Cmd/Alt combo, typing in a field, or firing while the nav drawer/help overlay is open. New
+toolbar icon button opens the same help overlay by mouse.
+
+14-route real-Chromium sweep found 12/14 working; the 2 apparent misses (**vendors**, **documents**)
+were confirmed as sweep-script artifacts, not app bugs, after reading source and re-testing directly:
+vendors' default landing tab is a Dashboard view with no search/add by design (they live on the
+"Vendor List" tab, one click away — the shortcuts module's own documented no-op case); documents' `n`
+does correctly open its "Add Document" panel (confirmed directly) — the sweep under-reported it only
+because that panel is a `<div class="panel">`, not a `<form>` (unlike every other register module,
+for its file-upload/FileReader flow), so the sweep's generic "did a `<form>` appear" check missed it.
+
+**Verified**: new `test_global_project_context_daily_screens_e2e.js` (8 checks — unfiltered baseline,
+first-render seeding, the live-sync fix itself, all 4 pages picking up a live context change, local
+override persistence across a revisit, a later context change still overriding a prior override,
+Dashboard's "Show All Projects" clearing shared context too); `test_management_attention_e2e.js`
+updated (one check now explicitly clears context first, since Phase 2 legitimately changed Dashboard's
+behavior there). Full suite: 0 failures. Real-Chromium verification for both parts.
+
+**Not done**: Phases 3-5 (daily-entry speed — bulk actions/clone/field-memory; Planner power tools;
+polish) — still open, pending Aditya's go-ahead on which to do next.
 
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
@@ -4241,3 +4284,36 @@ committed-to next feature as of this HEAD. When a fresh session picks this up:
    mutation.
 4. Windows/macOS code signing is a **closed** decision (personal use only, no cert, no Mac
    hardware) — don't re-raise it unless Aditya explicitly reopens the topic himself.
+
+### Current state update (2026-08-23, after Daily-Use Audit Phases 1 + 2 — supersedes the numbers above)
+
+`main` is fully up to date through **Daily-Use Audit Phase 2** at commit `7c1ce3e` (merge commit;
+Phase 2's own commit is `f6ad965`, on top of the Phase 1 merge `43e518c`). The working branch,
+`claude/new-session-knj62z`, was just restarted from this `main` and carries the exact same history
+— `git rev-parse main` and `git rev-parse claude/new-session-knj62z` both resolve to `7c1ce3e` as of
+this writing. **Verify this is still true by the time you read this** rather than trusting it blindly.
+
+- `schema_version` is now **55** (was 53 as of the last full rewrite of this section above; check
+  `src/js/store.js`'s own `SCHEMA_VERSION` constant and its migration chain directly if this ever
+  looks inconsistent, don't trust prose numbers). The v55 bump added `cpm_calculated_fingerprint` to
+  schedules (Phase 1, bug #2 — CPM staleness detection).
+- **Test suite**: 77 files as of this HEAD (`ls tests/*.js | wc -l`), all chained in
+  `tests/package.json`'s `test` script. Recount rather than trust this number blindly — it grows
+  almost every gate.
+- Both an Android APK and a Windows EXE were rebuilt and delivered directly to Aditya this round
+  (before Phase 1/2 started, from the state as of PCC Redesign Gate 12) — see the Mobile & Desktop
+  Packaging section and the split-file delivery convention (CLAUDE.md, `packaging/README.md`) for
+  the exact artifacts and verification hashes. Neither has been rebuilt again since Phase 1/2 — the
+  zip/APK/EXE artifacts Aditya has do NOT yet include Phase 1 or Phase 2's fixes. Rebuild before
+  handing over another end-user package if that matters for what's being delivered next.
+- **What shipped this round, in order**: PCC Redesign Gate 12 (App Icon & Branding, closing out that
+  whole 12-gate initiative) → Daily-Use Audit kickoff (39 findings, 5-phase proposal) → **Phase 1**
+  (9 real bugs — router double-render, CPM staleness, RFI date_answered, Gantt search focus loss,
+  circular relationships, negative Duration, SAVED-label race, no beforeunload warning, Daily Log
+  duplicate guard) → **Phase 2** (Global Project Context live-sync wired into Dashboard/My Work/
+  Action Centre/Project Lookahead; a first keyboard-shortcut pass — `/`, `n`, `?`). Full detail on
+  both phases is in this file's own Daily-Use Audit section above and in README.md's matching
+  section — don't re-derive it from git log.
+- **Not done**: Phases 3-5 of the Daily-Use Audit (daily-entry speed — bulk actions/clone/
+  field-memory; Planner power tools; polish) — open, pending Aditya's explicit go-ahead on which to
+  do next. No other feature work is currently committed to.

@@ -4040,6 +4040,74 @@ the front-office screens; keyboard shortcuts; portfolio-wide search; bulk action
 in the daily registers; Planner power tools; polish items) — all still open, to be picked up
 individually as their own scoped pieces of work.
 
+### Phase 2 — wire up Global Project Context + a first keyboard-shortcut pass, done, 2026-08-23
+
+Both halves of this phase deliberately extend infrastructure the PCC Redesign already built (Gate 6's
+shared project context, the established `.toolbar`/"+ Add X" conventions used across every register)
+rather than adding anything new — exactly the scope the audit's Phase 2 proposal called for.
+
+**Part A — Global Project Context reaches Dashboard, My Work, Action Centre, and Project Lookahead.**
+These four front-office screens rendered portfolio-wide, completely ignoring `settings.active_project_id`
+even though Gate 6 had already wired the shared context two places (Schedule, Project Workspace) and a
+one-time seed (Portfolio, Risk/Issue Register, RFI/TQ, Change Orders) elsewhere. The daily-use gap: a
+Coordinator picks "Focus: Project Alpha" from the header, then lands on Dashboard expecting to see
+Alpha's numbers, and instead still sees the whole portfolio. Fixed by giving all four pages the same
+live-sync mechanism — each page's `uiState` tracks `lastSyncedContextId` (the last context value it
+actually rendered against, starting `undefined` so the very first render always syncs); on every render,
+if the live context differs from that stored value, the page's local filter is re-synced to match and
+`lastSyncedContextId` updated; if it's unchanged, any local override (e.g. an explicit "Show All
+Projects" click) is left alone. This is a deliberate upgrade over the "seed once from context, then
+never again" pattern used elsewhere (Portfolio/Risks/RFI/Change Orders) — caught by Playwright screenshot
+during verification: a first-pass "seed-once" implementation left Dashboard showing "Portfolio-wide
+health across 2 active projects" even after switching context to Alpha, because Dashboard renders
+automatically at boot, often before the user has touched the context switcher, and a one-time flag never
+rechecks after that. The live-sync version correctly re-scopes on the next visit to a changed context,
+confirmed visually after the fix (`ctx_dashboard.png`, `ctx_myWork.png`, `ctx_actionCentre.png`,
+`ctx_projectLookahead.png`). Each page's own project control also mirrors back to the shared context
+two-way when changed locally, matching Schedule/Project Workspace's existing switcher behavior — so
+picking a project from My Work's own dropdown updates the header and every other context-consuming page
+too, not just itself. Dashboard keeps its existing 6-filter row rather than adding a 7th "Project"
+dropdown (preserving the deliberate Portfolio-filter-parity decision from an earlier Tier 3 gate);
+instead shows a dismissible "Focused on Alpha · Show All Projects" banner. My Work, Action Centre, and
+Project Lookahead — which had no filter UI at all before this — each get a simple "Project: [dropdown]"
+toolbar control.
+
+**Part B — a first keyboard-shortcut pass.** Before this, the only keyboard handling anywhere in the
+app was Escape closing the mobile nav drawer — every action was mouse-only, a real friction point for
+daily heavy users. New `keyboardShortcuts.js`: `/` focuses the current page's primary search box, `n`
+clicks its primary "+ Add X" button, `?` opens a help overlay listing all three (reusing the existing
+`.modal-overlay`/`.modal` pattern from the file viewer, including its Escape-to-close behavior).
+Deliberately generic rather than wired per-page: every register module already follows the same two
+conventions — a `.toolbar` whose first plain-text input is the primary search, a button whose text
+starts with "+ Add" for the primary create action — so one small heuristic covers roughly 20 page
+modules for free instead of touching each individually. Guards against hijacking browser/OS shortcuts
+(any Ctrl/Cmd/Alt combo is ignored), typing in a field, or firing while the mobile nav or the help
+overlay itself is open. A new toolbar icon button (matching the existing focus-mode/theme icon-button
+row) opens the same help overlay by mouse for discoverability.
+
+Verified with a 14-route real-Chromium sweep (`window.PCC.router.go()` through each route, then `/`
+and `n` via real `page.keyboard.press()`, checking focus and DOM state): 12 of 14 routes worked exactly
+as designed. The two apparent misses turned out to be sweep-script artifacts, not app bugs, confirmed
+by reading the actual page source and re-testing directly: **vendors** defaults to its "Dashboard" tab
+on first landing, which has no search box or add button by design — those only exist on the "Vendor
+List" tab, one click away, which is the shortcuts module's own documented no-op case, not a failure.
+**documents** actually works correctly (`n` does open its "Add Document" panel, confirmed directly) —
+the sweep under-reported it only because documents.js's upload panel is a plain `<div class="panel">`
+rather than a native `<form>` element (its file-upload/FileReader flow doesn't need real form
+submission), unlike every other register module, so the sweep's generic "did a `<form>` appear"
+success check didn't recognize it.
+
+**Verified**: full jsdom suite (new `test_global_project_context_daily_screens_e2e.js`, 8 checks
+covering unfiltered baseline, first-render seeding, the live-sync fix itself, all 4 pages picking up a
+live context change, local override persistence, a later context change still overriding a prior local
+override, and Dashboard's "Show All Projects" clearing shared context too), plus one existing test
+(`test_management_attention_e2e.js`) updated to explicitly clear context before a check that Phase 2's
+own fix legitimately changed the behavior of. 0 failures across the whole suite. Real-Chromium
+verification for both parts (context-sync screenshots, the 14-route shortcuts sweep).
+
+**Not done**: Phases 3-5 of the audit's own proposed sequencing (daily-entry speed — bulk actions/
+clone/field-memory; Planner power tools; polish items) — still open, pending Aditya's go-ahead.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
