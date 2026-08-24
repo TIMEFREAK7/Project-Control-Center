@@ -592,18 +592,27 @@
     }).length;
     var dueSoonCount = reminders.length - overdueCount;
 
+    // Daily-Use Audit Phase 5 ("Dashboard's own KPI tiles aren't clickable"):
+    // "Inconsistent with the Portfolio Exceptions panel directly below it, which uses
+    // near-identical chips that ARE clickable — trains the wrong expectation on the
+    // very first screen a user sees." Each tile now navigates to wherever that count
+    // actually lives — Portfolio (pre-filtered to the matching status, via the new
+    // portfolio.filterByStatus()) for the first four, Document Control Dashboard for
+    // the two document-reminder tiles, which already is portfolio-wide with no
+    // per-status filter of its own to set.
     var kpis = [
-      { label: "ACTIVE PROJECTS", value: filtered.length, colorVar: null },
-      { label: "ON TRACK", value: countByStatus("on_track"), colorVar: "--status-on-track" },
-      { label: "AT RISK", value: countByStatus("at_risk"), colorVar: "--status-at-risk" },
-      { label: "CRITICAL", value: countByStatus("critical"), colorVar: "--status-critical" },
-      { label: "OVERDUE DOCS", value: overdueCount, colorVar: overdueCount > 0 ? "--status-critical" : null },
-      { label: "DUE SOON (" + dueSoonWindowDays(data) + "D)", value: dueSoonCount, colorVar: dueSoonCount > 0 ? "--status-at-risk" : null },
+      { label: "ACTIVE PROJECTS", value: filtered.length, colorVar: null, route: "portfolio", status: "" },
+      { label: "ON TRACK", value: countByStatus("on_track"), colorVar: "--status-on-track", route: "portfolio", status: "on_track" },
+      { label: "AT RISK", value: countByStatus("at_risk"), colorVar: "--status-at-risk", route: "portfolio", status: "at_risk" },
+      { label: "CRITICAL", value: countByStatus("critical"), colorVar: "--status-critical", route: "portfolio", status: "critical" },
+      { label: "OVERDUE DOCS", value: overdueCount, colorVar: overdueCount > 0 ? "--status-critical" : null, route: "documentControlDashboard" },
+      { label: "DUE SOON (" + dueSoonWindowDays(data) + "D)", value: dueSoonCount, colorVar: dueSoonCount > 0 ? "--status-at-risk" : null, route: "documentControlDashboard" },
     ];
 
     kpis.forEach(function (kpi) {
-      var card = document.createElement("div");
-      card.className = "kpi-card";
+      var card = document.createElement("button");
+      card.type = "button";
+      card.className = "kpi-card kpi-card--link";
       var valueStyle = kpi.colorVar ? ' style="color:var(' + kpi.colorVar + ')"' : "";
       card.innerHTML =
         '<span class="kpi-card__label">' +
@@ -613,6 +622,10 @@
         ">" +
         kpi.value +
         "</span>";
+      card.onclick = function () {
+        if (kpi.status !== undefined && window.PCC.portfolio) window.PCC.portfolio.filterByStatus(kpi.status);
+        window.PCC.router.go(kpi.route);
+      };
       kpiGrid.appendChild(card);
     });
 

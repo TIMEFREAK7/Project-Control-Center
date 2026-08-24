@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 56;
+  var SCHEMA_VERSION = 57;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -86,6 +86,12 @@
         // below) rather than one flat field, so each register's own "who" field
         // remembers independently.
         last_used_names: {},
+        // Daily-Use Audit Phase 5 (pinned projects): "someone bouncing between a few
+        // 'current' projects re-picks from the full, unsorted list every time" —
+        // active_project_id above only ever remembers ONE project. An ordered array
+        // (not a Set — order is meaningful, pin order is display order), project ids
+        // only; see projectContext.js's getPinnedIds()/isPinned()/togglePin().
+        pinned_project_ids: [],
       },
       projects: [],
       documents: [],
@@ -2634,6 +2640,14 @@
       // as its forms already blank-start today.
       if (!loaded.settings.last_used_names) loaded.settings.last_used_names = {};
       loaded.schema_version = 56;
+    }
+
+    if (loaded.schema_version < 57) {
+      // Daily-Use Audit Phase 5 (pinned projects): new settings field, nothing to
+      // backfill — no install has ever pinned a project before this, same "starts
+      // empty" treatment every other new settings array/object in this app gets.
+      if (!loaded.settings.pinned_project_ids) loaded.settings.pinned_project_ids = [];
+      loaded.schema_version = 57;
     }
 
     return loaded;

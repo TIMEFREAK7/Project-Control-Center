@@ -488,20 +488,65 @@
    * (kept in sync via the store.onChange listener registered in mount() below). */
   function populateProjectContextSelect(select) {
     var data = window.PCC.store.get();
-    var activeProjects = data.projects.filter(function (p) {
-      return !p.archived;
-    });
+    // Daily-Use Audit Phase 5 ("Project context selector isn't alphabetically sorted"):
+    // "Iterates the store in raw insertion order. For a Planner running a real
+    // multi-project portfolio, picking the right project from an unsorted list every
+    // time is real daily friction." Sorted case-insensitively so "amber" and "Amber"
+    // land together rather than splitting on case.
+    var activeProjects = data.projects
+      .filter(function (p) {
+        return !p.archived;
+      })
+      .sort(function (a, b) {
+        return (a.name || "").toLowerCase().localeCompare((b.name || "").toLowerCase());
+      });
     select.innerHTML = "";
     var allOpt = document.createElement("option");
     allOpt.value = "";
     allOpt.textContent = "All Projects";
     select.appendChild(allOpt);
-    activeProjects.forEach(function (p) {
+
+    function optionFor(p) {
       var opt = document.createElement("option");
       opt.value = p.id;
       opt.textContent = p.name || "(unnamed project)";
-      select.appendChild(opt);
+      return opt;
+    }
+
+    // Daily-Use Audit Phase 5 (pinned projects): pinned ids come back in pin order
+    // (most-recently-pinned first, see togglePin()'s own comment) — kept as-is here
+    // rather than re-sorted alphabetically, so the one just pinned is exactly where a
+    // planner expects to find it, at the top.
+    var pinnedIds = window.PCC.projectContext.getPinnedIds();
+    if (pinnedIds.length > 0) {
+      var pinnedGroup = document.createElement("optgroup");
+      pinnedGroup.label = "Pinned";
+      pinnedIds.forEach(function (id) {
+        var p = activeProjects.find(function (proj) {
+          return proj.id === id;
+        });
+        if (p) pinnedGroup.appendChild(optionFor(p));
+      });
+      select.appendChild(pinnedGroup);
+    }
+
+    var pinnedIdSet = {};
+    pinnedIds.forEach(function (id) {
+      pinnedIdSet[id] = true;
     });
+    var unpinnedProjects = activeProjects.filter(function (p) {
+      return !pinnedIdSet[p.id];
+    });
+    if (unpinnedProjects.length > 0) {
+      var restGroup = pinnedIds.length > 0 ? document.createElement("optgroup") : null;
+      if (restGroup) restGroup.label = "All Projects";
+      var target = restGroup || select;
+      unpinnedProjects.forEach(function (p) {
+        target.appendChild(optionFor(p));
+      });
+      if (restGroup) select.appendChild(restGroup);
+    }
+
     select.value = window.PCC.projectContext.get();
   }
 
@@ -640,7 +685,14 @@
     // besides already knowing to press "?" — same icon-btn row every other shell-level
     // action lives in.
     var shortcutsBtn = document.createElement("button");
-    shortcutsBtn.className = "icon-btn";
+    // Daily-Use Audit Phase 5 (mobile alignment): hidden at phone width via
+    // .icon-btn--hide-mobile (styles.css) — there's no physical keyboard on a
+    // touchscreen device, so this icon has nothing to do there. Also the one action
+    // icon safe to drop without losing functionality, freeing just enough width for
+    // the page title to stop truncating to 1-2 characters on common short titles like
+    // "Dashboard"/"Settings" (see the mobile title-block overlap bug fixed alongside
+    // this same phase — .title-block__value's missing display:block/max-width).
+    shortcutsBtn.className = "icon-btn icon-btn--hide-mobile";
     shortcutsBtn.title = "Keyboard shortcuts";
     shortcutsBtn.innerHTML = ICONS.keyboard;
     shortcutsBtn.onclick = function () {

@@ -403,6 +403,14 @@ button {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  /* Daily-Use Audit Phase 5 (mobile alignment bug): a bare <span> is inline, so
+     overflow/text-overflow above had no box to actually clip against — the page
+     title (e.g. "Dashboard") rendered at its full natural width regardless of how
+     little room .title-block__cell--grow had left after the action icons, visibly
+     overlapping the first icon button on any narrow/phone viewport. display:block +
+     max-width:100% gives it a real box the flex parent can actually shrink. */
+  display: block;
+  max-width: 100%;
 }
 
 /* Redesign Gate 6 (Global Project Context): the shell header's project switcher — a
@@ -549,6 +557,19 @@ footer.app-footer {
 
 .kpi-card:hover {
   border-color: var(--text-secondary);
+}
+
+/* Daily-Use Audit Phase 5 ("Dashboard's own KPI tiles aren't clickable"): rendered as
+   a real <button> now, same "reset to look identical at rest" approach .card-stat--link
+   already established — .kpi-card's own background/border/padding/radius above still
+   apply unchanged, this only resets the button-specific defaults a <div> never had. */
+.kpi-card--link {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
 }
 
 .kpi-card__label {
@@ -1966,6 +1987,15 @@ a:focus-visible {
   .toolbar input[type="text"],
   .toolbar select {
     flex-basis: 100%;
+  }
+
+  /* Daily-Use Audit Phase 5 (mobile alignment): no physical keyboard on a phone, so
+     the keyboard-shortcuts icon has nothing to do there — dropping it also frees just
+     enough header width for the page title to stop truncating to 1-2 characters on
+     common short titles ("Dashboard", "Settings", etc). See shortcutsBtn's own
+     comment in layout.js. */
+  .icon-btn--hide-mobile {
+    display: none;
   }
 
   .title-block__cell:not(.title-block__cell--grow) {
