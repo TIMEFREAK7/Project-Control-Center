@@ -129,7 +129,7 @@ async function check(label, fn) {
     assert.ok(card.querySelector('.icon-btn[aria-label="More actions"]'), "mobile card must have the same row-menu Edit/Delete access as the table row");
   });
 
-  await check("the mobile card's '⋯' menu opens the same Edit/Delete actions as the table row's menu (shared buildActivityRowMenu)", () => {
+  await check("the mobile card's '⋯' menu opens the same Edit/Clone/Delete actions as the table row's menu (shared buildActivityRowMenu)", () => {
     var card = Array.from(outlet().querySelectorAll(".activities-mobile-cards .project-card")).find(
       (c) => c.textContent.indexOf("Excavation") !== -1
     );
@@ -141,7 +141,7 @@ async function check(label, fn) {
     var dropdown = refreshedCard.querySelector(".card-menu__dropdown");
     assert.ok(dropdown, "menu must open from the mobile card");
     var items = Array.from(dropdown.querySelectorAll(".card-menu__item")).map((b) => b.textContent.trim());
-    assert.deepStrictEqual(items, ["Edit", "Delete"]);
+    assert.deepStrictEqual(items, ["Edit", "Clone", "Delete"]);
     // Close it so later checks aren't affected by a leftover open menu.
     win.document.querySelector(".card-menu__overlay").click();
   });

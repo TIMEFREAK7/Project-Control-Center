@@ -124,6 +124,22 @@
     activityVisibleColumns: { wbs: true, type: true, start: true, finish: true, percent_complete: true, float: true, status: true },
     activityColumnsMenuOpen: false,
     activityRowMenuId: null, // activity id whose row-level "⋯" menu is open, or null
+    // Daily-Use Audit Phase 4: click-to-edit directly on the grid for the four fields
+    // changed most often day to day (status, start/finish date, % complete) — opening
+    // the full Edit form just to bump a percentage was real daily friction the audit's
+    // own Phase 4 request named. The Edit form (and everything else on it) is untouched
+    // — this is purely a faster path for these four fields specifically.
+    inlineEditActivityId: null, // activity id currently being inline-edited in the grid, or null
+    inlineEditField: null, // 'status' | 'start' | 'finish' | 'percent_complete'
+    // Daily-Use Audit Phase 4 ("Planner power tools" — bulk date-shift): { [activityId]:
+    // true } for every checked row, same plain-object pattern the Phase 3 registers'
+    // uiState.selectedIds already use.
+    selectedActivityIds: {},
+    bulkShiftDays: "",
+    // Daily-Use Audit Phase 4 ("copy-activity"): set by the row menu's "Clone" item,
+    // consumed once by renderActivitiesTab() the same way newActivityTypeHint already
+    // is — see that field's own comment above.
+    activityClonePrefill: null,
   };
 
   function projectName(projects, projectId) {
@@ -172,6 +188,22 @@
     window.PCC.notify("Activity deleted.", "success");
     if (uiState.ganttDetailActivityId === activity.id) uiState.ganttDetailActivityId = null;
     rerender();
+  }
+
+  /** Daily-Use Audit Phase 4: shared commit path for the Activities grid's inline-edit
+   * cells (status/start/finish/% complete) — same "find, Object.assign, stamp
+   * updated_at" shape renderActivityForm()'s own submit handler already uses, just for
+   * one field at a time instead of the whole form's worth. */
+  function commitInlineActivityEdit(activityId, updates) {
+    window.PCC.store.update(function (data) {
+      var existing = data.activities.find(function (a) {
+        return a.id === activityId;
+      });
+      if (existing) {
+        Object.assign(existing, updates);
+        existing.updated_at = new Date().toISOString();
+      }
+    });
   }
 
   // ---------------------------------------------------------------------------------
@@ -2021,11 +2053,18 @@
     if (uiState.editingActivityId) {
       var activityBeingEdited =
         uiState.editingActivityId === "new"
-          ? window.PCC.store.newActivity(uiState.newActivityTypeHint ? { activity_type: uiState.newActivityTypeHint } : {})
+          ? window.PCC.store.newActivity(
+              // Daily-Use Audit Phase 4 ("copy-activity"): activityClonePrefill (set by
+              // the row menu's "Clone" item below) takes priority — it already carries
+              // its own activity_type, so newActivityTypeHint only matters on a plain
+              // "+ Add Activity"/"+ Add Milestone" click.
+              uiState.activityClonePrefill || (uiState.newActivityTypeHint ? { activity_type: uiState.newActivityTypeHint } : {})
+            )
           : scheduleActivities.find(function (a) {
               return a.id === uiState.editingActivityId;
             });
       uiState.newActivityTypeHint = null;
+      uiState.activityClonePrefill = null;
       if (activityBeingEdited) renderActivityForm(container, activityBeingEdited, wbsItems, data.vendors, rerender);
     }
 
@@ -2256,6 +2295,39 @@
           rerender();
         };
 
+        // Daily-Use Audit Phase 4 ("copy-activity"): opens the Add Activity form
+        // pre-filled with this activity's own content fields — reuses the exact
+        // pendingPrefill-style pattern the Phase 3 registers already established
+        // (activityClonePrefill, consumed once in renderActivitiesTab() above).
+        // Progress/status/actual dates/planned dates and every CPM-calculated field
+        // deliberately reset fresh — a copy is a new, not-yet-scheduled activity, not a
+        // snapshot of where the original currently stands.
+        var cloneItem = document.createElement("button");
+        cloneItem.className = "card-menu__item";
+        cloneItem.textContent = "Clone";
+        cloneItem.onclick = function () {
+          uiState.activityClonePrefill = {
+            wbs_id: a.wbs_id,
+            name: a.name,
+            activity_type: a.activity_type,
+            calendar_id: a.calendar_id,
+            duration: a.duration,
+            original_duration: a.original_duration,
+            remaining_duration: a.remaining_duration,
+            priority: a.priority,
+            discipline: a.discipline,
+            contractor: a.contractor,
+            responsible_person: a.responsible_person,
+            constraint_type: a.constraint_type,
+            constraint_date: a.constraint_date,
+            vendor_id: a.vendor_id,
+            notes: a.notes,
+          };
+          uiState.editingActivityId = "new";
+          uiState.activityRowMenuId = null;
+          rerender();
+        };
+
         var deleteItem = document.createElement("button");
         deleteItem.className = "card-menu__item";
         deleteItem.textContent = "Delete";
@@ -2267,6 +2339,7 @@
         };
 
         rowDropdown.appendChild(editItem);
+        rowDropdown.appendChild(cloneItem);
         rowDropdown.appendChild(deleteItem);
         rowMenuWrap.appendChild(rowDropdown);
       }
@@ -2286,6 +2359,21 @@
     function buildActivityMobileCard(a) {
       var card = document.createElement("div");
       card.className = "project-card";
+
+      // Daily-Use Audit Phase 4 (bulk date-shift): see risks.js's own .project-card__select
+      // comment for this exact pattern, reused here for the Activities grid's mobile
+      // card fallback.
+      var selectBox = document.createElement("input");
+      selectBox.type = "checkbox";
+      selectBox.className = "project-card__select";
+      selectBox.setAttribute("aria-label", "Select this activity for a bulk action");
+      selectBox.checked = !!uiState.selectedActivityIds[a.id];
+      selectBox.onchange = function () {
+        if (selectBox.checked) uiState.selectedActivityIds[a.id] = true;
+        else delete uiState.selectedActivityIds[a.id];
+        renderList();
+      };
+      card.appendChild(selectBox);
 
       var main = document.createElement("div");
       main.className = "project-card__main";
@@ -2336,9 +2424,88 @@
       return card;
     }
 
+    // Daily-Use Audit Phase 4 ("Planner power tools" — bulk date-shift): shifting a
+    // group of activities forward/back a common number of days, a standard daily
+    // scheduling operation, used to mean editing each one individually. Shifts
+    // planned_start/planned_finish always, and actual_start/actual_finish only when
+    // already set (an activity that hasn't actually started/finished yet has nothing
+    // there to shift).
+    function renderActivityBulkBar() {
+      var n = Object.keys(uiState.selectedActivityIds).length;
+      if (n === 0) return null;
+      var noun = n === 1 ? "activity" : "activities";
+
+      var bar = document.createElement("div");
+      bar.className = "bulk-action-bar";
+
+      var countEl = document.createElement("span");
+      countEl.className = "bulk-action-bar__count";
+      countEl.textContent = n + " selected";
+      bar.appendChild(countEl);
+
+      var shiftInput = document.createElement("input");
+      shiftInput.type = "number";
+      shiftInput.placeholder = "Days";
+      shiftInput.title = "Positive shifts later, negative shifts earlier";
+      shiftInput.style.width = "80px";
+      shiftInput.value = uiState.bulkShiftDays;
+      shiftInput.oninput = function () {
+        uiState.bulkShiftDays = shiftInput.value;
+      };
+      bar.appendChild(shiftInput);
+
+      var shiftBtn = document.createElement("button");
+      shiftBtn.className = "btn btn--ghost";
+      shiftBtn.textContent = "Shift Selected";
+      shiftBtn.onclick = function () {
+        var days = Number(uiState.bulkShiftDays);
+        if (!uiState.bulkShiftDays || isNaN(days) || days === 0) {
+          window.PCC.notify("Enter a non-zero number of days to shift.", "warning");
+          return;
+        }
+        window.PCC.store.update(function (data2) {
+          data2.activities.forEach(function (item) {
+            if (!uiState.selectedActivityIds[item.id]) return;
+            if (item.planned_start) item.planned_start = addDaysIso(item.planned_start, days);
+            if (item.planned_finish) item.planned_finish = addDaysIso(item.planned_finish, days);
+            if (item.actual_start) item.actual_start = addDaysIso(item.actual_start, days);
+            if (item.actual_finish) item.actual_finish = addDaysIso(item.actual_finish, days);
+            item.updated_at = new Date().toISOString();
+          });
+        });
+        window.PCC.notify(n + " " + noun + " shifted by " + days + " day" + (Math.abs(days) === 1 ? "" : "s") + ".", "success");
+        uiState.selectedActivityIds = {};
+        uiState.bulkShiftDays = "";
+        rerender();
+      };
+      bar.appendChild(shiftBtn);
+
+      var spacer = document.createElement("div");
+      spacer.className = "bulk-action-bar__spacer";
+      bar.appendChild(spacer);
+
+      var clearBtn = document.createElement("button");
+      clearBtn.className = "btn btn--ghost";
+      clearBtn.textContent = "Clear Selection";
+      clearBtn.onclick = function () {
+        uiState.selectedActivityIds = {};
+        renderList();
+      };
+      bar.appendChild(clearBtn);
+
+      return bar;
+    }
+
     function renderList() {
       listWrap.innerHTML = "";
+      var bulkBar = renderActivityBulkBar();
+      if (bulkBar) listWrap.appendChild(bulkBar);
       var filtered = sortActivitiesForGrid(scheduleActivities.filter(activityMatchesActivitiesTabFilter), wbsItems);
+      // Daily-Use Audit Phase 4: the inline-edit input for whichever cell is currently
+      // being edited, if any — .focus()ing it only works once the table is actually in
+      // the live document, so it's captured during row-building below and focused once
+      // at the very end of this function, not at creation time.
+      var inlineEditElementToFocus = null;
 
       if (filtered.length === 0) {
         var empty = document.createElement("div");
@@ -2374,6 +2541,14 @@
       var thead = document.createElement("thead");
       var headRow = document.createElement("tr");
       headRow.appendChild(buildSortableTh("name", "Activity"));
+      // Daily-Use Audit Phase 4 (bulk date-shift): a dedicated select column, placed
+      // right after the frozen Activity-name column rather than before it — the frozen-
+      // first-col CSS targets whichever column is literally first (see
+      // data-table--frozen-first-col's own comment in styles.css), so a checkbox column
+      // prepended ahead of Activity would itself become the frozen one instead.
+      var selectHeadTh = document.createElement("th");
+      selectHeadTh.textContent = "";
+      headRow.appendChild(selectHeadTh);
       ACTIVITY_GRID_COLUMNS.forEach(function (col) {
         if (uiState.activityVisibleColumns[col.key]) headRow.appendChild(buildSortableTh(col.key, col.label));
       });
@@ -2383,8 +2558,11 @@
       thead.appendChild(headRow);
       table.appendChild(thead);
 
-      var tbody = document.createElement("tbody");
-      filtered.forEach(function (a) {
+      // Daily-Use Audit Phase 4 (Activities grid virtualization): extracted into its own
+      // named function (previously inline in a forEach) so both the small-schedule path
+      // (every row, unchanged from before this phase) and the large-schedule virtualized
+      // path below can build one row on demand from the same code.
+      function buildActivityRow(a) {
         var row = document.createElement("tr");
 
         var nameTd = document.createElement("td");
@@ -2396,6 +2574,19 @@
           nameTd.appendChild(oosIcon);
         }
         row.appendChild(nameTd);
+
+        var selectTd = document.createElement("td");
+        var rowSelectBox = document.createElement("input");
+        rowSelectBox.type = "checkbox";
+        rowSelectBox.setAttribute("aria-label", "Select this activity for a bulk action");
+        rowSelectBox.checked = !!uiState.selectedActivityIds[a.id];
+        rowSelectBox.onchange = function () {
+          if (rowSelectBox.checked) uiState.selectedActivityIds[a.id] = true;
+          else delete uiState.selectedActivityIds[a.id];
+          renderList();
+        };
+        selectTd.appendChild(rowSelectBox);
+        row.appendChild(selectTd);
 
         if (uiState.activityVisibleColumns.wbs) {
           var wbsTd = document.createElement("td");
@@ -2409,23 +2600,109 @@
           row.appendChild(typeTd);
         }
 
+        // Daily-Use Audit Phase 4: click-to-edit directly on the grid \u2014 clicking the
+        // cell's displayed value swaps it for a real input, committed on blur/Enter
+        // (Escape cancels without saving) via commitInlineActivityEdit() above. Only
+        // ever one cell edits at a time (uiState.inlineEditActivityId/Field), same
+        // single-target pattern the row "\u22ef" menu's own openMenuId already uses.
+        function beginInlineEdit(field) {
+          uiState.inlineEditActivityId = a.id;
+          uiState.inlineEditField = field;
+          renderList();
+        }
+        function endInlineEdit() {
+          uiState.inlineEditActivityId = null;
+          uiState.inlineEditField = null;
+        }
+        function isEditingField(field) {
+          return uiState.inlineEditActivityId === a.id && uiState.inlineEditField === field;
+        }
+
         if (uiState.activityVisibleColumns.start) {
           var startTd = document.createElement("td");
-          startTd.textContent = a.planned_start || "\u2014";
+          if (isEditingField("start")) {
+            var startInput = document.createElement("input");
+            startInput.type = "date";
+            startInput.value = a.planned_start || "";
+            startInput.onblur = function () {
+              if (!isEditingField("start")) return; // Escape already cancelled this edit
+              commitInlineActivityEdit(a.id, { planned_start: startInput.value });
+              endInlineEdit();
+              renderList();
+            };
+            startInput.onkeydown = function (e) {
+              if (e.key === "Enter") startInput.blur();
+              else if (e.key === "Escape") { endInlineEdit(); renderList(); }
+            };
+            startTd.appendChild(startInput);
+            inlineEditElementToFocus = startInput;
+          } else {
+            startTd.textContent = a.planned_start || "\u2014";
+            startTd.style.cursor = "pointer";
+            startTd.title = "Click to change the start date";
+            startTd.onclick = function () { beginInlineEdit("start"); };
+          }
           row.appendChild(startTd);
         }
 
         if (uiState.activityVisibleColumns.finish) {
           var finishTd = document.createElement("td");
-          finishTd.textContent = a.planned_finish || "\u2014";
+          if (isEditingField("finish")) {
+            var finishInput = document.createElement("input");
+            finishInput.type = "date";
+            finishInput.value = a.planned_finish || "";
+            finishInput.onblur = function () {
+              if (!isEditingField("finish")) return;
+              commitInlineActivityEdit(a.id, { planned_finish: finishInput.value });
+              endInlineEdit();
+              renderList();
+            };
+            finishInput.onkeydown = function (e) {
+              if (e.key === "Enter") finishInput.blur();
+              else if (e.key === "Escape") { endInlineEdit(); renderList(); }
+            };
+            finishTd.appendChild(finishInput);
+            inlineEditElementToFocus = finishInput;
+          } else {
+            finishTd.textContent = a.planned_finish || "\u2014";
+            finishTd.style.cursor = "pointer";
+            finishTd.title = "Click to change the finish date";
+            finishTd.onclick = function () { beginInlineEdit("finish"); };
+          }
           row.appendChild(finishTd);
         }
 
         if (uiState.activityVisibleColumns.percent_complete) {
           var pctTd = document.createElement("td");
-          pctTd.innerHTML =
-            (a.percent_complete || 0) + "%" +
-            "<br/><span class='text-secondary' style='font-size:11px;'>" + (a.physical_progress || 0) + "% physical</span>";
+          if (isEditingField("percent_complete")) {
+            var pctInput = document.createElement("input");
+            pctInput.type = "number";
+            pctInput.min = "0";
+            pctInput.max = "100";
+            pctInput.style.width = "70px";
+            pctInput.value = a.percent_complete || 0;
+            function commitPct() {
+              if (!isEditingField("percent_complete")) return;
+              var clamped = Math.max(0, Math.min(100, Number(pctInput.value) || 0));
+              commitInlineActivityEdit(a.id, { percent_complete: clamped });
+              endInlineEdit();
+              renderList();
+            }
+            pctInput.onblur = commitPct;
+            pctInput.onkeydown = function (e) {
+              if (e.key === "Enter") pctInput.blur();
+              else if (e.key === "Escape") { endInlineEdit(); renderList(); }
+            };
+            pctTd.appendChild(pctInput);
+            inlineEditElementToFocus = pctInput;
+          } else {
+            pctTd.innerHTML =
+              (a.percent_complete || 0) + "%" +
+              "<br/><span class='text-secondary' style='font-size:11px;'>" + (a.physical_progress || 0) + "% physical</span>";
+            pctTd.style.cursor = "pointer";
+            pctTd.title = "Click to change % complete";
+            pctTd.onclick = function () { beginInlineEdit("percent_complete"); };
+          }
           row.appendChild(pctTd);
         }
 
@@ -2449,12 +2726,41 @@
 
         if (uiState.activityVisibleColumns.status) {
           var statusTd = document.createElement("td");
-          var statusBadge = document.createElement("span");
-          statusBadge.className =
-            "status-badge " +
-            (a.status === "complete" ? "status-badge--complete" : a.status === "on_hold" ? "status-badge--at_risk" : "status-badge--info");
-          statusBadge.textContent = ACTIVITY_STATUS_LABELS[a.status];
-          statusTd.appendChild(statusBadge);
+          if (isEditingField("status")) {
+            var statusEdit = document.createElement("select");
+            window.PCC.store.ACTIVITY_STATUSES.forEach(function (s) {
+              var opt = document.createElement("option");
+              opt.value = s;
+              opt.textContent = ACTIVITY_STATUS_LABELS[s];
+              statusEdit.appendChild(opt);
+            });
+            statusEdit.value = a.status;
+            statusEdit.onchange = function () {
+              commitInlineActivityEdit(a.id, { status: statusEdit.value });
+              endInlineEdit();
+              renderList();
+            };
+            statusEdit.onblur = function () {
+              if (!isEditingField("status")) return;
+              endInlineEdit();
+              renderList();
+            };
+            statusEdit.onkeydown = function (e) {
+              if (e.key === "Escape") { endInlineEdit(); renderList(); }
+            };
+            statusTd.appendChild(statusEdit);
+            inlineEditElementToFocus = statusEdit;
+          } else {
+            var statusBadge = document.createElement("span");
+            statusBadge.className =
+              "status-badge " +
+              (a.status === "complete" ? "status-badge--complete" : a.status === "on_hold" ? "status-badge--at_risk" : "status-badge--info");
+            statusBadge.textContent = ACTIVITY_STATUS_LABELS[a.status];
+            statusTd.appendChild(statusBadge);
+            statusTd.style.cursor = "pointer";
+            statusTd.title = "Click to change status";
+            statusTd.onclick = function () { beginInlineEdit("status"); };
+          }
           row.appendChild(statusTd);
         }
 
@@ -2466,13 +2772,85 @@
         actionsTd.appendChild(buildActivityRowMenu(a));
         row.appendChild(actionsTd);
 
-        tbody.appendChild(row);
-      });
+        return row;
+      }
+
+      var tbody = document.createElement("tbody");
       table.appendChild(tbody);
 
+      // Attached to the live document BEFORE any rows are built, not after — the
+      // virtualized path below needs scrollWrap.clientHeight to be a real, non-zero
+      // measurement on the very first paint (a detached element always reads 0, same as
+      // jsdom's permanent 0), not just once the user scrolls for the first time.
       scrollWrap.appendChild(table);
       panel.appendChild(scrollWrap);
       listWrap.appendChild(panel);
+
+      // Daily-Use Audit Phase 4 (Activities grid virtualization): "real 1000+ activity
+      // schedules" made every full rerender (every search keystroke, sort click, filter
+      // change) build a thousand-plus <tr> elements at once. Reuses the exact windowing
+      // primitive (visibleRowRange, in scheduleGanttLayout.js) the Gantt chart's own
+      // virtualization already established, rather than inventing a second scheme — see
+      // that function's own comment for how the jsdom-vs-real-browser fallback works.
+      // Only engages above the threshold: a typical schedule (well under 150 activities)
+      // renders exactly as it always has, unbounded height, every row in the DOM.
+      var VIRTUALIZE_THRESHOLD = 150;
+      var ROW_HEIGHT_ESTIMATE = 52; // the taller of the two row shapes (% Complete's two-line cell)
+      var HEADER_HEIGHT_ESTIMATE = 34;
+      var ROW_BUFFER = 15;
+
+      if (filtered.length > VIRTUALIZE_THRESHOLD) {
+        scrollWrap.style.maxHeight = "70vh";
+        scrollWrap.style.overflowY = "auto";
+        var columnCount = headRow.children.length;
+
+        function buildSpacerRow(rowCount) {
+          var spacerRow = document.createElement("tr");
+          var spacerTd = document.createElement("td");
+          spacerTd.colSpan = columnCount;
+          spacerTd.style.padding = "0";
+          spacerTd.style.border = "none";
+          spacerTd.style.height = rowCount * ROW_HEIGHT_ESTIMATE + "px";
+          spacerRow.appendChild(spacerTd);
+          return spacerRow;
+        }
+
+        var renderedRange = { start: -1, end: -1 };
+        function renderTbodyRows() {
+          var range = window.PCC.scheduleGanttLayout.visibleRowRange(
+            filtered.length, scrollWrap.scrollTop, scrollWrap.clientHeight, ROW_HEIGHT_ESTIMATE, HEADER_HEIGHT_ESTIMATE, ROW_BUFFER
+          );
+          if (range.start === renderedRange.start && range.end === renderedRange.end) return;
+          renderedRange = range;
+          tbody.innerHTML = "";
+          if (range.start > 0) tbody.appendChild(buildSpacerRow(range.start));
+          for (var i = range.start; i < range.end; i++) {
+            tbody.appendChild(buildActivityRow(filtered[i]));
+          }
+          if (range.end < filtered.length) tbody.appendChild(buildSpacerRow(filtered.length - range.end));
+        }
+
+        renderTbodyRows();
+        var virtualizeScrollRafPending = false;
+        var scheduleVirtualizeFrame = window.requestAnimationFrame ? window.requestAnimationFrame.bind(window) : function (cb) { cb(); };
+        scrollWrap.addEventListener("scroll", function () {
+          if (virtualizeScrollRafPending) return;
+          virtualizeScrollRafPending = true;
+          scheduleVirtualizeFrame(function () {
+            virtualizeScrollRafPending = false;
+            renderTbodyRows();
+          });
+        });
+      } else {
+        filtered.forEach(function (a) {
+          tbody.appendChild(buildActivityRow(a));
+        });
+      }
+
+      if (inlineEditElementToFocus) {
+        inlineEditElementToFocus.focus();
+        if (inlineEditElementToFocus.select) inlineEditElementToFocus.select();
+      }
     }
 
     renderList();
@@ -2642,6 +3020,51 @@
     container.appendChild(panel);
   }
 
+  /** Daily-Use Audit Phase 4 (WBS indent/outdent): same parent-chain walk
+   * renderWbsForm()'s own submit handler already uses for `level` — level is derived,
+   * never user-entered, so a reparent (from either the form's own Parent WBS dropdown or
+   * indent/outdent below) can't leave it out of sync. */
+  function computeWbsLevel(parentId, allWbsItems) {
+    var level = 0;
+    var walk = parentId;
+    var guard = 0;
+    while (walk && guard < 50) {
+      var parentItem = allWbsItems.find(function (w) {
+        return w.id === walk;
+      });
+      if (!parentItem) break;
+      level++;
+      walk = parentItem.parent_wbs_id;
+      guard++;
+    }
+    return level;
+  }
+
+  /** Reparents one WBS item and cascades the level recompute down through every
+   * descendant — indenting/outdenting a branch (not just a leaf) must keep the whole
+   * subtree's indentation correct, not just the item that was actually clicked. */
+  function reparentWbsItem(itemId, newParentId, allWbsItems) {
+    var item = allWbsItems.find(function (w) {
+      return w.id === itemId;
+    });
+    if (!item) return;
+    item.parent_wbs_id = newParentId;
+    item.level = computeWbsLevel(newParentId, allWbsItems);
+    item.updated_at = new Date().toISOString();
+    var queue = [itemId];
+    while (queue.length) {
+      var pid = queue.shift();
+      allWbsItems
+        .filter(function (w) {
+          return w.parent_wbs_id === pid;
+        })
+        .forEach(function (child) {
+          child.level = computeWbsLevel(child.parent_wbs_id, allWbsItems);
+          queue.push(child.id);
+        });
+    }
+  }
+
   function renderWbsTab(container, data, rerender) {
     var wbsItems = data.wbs_items.filter(function (w) {
       return w.schedule_id === uiState.scheduleId;
@@ -2709,6 +3132,62 @@
       var actions = document.createElement("div");
       actions.style.display = "flex";
       actions.style.gap = "var(--space-2)";
+
+      // Daily-Use Audit Phase 4 (WBS indent/outdent): a standard outliner operation the
+      // audit named directly — until now, changing where a WBS item sits in the
+      // hierarchy meant opening Edit and re-picking Parent WBS from a dropdown. Indent
+      // nests under the item's own previous sibling (found by code order within the
+      // same parent, not the flattened display order, so it stays correct regardless of
+      // how the level+code sort happens to interleave unrelated branches); Outdent
+      // promotes to the current parent's own parent. Both cascade the level recompute
+      // through the whole moved subtree via reparentWbsItem() above.
+      var siblings = wbsItems
+        .filter(function (x) {
+          return x.parent_wbs_id === w.parent_wbs_id;
+        })
+        .sort(function (a, b) {
+          return (a.code || "").localeCompare(b.code || "");
+        });
+      var myIndex = siblings.findIndex(function (x) {
+        return x.id === w.id;
+      });
+      var prevSibling = myIndex > 0 ? siblings[myIndex - 1] : null;
+      var currentParent = w.parent_wbs_id
+        ? wbsItems.find(function (x) {
+            return x.id === w.parent_wbs_id;
+          })
+        : null;
+
+      var indentBtn = document.createElement("button");
+      indentBtn.className = "btn btn--ghost";
+      indentBtn.textContent = "→ Indent";
+      indentBtn.title = prevSibling
+        ? "Nest under “" + (prevSibling.code ? prevSibling.code + " — " : "") + prevSibling.name + "”"
+        : "No previous item at this level to nest under";
+      indentBtn.disabled = !prevSibling;
+      indentBtn.onclick = function () {
+        window.PCC.store.update(function (data2) {
+          reparentWbsItem(w.id, prevSibling.id, data2.wbs_items);
+        });
+        window.PCC.notify("Indented under “" + (prevSibling.code ? prevSibling.code + " — " : "") + prevSibling.name + "”.", "success");
+        rerender();
+      };
+      actions.appendChild(indentBtn);
+
+      var outdentBtn = document.createElement("button");
+      outdentBtn.className = "btn btn--ghost";
+      outdentBtn.textContent = "← Outdent";
+      outdentBtn.title = currentParent ? "Promote to the same level as “" + (currentParent.code ? currentParent.code + " — " : "") + currentParent.name + "”" : "Already at the top level";
+      outdentBtn.disabled = !currentParent;
+      outdentBtn.onclick = function () {
+        var newParentId = currentParent.parent_wbs_id || null;
+        window.PCC.store.update(function (data2) {
+          reparentWbsItem(w.id, newParentId, data2.wbs_items);
+        });
+        window.PCC.notify("Outdented “" + w.name + "”.", "success");
+        rerender();
+      };
+      actions.appendChild(outdentBtn);
 
       var editBtn = document.createElement("button");
       editBtn.className = "btn btn--ghost";

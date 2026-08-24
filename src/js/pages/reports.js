@@ -43,7 +43,36 @@
     selectedTemplateId: { project: "", portfolio: "" },
     savingAsNew: false,
     newTemplateName: "",
+    // Daily-Use Audit Phase 4: the Project Status Report's three inherently chronological
+    // sections (Daily Log, Meetings, Documents — each has its own date field and no
+    // open/pending status to narrow it down the way Risks/RFIs/Change Orders already
+    // are) always showed every entry, capped only by a fixed "top N" slice. Each gets
+    // its own independent "last N days" window — "" means All Time, matching this
+    // section's exact pre-existing behavior, so an existing install sees no change
+    // until it's actually narrowed. Ephemeral UI state, not persisted (same "resets on
+    // reload" treatment as reportType/sections above), and per report-type since the
+    // portfolio report has no date-bearing sections of this kind to apply it to.
+    reportSectionDays: { dailyLog: "", meetings: "", documents: "" },
   };
+
+  var REPORT_DAY_WINDOW_OPTIONS = [
+    { value: "", label: "All time" },
+    { value: "7", label: "Last 7 days" },
+    { value: "14", label: "Last 14 days" },
+    { value: "30", label: "Last 30 days" },
+    { value: "60", label: "Last 60 days" },
+    { value: "90", label: "Last 90 days" },
+  ];
+
+  /** "" (All Time) always passes. A day window with no date on the record excludes it —
+   * a record can't be verified to fall inside a recency window it has no date for. */
+  function withinReportDayWindow(dateStr, days) {
+    if (!days) return true;
+    if (!dateStr) return false;
+    var cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - Number(days));
+    return new Date(dateStr) >= cutoff;
+  }
 
   /** Same placeholder-then-async-resolve pattern dailyLog.js's photo thumbnails and
    * documents.js's stored-file preview already establish — the logo is a single blob
@@ -130,7 +159,7 @@
 
   // --- Single-Project Status Report -----------------------------------------------
 
-  function buildProjectReport(project, data, sections) {
+  function buildProjectReport(project, data, sections, sectionDays) {
     var doc = document.createElement("div");
     doc.className = "report-doc";
 
@@ -299,8 +328,9 @@
 
     // Meetings
     if (sections.meetings) {
+    var meetingDays = sectionDays.meetings;
     var meetings = data.meetings
-      .filter(function (m) { return m.project_id === project.id; })
+      .filter(function (m) { return m.project_id === project.id && withinReportDayWindow(m.meeting_date, meetingDays); })
       .slice()
       .sort(function (a, b) { return (b.meeting_date || "").localeCompare(a.meeting_date || ""); });
     var openActions = [];
@@ -311,10 +341,11 @@
     });
     var overdueActions = openActions.filter(function (x) { return x.action.due_date && x.action.due_date < today(); });
     var meetingSection = sectionEl(
-      "Meetings \u2014 " + meetings.length + " total \u00b7 " + openActions.length + " open action items, " + overdueActions.length + " overdue"
+      "Meetings" + (meetingDays ? " (last " + meetingDays + " days)" : "") + " \u2014 " + meetings.length + " total \u00b7 " +
+      openActions.length + " open action items, " + overdueActions.length + " overdue"
     );
     if (meetings.length === 0) {
-      meetingSection.appendChild(emptyNote("No meetings logged."));
+      meetingSection.appendChild(emptyNote(meetingDays ? "No meetings in the last " + meetingDays + " days." : "No meetings logged."));
     } else {
       meetingSection.appendChild(
         table(
@@ -334,14 +365,18 @@
 
     // Daily Log
     if (sections.dailyLog) {
+    var dailyLogDays = sectionDays.dailyLog;
     var logs = data.daily_logs
-      .filter(function (l) { return l.project_id === project.id; })
+      .filter(function (l) { return l.project_id === project.id && withinReportDayWindow(l.log_date, dailyLogDays); })
       .slice()
       .sort(function (a, b) { return (b.log_date || "").localeCompare(a.log_date || ""); });
     var incidentLogs = logs.filter(function (l) { return l.incidents && l.incidents.trim(); });
-    var dailyLogSection = sectionEl("Daily Log \u2014 " + logs.length + " entries \u00b7 " + incidentLogs.length + " with incidents noted");
+    var dailyLogSection = sectionEl(
+      "Daily Log" + (dailyLogDays ? " (last " + dailyLogDays + " days)" : "") + " \u2014 " + logs.length + " entries \u00b7 " +
+      incidentLogs.length + " with incidents noted"
+    );
     if (logs.length === 0) {
-      dailyLogSection.appendChild(emptyNote("No Daily Log entries."));
+      dailyLogSection.appendChild(emptyNote(dailyLogDays ? "No Daily Log entries in the last " + dailyLogDays + " days." : "No Daily Log entries."));
     } else {
       dailyLogSection.appendChild(
         table(
@@ -360,10 +395,13 @@
 
     // Documents
     if (sections.documents) {
-    var docs = data.documents.filter(function (d) { return d.project_id === project.id; });
-    var docSection = sectionEl("Documents \u2014 " + docs.length + " on file");
+    var documentsDays = sectionDays.documents;
+    var docs = data.documents.filter(function (d) { return d.project_id === project.id && withinReportDayWindow(d.uploaded_at, documentsDays); });
+    var docSection = sectionEl(
+      "Documents" + (documentsDays ? " (last " + documentsDays + " days)" : "") + " \u2014 " + docs.length + " on file"
+    );
     if (docs.length === 0) {
-      docSection.appendChild(emptyNote("No documents on file."));
+      docSection.appendChild(emptyNote(documentsDays ? "No documents uploaded in the last " + documentsDays + " days." : "No documents on file."));
     } else {
       var byCategory = {};
       docs.forEach(function (d) {
@@ -803,6 +841,51 @@
     });
     templatePanel.appendChild(checkboxGrid);
 
+    // Daily-Use Audit Phase 4: independent "last N days" window per chronological
+    // section — Project Status Report only, since Portfolio has no section shaped like
+    // Daily Log/Meetings/Documents (an open-ended log with its own date field, no
+    // status to narrow it). See reportSectionDays' own uiState comment above.
+    if (uiState.reportType === "project") {
+      var REPORT_DAY_SECTION_LABELS = { dailyLog: "Daily Log", meetings: "Meetings", documents: "Documents" };
+      var dayWindowRow = document.createElement("div");
+      dayWindowRow.style.display = "flex";
+      dayWindowRow.style.flexWrap = "wrap";
+      dayWindowRow.style.alignItems = "center";
+      dayWindowRow.style.gap = "12px";
+      dayWindowRow.style.marginTop = "12px";
+      dayWindowRow.style.paddingTop = "10px";
+      dayWindowRow.style.borderTop = "1px solid var(--divider)";
+
+      Object.keys(REPORT_DAY_SECTION_LABELS).forEach(function (key) {
+        var wrap = document.createElement("label");
+        wrap.style.display = "flex";
+        wrap.style.alignItems = "center";
+        wrap.style.gap = "6px";
+        wrap.style.fontSize = "12px";
+        var text = document.createElement("span");
+        text.textContent = REPORT_DAY_SECTION_LABELS[key] + ":";
+        wrap.appendChild(text);
+
+        var daySelect = document.createElement("select");
+        REPORT_DAY_WINDOW_OPTIONS.forEach(function (opt) {
+          var optionEl = document.createElement("option");
+          optionEl.value = opt.value;
+          optionEl.textContent = opt.label;
+          daySelect.appendChild(optionEl);
+        });
+        daySelect.value = uiState.reportSectionDays[key];
+        daySelect.disabled = !uiState.sections.project[key];
+        daySelect.onchange = function () {
+          uiState.reportSectionDays[key] = daySelect.value;
+          rerender();
+        };
+        wrap.appendChild(daySelect);
+        dayWindowRow.appendChild(wrap);
+      });
+
+      templatePanel.appendChild(dayWindowRow);
+    }
+
     outlet.appendChild(templatePanel);
 
     var reportWrap = document.createElement("div");
@@ -813,7 +896,7 @@
         reportWrap.appendChild(emptyNote("Add a project in Portfolio first to generate a status report."));
       } else {
         var project = projects.find(function (p) { return p.id === uiState.projectId; }) || projects[0];
-        reportWrap.appendChild(buildProjectReport(project, data, uiState.sections.project));
+        reportWrap.appendChild(buildProjectReport(project, data, uiState.sections.project, uiState.reportSectionDays));
       }
     } else {
       reportWrap.appendChild(buildPortfolioReport(data, uiState.sections.portfolio));
