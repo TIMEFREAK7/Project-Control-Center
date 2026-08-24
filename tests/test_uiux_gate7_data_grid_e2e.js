@@ -111,7 +111,7 @@ function findButtonByText(dom, text, root) {
     assert.ok(grid(), "expected a real <table class='data-table'>");
     assert.ok(grid().classList.contains("data-table--sticky-header"));
     assert.ok(grid().classList.contains("data-table--frozen-first-col"));
-    assert.deepStrictEqual(headerLabels(), ["Activity", "WBS", "Type", "Start", "Finish", "% Complete", "Float", "Status", ""]);
+    assert.deepStrictEqual(headerLabels(), ["Activity", "", "WBS", "Type", "Start", "Finish", "% Complete", "Float", "Status", ""]);
     assert.strictEqual(bodyRows().length, 4);
   });
 
@@ -175,7 +175,7 @@ function findButtonByText(dom, text, root) {
     typeItem.querySelector("input").click();
 
     assert.ok(headerLabels().indexOf("Type") === -1, "Type column must be gone from the header once hidden");
-    assert.strictEqual(bodyRows()[0].cells.length, 8, "one fewer <td> per row once a column is hidden (was 9: name+7+actions)");
+    assert.strictEqual(bodyRows()[0].cells.length, 9, "one fewer <td> per row once a column is hidden (was 10: name+select+7+actions)");
 
     // The menu itself stays open — toggling a checkbox only rerenders the grid, not the
     // menu's own open/closed state — so re-show by finding the (still-open) checklist
@@ -191,7 +191,7 @@ function findButtonByText(dom, text, root) {
     assert.strictEqual(outlet().querySelector(".card-menu__dropdown"), null, "columns menu must be closed");
   });
 
-  await check("the row-level '⋯' menu opens with Edit/Delete, and Edit opens the activity form", () => {
+  await check("the row-level '⋯' menu opens with Edit/Clone/Delete, and Edit opens the activity form", () => {
     var row = bodyRows().find((r) => r.cells[0].textContent.indexOf("Excavation") !== -1);
     var menuBtn = row.querySelector('.icon-btn[aria-label="More actions"]');
     assert.ok(menuBtn, "row menu toggle not found");
@@ -204,7 +204,7 @@ function findButtonByText(dom, text, root) {
     var dropdown = refreshedRow.querySelector(".card-menu__dropdown");
     assert.ok(dropdown, "dropdown must open on menu click");
     var items = Array.from(dropdown.querySelectorAll(".card-menu__item")).map((b) => b.textContent.trim());
-    assert.deepStrictEqual(items, ["Edit", "Delete"]);
+    assert.deepStrictEqual(items, ["Edit", "Clone", "Delete"]);
 
     var editItem = Array.from(dropdown.querySelectorAll(".card-menu__item")).find((b) => b.textContent.trim() === "Edit");
     editItem.click();
