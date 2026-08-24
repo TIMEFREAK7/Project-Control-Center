@@ -2530,9 +2530,44 @@ for risks.js's card menu gaining a "Clone" item; `test_store_schema_v54_migratio
 migration check + a brand-new-install default/round-trip check. Real-Chromium click-through of every new
 flow (field memory, clone, and each bulk action) across all affected modules, zero console errors.
 
-**Not done**: Phases 4-5 (Planner power tools — bulk date-shift, copy-activity, WBS indent/outdent,
-Activities grid virtualization; polish — clickable KPI tiles, sorted project pickers, pinned projects) —
-still open, pending Aditya's go-ahead on which to do next.
+**Not done** (at Phase 3 cutoff): Phases 4-5 — still open, pending Aditya's go-ahead on which to do next.
+
+**Phase 4 — Planner power tools + two of Aditya's own requests, done, 2026-08-24.** Full detail and
+rationale in README.md's own entry (same section header) — summary here. Aditya added two items when
+kicking off this phase, alongside the audit's own Phase 4 proposal:
+
+**Aditya's requests:**
+1. **Inline edit on the Activities grid** — Status/Start/Finish/% Complete now edit in place (click the
+   cell → real input → commit on blur/Enter/change, Escape cancels) instead of needing the full Edit form
+   for a one-field bump. Every other field still goes through Edit unchanged.
+2. **Per-section report day-window** — Daily Log/Meetings/Documents on the Project Status Report each get
+   an independent "last N days" selector (All Time/7/14/30/60/90), reading that section's own date field.
+   Defaults to All Time (byte-identical output until narrowed); the printed heading shows the active
+   window.
+
+**The audit's own Phase 4 proposal:**
+3. **Bulk date-shift** — per-row checkboxes + a bulk-action bar shift `planned_start`/`planned_finish`
+   (and `actual_start`/`actual_finish` when set) by N days for every selected activity, reusing the
+   module's own `addDaysIso()` helper. Select column placed right after Activity (not before) — the
+   frozen-first-col CSS targets whichever column is literally first.
+4. **Copy-activity** — new "Clone" item in the row's "⋯" menu, same `pendingPrefill` pattern Phase 3
+   established. Content fields copied; status/progress/actual dates/CPM-calculated fields reset fresh.
+5. **WBS indent/outdent** — new "→ Indent"/"← Outdent" per row. Indent nests under the previous sibling
+   (by code order within the same parent, not flattened display order); Outdent promotes to the parent's
+   own parent. Both cascade the derived `level` field through the whole moved subtree.
+6. **Activities grid virtualization** — above 150 activities, only the rows in the current scroll
+   viewport (+ buffer) get real DOM, via spacer `<tr>`s preserving scrollbar proportions — reuses
+   `scheduleGanttLayout.js`'s existing `visibleRowRange()` (the same primitive the Gantt chart's own
+   virtualization already uses) rather than a second scheme. Below the threshold, unchanged behavior.
+
+**Verified**: full jsdom suite (2117 checks, 0 failures) — `test_uiux_gate7_data_grid_e2e.js` and
+`test_uiux_gate8_tablet_mobile_e2e.js` updated for the Activities row menu's new "Clone" item (desktop
+table + mobile card share one menu-building function), same pattern Phase 3 hit on risks.js. Real-Chromium
+click-through of all six features, including a 300-activity seed confirming the virtualized grid caps its
+rendered row count. Zero console errors.
+
+**Not done**: Phase 5 (polish — clickable KPI tiles, sorted project pickers, pinned projects) — still
+open, pending Aditya's go-ahead.
 
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
@@ -4321,39 +4356,41 @@ committed-to next feature as of this HEAD. When a fresh session picks this up:
 4. Windows/macOS code signing is a **closed** decision (personal use only, no cert, no Mac
    hardware) — don't re-raise it unless Aditya explicitly reopens the topic himself.
 
-### Current state update (2026-08-24, after Daily-Use Audit Phases 1 + 2 + 3 — supersedes the numbers above)
+### Current state update (2026-08-24, after Daily-Use Audit Phases 1 + 2 + 3 + 4 — supersedes the numbers above)
 
-`main` is fully up to date through **Daily-Use Audit Phase 3** at commit `777035a` (merge commit;
-Phase 3's own commit is `ecb3979`, on top of the Phase 2 docs commit `98fa594` and Phase 2's own merge
-`7c1ce3e`). The working branch, `claude/new-session-knj62z`, was just restarted from this `main` and
+`main` is fully up to date through **Daily-Use Audit Phase 4** at commit `fb96618` (merge commit;
+Phase 4's own commit is `b86df29`, on top of the Phase 3 docs commit `e280fe3` and Phase 3's own merge
+`777035a`). The working branch, `claude/new-session-knj62z`, was just restarted from this `main` and
 carries the exact same history — `git rev-parse main` and `git rev-parse claude/new-session-knj62z`
-both resolve to `777035a` as of this writing. **Verify this is still true by the time you read this**
+both resolve to `fb96618` as of this writing. **Verify this is still true by the time you read this**
 rather than trusting it blindly.
 
-- `schema_version` is now **56** (was 53 as of the last full rewrite of this section, before Phase 1;
-  check `src/js/store.js`'s own `SCHEMA_VERSION` constant and its migration chain directly if this
-  ever looks inconsistent, don't trust prose numbers). v55 added `cpm_calculated_fingerprint` to
-  schedules (Phase 1, bug #2). v56 added `settings.last_used_names` (Phase 3, field memory).
-- **Test suite**: 77 files as of this HEAD (`ls tests/*.js | wc -l`), all chained in
-  `tests/package.json`'s `test` script — 2117 individual checks, 0 failures at last run. Recount
-  rather than trust this number blindly — it grows almost every gate.
+- `schema_version` is still **56** — Phase 4 touched no data shape, only UI (store.js untouched this
+  round). Check `src/js/store.js`'s own `SCHEMA_VERSION` constant directly if this ever looks
+  inconsistent, don't trust prose numbers. v55 added `cpm_calculated_fingerprint` to schedules
+  (Phase 1, bug #2). v56 added `settings.last_used_names` (Phase 3, field memory).
+- **Test suite**: 77 files as of this HEAD (`ls tests/*.js | wc -l`, unchanged from Phase 3 — no new
+  test files this round, two existing ones updated), all chained in `tests/package.json`'s `test`
+  script — 2117 individual checks, 0 failures at last run. Recount rather than trust this number
+  blindly — it grows almost every gate.
 - Both an Android APK and a Windows EXE were rebuilt and delivered directly to Aditya once this round
   (before Phase 1 started, from the state as of PCC Redesign Gate 12) — see the Mobile & Desktop
   Packaging section and the split-file delivery convention (CLAUDE.md, `packaging/README.md`) for the
   exact artifacts and verification hashes. Neither has been rebuilt since — the APK/EXE Aditya has do
-  NOT include Phases 1, 2, or 3's changes; only the Phase 2 and Phase 3 end-user zips do (`index.html`
-  only, no native packaging). Rebuild+repackage before handing over another APK/EXE if that matters
-  for what's being delivered next.
+  NOT include Phases 1-4's changes; only the Phase 2/3/4 end-user zips do (`index.html` only, no
+  native packaging). Rebuild+repackage before handing over another APK/EXE if that matters for what's
+  being delivered next.
 - **What shipped this round, in order**: PCC Redesign Gate 12 (App Icon & Branding, closing out that
   whole 12-gate initiative) → Daily-Use Audit kickoff (39 findings, 5-phase proposal) → **Phase 1**
   (9 real bugs — router double-render, CPM staleness, RFI date_answered, Gantt search focus loss,
   circular relationships, negative Duration, SAVED-label race, no beforeunload warning, Daily Log
   duplicate guard) → **Phase 2** (Global Project Context live-sync wired into Dashboard/My Work/
   Action Centre/Project Lookahead; a first keyboard-shortcut pass — `/`, `n`, `?`) → **Phase 3**
-  (Clone on 6 registers, bulk actions on 5 registers, field memory on 4 "who" fields). Full detail on
-  all three phases is in this file's own Daily-Use Audit section above and in README.md's matching
-  section — don't re-derive it from git log.
-- **Not done**: Phases 4-5 of the Daily-Use Audit (Planner power tools — bulk date-shift, copy-
-  activity, WBS indent/outdent, Activities grid virtualization; polish — clickable KPI tiles, sorted
-  project pickers, pinned projects) — open, pending Aditya's explicit go-ahead on which to do next.
-  No other feature work is currently committed to.
+  (Clone on 6 registers, bulk actions on 5 registers, field memory on 4 "who" fields) → **Phase 4**
+  (Activities grid inline edit + per-section report day-window, both requested directly by Aditya;
+  plus the audit's own bulk date-shift, copy-activity, WBS indent/outdent, and Activities grid
+  virtualization). Full detail on all four phases is in this file's own Daily-Use Audit section above
+  and in README.md's matching section — don't re-derive it from git log.
+- **Not done**: Phase 5 of the Daily-Use Audit (polish — clickable KPI tiles, sorted project pickers,
+  pinned projects) — open, pending Aditya's explicit go-ahead. No other feature work is currently
+  committed to.

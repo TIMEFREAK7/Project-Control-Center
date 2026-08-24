@@ -4169,6 +4169,75 @@ errors throughout.
 copy-activity, WBS indent/outdent, Activities grid virtualization; polish — clickable KPI tiles, sorted
 project pickers, pinned projects) — still open, pending Aditya's go-ahead.
 
+### Phase 4 — Planner power tools + two of Aditya's own requests, done, 2026-08-24
+
+The audit's own Phase 4 proposal ("bulk date-shift, copy-activity, WBS indent/outdent, and virtualizing
+the Activities grid") plus two requests Aditya added when kicking this phase off: inline editing on the
+Activities grid, and a configurable day-window per report section.
+
+**1. Inline edit on the Activities grid (Aditya's request).** Status, Start, Finish, and % Complete
+previously meant opening the full Edit form for even a one-field bump — a real daily-use gap for the
+highest-frequency fields a planner touches. Clicking any of these four cells now swaps it for a real
+input in place: a `<select>` for Status, `<input type="date">` for Start/Finish, `<input type="number">`
+(clamped 0–100) for % Complete. Commits on blur/Enter/change; Escape cancels without saving. Every other
+field (name, duration, WBS, discipline, vendor, notes, etc.) still goes through the Edit form exactly as
+before — this is purely a faster path for the four fields named, not a redesign of the form itself.
+
+**2. Per-section report day-window (Aditya's request).** The Project Status Report's Daily Log, Meetings,
+and Documents sections always showed every entry, capped only by a fixed "top N" slice — no way to scope
+a report to, say, the last two weeks. Each of these three sections now gets its own independent "last N
+days" selector (All Time/7/14/30/60/90), reading that section's own date field (`log_date`/`meeting_date`/
+`uploaded_at`) — genuinely independent, not one global report-wide date range, since a report's Daily Log
+window and its Documents window rarely mean the same thing. Defaults to All Time, so an existing report's
+output is byte-for-byte unchanged until a window is actually picked; the printed section heading shows the
+active window (e.g. "Daily Log (last 30 days)") so the reader knows what range was applied.
+
+**3. Bulk date-shift.** "Shifting dates for a group of activities, a standard daily scheduling operation,
+meant editing each one individually." The Activities grid gains per-row checkboxes (a new select column
+placed right after the frozen Activity-name column, not before it — the frozen-first-col CSS targets
+whichever column is literally first, so a checkbox prepended ahead of Activity would itself become the
+frozen one) and a "N selected" bulk-action bar with a days input. Shifts `planned_start`/`planned_finish`
+always, and `actual_start`/`actual_finish` only when already set, reusing the schedule module's own
+existing `addDaysIso()` date-math helper.
+
+**4. Copy-activity.** A new "Clone" item in the row's "⋯" menu (alongside the existing Edit/Delete),
+reusing the exact `pendingPrefill` pattern the Phase 3 registers already established: opens the Add
+Activity form pre-filled with the source's content fields (WBS, type, duration, discipline, contractor,
+responsible person, constraint, vendor, notes). Status/progress/actual dates/planned dates and every
+CPM-calculated field reset fresh — a copy is a new, not-yet-scheduled activity, not a snapshot of where
+the original currently stands.
+
+**5. WBS indent/outdent.** Until now, changing where a WBS item sits in the hierarchy meant opening Edit
+and re-picking Parent WBS from a dropdown. New per-row "→ Indent"/"← Outdent" buttons: Indent nests an
+item under its own previous sibling (found by code order within the same parent — not the flattened
+display order, which stays correct regardless of how the level+code sort happens to interleave unrelated
+branches); Outdent promotes it to its current parent's own parent. Both cascade the derived `level` field
+(never user-entered, always walked from the parent chain — same rule the Edit form's own submit handler
+already followed) through the entire moved subtree, not just the row that was clicked, so indenting or
+outdenting a branch with children doesn't leave their indentation stale.
+
+**6. Activities grid virtualization.** Real 1000+ activity schedules meant every full rerender — every
+search keystroke, sort click, filter change — built a thousand-plus `<tr>` elements at once. Above a
+150-activity threshold, the grid now renders only the rows inside the current scroll viewport (plus a
+buffer), with spacer rows preserving correct scrollbar proportions — reusing `scheduleGanttLayout.js`'s
+own `visibleRowRange()` windowing primitive rather than inventing a second virtualization scheme (the
+same function the Gantt chart's own virtualization, from an earlier "final polish" gate, already proved
+out). Below the threshold, a schedule renders exactly as it always has — unbounded height, every row in
+the DOM — so a typical schedule's behavior and every pre-existing test are unaffected.
+
+**Verified**: full jsdom suite (2117 checks, 0 failures) — `test_uiux_gate7_data_grid_e2e.js` and
+`test_uiux_gate8_tablet_mobile_e2e.js` updated for the new "Clone" item the Activities grid's row menu
+gained (desktop table and mobile card both share the same menu-building function), same pattern Phase 3
+hit on risks.js's card menu. Real-Chromium click-through of all six features: inline edit committing to
+the actual stored activity, the report day-window filtering entries and updating the section heading,
+bulk date-shift moving both planned dates by the entered offset, Clone opening pre-filled with status
+correctly reset, indent/outdent both updating `parent_wbs_id` and `level` correctly, and the virtualized
+grid (seeded with 300 activities) confirmed capping its rendered `<tr>` count instead of building all 301.
+Zero console errors throughout.
+
+**Not done**: Phase 5 of the audit's own proposed sequencing (polish — clickable KPI tiles, sorted project
+pickers, pinned projects) — still open, pending Aditya's go-ahead.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
