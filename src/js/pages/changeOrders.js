@@ -17,6 +17,9 @@
     expandedId: null,
     revisionDrafts: {},
     pendingPrefill: null, // { project_id, source_meeting_id | source_rfi_id | source_risk_id }
+    // Daily-Use Audit Phase 3 (bulk actions): { [changeOrderId]: true } for every checked
+    // row — see risks.js's own uiState comment on this exact pattern.
+    selectedIds: {},
   };
 
   function projectName(projects, projectId) {
@@ -410,6 +413,7 @@
         }
       });
 
+      window.PCC.store.rememberLastUsedName("change_order_requested_by", values.requested_by);
       window.PCC.notify(isNew ? "Change Order added." : "Change Order updated.", "success");
       uiState.editingId = null;
       onSaved();
@@ -439,6 +443,19 @@
   function renderCard(co, projects, onChanged) {
     var card = document.createElement("div");
     card.className = "project-card";
+
+    // Daily-Use Audit Phase 3 (bulk actions).
+    var selectBox = document.createElement("input");
+    selectBox.type = "checkbox";
+    selectBox.className = "project-card__select";
+    selectBox.setAttribute("aria-label", "Select this entry for a bulk action");
+    selectBox.checked = !!uiState.selectedIds[co.id];
+    selectBox.onchange = function () {
+      if (selectBox.checked) uiState.selectedIds[co.id] = true;
+      else delete uiState.selectedIds[co.id];
+      onChanged();
+    };
+    card.appendChild(selectBox);
 
     var main = document.createElement("div");
     main.className = "project-card__main";
@@ -491,6 +508,29 @@
       onChanged();
     };
 
+    // Daily-Use Audit Phase 3 ("duplicate as template"): opens the Add form pre-filled
+    // with this Change Order's own content fields — status/decision/dates/source links
+    // deliberately reset fresh, since a clone is a new request, not a copy of where the
+    // original currently stands.
+    var cloneBtn = document.createElement("button");
+    cloneBtn.className = "btn btn--ghost";
+    cloneBtn.textContent = "Clone";
+    cloneBtn.onclick = function () {
+      uiState.pendingPrefill = {
+        project_id: co.project_id,
+        title: co.title,
+        description: co.description,
+        justification: co.justification,
+        requested_by: co.requested_by,
+        waiting_on_party: co.waiting_on_party,
+        activity_id: co.activity_id,
+        cost_impact_amount: co.cost_impact_amount,
+        schedule_impact_days: co.schedule_impact_days,
+      };
+      uiState.editingId = "new";
+      onChanged();
+    };
+
     var deleteBtn = document.createElement("button");
     deleteBtn.className = "btn btn--ghost";
     deleteBtn.textContent = "Delete";
@@ -507,6 +547,7 @@
 
     actions.appendChild(detailsBtn);
     actions.appendChild(editBtn);
+    actions.appendChild(cloneBtn);
     actions.appendChild(deleteBtn);
 
     card.appendChild(main);
@@ -817,6 +858,10 @@
     addBtn.disabled = !hasActiveProjects;
     addBtn.title = hasActiveProjects ? "" : "Add a project in Portfolio first";
     addBtn.onclick = function () {
+      // Daily-Use Audit Phase 3 (field memory): pre-fill Requested By with whoever
+      // requested the last change order.
+      var lastRequestedBy = window.PCC.store.getLastUsedName("change_order_requested_by");
+      uiState.pendingPrefill = lastRequestedBy ? { requested_by: lastRequestedBy } : null;
       uiState.editingId = "new";
       rerender();
     };
@@ -831,8 +876,100 @@
     var listWrap = document.createElement("div");
     outlet.appendChild(listWrap);
 
+    // Daily-Use Audit Phase 3 (bulk actions): "multi-select bulk close/approve" — Approve
+    // Selected/Reject Selected replicate the same date_decided backfill the single-entry
+    // Edit form's submit handler already does (only backfilled from a genuine "pending",
+    // matching that same rule here).
+    function selectedCount() {
+      return Object.keys(uiState.selectedIds).length;
+    }
+
+    function clearSelection() {
+      uiState.selectedIds = {};
+    }
+
+    function bulkSetStatus(newStatus, verb) {
+      var n = selectedCount();
+      window.PCC.store.update(function (d) {
+        d.change_orders.forEach(function (item) {
+          if (uiState.selectedIds[item.id]) {
+            var wasDecided = item.status === "pending";
+            item.status = newStatus;
+            if (wasDecided && !item.date_decided) item.date_decided = new Date().toISOString().slice(0, 10);
+            item.updated_at = new Date().toISOString();
+          }
+        });
+      });
+      window.PCC.notify(n + (n === 1 ? " Change Order " : " Change Orders ") + verb + ".", "success");
+      clearSelection();
+      rerender();
+    }
+
+    function renderBulkBar() {
+      var n = selectedCount();
+      if (n === 0) return null;
+      var noun = n === 1 ? "entry" : "entries";
+
+      var bar = document.createElement("div");
+      bar.className = "bulk-action-bar";
+
+      var countEl = document.createElement("span");
+      countEl.className = "bulk-action-bar__count";
+      countEl.textContent = n + " selected";
+      bar.appendChild(countEl);
+
+      var approveBtn = document.createElement("button");
+      approveBtn.className = "btn btn--ghost";
+      approveBtn.textContent = "Approve Selected";
+      approveBtn.onclick = function () {
+        bulkSetStatus("approved", "approved");
+      };
+      bar.appendChild(approveBtn);
+
+      var rejectBtn = document.createElement("button");
+      rejectBtn.className = "btn btn--ghost";
+      rejectBtn.textContent = "Reject Selected";
+      rejectBtn.onclick = function () {
+        bulkSetStatus("rejected", "rejected");
+      };
+      bar.appendChild(rejectBtn);
+
+      var spacer = document.createElement("div");
+      spacer.className = "bulk-action-bar__spacer";
+      bar.appendChild(spacer);
+
+      var clearBtn = document.createElement("button");
+      clearBtn.className = "btn btn--ghost";
+      clearBtn.textContent = "Clear Selection";
+      clearBtn.onclick = function () {
+        clearSelection();
+        rerender();
+      };
+      bar.appendChild(clearBtn);
+
+      var deleteBtn = document.createElement("button");
+      deleteBtn.className = "btn btn--ghost";
+      deleteBtn.textContent = "Delete Selected";
+      deleteBtn.onclick = function () {
+        if (!window.confirm("Delete " + n + " selected " + noun + "? This can't be undone.")) return;
+        window.PCC.store.update(function (d) {
+          d.change_orders = d.change_orders.filter(function (item) {
+            return !uiState.selectedIds[item.id];
+          });
+        });
+        window.PCC.notify(n + " " + noun + " deleted.", "info");
+        clearSelection();
+        rerender();
+      };
+      bar.appendChild(deleteBtn);
+
+      return bar;
+    }
+
     function renderList() {
       listWrap.innerHTML = "";
+      var bulkBar = renderBulkBar();
+      if (bulkBar) listWrap.appendChild(bulkBar);
       var filtered = data.change_orders.filter(matchesFilters);
 
       if (filtered.length === 0) {

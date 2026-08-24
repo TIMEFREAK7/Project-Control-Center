@@ -92,6 +92,10 @@
     pendingStatus: "draft",
     pendingRevisionGroupId: "",
     expandedRevisionsGroupId: null,
+    // Daily-Use Audit Phase 3 (bulk actions): { [documentId]: true } for every checked
+    // row — see risks.js's own uiState comment on this exact pattern. Keyed by the same
+    // top-level document id selectedDocId uses (always the latest revision).
+    selectedIds: {},
   };
 
   function resetPendingClassification() {
@@ -1220,10 +1224,135 @@
     uiState.previewExtractionExpanded = false;
   }
 
-  function renderDocumentListItem(doc, data, isSelected, onSelect) {
+  // Daily-Use Audit Phase 3 (bulk actions). Delete Selected replicates the single-entry
+  // Delete button's own behavior exactly (see its own comment further below): it removes
+  // an entire revision history, not just the latest row, and cleans up project
+  // attachments + blobStore the same way — a bulk delete that only dropped the latest
+  // revision row would silently orphan older revisions.
+  function renderDocumentBulkBar(data, filtered, rerender) {
+    var n = Object.keys(uiState.selectedIds).length;
+    if (n === 0) return null;
+    var noun = n === 1 ? "document" : "documents";
+
+    function selectedDocs() {
+      return filtered.filter(function (doc) {
+        return uiState.selectedIds[doc.id];
+      });
+    }
+
+    function clearSelection() {
+      uiState.selectedIds = {};
+    }
+
+    var bar = document.createElement("div");
+    bar.className = "bulk-action-bar";
+
+    var countEl = document.createElement("span");
+    countEl.className = "bulk-action-bar__count";
+    countEl.textContent = n + " selected";
+    bar.appendChild(countEl);
+
+    var approveBtn = document.createElement("button");
+    approveBtn.className = "btn btn--ghost";
+    approveBtn.textContent = "Approve Selected";
+    approveBtn.onclick = function () {
+      window.PCC.store.update(function (d) {
+        d.documents.forEach(function (item) {
+          if (uiState.selectedIds[item.id]) item.status = "approved";
+        });
+      });
+      window.PCC.notify(n + " " + noun + " marked approved.", "success");
+      clearSelection();
+      rerender();
+    };
+    bar.appendChild(approveBtn);
+
+    var rejectBtn = document.createElement("button");
+    rejectBtn.className = "btn btn--ghost";
+    rejectBtn.textContent = "Reject Selected";
+    rejectBtn.onclick = function () {
+      window.PCC.store.update(function (d) {
+        d.documents.forEach(function (item) {
+          if (uiState.selectedIds[item.id]) item.status = "rejected";
+        });
+      });
+      window.PCC.notify(n + " " + noun + " marked rejected.", "success");
+      clearSelection();
+      rerender();
+    };
+    bar.appendChild(rejectBtn);
+
+    var spacer = document.createElement("div");
+    spacer.className = "bulk-action-bar__spacer";
+    bar.appendChild(spacer);
+
+    var clearBtn = document.createElement("button");
+    clearBtn.className = "btn btn--ghost";
+    clearBtn.textContent = "Clear Selection";
+    clearBtn.onclick = function () {
+      clearSelection();
+      rerender();
+    };
+    bar.appendChild(clearBtn);
+
+    var deleteBtn = document.createElement("button");
+    deleteBtn.className = "btn btn--ghost";
+    deleteBtn.textContent = "Delete Selected";
+    deleteBtn.onclick = function () {
+      var docs = selectedDocs();
+      var totalRevisions = 0;
+      var allIds = [];
+      docs.forEach(function (doc) {
+        var revs = revisionsFor(data.documents, doc.document_group_id);
+        totalRevisions += revs.length;
+        revs.forEach(function (r) { allIds.push(r.id); });
+      });
+      if (!window.confirm(
+        "Delete " + n + " selected " + noun + " (" + totalRevisions + " total revision" + (totalRevisions === 1 ? "" : "s") +
+        ")? This removes every stored file and extracted data. This can't be undone."
+      )) return;
+      window.PCC.store.update(function (d) {
+        d.documents = d.documents.filter(function (item) { return allIds.indexOf(item.id) === -1; });
+        d.projects.forEach(function (p) {
+          if (p.attachments) {
+            p.attachments = p.attachments.filter(function (id) { return allIds.indexOf(id) === -1; });
+          }
+        });
+      });
+      allIds.forEach(function (id) {
+        window.PCC.blobStore.deleteBlob(id).catch(function () {});
+      });
+      if (allIds.indexOf(uiState.selectedDocId) !== -1) selectDocument(null);
+      window.PCC.notify(n + " " + noun + " deleted.", "info");
+      clearSelection();
+      rerender();
+    };
+    bar.appendChild(deleteBtn);
+
+    return bar;
+  }
+
+  function renderDocumentListItem(doc, data, isSelected, onSelect, onBulkChanged) {
     var item = document.createElement("div");
     item.className = "doc-register-item" + (isSelected ? " doc-register-item--selected" : "");
     item.onclick = onSelect;
+
+    // Daily-Use Audit Phase 3 (bulk actions). stopPropagation keeps a checkbox click
+    // from also triggering the row's own onclick (which would switch the preview pane).
+    var selectBox = document.createElement("input");
+    selectBox.type = "checkbox";
+    selectBox.className = "doc-register-item__select";
+    selectBox.setAttribute("aria-label", "Select this document for a bulk action");
+    selectBox.checked = !!uiState.selectedIds[doc.id];
+    selectBox.onclick = function (e) {
+      e.stopPropagation();
+    };
+    selectBox.onchange = function () {
+      if (selectBox.checked) uiState.selectedIds[doc.id] = true;
+      else delete uiState.selectedIds[doc.id];
+      onBulkChanged();
+    };
+    item.appendChild(selectBox);
 
     var name = document.createElement("div");
     name.className = "doc-register-item__name";
@@ -1780,12 +1909,18 @@
       listPane.style.flex = "0 0 " + uiState.docRegisterListWidth + "px";
       listPane.style.maxWidth = "none";
     }
+    // Daily-Use Audit Phase 3 (bulk actions): "No bulk actions on any register" —
+    // documents.js was one of five named. status change (approve/reject) + delete cover
+    // the two highest-frequency bulk operations named in the audit.
+    var bulkBar = renderDocumentBulkBar(data, filtered, rerender);
+    if (bulkBar) listPane.appendChild(bulkBar);
+
     filtered.forEach(function (doc) {
       listPane.appendChild(
         renderDocumentListItem(doc, data, doc.id === uiState.selectedDocId, function () {
           selectDocument(doc.id);
           rerender();
-        })
+        }, rerender)
       );
     });
     register.appendChild(listPane);

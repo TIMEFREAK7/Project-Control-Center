@@ -32,6 +32,9 @@
     expandedId: null,
     revisionDrafts: {}, // { [rfiId]: { author, note } } — in-progress "add revision" inputs, kept across rerenders
     pendingPrefill: null, // { project_id, source_meeting_id } set by createFromMeeting()
+    // Daily-Use Audit Phase 3 (bulk actions): { [rfiId]: true } for every checked row —
+    // see risks.js's own uiState comment on this exact pattern.
+    selectedIds: {},
   };
 
   function today() {
@@ -338,6 +341,7 @@
         }
       });
 
+      window.PCC.store.rememberLastUsedName("rfi_raised_by", values.raised_by);
       window.PCC.notify(isNew ? "Entry added." : "Entry updated.", "success");
       uiState.editingId = null;
       onSaved();
@@ -361,6 +365,19 @@
   function renderRfiCard(r, projects, onChanged) {
     var card = document.createElement("div");
     card.className = "project-card";
+
+    // Daily-Use Audit Phase 3 (bulk actions).
+    var selectBox = document.createElement("input");
+    selectBox.type = "checkbox";
+    selectBox.className = "project-card__select";
+    selectBox.setAttribute("aria-label", "Select this entry for a bulk action");
+    selectBox.checked = !!uiState.selectedIds[r.id];
+    selectBox.onchange = function () {
+      if (selectBox.checked) uiState.selectedIds[r.id] = true;
+      else delete uiState.selectedIds[r.id];
+      onChanged();
+    };
+    card.appendChild(selectBox);
 
     var main = document.createElement("div");
     main.className = "project-card__main";
@@ -414,6 +431,30 @@
       onChanged();
     };
 
+    // Daily-Use Audit Phase 3 ("duplicate as template"): opens the Add form pre-filled
+    // with this RFI/TQ's own content fields — status/response/dates deliberately reset
+    // fresh, and it's left unlinked from the source's meeting.
+    var cloneBtn = document.createElement("button");
+    cloneBtn.className = "btn btn--ghost";
+    cloneBtn.textContent = "Clone";
+    cloneBtn.onclick = function () {
+      uiState.pendingPrefill = {
+        project_id: r.project_id,
+        type: r.type,
+        subject: r.subject,
+        question: r.question,
+        priority: r.priority,
+        raised_by: r.raised_by,
+        assigned_to: r.assigned_to,
+        waiting_on_party: r.waiting_on_party,
+        activity_id: r.activity_id,
+        cost_impact: r.cost_impact,
+        schedule_impact: r.schedule_impact,
+      };
+      uiState.editingId = "new";
+      onChanged();
+    };
+
     var deleteBtn = document.createElement("button");
     deleteBtn.className = "btn btn--ghost";
     deleteBtn.textContent = "Delete";
@@ -430,6 +471,7 @@
 
     actions.appendChild(detailsBtn);
     actions.appendChild(editBtn);
+    actions.appendChild(cloneBtn);
     actions.appendChild(deleteBtn);
 
     card.appendChild(main);
@@ -839,6 +881,10 @@
     addBtn.disabled = !hasActiveProjects;
     addBtn.title = hasActiveProjects ? "" : "Add a project in Portfolio first";
     addBtn.onclick = function () {
+      // Daily-Use Audit Phase 3 (field memory): pre-fill Raised By with whoever raised
+      // the last RFI/TQ — the same PM/Coordinator name is typed dozens of times a week.
+      var lastRaisedBy = window.PCC.store.getLastUsedName("rfi_raised_by");
+      uiState.pendingPrefill = lastRaisedBy ? { raised_by: lastRaisedBy } : null;
       uiState.editingId = "new";
       rerender();
     };
@@ -854,8 +900,87 @@
     var listWrap = document.createElement("div");
     outlet.appendChild(listWrap);
 
+    // Daily-Use Audit Phase 3 (bulk actions): "Closing out a week's worth of answered
+    // RFIs means opening each row individually" — Close Selected replicates the same
+    // date_answered backfill the single-entry Edit form's submit handler already does
+    // (Phase 1, bug #3), so a bulk close doesn't lose that audit trail either.
+    function selectedCount() {
+      return Object.keys(uiState.selectedIds).length;
+    }
+
+    function clearSelection() {
+      uiState.selectedIds = {};
+    }
+
+    function renderBulkBar() {
+      var n = selectedCount();
+      if (n === 0) return null;
+      var noun = n === 1 ? "entry" : "entries";
+
+      var bar = document.createElement("div");
+      bar.className = "bulk-action-bar";
+
+      var countEl = document.createElement("span");
+      countEl.className = "bulk-action-bar__count";
+      countEl.textContent = n + " selected";
+      bar.appendChild(countEl);
+
+      var closeBtn = document.createElement("button");
+      closeBtn.className = "btn btn--ghost";
+      closeBtn.textContent = "Close Selected";
+      closeBtn.onclick = function () {
+        window.PCC.store.update(function (d) {
+          d.rfis.forEach(function (item) {
+            if (uiState.selectedIds[item.id]) {
+              var wasAnswered = item.status !== "answered" && item.status !== "closed";
+              item.status = "closed";
+              if (wasAnswered && !item.date_answered) item.date_answered = today();
+              item.updated_at = new Date().toISOString();
+            }
+          });
+        });
+        window.PCC.notify(n + " " + noun + " closed.", "success");
+        clearSelection();
+        rerender();
+      };
+      bar.appendChild(closeBtn);
+
+      var spacer = document.createElement("div");
+      spacer.className = "bulk-action-bar__spacer";
+      bar.appendChild(spacer);
+
+      var clearBtn = document.createElement("button");
+      clearBtn.className = "btn btn--ghost";
+      clearBtn.textContent = "Clear Selection";
+      clearBtn.onclick = function () {
+        clearSelection();
+        rerender();
+      };
+      bar.appendChild(clearBtn);
+
+      var deleteBtn = document.createElement("button");
+      deleteBtn.className = "btn btn--ghost";
+      deleteBtn.textContent = "Delete Selected";
+      deleteBtn.onclick = function () {
+        if (!window.confirm("Delete " + n + " selected " + noun + "? This can't be undone.")) return;
+        window.PCC.store.update(function (d) {
+          d.rfis = d.rfis.filter(function (item) {
+            return !uiState.selectedIds[item.id];
+          });
+        });
+        window.PCC.notify(n + " " + noun + " deleted.", "info");
+        clearSelection();
+        rerender();
+      };
+      bar.appendChild(deleteBtn);
+
+      return bar;
+    }
+
     function renderList() {
       listWrap.innerHTML = "";
+      var bulkBar = renderBulkBar();
+      if (bulkBar) listWrap.appendChild(bulkBar);
       var filtered = data.rfis.filter(rfiMatchesFilters);
 
       if (filtered.length === 0) {

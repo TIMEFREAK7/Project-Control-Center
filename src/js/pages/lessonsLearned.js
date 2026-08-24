@@ -267,6 +267,7 @@
         }
       });
 
+      window.PCC.store.rememberLastUsedName("lesson_identified_by", values.identified_by);
       window.PCC.notify(isNew ? "Lesson Learned added." : "Lesson Learned updated.", "success");
       uiState.editingId = null;
       onSaved();
@@ -329,6 +330,27 @@
       onChanged();
     };
 
+    // Daily-Use Audit Phase 3 ("duplicate as template"): opens the Add form pre-filled
+    // with this lesson's own content fields — useful for logging the same recurring
+    // lesson (e.g. a vendor pattern) against another project. identified_by/date reset
+    // fresh.
+    var cloneBtn = document.createElement("button");
+    cloneBtn.className = "btn btn--ghost";
+    cloneBtn.textContent = "Clone";
+    cloneBtn.onclick = function () {
+      uiState.pendingPrefill = {
+        project_id: l.project_id,
+        category: l.category,
+        impact_type: l.impact_type,
+        title: l.title,
+        description: l.description,
+        recommendation: l.recommendation,
+        activity_id: l.activity_id,
+      };
+      uiState.editingId = "new";
+      onChanged();
+    };
+
     var deleteBtn = document.createElement("button");
     deleteBtn.className = "btn btn--ghost";
     deleteBtn.textContent = "Delete";
@@ -345,6 +367,7 @@
 
     actions.appendChild(detailsBtn);
     actions.appendChild(editBtn);
+    actions.appendChild(cloneBtn);
     actions.appendChild(deleteBtn);
 
     card.appendChild(main);
@@ -587,6 +610,10 @@
     addBtn.disabled = !hasActiveProjects;
     addBtn.title = hasActiveProjects ? "" : "Add a project in Portfolio first";
     addBtn.onclick = function () {
+      // Daily-Use Audit Phase 3 (field memory): pre-fill Identified By with whoever
+      // identified the last lesson.
+      var lastIdentifiedBy = window.PCC.store.getLastUsedName("lesson_identified_by");
+      uiState.pendingPrefill = lastIdentifiedBy ? { identified_by: lastIdentifiedBy } : null;
       uiState.editingId = "new";
       rerender();
     };

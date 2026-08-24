@@ -40,6 +40,11 @@
     expandedId: null,
     openMenuId: null, // risk id whose "⋯" card menu is open, or null
     pendingPrefill: null, // { project_id, source_meeting_id } set by createFromMeeting()
+    // Daily-Use Audit Phase 3 (bulk actions): { [riskId]: true } for every checked row.
+    // A plain object, not a Set, matching this file's existing style. Deliberately not
+    // pruned on filter/search changes — a selection a user built up survives narrowing
+    // the list further, only cleared explicitly or after a bulk action completes.
+    selectedIds: {},
   };
 
   function severityOf(risk) {
@@ -377,6 +382,19 @@
     var card = document.createElement("div");
     card.className = "project-card";
 
+    // Daily-Use Audit Phase 3 (bulk actions).
+    var selectBox = document.createElement("input");
+    selectBox.type = "checkbox";
+    selectBox.className = "project-card__select";
+    selectBox.setAttribute("aria-label", "Select this entry for a bulk action");
+    selectBox.checked = !!uiState.selectedIds[r.id];
+    selectBox.onchange = function () {
+      if (selectBox.checked) uiState.selectedIds[r.id] = true;
+      else delete uiState.selectedIds[r.id];
+      onChanged();
+    };
+    card.appendChild(selectBox);
+
     var main = document.createElement("div");
     main.className = "project-card__main";
     main.innerHTML =
@@ -452,6 +470,29 @@
         onChanged();
       };
 
+      // Daily-Use Audit Phase 3 ("duplicate as template"): opens the Add form pre-filled
+      // with this entry's own content fields, so a near-identical risk/issue doesn't
+      // mean retyping the same boilerplate. Status/dates deliberately reset to fresh —
+      // a clone is a new occurrence, not a copy of where the original currently stands.
+      var cloneItem = document.createElement("button");
+      cloneItem.className = "card-menu__item";
+      cloneItem.textContent = "Clone";
+      cloneItem.onclick = function () {
+        uiState.pendingPrefill = {
+          project_id: r.project_id,
+          type: r.type,
+          title: r.title,
+          description: r.description,
+          probability: r.probability,
+          impact: r.impact,
+          owner: r.owner,
+          activity_id: r.activity_id,
+        };
+        uiState.editingId = "new";
+        uiState.openMenuId = null;
+        onChanged();
+      };
+
       var deleteItem = document.createElement("button");
       deleteItem.className = "card-menu__item";
       deleteItem.textContent = "Delete";
@@ -468,6 +509,7 @@
       };
 
       dropdown.appendChild(editItem);
+      dropdown.appendChild(cloneItem);
       dropdown.appendChild(deleteItem);
       menuWrap.appendChild(dropdown);
     }
@@ -778,8 +820,84 @@
     var listWrap = document.createElement("div");
     outlet.appendChild(listWrap);
 
+    // Daily-Use Audit Phase 3 (bulk actions): "No bulk actions on any register" — closing
+    // out a week's worth of resolved risks/issues meant opening each row individually.
+    // Close + Delete cover the two highest-frequency bulk operations named in the audit.
+    function selectedCount() {
+      return Object.keys(uiState.selectedIds).length;
+    }
+
+    function clearSelection() {
+      uiState.selectedIds = {};
+    }
+
+    function renderBulkBar() {
+      var n = selectedCount();
+      if (n === 0) return null;
+      var noun = n === 1 ? "entry" : "entries";
+
+      var bar = document.createElement("div");
+      bar.className = "bulk-action-bar";
+
+      var countEl = document.createElement("span");
+      countEl.className = "bulk-action-bar__count";
+      countEl.textContent = n + " selected";
+      bar.appendChild(countEl);
+
+      var closeBtn = document.createElement("button");
+      closeBtn.className = "btn btn--ghost";
+      closeBtn.textContent = "Close Selected";
+      closeBtn.onclick = function () {
+        window.PCC.store.update(function (d) {
+          d.risks.forEach(function (item) {
+            if (uiState.selectedIds[item.id]) {
+              item.status = "closed";
+              item.updated_at = new Date().toISOString();
+            }
+          });
+        });
+        window.PCC.notify(n + " " + noun + " closed.", "success");
+        clearSelection();
+        rerender();
+      };
+      bar.appendChild(closeBtn);
+
+      var spacer = document.createElement("div");
+      spacer.className = "bulk-action-bar__spacer";
+      bar.appendChild(spacer);
+
+      var clearBtn = document.createElement("button");
+      clearBtn.className = "btn btn--ghost";
+      clearBtn.textContent = "Clear Selection";
+      clearBtn.onclick = function () {
+        clearSelection();
+        rerender();
+      };
+      bar.appendChild(clearBtn);
+
+      var deleteBtn = document.createElement("button");
+      deleteBtn.className = "btn btn--ghost";
+      deleteBtn.textContent = "Delete Selected";
+      deleteBtn.onclick = function () {
+        if (!window.confirm("Delete " + n + " selected " + noun + "? This can't be undone.")) return;
+        window.PCC.store.update(function (d) {
+          d.risks = d.risks.filter(function (item) {
+            return !uiState.selectedIds[item.id];
+          });
+        });
+        window.PCC.notify(n + " " + noun + " deleted.", "info");
+        clearSelection();
+        rerender();
+      };
+      bar.appendChild(deleteBtn);
+
+      return bar;
+    }
+
     function renderList() {
       listWrap.innerHTML = "";
+      var bulkBar = renderBulkBar();
+      if (bulkBar) listWrap.appendChild(bulkBar);
       var filtered = data.risks.filter(riskMatchesFilters);
 
       if (filtered.length === 0) {
