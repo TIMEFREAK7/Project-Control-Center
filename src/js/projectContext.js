@@ -53,5 +53,38 @@
     });
   }
 
-  window.PCC.projectContext = { get: get, set: set };
+  /** Daily-Use Audit Phase 5 (pinned projects): "someone bouncing between a few
+   * 'current' projects re-picks from the full, unsorted list every time" — get()/set()
+   * above only ever track ONE current project; this is a separate, ordered set of
+   * "the 2-3 I actually work in", surfaced first in the shell header's project select
+   * (layout.js's populateProjectContextSelect()). Filtered to still-live, non-archived
+   * projects on every read, same "re-validate, don't trust a stale id" rule get() above
+   * already follows — a pinned project that's since been archived/deleted just quietly
+   * drops off rather than leaving a broken entry an unpin action would be needed for. */
+  function getPinnedIds() {
+    var data = window.PCC.store.get();
+    var live = activeProjects(data);
+    return (data.settings.pinned_project_ids || []).filter(function (id) {
+      return live.some(function (p) {
+        return p.id === id;
+      });
+    });
+  }
+
+  function isPinned(projectId) {
+    return getPinnedIds().indexOf(projectId) !== -1;
+  }
+
+  /** Newly-pinned projects go to the front — the most recently pinned is the one most
+   * likely to be what someone's actively switching into right now. */
+  function togglePin(projectId) {
+    window.PCC.store.update(function (data) {
+      if (!data.settings.pinned_project_ids) data.settings.pinned_project_ids = [];
+      var idx = data.settings.pinned_project_ids.indexOf(projectId);
+      if (idx !== -1) data.settings.pinned_project_ids.splice(idx, 1);
+      else data.settings.pinned_project_ids.unshift(projectId);
+    });
+  }
+
+  window.PCC.projectContext = { get: get, set: set, getPinnedIds: getPinnedIds, isPinned: isPinned, togglePin: togglePin };
 })();

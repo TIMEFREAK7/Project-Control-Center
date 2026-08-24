@@ -422,6 +422,14 @@ button {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  /* Daily-Use Audit Phase 5 (mobile alignment bug): a bare <span> is inline, so
+     overflow/text-overflow above had no box to actually clip against — the page
+     title (e.g. "Dashboard") rendered at its full natural width regardless of how
+     little room .title-block__cell--grow had left after the action icons, visibly
+     overlapping the first icon button on any narrow/phone viewport. display:block +
+     max-width:100% gives it a real box the flex parent can actually shrink. */
+  display: block;
+  max-width: 100%;
 }
 
 /* Redesign Gate 6 (Global Project Context): the shell header's project switcher — a
@@ -568,6 +576,19 @@ footer.app-footer {
 
 .kpi-card:hover {
   border-color: var(--text-secondary);
+}
+
+/* Daily-Use Audit Phase 5 ("Dashboard's own KPI tiles aren't clickable"): rendered as
+   a real <button> now, same "reset to look identical at rest" approach .card-stat--link
+   already established — .kpi-card's own background/border/padding/radius above still
+   apply unchanged, this only resets the button-specific defaults a <div> never had. */
+.kpi-card--link {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
 }
 
 .kpi-card__label {
@@ -1985,6 +2006,15 @@ a:focus-visible {
   .toolbar input[type="text"],
   .toolbar select {
     flex-basis: 100%;
+  }
+
+  /* Daily-Use Audit Phase 5 (mobile alignment): no physical keyboard on a phone, so
+     the keyboard-shortcuts icon has nothing to do there — dropping it also frees just
+     enough header width for the page title to stop truncating to 1-2 characters on
+     common short titles ("Dashboard", "Settings", etc). See shortcutsBtn's own
+     comment in layout.js. */
+  .icon-btn--hide-mobile {
+    display: none;
   }
 
   .title-block__cell:not(.title-block__cell--grow) {
@@ -5177,7 +5207,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 56;
+  var SCHEMA_VERSION = 57;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -5254,6 +5284,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         // below) rather than one flat field, so each register's own "who" field
         // remembers independently.
         last_used_names: {},
+        // Daily-Use Audit Phase 5 (pinned projects): "someone bouncing between a few
+        // 'current' projects re-picks from the full, unsorted list every time" —
+        // active_project_id above only ever remembers ONE project. An ordered array
+        // (not a Set — order is meaningful, pin order is display order), project ids
+        // only; see projectContext.js's getPinnedIds()/isPinned()/togglePin().
+        pinned_project_ids: [],
       },
       projects: [],
       documents: [],
@@ -7804,6 +7840,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       loaded.schema_version = 56;
     }
 
+    if (loaded.schema_version < 57) {
+      // Daily-Use Audit Phase 5 (pinned projects): new settings field, nothing to
+      // backfill — no install has ever pinned a project before this, same "starts
+      // empty" treatment every other new settings array/object in this app gets.
+      if (!loaded.settings.pinned_project_ids) loaded.settings.pinned_project_ids = [];
+      loaded.schema_version = 57;
+    }
+
     return loaded;
   }
 
@@ -8278,7 +8322,40 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     });
   }
 
-  window.PCC.projectContext = { get: get, set: set };
+  /** Daily-Use Audit Phase 5 (pinned projects): "someone bouncing between a few
+   * 'current' projects re-picks from the full, unsorted list every time" — get()/set()
+   * above only ever track ONE current project; this is a separate, ordered set of
+   * "the 2-3 I actually work in", surfaced first in the shell header's project select
+   * (layout.js's populateProjectContextSelect()). Filtered to still-live, non-archived
+   * projects on every read, same "re-validate, don't trust a stale id" rule get() above
+   * already follows — a pinned project that's since been archived/deleted just quietly
+   * drops off rather than leaving a broken entry an unpin action would be needed for. */
+  function getPinnedIds() {
+    var data = window.PCC.store.get();
+    var live = activeProjects(data);
+    return (data.settings.pinned_project_ids || []).filter(function (id) {
+      return live.some(function (p) {
+        return p.id === id;
+      });
+    });
+  }
+
+  function isPinned(projectId) {
+    return getPinnedIds().indexOf(projectId) !== -1;
+  }
+
+  /** Newly-pinned projects go to the front — the most recently pinned is the one most
+   * likely to be what someone's actively switching into right now. */
+  function togglePin(projectId) {
+    window.PCC.store.update(function (data) {
+      if (!data.settings.pinned_project_ids) data.settings.pinned_project_ids = [];
+      var idx = data.settings.pinned_project_ids.indexOf(projectId);
+      if (idx !== -1) data.settings.pinned_project_ids.splice(idx, 1);
+      else data.settings.pinned_project_ids.unshift(projectId);
+    });
+  }
+
+  window.PCC.projectContext = { get: get, set: set, getPinnedIds: getPinnedIds, isPinned: isPinned, togglePin: togglePin };
 })();
 
 
@@ -8884,20 +8961,65 @@ https://github.com/nodeca/pako/blob/main/LICENSE
    * (kept in sync via the store.onChange listener registered in mount() below). */
   function populateProjectContextSelect(select) {
     var data = window.PCC.store.get();
-    var activeProjects = data.projects.filter(function (p) {
-      return !p.archived;
-    });
+    // Daily-Use Audit Phase 5 ("Project context selector isn't alphabetically sorted"):
+    // "Iterates the store in raw insertion order. For a Planner running a real
+    // multi-project portfolio, picking the right project from an unsorted list every
+    // time is real daily friction." Sorted case-insensitively so "amber" and "Amber"
+    // land together rather than splitting on case.
+    var activeProjects = data.projects
+      .filter(function (p) {
+        return !p.archived;
+      })
+      .sort(function (a, b) {
+        return (a.name || "").toLowerCase().localeCompare((b.name || "").toLowerCase());
+      });
     select.innerHTML = "";
     var allOpt = document.createElement("option");
     allOpt.value = "";
     allOpt.textContent = "All Projects";
     select.appendChild(allOpt);
-    activeProjects.forEach(function (p) {
+
+    function optionFor(p) {
       var opt = document.createElement("option");
       opt.value = p.id;
       opt.textContent = p.name || "(unnamed project)";
-      select.appendChild(opt);
+      return opt;
+    }
+
+    // Daily-Use Audit Phase 5 (pinned projects): pinned ids come back in pin order
+    // (most-recently-pinned first, see togglePin()'s own comment) — kept as-is here
+    // rather than re-sorted alphabetically, so the one just pinned is exactly where a
+    // planner expects to find it, at the top.
+    var pinnedIds = window.PCC.projectContext.getPinnedIds();
+    if (pinnedIds.length > 0) {
+      var pinnedGroup = document.createElement("optgroup");
+      pinnedGroup.label = "Pinned";
+      pinnedIds.forEach(function (id) {
+        var p = activeProjects.find(function (proj) {
+          return proj.id === id;
+        });
+        if (p) pinnedGroup.appendChild(optionFor(p));
+      });
+      select.appendChild(pinnedGroup);
+    }
+
+    var pinnedIdSet = {};
+    pinnedIds.forEach(function (id) {
+      pinnedIdSet[id] = true;
     });
+    var unpinnedProjects = activeProjects.filter(function (p) {
+      return !pinnedIdSet[p.id];
+    });
+    if (unpinnedProjects.length > 0) {
+      var restGroup = pinnedIds.length > 0 ? document.createElement("optgroup") : null;
+      if (restGroup) restGroup.label = "All Projects";
+      var target = restGroup || select;
+      unpinnedProjects.forEach(function (p) {
+        target.appendChild(optionFor(p));
+      });
+      if (restGroup) select.appendChild(restGroup);
+    }
+
     select.value = window.PCC.projectContext.get();
   }
 
@@ -9036,7 +9158,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     // besides already knowing to press "?" — same icon-btn row every other shell-level
     // action lives in.
     var shortcutsBtn = document.createElement("button");
-    shortcutsBtn.className = "icon-btn";
+    // Daily-Use Audit Phase 5 (mobile alignment): hidden at phone width via
+    // .icon-btn--hide-mobile (styles.css) — there's no physical keyboard on a
+    // touchscreen device, so this icon has nothing to do there. Also the one action
+    // icon safe to drop without losing functionality, freeing just enough width for
+    // the page title to stop truncating to 1-2 characters on common short titles like
+    // "Dashboard"/"Settings" (see the mobile title-block overlap bug fixed alongside
+    // this same phase — .title-block__value's missing display:block/max-width).
+    shortcutsBtn.className = "icon-btn icon-btn--hide-mobile";
     shortcutsBtn.title = "Keyboard shortcuts";
     shortcutsBtn.innerHTML = ICONS.keyboard;
     shortcutsBtn.onclick = function () {
@@ -10675,18 +10804,27 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     }).length;
     var dueSoonCount = reminders.length - overdueCount;
 
+    // Daily-Use Audit Phase 5 ("Dashboard's own KPI tiles aren't clickable"):
+    // "Inconsistent with the Portfolio Exceptions panel directly below it, which uses
+    // near-identical chips that ARE clickable — trains the wrong expectation on the
+    // very first screen a user sees." Each tile now navigates to wherever that count
+    // actually lives — Portfolio (pre-filtered to the matching status, via the new
+    // portfolio.filterByStatus()) for the first four, Document Control Dashboard for
+    // the two document-reminder tiles, which already is portfolio-wide with no
+    // per-status filter of its own to set.
     var kpis = [
-      { label: "ACTIVE PROJECTS", value: filtered.length, colorVar: null },
-      { label: "ON TRACK", value: countByStatus("on_track"), colorVar: "--status-on-track" },
-      { label: "AT RISK", value: countByStatus("at_risk"), colorVar: "--status-at-risk" },
-      { label: "CRITICAL", value: countByStatus("critical"), colorVar: "--status-critical" },
-      { label: "OVERDUE DOCS", value: overdueCount, colorVar: overdueCount > 0 ? "--status-critical" : null },
-      { label: "DUE SOON (" + dueSoonWindowDays(data) + "D)", value: dueSoonCount, colorVar: dueSoonCount > 0 ? "--status-at-risk" : null },
+      { label: "ACTIVE PROJECTS", value: filtered.length, colorVar: null, route: "portfolio", status: "" },
+      { label: "ON TRACK", value: countByStatus("on_track"), colorVar: "--status-on-track", route: "portfolio", status: "on_track" },
+      { label: "AT RISK", value: countByStatus("at_risk"), colorVar: "--status-at-risk", route: "portfolio", status: "at_risk" },
+      { label: "CRITICAL", value: countByStatus("critical"), colorVar: "--status-critical", route: "portfolio", status: "critical" },
+      { label: "OVERDUE DOCS", value: overdueCount, colorVar: overdueCount > 0 ? "--status-critical" : null, route: "documentControlDashboard" },
+      { label: "DUE SOON (" + dueSoonWindowDays(data) + "D)", value: dueSoonCount, colorVar: dueSoonCount > 0 ? "--status-at-risk" : null, route: "documentControlDashboard" },
     ];
 
     kpis.forEach(function (kpi) {
-      var card = document.createElement("div");
-      card.className = "kpi-card";
+      var card = document.createElement("button");
+      card.type = "button";
+      card.className = "kpi-card kpi-card--link";
       var valueStyle = kpi.colorVar ? ' style="color:var(' + kpi.colorVar + ')"' : "";
       card.innerHTML =
         '<span class="kpi-card__label">' +
@@ -10696,6 +10834,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         ">" +
         kpi.value +
         "</span>";
+      card.onclick = function () {
+        if (kpi.status !== undefined && window.PCC.portfolio) window.PCC.portfolio.filterByStatus(kpi.status);
+        window.PCC.router.go(kpi.route);
+      };
       kpiGrid.appendChild(card);
     });
 
@@ -13078,6 +13220,22 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         onChanged();
       };
 
+      // Daily-Use Audit Phase 5 (pinned projects): "someone bouncing between a few
+      // 'current' projects re-picks from the full, unsorted list every time" — pins
+      // straight to the shared settings array projectContext.js's togglePin() owns, so
+      // the header's project switcher (which is where pinning actually pays off) picks
+      // it up immediately.
+      var pinItem = document.createElement("button");
+      pinItem.className = "card-menu__item";
+      var pinnedNow = window.PCC.projectContext.isPinned(p.id);
+      pinItem.textContent = pinnedNow ? "Unpin" : "Pin";
+      pinItem.onclick = function () {
+        window.PCC.projectContext.togglePin(p.id);
+        window.PCC.notify(pinnedNow ? "Project unpinned." : "Project pinned.", "info");
+        uiState.openMenuId = null;
+        onChanged();
+      };
+
       var archiveItem = document.createElement("button");
       archiveItem.className = "card-menu__item";
       archiveItem.textContent = p.archived ? "Unarchive" : "Archive";
@@ -13098,6 +13256,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       };
 
       dropdown.appendChild(editItem);
+      dropdown.appendChild(pinItem);
       dropdown.appendChild(archiveItem);
       menuWrap.appendChild(dropdown);
     }
@@ -14730,6 +14889,15 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   window.PCC.portfolio = {
     viewProject: function (projectId) {
       uiState.expandedId = projectId;
+    },
+    // Daily-Use Audit Phase 5 ("Dashboard's own KPI tiles aren't clickable"): lets
+    // Dashboard's On Track/At Risk/Critical KPI tiles land here pre-filtered to the
+    // matching status, same "set uiState before router.go" convention viewProject
+    // above (and risks.js/vendors.js's own filterByProject) already established.
+    // "" clears the filter, for the Active Projects tile's "show everything" click.
+    filterByStatus: function (status) {
+      uiState.statusFilter = status;
+      uiState.expandedId = null;
     },
   };
 })();

@@ -866,6 +866,22 @@
         onChanged();
       };
 
+      // Daily-Use Audit Phase 5 (pinned projects): "someone bouncing between a few
+      // 'current' projects re-picks from the full, unsorted list every time" — pins
+      // straight to the shared settings array projectContext.js's togglePin() owns, so
+      // the header's project switcher (which is where pinning actually pays off) picks
+      // it up immediately.
+      var pinItem = document.createElement("button");
+      pinItem.className = "card-menu__item";
+      var pinnedNow = window.PCC.projectContext.isPinned(p.id);
+      pinItem.textContent = pinnedNow ? "Unpin" : "Pin";
+      pinItem.onclick = function () {
+        window.PCC.projectContext.togglePin(p.id);
+        window.PCC.notify(pinnedNow ? "Project unpinned." : "Project pinned.", "info");
+        uiState.openMenuId = null;
+        onChanged();
+      };
+
       var archiveItem = document.createElement("button");
       archiveItem.className = "card-menu__item";
       archiveItem.textContent = p.archived ? "Unarchive" : "Archive";
@@ -886,6 +902,7 @@
       };
 
       dropdown.appendChild(editItem);
+      dropdown.appendChild(pinItem);
       dropdown.appendChild(archiveItem);
       menuWrap.appendChild(dropdown);
     }
@@ -2518,6 +2535,15 @@
   window.PCC.portfolio = {
     viewProject: function (projectId) {
       uiState.expandedId = projectId;
+    },
+    // Daily-Use Audit Phase 5 ("Dashboard's own KPI tiles aren't clickable"): lets
+    // Dashboard's On Track/At Risk/Critical KPI tiles land here pre-filtered to the
+    // matching status, same "set uiState before router.go" convention viewProject
+    // above (and risks.js/vendors.js's own filterByProject) already established.
+    // "" clears the filter, for the Active Projects tile's "show everything" click.
+    filterByStatus: function (status) {
+      uiState.statusFilter = status;
+      uiState.expandedId = null;
     },
   };
 })();
