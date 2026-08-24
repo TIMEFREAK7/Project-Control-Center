@@ -4238,6 +4238,71 @@ Zero console errors throughout.
 **Not done**: Phase 5 of the audit's own proposed sequencing (polish — clickable KPI tiles, sorted project
 pickers, pinned projects) — still open, pending Aditya's go-ahead.
 
+### Phase 5 — mobile header alignment fix + polish, done, 2026-08-24
+
+Aditya kicked this phase off with two screenshots from the phone app showing the page title overlapping
+the first header icon, on both Dashboard and My Work, and asked to check every other tab for the same
+issue. The audit's own Phase 5 proposal (clickable KPI tiles, sorted project pickers, pinned projects)
+followed.
+
+**Mobile header title/icon overlap.** Reproduced exactly in real Chromium at a 390px viewport: the page
+title rendered at its full natural width (e.g. "Dashboard" at ~71px) regardless of how little room
+`.title-block__cell--grow` actually had left once the hamburger button and six action icons claimed their
+share of a 390px screen — visually bleeding into the Export icon immediately to its right. Root cause:
+`.title-block__value` set `white-space: nowrap; overflow: hidden; text-overflow: ellipsis` on a bare
+`<span>` — an inline element with no box of its own for those properties to actually clip against, so they
+silently did nothing. Fixed with `display: block; max-width: 100%`, giving the flex parent something real
+to shrink. Because the shell header is one component built once for the whole app (not rebuilt per route —
+confirmed by inspecting `mount()`/the route-change handler, which only ever updates the title's `textContent`
+in place), this single CSS fix covers every tab automatically, verified by reproducing the DOM geometry bug
+directly (bounding-rect measurements, not just a screenshot) and confirming zero overlap afterward across
+five routes spanning short titles ("Dashboard", "Settings") through long ones ("Vendor Performance Centre",
+"Delay & Recovery Dashboard"). With the clipping bug alone fixed, "Dashboard" truncated to "D." — technically
+no longer overlapping anything, but not a real fix for the most commonly viewed page's own title. Also hid
+the Keyboard Shortcuts icon at mobile width (there's no physical keyboard on a touchscreen device for it to
+have anything to do), freeing just enough width for short titles to render close to their full text
+("Dashb…" instead of "D.") without touching any other icon's availability or behavior.
+
+**Clickable KPI tiles.** The exact audit finding: "Dashboard's own KPI tiles aren't clickable — inconsistent
+with the Portfolio Exceptions panel directly below it, which uses near-identical chips that ARE clickable —
+trains the wrong expectation on the very first screen a user sees." Converted each `.kpi-card` from a static
+`<div>` into a real `<button>` (a new `.kpi-card--link` class resets the button-specific defaults a `<div>`
+never had — background/border/padding/radius/hover all still come from the existing `.kpi-card` rule
+unchanged) that navigates on click: Active Projects/On Track/At Risk/Critical land on Portfolio pre-filtered
+to the matching status via a new `portfolio.filterByStatus()` (same "set uiState, then `router.go()`"
+convention `portfolio.viewProject()` and every register's own `filterByProject()` already use); Overdue
+Docs/Due Soon land on Document Control Dashboard, which is already portfolio-wide with no per-status filter
+of its own to set.
+
+**Sorted project pickers.** The exact finding: "Project context selector isn't alphabetically sorted —
+iterates the store in raw insertion order. For a Planner running a real multi-project portfolio, picking the
+right project from an unsorted list every time is real daily friction." `layout.js`'s
+`populateProjectContextSelect()` (the shell header's own project switcher) now sorts case-insensitively by
+name before building its `<option>`s.
+
+**Pinned projects.** The exact finding: "No pinning/favoriting for the 2-3 projects someone actually works
+in — only a single last-selected project persists." New `settings.pinned_project_ids` (`schema_version`
+56→57, an ordered array — newly-pinned goes to the front, not alphabetical, so the one just pinned is where
+a planner expects to find it), backed by three new `projectContext.js` functions —
+`getPinnedIds()`/`isPinned()`/`togglePin()` — re-validated against live, non-archived projects on every read,
+same "don't trust a stale id" rule `get()` already follows for `active_project_id` (archiving or deleting a
+pinned project just quietly drops it from the pinned list, no broken entry to clean up). A new "Pin"/"Unpin"
+item in Portfolio's card "⋯" menu (alongside the existing Edit/Archive) toggles it; the header's project
+selector now shows pinned projects first, under a native `<optgroup label="Pinned">`, with the remaining
+projects (alphabetically sorted, per the fix above) underneath.
+
+**Verified**: full jsdom suite (2119 checks, 0 failures — two new checks added to
+`test_store_schema_v54_migration.js` for the v56→v57 migration and a brand-new-install
+default/round-trip check covering `getPinnedIds()`/`isPinned()`/`togglePin()` including the
+archived-project-drops-off-silently behavior). Real-Chromium verification: the header overlap fix confirmed
+via direct DOM bounding-rect measurement (not just visual inspection) across five routes; KPI tile clicks
+landing on the correct pre-filtered Portfolio/Document Control Dashboard view; the project selector's
+alphabetical order; and a full pin → appears in the header's Pinned optgroup → persists in
+`settings.pinned_project_ids` round trip. Zero console errors throughout.
+
+**Not done**: nothing — this closes out all five phases of the Daily-Use Audit's own proposed sequencing.
+Any further work is a fresh ask, not a continuation of this initiative.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →

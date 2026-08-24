@@ -2566,8 +2566,46 @@ table + mobile card share one menu-building function), same pattern Phase 3 hit 
 click-through of all six features, including a 300-activity seed confirming the virtualized grid caps its
 rendered row count. Zero console errors.
 
-**Not done**: Phase 5 (polish — clickable KPI tiles, sorted project pickers, pinned projects) — still
-open, pending Aditya's go-ahead.
+**Not done** (at Phase 4 cutoff): Phase 5 — still open, pending Aditya's go-ahead.
+
+**Phase 5 — mobile header alignment fix + polish, done, 2026-08-24.** Full detail and rationale in
+README.md's own entry (same section header) — summary here. Aditya kicked this off with two phone
+screenshots (page title overlapping the first header icon, on Dashboard and My Work) and asked to check
+every tab; the audit's own Phase 5 proposal followed.
+
+**Mobile header overlap (Aditya's report).** Root cause: `.title-block__value` is a bare `<span>` —
+`white-space:nowrap`/`overflow:hidden`/`text-overflow:ellipsis` had no real box to clip against, so the
+title rendered at full natural width and bled into the first action icon on any phone-width viewport.
+Fixed with `display:block; max-width:100%`. The header is one component built once for the whole app
+(route changes only update the title's `textContent`, never rebuild it), so this one fix covers every
+tab — confirmed via direct DOM bounding-rect measurement (not just a screenshot) across 5 routes. Also
+hid the Keyboard Shortcuts icon at mobile width (no physical keyboard = nothing for it to do there),
+freeing enough width that short titles ("Dashboard") read as "Dashb…" instead of truncating to "D.".
+
+**Clickable KPI tiles.** Dashboard's `.kpi-card`s are now real `<button>`s (new `.kpi-card--link` resets
+button defaults only — visual styling still comes from the existing `.kpi-card` rule): Active/On
+Track/At Risk/Critical land on Portfolio pre-filtered to that status (new
+`portfolio.filterByStatus()`); Overdue Docs/Due Soon land on Document Control Dashboard. Matches the
+already-clickable Portfolio Exceptions panel directly below the KPI grid — the audit's own framing was
+literally "trains the wrong expectation on the very first screen a user sees."
+
+**Sorted project pickers.** The shell header's project context selector (`layout.js`'s
+`populateProjectContextSelect()`) now sorts case-insensitively by name instead of raw insertion order.
+
+**Pinned projects.** New `settings.pinned_project_ids` (`schema_version` 56→57, ordered array —
+newly-pinned goes to the front). Three new `projectContext.js` functions —
+`getPinnedIds()`/`isPinned()`/`togglePin()` — re-validated against live non-archived projects on every
+read (same rule `get()` already follows for `active_project_id`). New "Pin"/"Unpin" item in Portfolio's
+card menu; the header's project selector shows pinned projects first under a `<optgroup label="Pinned">`.
+
+**Verified**: full jsdom suite (2119 checks, 0 failures — two new checks in
+`test_store_schema_v54_migration.js` for the v56→v57 bump, including the archived-project-drops-off
+behavior). Real-Chromium verification of all four items — the header fix via bounding-rect measurement,
+KPI clicks landing on the correct pre-filtered destination, sorted order, and a full pin → optgroup →
+persisted-setting round trip. Zero console errors.
+
+**Not done**: nothing — Phase 5 closes out all five phases of the Daily-Use Audit's own proposed
+sequencing. Any further work here is a fresh ask, not a continuation of this initiative.
 
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
@@ -4356,30 +4394,30 @@ committed-to next feature as of this HEAD. When a fresh session picks this up:
 4. Windows/macOS code signing is a **closed** decision (personal use only, no cert, no Mac
    hardware) — don't re-raise it unless Aditya explicitly reopens the topic himself.
 
-### Current state update (2026-08-24, after Daily-Use Audit Phases 1 + 2 + 3 + 4 — supersedes the numbers above)
+### Current state update (2026-08-24, after Daily-Use Audit Phases 1-5, ALL FIVE PHASES NOW COMPLETE — supersedes the numbers above)
 
-`main` is fully up to date through **Daily-Use Audit Phase 4** at commit `fb96618` (merge commit;
-Phase 4's own commit is `b86df29`, on top of the Phase 3 docs commit `e280fe3` and Phase 3's own merge
-`777035a`). The working branch, `claude/new-session-knj62z`, was just restarted from this `main` and
+`main` is fully up to date through **Daily-Use Audit Phase 5** at commit `f90f475` (merge commit;
+Phase 5's own commit is `11342ff`, on top of the Phase 4 docs commit `4b81fea` and Phase 4's own merge
+`fb96618`). The working branch, `claude/new-session-knj62z`, was just restarted from this `main` and
 carries the exact same history — `git rev-parse main` and `git rev-parse claude/new-session-knj62z`
-both resolve to `fb96618` as of this writing. **Verify this is still true by the time you read this**
+both resolve to `f90f475` as of this writing. **Verify this is still true by the time you read this**
 rather than trusting it blindly.
 
-- `schema_version` is still **56** — Phase 4 touched no data shape, only UI (store.js untouched this
-  round). Check `src/js/store.js`'s own `SCHEMA_VERSION` constant directly if this ever looks
-  inconsistent, don't trust prose numbers. v55 added `cpm_calculated_fingerprint` to schedules
-  (Phase 1, bug #2). v56 added `settings.last_used_names` (Phase 3, field memory).
-- **Test suite**: 77 files as of this HEAD (`ls tests/*.js | wc -l`, unchanged from Phase 3 — no new
-  test files this round, two existing ones updated), all chained in `tests/package.json`'s `test`
-  script — 2117 individual checks, 0 failures at last run. Recount rather than trust this number
-  blindly — it grows almost every gate.
+- `schema_version` is now **57** (check `src/js/store.js`'s own `SCHEMA_VERSION` constant directly if
+  this ever looks inconsistent, don't trust prose numbers). v55 added `cpm_calculated_fingerprint` to
+  schedules (Phase 1, bug #2). v56 added `settings.last_used_names` (Phase 3, field memory). v57 added
+  `settings.pinned_project_ids` (Phase 5, pinned projects).
+- **Test suite**: 77 files as of this HEAD (`ls tests/*.js | wc -l`, unchanged since Phase 3 — no new
+  test files added in Phases 4 or 5, existing ones updated instead), all chained in
+  `tests/package.json`'s `test` script — 2119 individual checks, 0 failures at last run. Recount
+  rather than trust this number blindly — it grows almost every gate.
 - Both an Android APK and a Windows EXE were rebuilt and delivered directly to Aditya once this round
   (before Phase 1 started, from the state as of PCC Redesign Gate 12) — see the Mobile & Desktop
   Packaging section and the split-file delivery convention (CLAUDE.md, `packaging/README.md`) for the
   exact artifacts and verification hashes. Neither has been rebuilt since — the APK/EXE Aditya has do
-  NOT include Phases 1-4's changes; only the Phase 2/3/4 end-user zips do (`index.html` only, no
-  native packaging). Rebuild+repackage before handing over another APK/EXE if that matters for what's
-  being delivered next.
+  NOT include any of Phases 1-5's changes; only the Phase 2/3/4/5 end-user zips do (`index.html` only,
+  no native packaging). Rebuild+repackage before handing over another APK/EXE if that matters for
+  what's being delivered next.
 - **What shipped this round, in order**: PCC Redesign Gate 12 (App Icon & Branding, closing out that
   whole 12-gate initiative) → Daily-Use Audit kickoff (39 findings, 5-phase proposal) → **Phase 1**
   (9 real bugs — router double-render, CPM staleness, RFI date_answered, Gantt search focus loss,
@@ -4389,8 +4427,12 @@ rather than trusting it blindly.
   (Clone on 6 registers, bulk actions on 5 registers, field memory on 4 "who" fields) → **Phase 4**
   (Activities grid inline edit + per-section report day-window, both requested directly by Aditya;
   plus the audit's own bulk date-shift, copy-activity, WBS indent/outdent, and Activities grid
-  virtualization). Full detail on all four phases is in this file's own Daily-Use Audit section above
-  and in README.md's matching section — don't re-derive it from git log.
-- **Not done**: Phase 5 of the Daily-Use Audit (polish — clickable KPI tiles, sorted project pickers,
-  pinned projects) — open, pending Aditya's explicit go-ahead. No other feature work is currently
-  committed to.
+  virtualization) → **Phase 5** (a mobile header title/icon overlap bug Aditya reported directly with
+  screenshots, affecting every tab since it's one shared component; plus the audit's own clickable KPI
+  tiles, sorted project pickers, and pinned projects). Full detail on all five phases is in this file's
+  own Daily-Use Audit section above and in README.md's matching section — don't re-derive it from git
+  log.
+- **The Daily-Use Audit initiative is now CLOSED OUT** — all 5 phases of its own proposed sequencing
+  are done. There is no "Phase 6" waiting; any further work is a fresh ask from Aditya, not a
+  continuation of this initiative. Don't assume more audit phases are coming without him explicitly
+  starting a new one.
