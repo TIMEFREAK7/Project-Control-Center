@@ -37,6 +37,9 @@
     editingId: null,
     expandedId: null,
     pendingPrefill: null, // { project_id, source_meeting_id } set by createFromMeeting()
+    // Daily-Use Audit Phase 3 (bulk actions): { [decisionId]: true } for every checked
+    // row — see risks.js's own uiState comment on this exact pattern.
+    selectedIds: {},
   };
 
   function projectName(projects, projectId) {
@@ -254,6 +257,7 @@
         }
       });
 
+      window.PCC.store.rememberLastUsedName("decision_decided_by", values.decided_by);
       window.PCC.notify(isNew ? "Decision added." : "Decision updated.", "success");
       uiState.editingId = null;
       onSaved();
@@ -276,6 +280,19 @@
   function renderDecisionCard(d, projects, onChanged) {
     var card = document.createElement("div");
     card.className = "project-card";
+
+    // Daily-Use Audit Phase 3 (bulk actions).
+    var selectBox = document.createElement("input");
+    selectBox.type = "checkbox";
+    selectBox.className = "project-card__select";
+    selectBox.setAttribute("aria-label", "Select this entry for a bulk action");
+    selectBox.checked = !!uiState.selectedIds[d.id];
+    selectBox.onchange = function () {
+      if (selectBox.checked) uiState.selectedIds[d.id] = true;
+      else delete uiState.selectedIds[d.id];
+      onChanged();
+    };
+    card.appendChild(selectBox);
 
     var main = document.createElement("div");
     main.className = "project-card__main";
@@ -316,6 +333,25 @@
       onChanged();
     };
 
+    // Daily-Use Audit Phase 3 ("duplicate as template"): opens the Add form pre-filled
+    // with this decision's context — deliberately excludes the actual `decision` text,
+    // decided_by, and decision_date, since a clone is a new pending question, not a copy
+    // of an already-made call.
+    var cloneBtn = document.createElement("button");
+    cloneBtn.className = "btn btn--ghost";
+    cloneBtn.textContent = "Clone";
+    cloneBtn.onclick = function () {
+      uiState.pendingPrefill = {
+        project_id: d.project_id,
+        title: d.title,
+        description: d.description,
+        waiting_on_party: d.waiting_on_party,
+        activity_id: d.activity_id,
+      };
+      uiState.editingId = "new";
+      onChanged();
+    };
+
     var deleteBtn = document.createElement("button");
     deleteBtn.className = "btn btn--ghost";
     deleteBtn.textContent = "Delete";
@@ -332,6 +368,7 @@
 
     actions.appendChild(detailsBtn);
     actions.appendChild(editBtn);
+    actions.appendChild(cloneBtn);
     actions.appendChild(deleteBtn);
 
     card.appendChild(main);
@@ -554,6 +591,10 @@
     addBtn.disabled = !hasActiveProjects;
     addBtn.title = hasActiveProjects ? "" : "Add a project in Portfolio first";
     addBtn.onclick = function () {
+      // Daily-Use Audit Phase 3 (field memory): pre-fill Decided By with whoever
+      // decided the last entry.
+      var lastDecidedBy = window.PCC.store.getLastUsedName("decision_decided_by");
+      uiState.pendingPrefill = lastDecidedBy ? { decided_by: lastDecidedBy } : null;
       uiState.editingId = "new";
       rerender();
     };
@@ -568,8 +609,85 @@
     var listWrap = document.createElement("div");
     outlet.appendChild(listWrap);
 
+    // Daily-Use Audit Phase 3 (bulk actions). "Mark as Decided" is deliberately not a
+    // bulk action — this register requires the actual `decision` text before status can
+    // meaningfully move to "decided" (see newDecision()'s own comment), which a bulk
+    // action across dissimilar entries can't supply. Defer Selected needs no such text.
+    function selectedCount() {
+      return Object.keys(uiState.selectedIds).length;
+    }
+
+    function clearSelection() {
+      uiState.selectedIds = {};
+    }
+
+    function renderBulkBar() {
+      var n = selectedCount();
+      if (n === 0) return null;
+      var noun = n === 1 ? "entry" : "entries";
+
+      var bar = document.createElement("div");
+      bar.className = "bulk-action-bar";
+
+      var countEl = document.createElement("span");
+      countEl.className = "bulk-action-bar__count";
+      countEl.textContent = n + " selected";
+      bar.appendChild(countEl);
+
+      var deferBtn = document.createElement("button");
+      deferBtn.className = "btn btn--ghost";
+      deferBtn.textContent = "Defer Selected";
+      deferBtn.onclick = function () {
+        window.PCC.store.update(function (data) {
+          data.decisions.forEach(function (item) {
+            if (uiState.selectedIds[item.id]) {
+              item.status = "deferred";
+              item.updated_at = new Date().toISOString();
+            }
+          });
+        });
+        window.PCC.notify(n + " " + noun + " deferred.", "success");
+        clearSelection();
+        rerender();
+      };
+      bar.appendChild(deferBtn);
+
+      var spacer = document.createElement("div");
+      spacer.className = "bulk-action-bar__spacer";
+      bar.appendChild(spacer);
+
+      var clearBtn = document.createElement("button");
+      clearBtn.className = "btn btn--ghost";
+      clearBtn.textContent = "Clear Selection";
+      clearBtn.onclick = function () {
+        clearSelection();
+        rerender();
+      };
+      bar.appendChild(clearBtn);
+
+      var deleteBtn = document.createElement("button");
+      deleteBtn.className = "btn btn--ghost";
+      deleteBtn.textContent = "Delete Selected";
+      deleteBtn.onclick = function () {
+        if (!window.confirm("Delete " + n + " selected " + noun + "? This can't be undone.")) return;
+        window.PCC.store.update(function (data) {
+          data.decisions = data.decisions.filter(function (item) {
+            return !uiState.selectedIds[item.id];
+          });
+        });
+        window.PCC.notify(n + " " + noun + " deleted.", "info");
+        clearSelection();
+        rerender();
+      };
+      bar.appendChild(deleteBtn);
+
+      return bar;
+    }
+
     function renderList() {
       listWrap.innerHTML = "";
+      var bulkBar = renderBulkBar();
+      if (bulkBar) listWrap.appendChild(bulkBar);
       var filtered = data.decisions.filter(decisionMatchesFilters);
 
       if (filtered.length === 0) {

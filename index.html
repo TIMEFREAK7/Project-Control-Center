@@ -982,8 +982,23 @@ a:focus-visible {
   border: 1px solid var(--divider);
   border-radius: var(--radius-md);
   padding: 10px var(--space-3);
+  padding-left: 34px;
+  position: relative;
   cursor: pointer;
   transition: border-color var(--transition-base), background-color var(--transition-base);
+}
+
+/* Daily-Use Audit Phase 3 (bulk actions): positioned absolutely rather than prepended
+   inline like .project-card__select, since this row's whole click area already opens
+   the preview panel (.doc-register-item's own onclick) — a separate corner target keeps
+   that click-to-preview behavior intact everywhere except the checkbox itself. */
+.doc-register-item__select {
+  position: absolute;
+  top: 12px;
+  left: var(--space-3);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
 }
 
 .doc-register-item:hover {
@@ -1362,6 +1377,41 @@ a:focus-visible {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+/* Daily-Use Audit Phase 3 (bulk actions): a checkbox prepended to .project-card, which
+   is already a flex row with align-items:center — sits naturally in that row with no
+   layout changes needed elsewhere. */
+.project-card__select {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+/* The "N selected · [bulk action buttons] · Clear" bar shown above a register's list
+   once at least one row is checked — same panel/pill language as the rest of the app,
+   distinguished with the accent color so it reads as a temporary, active state rather
+   than a fourth persistent toolbar. */
+.bulk-action-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  background-color: var(--bg-paper-raised);
+  border: 1px solid var(--signal-amber);
+  border-radius: var(--radius-md);
+  padding: 10px var(--space-4);
+  margin-bottom: var(--space-3);
+}
+
+.bulk-action-bar__count {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.bulk-action-bar__spacer {
+  flex: 1 1 auto;
 }
 
 .project-entry {
@@ -5127,7 +5177,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 55;
+  var SCHEMA_VERSION = 56;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -5197,6 +5247,13 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         // next instead of each page defaulting independently (see projectContext.js).
         // "" means no active project (shows as "All Projects" in the shell header).
         active_project_id: "",
+        // Daily-Use Audit Phase 3 (field memory): the "who" fields on RFI/TQ, Change
+        // Orders, Decisions, and Lessons Learned are plain text and always started
+        // blank, even though the same PM/Coordinator name gets typed dozens of times a
+        // week. Keyed by a short per-field id (see rememberLastUsedName/getLastUsedName
+        // below) rather than one flat field, so each register's own "who" field
+        // remembers independently.
+        last_used_names: {},
       },
       projects: [],
       documents: [],
@@ -7739,6 +7796,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       loaded.schema_version = 55;
     }
 
+    if (loaded.schema_version < 56) {
+      // Daily-Use Audit Phase 3 (field memory): new settings sub-object, nothing to
+      // backfill — every existing install simply starts with no remembered names, same
+      // as its forms already blank-start today.
+      if (!loaded.settings.last_used_names) loaded.settings.last_used_names = {};
+      loaded.schema_version = 56;
+    }
+
     return loaded;
   }
 
@@ -7848,6 +7913,21 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   function update(mutator) {
     mutator(data);
     scheduleSave();
+  }
+
+  /** Daily-Use Audit Phase 3 (field memory) — see settings.last_used_names' own comment
+   * in emptyData(). key is a short per-field id chosen by the calling page module (e.g.
+   * "rfi_raised_by"), not a schema field name, so unrelated registers never collide. */
+  function getLastUsedName(key) {
+    return (data.settings.last_used_names && data.settings.last_used_names[key]) || "";
+  }
+
+  function rememberLastUsedName(key, value) {
+    if (!value || !value.trim()) return;
+    update(function (d) {
+      d.settings.last_used_names = d.settings.last_used_names || {};
+      d.settings.last_used_names[key] = value.trim();
+    });
   }
 
   /** Every place a binary blob can currently live: Documents' `file_data`, and each
@@ -8049,6 +8129,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     update: update,
     onChange: onChange,
     onPersisted: onPersisted,
+    getLastUsedName: getLastUsedName,
+    rememberLastUsedName: rememberLastUsedName,
     exportToFile: exportToFile,
     migrateLegacyInlineBlobsToIndexedDb: migrateLegacyInlineBlobsToIndexedDb,
     getCorruptionRecovery: getCorruptionRecovery,
@@ -21884,6 +21966,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     pendingStatus: "draft",
     pendingRevisionGroupId: "",
     expandedRevisionsGroupId: null,
+    // Daily-Use Audit Phase 3 (bulk actions): { [documentId]: true } for every checked
+    // row — see risks.js's own uiState comment on this exact pattern. Keyed by the same
+    // top-level document id selectedDocId uses (always the latest revision).
+    selectedIds: {},
   };
 
   function resetPendingClassification() {
@@ -23012,10 +23098,135 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     uiState.previewExtractionExpanded = false;
   }
 
-  function renderDocumentListItem(doc, data, isSelected, onSelect) {
+  // Daily-Use Audit Phase 3 (bulk actions). Delete Selected replicates the single-entry
+  // Delete button's own behavior exactly (see its own comment further below): it removes
+  // an entire revision history, not just the latest row, and cleans up project
+  // attachments + blobStore the same way — a bulk delete that only dropped the latest
+  // revision row would silently orphan older revisions.
+  function renderDocumentBulkBar(data, filtered, rerender) {
+    var n = Object.keys(uiState.selectedIds).length;
+    if (n === 0) return null;
+    var noun = n === 1 ? "document" : "documents";
+
+    function selectedDocs() {
+      return filtered.filter(function (doc) {
+        return uiState.selectedIds[doc.id];
+      });
+    }
+
+    function clearSelection() {
+      uiState.selectedIds = {};
+    }
+
+    var bar = document.createElement("div");
+    bar.className = "bulk-action-bar";
+
+    var countEl = document.createElement("span");
+    countEl.className = "bulk-action-bar__count";
+    countEl.textContent = n + " selected";
+    bar.appendChild(countEl);
+
+    var approveBtn = document.createElement("button");
+    approveBtn.className = "btn btn--ghost";
+    approveBtn.textContent = "Approve Selected";
+    approveBtn.onclick = function () {
+      window.PCC.store.update(function (d) {
+        d.documents.forEach(function (item) {
+          if (uiState.selectedIds[item.id]) item.status = "approved";
+        });
+      });
+      window.PCC.notify(n + " " + noun + " marked approved.", "success");
+      clearSelection();
+      rerender();
+    };
+    bar.appendChild(approveBtn);
+
+    var rejectBtn = document.createElement("button");
+    rejectBtn.className = "btn btn--ghost";
+    rejectBtn.textContent = "Reject Selected";
+    rejectBtn.onclick = function () {
+      window.PCC.store.update(function (d) {
+        d.documents.forEach(function (item) {
+          if (uiState.selectedIds[item.id]) item.status = "rejected";
+        });
+      });
+      window.PCC.notify(n + " " + noun + " marked rejected.", "success");
+      clearSelection();
+      rerender();
+    };
+    bar.appendChild(rejectBtn);
+
+    var spacer = document.createElement("div");
+    spacer.className = "bulk-action-bar__spacer";
+    bar.appendChild(spacer);
+
+    var clearBtn = document.createElement("button");
+    clearBtn.className = "btn btn--ghost";
+    clearBtn.textContent = "Clear Selection";
+    clearBtn.onclick = function () {
+      clearSelection();
+      rerender();
+    };
+    bar.appendChild(clearBtn);
+
+    var deleteBtn = document.createElement("button");
+    deleteBtn.className = "btn btn--ghost";
+    deleteBtn.textContent = "Delete Selected";
+    deleteBtn.onclick = function () {
+      var docs = selectedDocs();
+      var totalRevisions = 0;
+      var allIds = [];
+      docs.forEach(function (doc) {
+        var revs = revisionsFor(data.documents, doc.document_group_id);
+        totalRevisions += revs.length;
+        revs.forEach(function (r) { allIds.push(r.id); });
+      });
+      if (!window.confirm(
+        "Delete " + n + " selected " + noun + " (" + totalRevisions + " total revision" + (totalRevisions === 1 ? "" : "s") +
+        ")? This removes every stored file and extracted data. This can't be undone."
+      )) return;
+      window.PCC.store.update(function (d) {
+        d.documents = d.documents.filter(function (item) { return allIds.indexOf(item.id) === -1; });
+        d.projects.forEach(function (p) {
+          if (p.attachments) {
+            p.attachments = p.attachments.filter(function (id) { return allIds.indexOf(id) === -1; });
+          }
+        });
+      });
+      allIds.forEach(function (id) {
+        window.PCC.blobStore.deleteBlob(id).catch(function () {});
+      });
+      if (allIds.indexOf(uiState.selectedDocId) !== -1) selectDocument(null);
+      window.PCC.notify(n + " " + noun + " deleted.", "info");
+      clearSelection();
+      rerender();
+    };
+    bar.appendChild(deleteBtn);
+
+    return bar;
+  }
+
+  function renderDocumentListItem(doc, data, isSelected, onSelect, onBulkChanged) {
     var item = document.createElement("div");
     item.className = "doc-register-item" + (isSelected ? " doc-register-item--selected" : "");
     item.onclick = onSelect;
+
+    // Daily-Use Audit Phase 3 (bulk actions). stopPropagation keeps a checkbox click
+    // from also triggering the row's own onclick (which would switch the preview pane).
+    var selectBox = document.createElement("input");
+    selectBox.type = "checkbox";
+    selectBox.className = "doc-register-item__select";
+    selectBox.setAttribute("aria-label", "Select this document for a bulk action");
+    selectBox.checked = !!uiState.selectedIds[doc.id];
+    selectBox.onclick = function (e) {
+      e.stopPropagation();
+    };
+    selectBox.onchange = function () {
+      if (selectBox.checked) uiState.selectedIds[doc.id] = true;
+      else delete uiState.selectedIds[doc.id];
+      onBulkChanged();
+    };
+    item.appendChild(selectBox);
 
     var name = document.createElement("div");
     name.className = "doc-register-item__name";
@@ -23572,12 +23783,18 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       listPane.style.flex = "0 0 " + uiState.docRegisterListWidth + "px";
       listPane.style.maxWidth = "none";
     }
+    // Daily-Use Audit Phase 3 (bulk actions): "No bulk actions on any register" —
+    // documents.js was one of five named. status change (approve/reject) + delete cover
+    // the two highest-frequency bulk operations named in the audit.
+    var bulkBar = renderDocumentBulkBar(data, filtered, rerender);
+    if (bulkBar) listPane.appendChild(bulkBar);
+
     filtered.forEach(function (doc) {
       listPane.appendChild(
         renderDocumentListItem(doc, data, doc.id === uiState.selectedDocId, function () {
           selectDocument(doc.id);
           rerender();
-        })
+        }, rerender)
       );
     });
     register.appendChild(listPane);
@@ -24361,6 +24578,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     projectFilterInitialized: false,
     editingId: null, // null = closed, "new" = creating, otherwise an existing log id
     expandedId: null,
+    // Daily-Use Audit Phase 3 ("duplicate as template"): same pendingPrefill pattern
+    // risks.js/rfis.js/etc. already use, set by cloneBtn below. log_date/incidents/
+    // photos are deliberately never included — a clone is a fresh day, not a copy of
+    // yesterday's safety incident or photos.
+    pendingPrefill: null,
   };
 
   function projectName(projects, projectId) {
@@ -24651,6 +24873,31 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       onChanged();
     };
 
+    // Daily-Use Audit Phase 3 ("duplicate as template"): a Daily Log is filled in every
+    // single day, so cloning yesterday's (or any prior) entry as a starting point is the
+    // highest-value clone case in the app — same manpower/equipment/visitors boilerplate
+    // most days. Date resets to today (so the duplicate-entry guard applies normally),
+    // and incidents/photos are deliberately never carried over to a new day.
+    var cloneBtn = document.createElement("button");
+    cloneBtn.className = "btn btn--ghost";
+    cloneBtn.textContent = "Clone";
+    cloneBtn.onclick = function () {
+      uiState.pendingPrefill = {
+        project_id: log.project_id,
+        weather: log.weather,
+        manpower: log.manpower,
+        equipment: log.equipment,
+        visitors: log.visitors,
+        deliveries: log.deliveries,
+        activities: log.activities,
+        safety_notes: log.safety_notes,
+        notes: log.notes,
+        activity_id: log.activity_id,
+      };
+      uiState.editingId = "new";
+      onChanged();
+    };
+
     var deleteBtn = document.createElement("button");
     deleteBtn.className = "btn btn--ghost";
     deleteBtn.textContent = "Delete";
@@ -24667,6 +24914,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     actions.appendChild(detailsBtn);
     actions.appendChild(editBtn);
+    actions.appendChild(cloneBtn);
     actions.appendChild(deleteBtn);
 
     card.appendChild(main);
@@ -25027,10 +25275,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     if (uiState.editingId) {
       var logBeingEdited =
         uiState.editingId === "new"
-          ? window.PCC.store.newDailyLog()
+          ? window.PCC.store.newDailyLog(uiState.pendingPrefill || {})
           : data.daily_logs.find(function (d) {
               return d.id === uiState.editingId;
             });
+      if (uiState.editingId === "new") uiState.pendingPrefill = null;
       renderForm(outlet, logBeingEdited, projects, rerender);
     }
 
@@ -31435,6 +31684,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     expandedId: null,
     openMenuId: null, // risk id whose "⋯" card menu is open, or null
     pendingPrefill: null, // { project_id, source_meeting_id } set by createFromMeeting()
+    // Daily-Use Audit Phase 3 (bulk actions): { [riskId]: true } for every checked row.
+    // A plain object, not a Set, matching this file's existing style. Deliberately not
+    // pruned on filter/search changes — a selection a user built up survives narrowing
+    // the list further, only cleared explicitly or after a bulk action completes.
+    selectedIds: {},
   };
 
   function severityOf(risk) {
@@ -31772,6 +32026,19 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var card = document.createElement("div");
     card.className = "project-card";
 
+    // Daily-Use Audit Phase 3 (bulk actions).
+    var selectBox = document.createElement("input");
+    selectBox.type = "checkbox";
+    selectBox.className = "project-card__select";
+    selectBox.setAttribute("aria-label", "Select this entry for a bulk action");
+    selectBox.checked = !!uiState.selectedIds[r.id];
+    selectBox.onchange = function () {
+      if (selectBox.checked) uiState.selectedIds[r.id] = true;
+      else delete uiState.selectedIds[r.id];
+      onChanged();
+    };
+    card.appendChild(selectBox);
+
     var main = document.createElement("div");
     main.className = "project-card__main";
     main.innerHTML =
@@ -31847,6 +32114,29 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         onChanged();
       };
 
+      // Daily-Use Audit Phase 3 ("duplicate as template"): opens the Add form pre-filled
+      // with this entry's own content fields, so a near-identical risk/issue doesn't
+      // mean retyping the same boilerplate. Status/dates deliberately reset to fresh —
+      // a clone is a new occurrence, not a copy of where the original currently stands.
+      var cloneItem = document.createElement("button");
+      cloneItem.className = "card-menu__item";
+      cloneItem.textContent = "Clone";
+      cloneItem.onclick = function () {
+        uiState.pendingPrefill = {
+          project_id: r.project_id,
+          type: r.type,
+          title: r.title,
+          description: r.description,
+          probability: r.probability,
+          impact: r.impact,
+          owner: r.owner,
+          activity_id: r.activity_id,
+        };
+        uiState.editingId = "new";
+        uiState.openMenuId = null;
+        onChanged();
+      };
+
       var deleteItem = document.createElement("button");
       deleteItem.className = "card-menu__item";
       deleteItem.textContent = "Delete";
@@ -31863,6 +32153,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       };
 
       dropdown.appendChild(editItem);
+      dropdown.appendChild(cloneItem);
       dropdown.appendChild(deleteItem);
       menuWrap.appendChild(dropdown);
     }
@@ -32173,8 +32464,84 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var listWrap = document.createElement("div");
     outlet.appendChild(listWrap);
 
+    // Daily-Use Audit Phase 3 (bulk actions): "No bulk actions on any register" — closing
+    // out a week's worth of resolved risks/issues meant opening each row individually.
+    // Close + Delete cover the two highest-frequency bulk operations named in the audit.
+    function selectedCount() {
+      return Object.keys(uiState.selectedIds).length;
+    }
+
+    function clearSelection() {
+      uiState.selectedIds = {};
+    }
+
+    function renderBulkBar() {
+      var n = selectedCount();
+      if (n === 0) return null;
+      var noun = n === 1 ? "entry" : "entries";
+
+      var bar = document.createElement("div");
+      bar.className = "bulk-action-bar";
+
+      var countEl = document.createElement("span");
+      countEl.className = "bulk-action-bar__count";
+      countEl.textContent = n + " selected";
+      bar.appendChild(countEl);
+
+      var closeBtn = document.createElement("button");
+      closeBtn.className = "btn btn--ghost";
+      closeBtn.textContent = "Close Selected";
+      closeBtn.onclick = function () {
+        window.PCC.store.update(function (d) {
+          d.risks.forEach(function (item) {
+            if (uiState.selectedIds[item.id]) {
+              item.status = "closed";
+              item.updated_at = new Date().toISOString();
+            }
+          });
+        });
+        window.PCC.notify(n + " " + noun + " closed.", "success");
+        clearSelection();
+        rerender();
+      };
+      bar.appendChild(closeBtn);
+
+      var spacer = document.createElement("div");
+      spacer.className = "bulk-action-bar__spacer";
+      bar.appendChild(spacer);
+
+      var clearBtn = document.createElement("button");
+      clearBtn.className = "btn btn--ghost";
+      clearBtn.textContent = "Clear Selection";
+      clearBtn.onclick = function () {
+        clearSelection();
+        rerender();
+      };
+      bar.appendChild(clearBtn);
+
+      var deleteBtn = document.createElement("button");
+      deleteBtn.className = "btn btn--ghost";
+      deleteBtn.textContent = "Delete Selected";
+      deleteBtn.onclick = function () {
+        if (!window.confirm("Delete " + n + " selected " + noun + "? This can't be undone.")) return;
+        window.PCC.store.update(function (d) {
+          d.risks = d.risks.filter(function (item) {
+            return !uiState.selectedIds[item.id];
+          });
+        });
+        window.PCC.notify(n + " " + noun + " deleted.", "info");
+        clearSelection();
+        rerender();
+      };
+      bar.appendChild(deleteBtn);
+
+      return bar;
+    }
+
     function renderList() {
       listWrap.innerHTML = "";
+      var bulkBar = renderBulkBar();
+      if (bulkBar) listWrap.appendChild(bulkBar);
       var filtered = data.risks.filter(riskMatchesFilters);
 
       if (filtered.length === 0) {
@@ -33466,6 +33833,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     expandedId: null,
     revisionDrafts: {}, // { [rfiId]: { author, note } } — in-progress "add revision" inputs, kept across rerenders
     pendingPrefill: null, // { project_id, source_meeting_id } set by createFromMeeting()
+    // Daily-Use Audit Phase 3 (bulk actions): { [rfiId]: true } for every checked row —
+    // see risks.js's own uiState comment on this exact pattern.
+    selectedIds: {},
   };
 
   function today() {
@@ -33772,6 +34142,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         }
       });
 
+      window.PCC.store.rememberLastUsedName("rfi_raised_by", values.raised_by);
       window.PCC.notify(isNew ? "Entry added." : "Entry updated.", "success");
       uiState.editingId = null;
       onSaved();
@@ -33795,6 +34166,19 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   function renderRfiCard(r, projects, onChanged) {
     var card = document.createElement("div");
     card.className = "project-card";
+
+    // Daily-Use Audit Phase 3 (bulk actions).
+    var selectBox = document.createElement("input");
+    selectBox.type = "checkbox";
+    selectBox.className = "project-card__select";
+    selectBox.setAttribute("aria-label", "Select this entry for a bulk action");
+    selectBox.checked = !!uiState.selectedIds[r.id];
+    selectBox.onchange = function () {
+      if (selectBox.checked) uiState.selectedIds[r.id] = true;
+      else delete uiState.selectedIds[r.id];
+      onChanged();
+    };
+    card.appendChild(selectBox);
 
     var main = document.createElement("div");
     main.className = "project-card__main";
@@ -33848,6 +34232,30 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       onChanged();
     };
 
+    // Daily-Use Audit Phase 3 ("duplicate as template"): opens the Add form pre-filled
+    // with this RFI/TQ's own content fields — status/response/dates deliberately reset
+    // fresh, and it's left unlinked from the source's meeting.
+    var cloneBtn = document.createElement("button");
+    cloneBtn.className = "btn btn--ghost";
+    cloneBtn.textContent = "Clone";
+    cloneBtn.onclick = function () {
+      uiState.pendingPrefill = {
+        project_id: r.project_id,
+        type: r.type,
+        subject: r.subject,
+        question: r.question,
+        priority: r.priority,
+        raised_by: r.raised_by,
+        assigned_to: r.assigned_to,
+        waiting_on_party: r.waiting_on_party,
+        activity_id: r.activity_id,
+        cost_impact: r.cost_impact,
+        schedule_impact: r.schedule_impact,
+      };
+      uiState.editingId = "new";
+      onChanged();
+    };
+
     var deleteBtn = document.createElement("button");
     deleteBtn.className = "btn btn--ghost";
     deleteBtn.textContent = "Delete";
@@ -33864,6 +34272,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     actions.appendChild(detailsBtn);
     actions.appendChild(editBtn);
+    actions.appendChild(cloneBtn);
     actions.appendChild(deleteBtn);
 
     card.appendChild(main);
@@ -34273,6 +34682,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     addBtn.disabled = !hasActiveProjects;
     addBtn.title = hasActiveProjects ? "" : "Add a project in Portfolio first";
     addBtn.onclick = function () {
+      // Daily-Use Audit Phase 3 (field memory): pre-fill Raised By with whoever raised
+      // the last RFI/TQ — the same PM/Coordinator name is typed dozens of times a week.
+      var lastRaisedBy = window.PCC.store.getLastUsedName("rfi_raised_by");
+      uiState.pendingPrefill = lastRaisedBy ? { raised_by: lastRaisedBy } : null;
       uiState.editingId = "new";
       rerender();
     };
@@ -34288,8 +34701,87 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var listWrap = document.createElement("div");
     outlet.appendChild(listWrap);
 
+    // Daily-Use Audit Phase 3 (bulk actions): "Closing out a week's worth of answered
+    // RFIs means opening each row individually" — Close Selected replicates the same
+    // date_answered backfill the single-entry Edit form's submit handler already does
+    // (Phase 1, bug #3), so a bulk close doesn't lose that audit trail either.
+    function selectedCount() {
+      return Object.keys(uiState.selectedIds).length;
+    }
+
+    function clearSelection() {
+      uiState.selectedIds = {};
+    }
+
+    function renderBulkBar() {
+      var n = selectedCount();
+      if (n === 0) return null;
+      var noun = n === 1 ? "entry" : "entries";
+
+      var bar = document.createElement("div");
+      bar.className = "bulk-action-bar";
+
+      var countEl = document.createElement("span");
+      countEl.className = "bulk-action-bar__count";
+      countEl.textContent = n + " selected";
+      bar.appendChild(countEl);
+
+      var closeBtn = document.createElement("button");
+      closeBtn.className = "btn btn--ghost";
+      closeBtn.textContent = "Close Selected";
+      closeBtn.onclick = function () {
+        window.PCC.store.update(function (d) {
+          d.rfis.forEach(function (item) {
+            if (uiState.selectedIds[item.id]) {
+              var wasAnswered = item.status !== "answered" && item.status !== "closed";
+              item.status = "closed";
+              if (wasAnswered && !item.date_answered) item.date_answered = today();
+              item.updated_at = new Date().toISOString();
+            }
+          });
+        });
+        window.PCC.notify(n + " " + noun + " closed.", "success");
+        clearSelection();
+        rerender();
+      };
+      bar.appendChild(closeBtn);
+
+      var spacer = document.createElement("div");
+      spacer.className = "bulk-action-bar__spacer";
+      bar.appendChild(spacer);
+
+      var clearBtn = document.createElement("button");
+      clearBtn.className = "btn btn--ghost";
+      clearBtn.textContent = "Clear Selection";
+      clearBtn.onclick = function () {
+        clearSelection();
+        rerender();
+      };
+      bar.appendChild(clearBtn);
+
+      var deleteBtn = document.createElement("button");
+      deleteBtn.className = "btn btn--ghost";
+      deleteBtn.textContent = "Delete Selected";
+      deleteBtn.onclick = function () {
+        if (!window.confirm("Delete " + n + " selected " + noun + "? This can't be undone.")) return;
+        window.PCC.store.update(function (d) {
+          d.rfis = d.rfis.filter(function (item) {
+            return !uiState.selectedIds[item.id];
+          });
+        });
+        window.PCC.notify(n + " " + noun + " deleted.", "info");
+        clearSelection();
+        rerender();
+      };
+      bar.appendChild(deleteBtn);
+
+      return bar;
+    }
+
     function renderList() {
       listWrap.innerHTML = "";
+      var bulkBar = renderBulkBar();
+      if (bulkBar) listWrap.appendChild(bulkBar);
       var filtered = data.rfis.filter(rfiMatchesFilters);
 
       if (filtered.length === 0) {
@@ -34356,6 +34848,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     expandedId: null,
     revisionDrafts: {},
     pendingPrefill: null, // { project_id, source_meeting_id | source_rfi_id | source_risk_id }
+    // Daily-Use Audit Phase 3 (bulk actions): { [changeOrderId]: true } for every checked
+    // row — see risks.js's own uiState comment on this exact pattern.
+    selectedIds: {},
   };
 
   function projectName(projects, projectId) {
@@ -34749,6 +35244,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         }
       });
 
+      window.PCC.store.rememberLastUsedName("change_order_requested_by", values.requested_by);
       window.PCC.notify(isNew ? "Change Order added." : "Change Order updated.", "success");
       uiState.editingId = null;
       onSaved();
@@ -34778,6 +35274,19 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   function renderCard(co, projects, onChanged) {
     var card = document.createElement("div");
     card.className = "project-card";
+
+    // Daily-Use Audit Phase 3 (bulk actions).
+    var selectBox = document.createElement("input");
+    selectBox.type = "checkbox";
+    selectBox.className = "project-card__select";
+    selectBox.setAttribute("aria-label", "Select this entry for a bulk action");
+    selectBox.checked = !!uiState.selectedIds[co.id];
+    selectBox.onchange = function () {
+      if (selectBox.checked) uiState.selectedIds[co.id] = true;
+      else delete uiState.selectedIds[co.id];
+      onChanged();
+    };
+    card.appendChild(selectBox);
 
     var main = document.createElement("div");
     main.className = "project-card__main";
@@ -34830,6 +35339,29 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       onChanged();
     };
 
+    // Daily-Use Audit Phase 3 ("duplicate as template"): opens the Add form pre-filled
+    // with this Change Order's own content fields — status/decision/dates/source links
+    // deliberately reset fresh, since a clone is a new request, not a copy of where the
+    // original currently stands.
+    var cloneBtn = document.createElement("button");
+    cloneBtn.className = "btn btn--ghost";
+    cloneBtn.textContent = "Clone";
+    cloneBtn.onclick = function () {
+      uiState.pendingPrefill = {
+        project_id: co.project_id,
+        title: co.title,
+        description: co.description,
+        justification: co.justification,
+        requested_by: co.requested_by,
+        waiting_on_party: co.waiting_on_party,
+        activity_id: co.activity_id,
+        cost_impact_amount: co.cost_impact_amount,
+        schedule_impact_days: co.schedule_impact_days,
+      };
+      uiState.editingId = "new";
+      onChanged();
+    };
+
     var deleteBtn = document.createElement("button");
     deleteBtn.className = "btn btn--ghost";
     deleteBtn.textContent = "Delete";
@@ -34846,6 +35378,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     actions.appendChild(detailsBtn);
     actions.appendChild(editBtn);
+    actions.appendChild(cloneBtn);
     actions.appendChild(deleteBtn);
 
     card.appendChild(main);
@@ -35156,6 +35689,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     addBtn.disabled = !hasActiveProjects;
     addBtn.title = hasActiveProjects ? "" : "Add a project in Portfolio first";
     addBtn.onclick = function () {
+      // Daily-Use Audit Phase 3 (field memory): pre-fill Requested By with whoever
+      // requested the last change order.
+      var lastRequestedBy = window.PCC.store.getLastUsedName("change_order_requested_by");
+      uiState.pendingPrefill = lastRequestedBy ? { requested_by: lastRequestedBy } : null;
       uiState.editingId = "new";
       rerender();
     };
@@ -35170,8 +35707,100 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var listWrap = document.createElement("div");
     outlet.appendChild(listWrap);
 
+    // Daily-Use Audit Phase 3 (bulk actions): "multi-select bulk close/approve" — Approve
+    // Selected/Reject Selected replicate the same date_decided backfill the single-entry
+    // Edit form's submit handler already does (only backfilled from a genuine "pending",
+    // matching that same rule here).
+    function selectedCount() {
+      return Object.keys(uiState.selectedIds).length;
+    }
+
+    function clearSelection() {
+      uiState.selectedIds = {};
+    }
+
+    function bulkSetStatus(newStatus, verb) {
+      var n = selectedCount();
+      window.PCC.store.update(function (d) {
+        d.change_orders.forEach(function (item) {
+          if (uiState.selectedIds[item.id]) {
+            var wasDecided = item.status === "pending";
+            item.status = newStatus;
+            if (wasDecided && !item.date_decided) item.date_decided = new Date().toISOString().slice(0, 10);
+            item.updated_at = new Date().toISOString();
+          }
+        });
+      });
+      window.PCC.notify(n + (n === 1 ? " Change Order " : " Change Orders ") + verb + ".", "success");
+      clearSelection();
+      rerender();
+    }
+
+    function renderBulkBar() {
+      var n = selectedCount();
+      if (n === 0) return null;
+      var noun = n === 1 ? "entry" : "entries";
+
+      var bar = document.createElement("div");
+      bar.className = "bulk-action-bar";
+
+      var countEl = document.createElement("span");
+      countEl.className = "bulk-action-bar__count";
+      countEl.textContent = n + " selected";
+      bar.appendChild(countEl);
+
+      var approveBtn = document.createElement("button");
+      approveBtn.className = "btn btn--ghost";
+      approveBtn.textContent = "Approve Selected";
+      approveBtn.onclick = function () {
+        bulkSetStatus("approved", "approved");
+      };
+      bar.appendChild(approveBtn);
+
+      var rejectBtn = document.createElement("button");
+      rejectBtn.className = "btn btn--ghost";
+      rejectBtn.textContent = "Reject Selected";
+      rejectBtn.onclick = function () {
+        bulkSetStatus("rejected", "rejected");
+      };
+      bar.appendChild(rejectBtn);
+
+      var spacer = document.createElement("div");
+      spacer.className = "bulk-action-bar__spacer";
+      bar.appendChild(spacer);
+
+      var clearBtn = document.createElement("button");
+      clearBtn.className = "btn btn--ghost";
+      clearBtn.textContent = "Clear Selection";
+      clearBtn.onclick = function () {
+        clearSelection();
+        rerender();
+      };
+      bar.appendChild(clearBtn);
+
+      var deleteBtn = document.createElement("button");
+      deleteBtn.className = "btn btn--ghost";
+      deleteBtn.textContent = "Delete Selected";
+      deleteBtn.onclick = function () {
+        if (!window.confirm("Delete " + n + " selected " + noun + "? This can't be undone.")) return;
+        window.PCC.store.update(function (d) {
+          d.change_orders = d.change_orders.filter(function (item) {
+            return !uiState.selectedIds[item.id];
+          });
+        });
+        window.PCC.notify(n + " " + noun + " deleted.", "info");
+        clearSelection();
+        rerender();
+      };
+      bar.appendChild(deleteBtn);
+
+      return bar;
+    }
+
     function renderList() {
       listWrap.innerHTML = "";
+      var bulkBar = renderBulkBar();
+      if (bulkBar) listWrap.appendChild(bulkBar);
       var filtered = data.change_orders.filter(matchesFilters);
 
       if (filtered.length === 0) {
@@ -35266,6 +35895,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     editingId: null,
     expandedId: null,
     pendingPrefill: null, // { project_id, source_meeting_id } set by createFromMeeting()
+    // Daily-Use Audit Phase 3 (bulk actions): { [decisionId]: true } for every checked
+    // row — see risks.js's own uiState comment on this exact pattern.
+    selectedIds: {},
   };
 
   function projectName(projects, projectId) {
@@ -35483,6 +36115,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         }
       });
 
+      window.PCC.store.rememberLastUsedName("decision_decided_by", values.decided_by);
       window.PCC.notify(isNew ? "Decision added." : "Decision updated.", "success");
       uiState.editingId = null;
       onSaved();
@@ -35505,6 +36138,19 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   function renderDecisionCard(d, projects, onChanged) {
     var card = document.createElement("div");
     card.className = "project-card";
+
+    // Daily-Use Audit Phase 3 (bulk actions).
+    var selectBox = document.createElement("input");
+    selectBox.type = "checkbox";
+    selectBox.className = "project-card__select";
+    selectBox.setAttribute("aria-label", "Select this entry for a bulk action");
+    selectBox.checked = !!uiState.selectedIds[d.id];
+    selectBox.onchange = function () {
+      if (selectBox.checked) uiState.selectedIds[d.id] = true;
+      else delete uiState.selectedIds[d.id];
+      onChanged();
+    };
+    card.appendChild(selectBox);
 
     var main = document.createElement("div");
     main.className = "project-card__main";
@@ -35545,6 +36191,25 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       onChanged();
     };
 
+    // Daily-Use Audit Phase 3 ("duplicate as template"): opens the Add form pre-filled
+    // with this decision's context — deliberately excludes the actual `decision` text,
+    // decided_by, and decision_date, since a clone is a new pending question, not a copy
+    // of an already-made call.
+    var cloneBtn = document.createElement("button");
+    cloneBtn.className = "btn btn--ghost";
+    cloneBtn.textContent = "Clone";
+    cloneBtn.onclick = function () {
+      uiState.pendingPrefill = {
+        project_id: d.project_id,
+        title: d.title,
+        description: d.description,
+        waiting_on_party: d.waiting_on_party,
+        activity_id: d.activity_id,
+      };
+      uiState.editingId = "new";
+      onChanged();
+    };
+
     var deleteBtn = document.createElement("button");
     deleteBtn.className = "btn btn--ghost";
     deleteBtn.textContent = "Delete";
@@ -35561,6 +36226,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     actions.appendChild(detailsBtn);
     actions.appendChild(editBtn);
+    actions.appendChild(cloneBtn);
     actions.appendChild(deleteBtn);
 
     card.appendChild(main);
@@ -35783,6 +36449,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     addBtn.disabled = !hasActiveProjects;
     addBtn.title = hasActiveProjects ? "" : "Add a project in Portfolio first";
     addBtn.onclick = function () {
+      // Daily-Use Audit Phase 3 (field memory): pre-fill Decided By with whoever
+      // decided the last entry.
+      var lastDecidedBy = window.PCC.store.getLastUsedName("decision_decided_by");
+      uiState.pendingPrefill = lastDecidedBy ? { decided_by: lastDecidedBy } : null;
       uiState.editingId = "new";
       rerender();
     };
@@ -35797,8 +36467,85 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var listWrap = document.createElement("div");
     outlet.appendChild(listWrap);
 
+    // Daily-Use Audit Phase 3 (bulk actions). "Mark as Decided" is deliberately not a
+    // bulk action — this register requires the actual `decision` text before status can
+    // meaningfully move to "decided" (see newDecision()'s own comment), which a bulk
+    // action across dissimilar entries can't supply. Defer Selected needs no such text.
+    function selectedCount() {
+      return Object.keys(uiState.selectedIds).length;
+    }
+
+    function clearSelection() {
+      uiState.selectedIds = {};
+    }
+
+    function renderBulkBar() {
+      var n = selectedCount();
+      if (n === 0) return null;
+      var noun = n === 1 ? "entry" : "entries";
+
+      var bar = document.createElement("div");
+      bar.className = "bulk-action-bar";
+
+      var countEl = document.createElement("span");
+      countEl.className = "bulk-action-bar__count";
+      countEl.textContent = n + " selected";
+      bar.appendChild(countEl);
+
+      var deferBtn = document.createElement("button");
+      deferBtn.className = "btn btn--ghost";
+      deferBtn.textContent = "Defer Selected";
+      deferBtn.onclick = function () {
+        window.PCC.store.update(function (data) {
+          data.decisions.forEach(function (item) {
+            if (uiState.selectedIds[item.id]) {
+              item.status = "deferred";
+              item.updated_at = new Date().toISOString();
+            }
+          });
+        });
+        window.PCC.notify(n + " " + noun + " deferred.", "success");
+        clearSelection();
+        rerender();
+      };
+      bar.appendChild(deferBtn);
+
+      var spacer = document.createElement("div");
+      spacer.className = "bulk-action-bar__spacer";
+      bar.appendChild(spacer);
+
+      var clearBtn = document.createElement("button");
+      clearBtn.className = "btn btn--ghost";
+      clearBtn.textContent = "Clear Selection";
+      clearBtn.onclick = function () {
+        clearSelection();
+        rerender();
+      };
+      bar.appendChild(clearBtn);
+
+      var deleteBtn = document.createElement("button");
+      deleteBtn.className = "btn btn--ghost";
+      deleteBtn.textContent = "Delete Selected";
+      deleteBtn.onclick = function () {
+        if (!window.confirm("Delete " + n + " selected " + noun + "? This can't be undone.")) return;
+        window.PCC.store.update(function (data) {
+          data.decisions = data.decisions.filter(function (item) {
+            return !uiState.selectedIds[item.id];
+          });
+        });
+        window.PCC.notify(n + " " + noun + " deleted.", "info");
+        clearSelection();
+        rerender();
+      };
+      bar.appendChild(deleteBtn);
+
+      return bar;
+    }
+
     function renderList() {
       listWrap.innerHTML = "";
+      var bulkBar = renderBulkBar();
+      if (bulkBar) listWrap.appendChild(bulkBar);
       var filtered = data.decisions.filter(decisionMatchesFilters);
 
       if (filtered.length === 0) {
@@ -36115,6 +36862,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         }
       });
 
+      window.PCC.store.rememberLastUsedName("lesson_identified_by", values.identified_by);
       window.PCC.notify(isNew ? "Lesson Learned added." : "Lesson Learned updated.", "success");
       uiState.editingId = null;
       onSaved();
@@ -36177,6 +36925,27 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       onChanged();
     };
 
+    // Daily-Use Audit Phase 3 ("duplicate as template"): opens the Add form pre-filled
+    // with this lesson's own content fields — useful for logging the same recurring
+    // lesson (e.g. a vendor pattern) against another project. identified_by/date reset
+    // fresh.
+    var cloneBtn = document.createElement("button");
+    cloneBtn.className = "btn btn--ghost";
+    cloneBtn.textContent = "Clone";
+    cloneBtn.onclick = function () {
+      uiState.pendingPrefill = {
+        project_id: l.project_id,
+        category: l.category,
+        impact_type: l.impact_type,
+        title: l.title,
+        description: l.description,
+        recommendation: l.recommendation,
+        activity_id: l.activity_id,
+      };
+      uiState.editingId = "new";
+      onChanged();
+    };
+
     var deleteBtn = document.createElement("button");
     deleteBtn.className = "btn btn--ghost";
     deleteBtn.textContent = "Delete";
@@ -36193,6 +36962,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     actions.appendChild(detailsBtn);
     actions.appendChild(editBtn);
+    actions.appendChild(cloneBtn);
     actions.appendChild(deleteBtn);
 
     card.appendChild(main);
@@ -36435,6 +37205,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     addBtn.disabled = !hasActiveProjects;
     addBtn.title = hasActiveProjects ? "" : "Add a project in Portfolio first";
     addBtn.onclick = function () {
+      // Daily-Use Audit Phase 3 (field memory): pre-fill Identified By with whoever
+      // identified the last lesson.
+      var lastIdentifiedBy = window.PCC.store.getLastUsedName("lesson_identified_by");
+      uiState.pendingPrefill = lastIdentifiedBy ? { identified_by: lastIdentifiedBy } : null;
       uiState.editingId = "new";
       rerender();
     };

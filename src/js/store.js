@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 55;
+  var SCHEMA_VERSION = 56;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -79,6 +79,13 @@
         // next instead of each page defaulting independently (see projectContext.js).
         // "" means no active project (shows as "All Projects" in the shell header).
         active_project_id: "",
+        // Daily-Use Audit Phase 3 (field memory): the "who" fields on RFI/TQ, Change
+        // Orders, Decisions, and Lessons Learned are plain text and always started
+        // blank, even though the same PM/Coordinator name gets typed dozens of times a
+        // week. Keyed by a short per-field id (see rememberLastUsedName/getLastUsedName
+        // below) rather than one flat field, so each register's own "who" field
+        // remembers independently.
+        last_used_names: {},
       },
       projects: [],
       documents: [],
@@ -2621,6 +2628,14 @@
       loaded.schema_version = 55;
     }
 
+    if (loaded.schema_version < 56) {
+      // Daily-Use Audit Phase 3 (field memory): new settings sub-object, nothing to
+      // backfill — every existing install simply starts with no remembered names, same
+      // as its forms already blank-start today.
+      if (!loaded.settings.last_used_names) loaded.settings.last_used_names = {};
+      loaded.schema_version = 56;
+    }
+
     return loaded;
   }
 
@@ -2730,6 +2745,21 @@
   function update(mutator) {
     mutator(data);
     scheduleSave();
+  }
+
+  /** Daily-Use Audit Phase 3 (field memory) — see settings.last_used_names' own comment
+   * in emptyData(). key is a short per-field id chosen by the calling page module (e.g.
+   * "rfi_raised_by"), not a schema field name, so unrelated registers never collide. */
+  function getLastUsedName(key) {
+    return (data.settings.last_used_names && data.settings.last_used_names[key]) || "";
+  }
+
+  function rememberLastUsedName(key, value) {
+    if (!value || !value.trim()) return;
+    update(function (d) {
+      d.settings.last_used_names = d.settings.last_used_names || {};
+      d.settings.last_used_names[key] = value.trim();
+    });
   }
 
   /** Every place a binary blob can currently live: Documents' `file_data`, and each
@@ -2931,6 +2961,8 @@
     update: update,
     onChange: onChange,
     onPersisted: onPersisted,
+    getLastUsedName: getLastUsedName,
+    rememberLastUsedName: rememberLastUsedName,
     exportToFile: exportToFile,
     migrateLegacyInlineBlobsToIndexedDb: migrateLegacyInlineBlobsToIndexedDb,
     getCorruptionRecovery: getCorruptionRecovery,

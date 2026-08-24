@@ -32,6 +32,11 @@
     projectFilterInitialized: false,
     editingId: null, // null = closed, "new" = creating, otherwise an existing log id
     expandedId: null,
+    // Daily-Use Audit Phase 3 ("duplicate as template"): same pendingPrefill pattern
+    // risks.js/rfis.js/etc. already use, set by cloneBtn below. log_date/incidents/
+    // photos are deliberately never included — a clone is a fresh day, not a copy of
+    // yesterday's safety incident or photos.
+    pendingPrefill: null,
   };
 
   function projectName(projects, projectId) {
@@ -322,6 +327,31 @@
       onChanged();
     };
 
+    // Daily-Use Audit Phase 3 ("duplicate as template"): a Daily Log is filled in every
+    // single day, so cloning yesterday's (or any prior) entry as a starting point is the
+    // highest-value clone case in the app — same manpower/equipment/visitors boilerplate
+    // most days. Date resets to today (so the duplicate-entry guard applies normally),
+    // and incidents/photos are deliberately never carried over to a new day.
+    var cloneBtn = document.createElement("button");
+    cloneBtn.className = "btn btn--ghost";
+    cloneBtn.textContent = "Clone";
+    cloneBtn.onclick = function () {
+      uiState.pendingPrefill = {
+        project_id: log.project_id,
+        weather: log.weather,
+        manpower: log.manpower,
+        equipment: log.equipment,
+        visitors: log.visitors,
+        deliveries: log.deliveries,
+        activities: log.activities,
+        safety_notes: log.safety_notes,
+        notes: log.notes,
+        activity_id: log.activity_id,
+      };
+      uiState.editingId = "new";
+      onChanged();
+    };
+
     var deleteBtn = document.createElement("button");
     deleteBtn.className = "btn btn--ghost";
     deleteBtn.textContent = "Delete";
@@ -338,6 +368,7 @@
 
     actions.appendChild(detailsBtn);
     actions.appendChild(editBtn);
+    actions.appendChild(cloneBtn);
     actions.appendChild(deleteBtn);
 
     card.appendChild(main);
@@ -698,10 +729,11 @@
     if (uiState.editingId) {
       var logBeingEdited =
         uiState.editingId === "new"
-          ? window.PCC.store.newDailyLog()
+          ? window.PCC.store.newDailyLog(uiState.pendingPrefill || {})
           : data.daily_logs.find(function (d) {
               return d.id === uiState.editingId;
             });
+      if (uiState.editingId === "new") uiState.pendingPrefill = null;
       renderForm(outlet, logBeingEdited, projects, rerender);
     }
 

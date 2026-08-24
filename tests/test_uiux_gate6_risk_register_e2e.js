@@ -156,13 +156,13 @@ function findButtonByText(dom, text, root) {
     assert.ok(actions.querySelector(".card-menu .icon-btn"), "card must have a '⋯' menu toggle button");
   });
 
-  await check("clicking the '⋯' menu opens a dropdown with Edit and Delete, and the overlay closes it again", () => {
+  await check("clicking the '⋯' menu opens a dropdown with Edit, Clone, and Delete, and the overlay closes it again", () => {
     var menuBtn = outlet().querySelector(".card-menu .icon-btn");
     menuBtn.click();
     var dropdown = outlet().querySelector(".card-menu__dropdown");
     assert.ok(dropdown, "dropdown must open on menu click");
     var items = Array.from(dropdown.querySelectorAll(".card-menu__item")).map((b) => b.textContent.trim());
-    assert.deepStrictEqual(items, ["Edit", "Delete"]);
+    assert.deepStrictEqual(items, ["Edit", "Clone", "Delete"]);
 
     var overlay = outlet().querySelector(".card-menu__overlay");
     assert.ok(overlay, "overlay must render while the menu is open");

@@ -963,8 +963,23 @@ a:focus-visible {
   border: 1px solid var(--divider);
   border-radius: var(--radius-md);
   padding: 10px var(--space-3);
+  padding-left: 34px;
+  position: relative;
   cursor: pointer;
   transition: border-color var(--transition-base), background-color var(--transition-base);
+}
+
+/* Daily-Use Audit Phase 3 (bulk actions): positioned absolutely rather than prepended
+   inline like .project-card__select, since this row's whole click area already opens
+   the preview panel (.doc-register-item's own onclick) — a separate corner target keeps
+   that click-to-preview behavior intact everywhere except the checkbox itself. */
+.doc-register-item__select {
+  position: absolute;
+  top: 12px;
+  left: var(--space-3);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
 }
 
 .doc-register-item:hover {
@@ -1343,6 +1358,41 @@ a:focus-visible {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+/* Daily-Use Audit Phase 3 (bulk actions): a checkbox prepended to .project-card, which
+   is already a flex row with align-items:center — sits naturally in that row with no
+   layout changes needed elsewhere. */
+.project-card__select {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+/* The "N selected · [bulk action buttons] · Clear" bar shown above a register's list
+   once at least one row is checked — same panel/pill language as the rest of the app,
+   distinguished with the accent color so it reads as a temporary, active state rather
+   than a fourth persistent toolbar. */
+.bulk-action-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  background-color: var(--bg-paper-raised);
+  border: 1px solid var(--signal-amber);
+  border-radius: var(--radius-md);
+  padding: 10px var(--space-4);
+  margin-bottom: var(--space-3);
+}
+
+.bulk-action-bar__count {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.bulk-action-bar__spacer {
+  flex: 1 1 auto;
 }
 
 .project-entry {
