@@ -4108,6 +4108,67 @@ verification for both parts (context-sync screenshots, the 14-route shortcuts sw
 **Not done**: Phases 3-5 of the audit's own proposed sequencing (daily-entry speed — bulk actions/
 clone/field-memory; Planner power tools; polish items) — still open, pending Aditya's go-ahead.
 
+### Phase 3 — daily-entry speed: clone, bulk actions, field memory, done, 2026-08-24
+
+The audit's own framing: "the highest-frequency pain — duplicate-as-template, multi-select bulk
+close/approve, and remembering repeated names — compounds every single day these roles use the app."
+Three separate features, each targeting a different repeated-typing gap named in the 39 findings.
+
+**Field memory.** RFI/TQ's Raised By, Change Orders' Requested By, Decision Register's Decided By, and
+Lessons Learned's Identified By are plain text fields that always started blank, even though the same
+PM/Coordinator name gets typed dozens of times a week. New `settings.last_used_names` (`schema_version`
+55→56, keyed by a short per-field id like `"rfi_raised_by"` rather than one flat field, so each
+register's own "who" field remembers independently) backs two new `store.js` functions —
+`getLastUsedName(key)`/`rememberLastUsedName(key, value)` — called from each module's own plain "+ Add"
+button (pre-fills from the last saved value) and its form's own save handler (records the new value,
+trimmed, only when non-blank so a blank submission never clobbers a real remembered name).
+
+**Clone ("duplicate as template").** Every form in the app started blank — a Daily Log filled in every
+single day, or a near-identical RFI, meant retyping the same boilerplate from scratch each time. New
+"Clone" action on Daily Log, RFI/TQ, Risk/Issue/Opportunity, Change Orders, Decision Register, and
+Lessons Learned opens the Add form pre-filled with the source entry's own content fields — reusing each
+module's existing `pendingPrefill` mechanism (the same one `createFromMeeting()`-style flows already use)
+rather than adding a new system. Deliberately curated per module, not a blind full-object copy: workflow/
+audit fields reset fresh rather than carry over — status, the actual `decision` text and `decided_by`/
+`decision_date` (Decision Register requires the real decision text before a status can meaningfully move
+to "decided," so a clone can't inherit an already-made call), `date_answered`/`response` (RFI), revisions,
+and any `source_meeting_id`/`source_rfi_id`/`source_risk_id` link (a clone is left unlinked, not silently
+attributed to the original's source). Daily Log's clone is the highest-value case named in the audit —
+`log_date` resets to today so the existing duplicate-entry guard (Phase 1, bug #9) still applies normally,
+and `incidents`/`photos` are deliberately never carried over, since a safety incident or a day's photos
+shouldn't silently reappear on a different day's entry.
+
+**Bulk actions.** Every register was single-record only for edit/delete/status-change — closing out a
+week's worth of resolved risks or answered RFIs meant opening each row individually. Risk/Issue/
+Opportunity, RFI/TQ, Change Orders, Decision Register, and Documents each gain a checkbox per row (a new
+`.project-card__select`, prepended into the existing flex-row card — Documents gets its own absolutely-
+positioned `.doc-register-item__select` instead, since that row's whole click area already opens the
+preview pane, and a corner checkbox with `stopPropagation()` keeps that behavior intact) and a
+"N selected" bulk-action bar above the list once at least one row is checked. Actions are register-
+appropriate rather than one generic "change status" dropdown: Risk/RFI get Close Selected, Change Orders
+get Approve Selected/Reject Selected (matching the audit's own "bulk close/approve" wording), Decision
+Register gets Defer Selected only (deliberately not "Mark as Decided" — same reasoning as Clone above,
+a bulk action across dissimilar entries can't supply the required decision text), and every one of the
+five gets Delete Selected. Bulk close/approve/reject replicate the exact same audit-trail backfill the
+single-entry submit handlers already do (RFI's `date_answered`, Change Orders' `date_decided`, both from
+Phase 1/pre-existing logic) rather than a naive status overwrite. Documents' bulk delete replicates the
+single-entry Delete button's own behavior exactly — an entire revision history (every row sharing
+`document_group_id`), not just the latest row, plus the matching `project.attachments` and blobStore
+cleanup — so a bulk delete never orphans older revisions the way a naive "delete just this row" would.
+
+**Verified**: full jsdom suite (2117 checks, 0 failures) — one existing test
+(`test_uiux_gate6_risk_register_e2e.js`) updated for the new "Clone" menu item risks.js's card menu
+gained, one new migration check plus a brand-new-install default/round-trip check added to
+`test_store_schema_v54_migration.js` for the v55→v56 bump. Real-Chromium click-through of every new flow
+across all affected modules: field memory prefilling on a second "+ Add," Clone opening pre-filled and
+correctly excluding workflow fields, the bulk bar appearing/disappearing with selection count, bulk
+close/approve/reject/defer/delete each confirmed against the actual stored data afterward, zero console
+errors throughout.
+
+**Not done**: Phases 4-5 of the audit's own proposed sequencing (Planner power tools — bulk date-shift,
+copy-activity, WBS indent/outdent, Activities grid virtualization; polish — clickable KPI tiles, sorted
+project pickers, pinned projects) — still open, pending Aditya's go-ahead.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →

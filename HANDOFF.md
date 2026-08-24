@@ -2495,8 +2495,44 @@ Dashboard's "Show All Projects" clearing shared context too); `test_management_a
 updated (one check now explicitly clears context first, since Phase 2 legitimately changed Dashboard's
 behavior there). Full suite: 0 failures. Real-Chromium verification for both parts.
 
-**Not done**: Phases 3-5 (daily-entry speed — bulk actions/clone/field-memory; Planner power tools;
-polish) — still open, pending Aditya's go-ahead on which to do next.
+**Not done** (at Phase 2 cutoff): Phases 3-5 — still open, pending Aditya's go-ahead on which to do next.
+
+**Phase 3 — daily-entry speed: clone, bulk actions, field memory, done, 2026-08-24.** Full detail and
+rationale in README.md's own entry (same section header) — summary here:
+
+**Field memory.** RFI's Raised By, Change Orders' Requested By, Decision Register's Decided By, Lessons
+Learned's Identified By — always started blank despite the same name being typed dozens of times a week.
+New `settings.last_used_names` (`schema_version` 55→56, keyed per-field e.g. `"rfi_raised_by"`) backs two
+new `store.js` functions: `getLastUsedName(key)` / `rememberLastUsedName(key, value)` (trims, and a blank
+value never overwrites a previously remembered one). Each module's plain "+ Add" button seeds
+`pendingPrefill` from the last remembered value; each module's save handler records the new one.
+
+**Clone.** New "Clone" action on Daily Log, RFI/TQ, Risk/Issue/Opportunity, Change Orders, Decision
+Register, Lessons Learned — reuses each module's existing `pendingPrefill` mechanism (same one
+`createFromMeeting()` already used) rather than a new system. Curated per module, not a blind copy:
+status/decision-text/decided_by/date_decided/date_answered/revisions/source links all reset fresh. Daily
+Log resets `log_date` to today (so Phase 1's duplicate-entry guard still applies) and never carries over
+`incidents`/`photos`.
+
+**Bulk actions.** Risk/Issue/Opportunity, RFI/TQ, Change Orders, Decision Register, Documents each get a
+per-row checkbox (`.project-card__select`, or Documents' own absolutely-positioned
+`.doc-register-item__select` with `stopPropagation()` since that row's whole area already opens the
+preview pane) and a "N selected" bulk-action bar. Register-appropriate actions, not one generic dropdown:
+Risk/RFI get Close Selected; Change Orders get Approve Selected/Reject Selected; Decision Register gets
+Defer Selected only (not "Mark as Decided" — same reasoning as Clone, can't supply the required decision
+text in bulk); all five get Delete Selected. Bulk close/approve/reject replicate the existing single-entry
+audit-trail backfill (`date_answered`/`date_decided`) rather than a naive status overwrite. Documents'
+bulk delete replicates the single-entry Delete button exactly — whole revision history (every row sharing
+`document_group_id`) plus `project.attachments`/blobStore cleanup, not just the latest row.
+
+**Verified**: full jsdom suite (2117 checks, 0 failures) — `test_uiux_gate6_risk_register_e2e.js` updated
+for risks.js's card menu gaining a "Clone" item; `test_store_schema_v54_migration.js` gained a v55→v56
+migration check + a brand-new-install default/round-trip check. Real-Chromium click-through of every new
+flow (field memory, clone, and each bulk action) across all affected modules, zero console errors.
+
+**Not done**: Phases 4-5 (Planner power tools — bulk date-shift, copy-activity, WBS indent/outdent,
+Activities grid virtualization; polish — clickable KPI tiles, sorted project pickers, pinned projects) —
+still open, pending Aditya's go-ahead on which to do next.
 
 ## Where things stand — Tiers A-F complete; Tier 3 (a separate, older roadmap) is now CLOSED OUT
 
@@ -4285,35 +4321,39 @@ committed-to next feature as of this HEAD. When a fresh session picks this up:
 4. Windows/macOS code signing is a **closed** decision (personal use only, no cert, no Mac
    hardware) — don't re-raise it unless Aditya explicitly reopens the topic himself.
 
-### Current state update (2026-08-23, after Daily-Use Audit Phases 1 + 2 — supersedes the numbers above)
+### Current state update (2026-08-24, after Daily-Use Audit Phases 1 + 2 + 3 — supersedes the numbers above)
 
-`main` is fully up to date through **Daily-Use Audit Phase 2** at commit `7c1ce3e` (merge commit;
-Phase 2's own commit is `f6ad965`, on top of the Phase 1 merge `43e518c`). The working branch,
-`claude/new-session-knj62z`, was just restarted from this `main` and carries the exact same history
-— `git rev-parse main` and `git rev-parse claude/new-session-knj62z` both resolve to `7c1ce3e` as of
-this writing. **Verify this is still true by the time you read this** rather than trusting it blindly.
+`main` is fully up to date through **Daily-Use Audit Phase 3** at commit `777035a` (merge commit;
+Phase 3's own commit is `ecb3979`, on top of the Phase 2 docs commit `98fa594` and Phase 2's own merge
+`7c1ce3e`). The working branch, `claude/new-session-knj62z`, was just restarted from this `main` and
+carries the exact same history — `git rev-parse main` and `git rev-parse claude/new-session-knj62z`
+both resolve to `777035a` as of this writing. **Verify this is still true by the time you read this**
+rather than trusting it blindly.
 
-- `schema_version` is now **55** (was 53 as of the last full rewrite of this section above; check
-  `src/js/store.js`'s own `SCHEMA_VERSION` constant and its migration chain directly if this ever
-  looks inconsistent, don't trust prose numbers). The v55 bump added `cpm_calculated_fingerprint` to
-  schedules (Phase 1, bug #2 — CPM staleness detection).
+- `schema_version` is now **56** (was 53 as of the last full rewrite of this section, before Phase 1;
+  check `src/js/store.js`'s own `SCHEMA_VERSION` constant and its migration chain directly if this
+  ever looks inconsistent, don't trust prose numbers). v55 added `cpm_calculated_fingerprint` to
+  schedules (Phase 1, bug #2). v56 added `settings.last_used_names` (Phase 3, field memory).
 - **Test suite**: 77 files as of this HEAD (`ls tests/*.js | wc -l`), all chained in
-  `tests/package.json`'s `test` script. Recount rather than trust this number blindly — it grows
-  almost every gate.
-- Both an Android APK and a Windows EXE were rebuilt and delivered directly to Aditya this round
-  (before Phase 1/2 started, from the state as of PCC Redesign Gate 12) — see the Mobile & Desktop
-  Packaging section and the split-file delivery convention (CLAUDE.md, `packaging/README.md`) for
-  the exact artifacts and verification hashes. Neither has been rebuilt again since Phase 1/2 — the
-  zip/APK/EXE artifacts Aditya has do NOT yet include Phase 1 or Phase 2's fixes. Rebuild before
-  handing over another end-user package if that matters for what's being delivered next.
+  `tests/package.json`'s `test` script — 2117 individual checks, 0 failures at last run. Recount
+  rather than trust this number blindly — it grows almost every gate.
+- Both an Android APK and a Windows EXE were rebuilt and delivered directly to Aditya once this round
+  (before Phase 1 started, from the state as of PCC Redesign Gate 12) — see the Mobile & Desktop
+  Packaging section and the split-file delivery convention (CLAUDE.md, `packaging/README.md`) for the
+  exact artifacts and verification hashes. Neither has been rebuilt since — the APK/EXE Aditya has do
+  NOT include Phases 1, 2, or 3's changes; only the Phase 2 and Phase 3 end-user zips do (`index.html`
+  only, no native packaging). Rebuild+repackage before handing over another APK/EXE if that matters
+  for what's being delivered next.
 - **What shipped this round, in order**: PCC Redesign Gate 12 (App Icon & Branding, closing out that
   whole 12-gate initiative) → Daily-Use Audit kickoff (39 findings, 5-phase proposal) → **Phase 1**
   (9 real bugs — router double-render, CPM staleness, RFI date_answered, Gantt search focus loss,
   circular relationships, negative Duration, SAVED-label race, no beforeunload warning, Daily Log
   duplicate guard) → **Phase 2** (Global Project Context live-sync wired into Dashboard/My Work/
-  Action Centre/Project Lookahead; a first keyboard-shortcut pass — `/`, `n`, `?`). Full detail on
-  both phases is in this file's own Daily-Use Audit section above and in README.md's matching
+  Action Centre/Project Lookahead; a first keyboard-shortcut pass — `/`, `n`, `?`) → **Phase 3**
+  (Clone on 6 registers, bulk actions on 5 registers, field memory on 4 "who" fields). Full detail on
+  all three phases is in this file's own Daily-Use Audit section above and in README.md's matching
   section — don't re-derive it from git log.
-- **Not done**: Phases 3-5 of the Daily-Use Audit (daily-entry speed — bulk actions/clone/
-  field-memory; Planner power tools; polish) — open, pending Aditya's explicit go-ahead on which to
-  do next. No other feature work is currently committed to.
+- **Not done**: Phases 4-5 of the Daily-Use Audit (Planner power tools — bulk date-shift, copy-
+  activity, WBS indent/outdent, Activities grid virtualization; polish — clickable KPI tiles, sorted
+  project pickers, pinned projects) — open, pending Aditya's explicit go-ahead on which to do next.
+  No other feature work is currently committed to.
