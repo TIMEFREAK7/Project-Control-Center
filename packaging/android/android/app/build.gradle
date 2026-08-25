@@ -17,8 +17,17 @@ android {
         applicationId "com.pcc.projectcontrolcenter"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        // Bug fix (2026-08-24): versionCode had been hardcoded at 1 since the very first
+        // release build and was never bumped across 5 full audit phases of changes —
+        // Android refuses to install an update in place unless the new APK's versionCode
+        // is STRICTLY GREATER than the currently-installed one, so every "new" APK looked
+        // identical to Android and required a full uninstall first. MUST be bumped by at
+        // least 1 on every release build from here on, with no exceptions — see the
+        // standing instruction in CLAUDE.md/HANDOFF.md. versionName is just the
+        // human-readable label shown in Settings > Apps; bump it too for clarity, but it
+        // has no effect on install/update behavior.
+        versionCode 2
+        versionName "1.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

@@ -91,3 +91,14 @@ unrelated app; there's no benefit to sharing one across different `applicationId
 adds cross-app blast radius if it's ever compromised. Treat it exactly like the Electron section
 above treats secrets: generate once, guard forever, hand it off immediately since it's not safe to
 leave sitting only in an ephemeral container.
+
+**Before every `npm run android:build:release` (or `:debug`) for an APK that's actually going to be
+handed to Aditya**: bump `versionCode` (and `versionName`) in `android/app/build.gradle`'s
+`defaultConfig` block — check the file's current values first, don't assume a starting point. Real
+bug, found 2026-08-24: `versionCode` sat hardcoded at `1` since the very first release build across
+5 full audit phases of changes, so Android's package manager saw every "new" APK as identical to
+what was already installed and refused an in-place update (it requires the new `versionCode` to be
+strictly greater), forcing a full uninstall before every single install. There is no build-time
+check for this — it's a manual step, easy to forget, so don't skip it. See CLAUDE.md's own bullet on
+this for the full standing instruction (also covers `packaging/package.json`'s `"version"` for the
+Electron side).

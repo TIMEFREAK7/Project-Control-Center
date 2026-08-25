@@ -110,6 +110,18 @@ node --check src/js/whatever.js   # quick syntax check on a single file
   SHA-256 to verify against after reassembling. See `packaging/README.md`'s "Distributing a build"
   section for the full worked example. Git LFS stays the documented fallback for the rare case this
   doesn't fit (e.g. the file needs to live in git history directly), not the routine path.
+- **ALWAYS bump the Android `versionCode` (and `versionName`) before every `assembleRelease` build,
+  with no exceptions** — discovered as a real bug 2026-08-24: `versionCode` sat hardcoded at `1` since
+  the very first release build across 5 full audit phases of changes, so every "new" APK Aditya was
+  handed looked identical to Android's package manager, which refuses to install an update in place
+  unless the new APK's `versionCode` is strictly greater than the currently-installed one — Aditya had
+  to uninstall the old APK before every single install. Fixed in
+  `packaging/android/android/app/build.gradle`: bump `versionCode` by at least 1 (e.g. 2 → 3) and give
+  `versionName` a matching human-readable bump (e.g. "1.1" → "1.2") every time an APK is (re)built for
+  delivery — check the current values in that file first, don't assume a starting point. Also bump
+  `packaging/package.json`'s `"version"` field to match before an `electron:build` — Windows/NSIS
+  isn't as strict about this as Android, but keeping both packages' version numbers in sync and moving
+  forward is still correct practice, not optional.
 - If the branch backing an already-merged PR is reused for the next piece of work, restart it from
   the latest `main` first (`git fetch origin main && git reset --hard origin/main`, or rebase if
   there's already unmerged work sitting on the branch) rather than stacking new commits on old

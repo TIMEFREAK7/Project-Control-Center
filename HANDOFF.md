@@ -73,6 +73,18 @@ that override default behavior).
   give Aditya both the SHA-256 and the exact Windows Command Prompt reassembly command
   (`copy /b part00+part01+...+partNN "output.exe"`). Full worked example in
   `packaging/README.md`'s "Distributing a build" section. Also written into `CLAUDE.md` itself now.
+- **ALWAYS bump the Android `versionCode` (and `versionName`) before every APK release build, no
+  exceptions — real bug found 2026-08-24.** `versionCode` sat hardcoded at `1`
+  (`packaging/android/android/app/build.gradle`) since the very first release build across 5 full
+  Daily-Use Audit phases of changes, so every "new" APK handed to Aditya looked identical to
+  Android's package manager — which refuses to install an update in place unless the new APK's
+  `versionCode` is strictly greater than the currently-installed one — forcing Aditya to uninstall
+  the old APK before every single install. Fixed: bumped to `versionCode 2` / `versionName "1.1"`
+  this round; **check the file's current values first, don't assume a starting point**, then bump
+  `versionCode` by at least 1 and `versionName` to match on every future release build. Also bump
+  `packaging/package.json`'s `"version"` (now `1.1.0`) before an `electron:build` — Windows/NSIS
+  isn't as strict about this as Android, but keeping both packages' version numbers moving forward
+  together is still correct practice. Also written into `CLAUDE.md` itself now.
 
 ## NEW INITIATIVE: UI/UX Overhaul (started 2026-08-20) — a THIRD, separate roadmap
 
