@@ -3653,6 +3653,214 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
 
 
+/* ---- js/delayImpactEngine.js ---- */
+/* Planning & Scheduling-Centric Delay Management, Gate B: Schedule Integration.
+ *
+ * This is deliberately NOT a second schedule/CPM engine. Every "current" value here
+ * (early/late dates, total_float, criticality) is read straight off data.activities —
+ * the exact fields scheduleCpmEngine.js's calculateSchedule() already wrote there the
+ * last time "Calculate Schedule" ran (see schedule.js's runCalculation()). This module
+ * only does two things scheduleCpmEngine.js doesn't:
+ *   1. Compares a delay_activity_links row's frozen HISTORICAL snapshot (captured once,
+ *      at link creation — see newDelayActivityLink() in store.js) against those live
+ *      current values, to answer "how much has this moved since the delay was
+ *      identified" without ever overwriting the historical figures.
+ *   2. For project-finish impact specifically (computeProjectFinishImpact), it calls
+ *      the REAL scheduleCpmEngine.calculateSchedule() fresh, read-only, the same way
+ *      schedule.js's own What-If Sandbox already does for an on-demand comparison —
+ *      never writes the result back onto any activity/schedule record. This is "using
+ *      the existing engine's own calculation," not "a competing one."
+ *
+ * No DOM, no store writes — pure functions, same convention scheduleCpmEngine.js and
+ * scheduleImportService.js already follow, so this is directly testable and never ends
+ * up tangled into render code.
+ */
+(function () {
+  "use strict";
+  window.PCC = window.PCC || {};
+
+  var DAY_MS = 24 * 60 * 60 * 1000;
+
+  function daysBetween(isoA, isoB) {
+    if (!isoA || !isoB) return null;
+    var msA = new Date(isoA + "T00:00:00Z").getTime();
+    var msB = new Date(isoB + "T00:00:00Z").getTime();
+    if (isNaN(msA) || isNaN(msB)) return null;
+    return Math.round((msB - msA) / DAY_MS);
+  }
+
+  var DEFAULT_NEAR_CRITICAL_THRESHOLD_DAYS = 5;
+
+  /** Same simple threshold rule scheduleCpmEngine.js's own calculateSchedule() applies
+   * when it classifies is_critical/is_near_critical — reapplied here to the already-
+   * calculated total_float rather than recalculating it, per this file's own "don't
+   * duplicate the engine" header comment. Returns null (not "non_critical") when the
+   * schedule has never been calculated (total_float == null) — a genuinely unknown
+   * state, distinct from "known and fine." */
+  function classifyCriticality(totalFloat, nearCriticalThresholdDays) {
+    if (totalFloat === null || totalFloat === undefined) return null;
+    var threshold = nearCriticalThresholdDays != null ? nearCriticalThresholdDays : DEFAULT_NEAR_CRITICAL_THRESHOLD_DAYS;
+    if (totalFloat <= 0) return "critical";
+    if (totalFloat <= threshold) return "near_critical";
+    return "non_critical";
+  }
+
+  /** Level 1-2 impact (spec point 11) for ONE affected activity: the live schedule
+   * state (current/forecast dates, float, criticality, progress) read directly from its
+   * activity record, set against the link's frozen historical snapshot. Returns null if
+   * the linked activity no longer exists (deleted since the delay was created) — the
+   * caller decides how to surface that rather than this function guessing. */
+  function computeActivityImpact(link, data) {
+    var activity = data.activities.find(function (a) {
+      return a.id === link.activity_id;
+    });
+    if (!activity) return null;
+    var schedule = data.schedules.find(function (s) {
+      return s.id === activity.schedule_id;
+    });
+    var cpmCalculated = activity.total_float !== null && activity.total_float !== undefined;
+    var criticality = classifyCriticality(activity.total_float, schedule ? schedule.near_critical_threshold_days : null);
+    var floatConsumed =
+      link.original_total_float != null && activity.total_float != null
+        ? link.original_total_float - activity.total_float
+        : null;
+    var currentFinish = activity.actual_finish || activity.early_finish || activity.planned_finish || "";
+    var currentStart = activity.actual_start || activity.early_start || activity.planned_start || "";
+    var finishSlippageDays = daysBetween(link.original_planned_finish, currentFinish);
+
+    return {
+      link_id: link.id,
+      activity_id: activity.id,
+      activity_name: activity.name,
+      activity_type: activity.activity_type,
+      wbs_id: activity.wbs_id,
+      status: activity.status,
+      // Historical (frozen at link creation — spec point 3).
+      original_planned_start: link.original_planned_start,
+      original_planned_finish: link.original_planned_finish,
+      original_total_float: link.original_total_float,
+      // Current / forecast (always live — spec point 3, never a stored copy).
+      current_start: currentStart,
+      current_finish: currentFinish,
+      forecast_start: activity.early_start || activity.planned_start || "",
+      forecast_finish: activity.early_finish || activity.planned_finish || "",
+      duration: activity.duration,
+      remaining_duration: activity.remaining_duration,
+      percent_complete: activity.percent_complete,
+      current_total_float: activity.total_float,
+      float_consumed: floatConsumed,
+      finish_slippage_days: finishSlippageDays,
+      criticality: criticality, // 'critical' | 'near_critical' | 'non_critical' | null (not yet calculated)
+      is_out_of_sequence: !!activity.is_out_of_sequence,
+      cpm_calculated: cpmCalculated,
+    };
+  }
+
+  /** Rolls up every linked activity's impact for one Delay (Level 1-3, spec point 11):
+   * per-activity detail plus an overall criticality (the worst of any linked activity)
+   * and total float consumed (the minimum float_consumed across activities that have
+   * one — i.e. the tightest-constrained activity, since that's the one that actually
+   * threatens the schedule). Milestone impact (Level 3) is just the same per-activity
+   * entry for delayRecord.milestone_activity_id, when one of the links matches it —
+   * kept as a plain lookup rather than a special-cased calculation, since a milestone
+   * IS an activity (activity_type: "milestone") and gets the exact same treatment. */
+  function computeDelayImpact(delayRecord, links, data) {
+    var perActivity = links
+      .map(function (link) {
+        return computeActivityImpact(link, data);
+      })
+      .filter(Boolean);
+
+    var criticalityRank = { critical: 3, near_critical: 2, non_critical: 1 };
+    var overallCriticality = null;
+    perActivity.forEach(function (a) {
+      if (!a.criticality) return;
+      if (!overallCriticality || criticalityRank[a.criticality] > criticalityRank[overallCriticality]) {
+        overallCriticality = a.criticality;
+      }
+    });
+
+    var floatConsumedValues = perActivity
+      .map(function (a) {
+        return a.float_consumed;
+      })
+      .filter(function (v) {
+        return v !== null && v !== undefined;
+      });
+    var minFloatConsumed = floatConsumedValues.length ? Math.min.apply(null, floatConsumedValues) : null;
+    var maxFloatConsumed = floatConsumedValues.length ? Math.max.apply(null, floatConsumedValues) : null;
+
+    var milestoneImpact = null;
+    if (delayRecord.milestone_activity_id) {
+      milestoneImpact =
+        perActivity.find(function (a) {
+          return a.activity_id === delayRecord.milestone_activity_id;
+        }) || null;
+    }
+
+    var anyCalculated = perActivity.some(function (a) {
+      return a.cpm_calculated;
+    });
+
+    return {
+      per_activity: perActivity,
+      overall_criticality: overallCriticality,
+      min_float_consumed: minFloatConsumed,
+      max_float_consumed: maxFloatConsumed,
+      milestone_impact: milestoneImpact,
+      any_schedule_calculated: anyCalculated,
+    };
+  }
+
+  /** Level 4 impact (spec point 11/15): does this delay currently threaten the
+   * PROJECT's own finish date? Only meaningful when at least one linked activity is
+   * currently critical — a non-critical delay, by definition, is absorbed by float and
+   * cannot be moving the project finish (spec's own Test 1/5). When that's true, this
+   * calls the REAL scheduleCpmEngine.calculateSchedule() fresh over the schedule's
+   * current activities/relationships — read-only, exactly like schedule.js's own
+   * What-If Sandbox already does for an on-demand comparison, never written back to any
+   * record — and reports its own forecastVarianceDays. This is intentionally the
+   * heaviest call in this file, so callers should only invoke it for a single Delay's
+   * own detail view, not in a loop over an entire register/list. */
+  function computeProjectFinishImpact(scheduleId, data) {
+    var schedule = data.schedules.find(function (s) {
+      return s.id === scheduleId;
+    });
+    if (!schedule) return { available: false, reason: "Schedule not found." };
+
+    var scheduleActivities = data.activities.filter(function (a) {
+      return a.schedule_id === scheduleId;
+    });
+    var scheduleRelationships = data.relationships.filter(function (r) {
+      return r.schedule_id === scheduleId;
+    });
+    if (scheduleActivities.length === 0) {
+      return { available: false, reason: "This schedule has no activities to calculate." };
+    }
+
+    var result = window.PCC.scheduleCpmEngine.calculateSchedule(scheduleActivities, scheduleRelationships, {
+      dataDate: schedule.data_date,
+      nearCriticalThresholdDays: schedule.near_critical_threshold_days,
+      calculationMode: schedule.calculation_mode,
+    });
+
+    return {
+      available: true,
+      project_finish: result.projectFinish,
+      planned_project_finish: result.plannedProjectFinish,
+      project_impact_days: result.forecastVarianceDays,
+    };
+  }
+
+  window.PCC.delayImpactEngine = {
+    classifyCriticality: classifyCriticality,
+    computeActivityImpact: computeActivityImpact,
+    computeDelayImpact: computeDelayImpact,
+    computeProjectFinishImpact: computeProjectFinishImpact,
+  };
+})();
+
+
 /* ---- js/scheduleBaselineEngine.js ---- */
 /* Schedule baseline engine \u2014 builds a trimmed, comparison-only snapshot of a schedule's
  * WBS/Activities/Relationships, and compares a stored snapshot against a current set of
@@ -5278,7 +5486,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 58;
+  var SCHEMA_VERSION = 59;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -5419,6 +5627,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       // delay EVENT logged against a Schedule activity — see newDelayRecord() below for
       // why this is deliberately a separate register from recovery_actions above.
       delay_records: [],
+      // Planning & Scheduling-Centric Delay Management, Gate A/B: the many-to-many
+      // Delay↔Activity join — see newDelayActivityLink() below for why this exists
+      // separately from delay_records' own `activity_id` (one Delay, many Activities).
+      delay_activity_links: [],
       // PCC Evolution Roadmap, Tier F: Advanced Schedule Performance (Gate 25). One row
       // per manually-captured point-in-time performance reading (SPI/SPI(t)/schedule
       // performance score) — see newSchedulePerformanceSnapshot() below for why this is
@@ -6685,6 +6897,18 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       // exploration" split Baselines already draws between the Gantt and Baselines tab.
       estimated_recovery_days: null,
       estimated_cost: null,
+      // Gate D (Delay Management, spec point 18): the actual days this action
+      // recovered, once known — kept separate from estimated_recovery_days above so the
+      // original plan is never overwritten by the outcome (same "never overwrite a
+      // historical estimate" rule the parent Delay itself follows).
+      actual_recovery_days: null,
+      // Gate D: optional link to the specific Delay this action responds to — "" (only
+      // linked to an activity, Gate 23's original shape) is still fully valid; a delay
+      // can accumulate several recovery actions the same way it already could without
+      // this field. Deliberately nullable/additive rather than replacing activity_id,
+      // so every existing recovery action (and every existing test) keeps working
+      // unchanged.
+      delay_id: "",
       created_at: now,
       updated_at: now,
     };
@@ -6697,16 +6921,31 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     return "dly_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
   }
 
-  /** PCC Evolution Roadmap, Tier F: Advanced Delay Analysis (Gate 23). A distinct delay
-   * EVENT logged against one Schedule activity — why it happened and whose responsibility
-   * it was, as its own structured record rather than free text buried in a Recovery
-   * Action's description. Deliberately a separate register from Recovery Actions above,
-   * not a shared shape: a Delay Record answers "what happened and why" (analysis, often
-   * needed for a contractual claim), a Recovery Action answers "what are we doing about
-   * it" (corrective workflow) — related but genuinely distinct questions, and an activity
-   * can accumulate several Delay Records over time (e.g. concurrent causes) the same way
-   * it can accumulate several Recovery Actions. `project_id` denormalized from the
-   * activity for portfolio-wide queries, same convention newRecoveryAction() uses. */
+  /** PCC Evolution Roadmap, Tier F: Advanced Delay Analysis (Gate 23), extended by the
+   * Planning & Scheduling-Centric Delay Management initiative (Gate A/B) into the full
+   * DELAY EVENT → CAUSE → SCHEDULE IMPACT → RECOVERY → OUTCOME chain that spec describes.
+   * A distinct delay EVENT — why it happened and whose responsibility it was — as its
+   * own structured record, separate from Recovery Actions (which track the corrective
+   * response, not the cause). `delay_cause`/`is_excusable`/`responsible_party`/
+   * `delay_days`/`identified_date`/`description` are the original Gate 23 fields, kept
+   * byte-for-byte (existing tests and the existing Activity Detail Panel form both
+   * depend on these exact names) — `delay_days` doubles as "Estimated Impact (days)" in
+   * the new UI rather than being duplicated under a second name.
+   *
+   * `activity_id` stays as the PRIMARY affected activity (the one this delay was
+   * created from — every existing per-activity list, e.g. schedule.js's
+   * renderDelayRecordsSection() and delayRecoveryDashboard.js, filters on this field
+   * unchanged). A delay affecting MULTIPLE activities (spec point 9 — "one physical
+   * event, several affected activities, not three duplicate delays") is recorded as
+   * additional rows in `data.delay_activity_links` — see newDelayActivityLink() below —
+   * one of which always exists for `activity_id` itself, created alongside the delay.
+   *
+   * Per spec point 34 ("prefer REFERENCE over COPY"), every cross-module relationship
+   * below is a plain optional id, matching the single-link convention Gate 10 already
+   * established for Risk/RFI/Meeting/Daily Log (`activity_id` on each of those) — never
+   * a duplicated copy of the linked record. `status_history` is the delay's own
+   * lightweight timeline (spec point 20), appended automatically whenever `status`
+   * changes — not a manually-curated log a user has to remember to update. */
   function newDelayRecord(overrides) {
     var now = new Date().toISOString();
     var base = {
@@ -6716,9 +6955,54 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       delay_cause: "other", // owner_caused | contractor_caused | weather_force_majeure | design_rfi_driven | other
       is_excusable: false,
       responsible_party: "",
-      delay_days: null,
+      delay_days: null, // "Estimated Impact (days)" — the initial assessment, see header comment
       identified_date: "",
       description: "",
+      // Gate A: the delay's own lifecycle, distinct from Recovery Actions' own per-action
+      // status — a delay isn't automatically "closed" just because its activity finished
+      // (spec point 16); the planner records the final outcome explicitly.
+      status: "open", // open | investigating | mitigation_in_progress | recovery_in_progress | recovered | closed
+      // Gate A: richer operational categorization (spec point 7) — deliberately separate
+      // from delay_cause above, which stays as the coarser contractual-excusability
+      // bucket the existing analytics (delayRecoveryDashboard.js) already chart by.
+      delay_category: "other",
+      // Gate A: who's associated with the event, distinct from contractual liability
+      // (spec point 6's own explicit instruction) — separate from is_excusable
+      // (excusability) and responsible_party (a free-text name/company).
+      responsibility_classification: "unconfirmed",
+      // Gate A: cause structure (spec point 8) — what directly prevented the work, vs.
+      // why that condition existed in the first place. `description` above stays the
+      // overall narrative/title, unchanged from Gate 23.
+      immediate_cause: "",
+      underlying_cause: "",
+      // Gate A: the final realized impact, recorded once known — never overwrites
+      // delay_days (the original estimate) or the schedule's own live-computed forecast
+      // (see delayImpactEngine.js — deliberately never stored, always read fresh from
+      // the Schedule so it can never go stale or fight with a cached copy).
+      actual_impact_days: null,
+      // Gate A: optional link to the milestone activity this delay threatens, if any —
+      // a single reference (not auto-derived from downstream schedule logic; the planner
+      // sets it) kept deliberately simple per this gate's "smallest safe implementation"
+      // scope. Milestone impact is computed by comparing this activity's own schedule
+      // snapshot/current state, same as any other linked activity — see
+      // delayImpactEngine.js.
+      milestone_activity_id: "",
+      // Gate A (spec point 21-24, "supporting relationships, not the centre of the
+      // screen"): optional single-id links into existing PCC registers. `issue_id`
+      // points into the same unified `data.risks` array as a risk does (type: "issue"
+      // there, per this app's one-shape-one-type-field convention) — a separate field
+      // name here only because "which register" isn't otherwise obvious from the id
+      // alone.
+      risk_id: "",
+      issue_id: "",
+      rfi_id: "",
+      daily_log_id: "",
+      meeting_id: "",
+      vendor_id: "",
+      change_order_id: "",
+      // Gate A: lightweight auto-timeline (spec point 20) — [{ status, changed_at, note }],
+      // appended by the save handler whenever `status` actually changes; never hand-edited.
+      status_history: [],
       created_at: now,
       updated_at: now,
     };
@@ -6726,6 +7010,60 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   }
 
   var DELAY_RECORD_CAUSES = ["owner_caused", "contractor_caused", "weather_force_majeure", "design_rfi_driven", "other"];
+
+  var DELAY_RECORD_STATUSES = ["open", "investigating", "mitigation_in_progress", "recovery_in_progress", "recovered", "closed"];
+
+  // Gate A (spec point 7): operational delay categories, distinct from DELAY_RECORD_CAUSES'
+  // contractual-excusability bucket above. A plain hardcoded list for this gate — spec
+  // point 7 itself says "the user must EVENTUALLY be able to add/edit categories," not
+  // that this gate has to build that management UI (the same "hardcoded first, editable
+  // register later if actually asked for" path RESOURCE_TYPES/VENDOR_DOCUMENT_CATEGORIES
+  // took before Document Types eventually got one, Gate 14).
+  var DELAY_CATEGORIES = [
+    "late_material", "late_vendor_submission", "late_drawing", "design_change", "client_delay",
+    "consultant_delay", "vendor_delay", "contractor_delay", "approval_delay", "rfi_delay",
+    "resource_shortage", "equipment_shortage", "site_access", "site_constraint", "interface_issue",
+    "weather", "procurement", "quality_issue", "rework", "change_variation", "other",
+  ];
+
+  // Gate A (spec point 6): who's associated with the delay event. Explicitly NOT a
+  // statement of contractual liability — see newDelayRecord()'s own field comment.
+  var DELAY_RESPONSIBILITY_CLASSIFICATIONS = [
+    "client", "consultant", "main_contractor", "subcontractor", "vendor",
+    "internal", "external", "shared", "unconfirmed",
+  ];
+
+  function newDelayActivityLinkId() {
+    return "dal_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  /** Gate A/B (spec point 9): the many-to-many join that lets ONE Delay affect MANY
+   * Activities without duplicating the Delay record itself — "late transformer delivery"
+   * links to A-1045/A-1050/A-1060 as three rows here, not three separate delays. Always
+   * has at least one row (the delay's own primary `activity_id`), created alongside the
+   * delay; additional activities are linked later from the delay's own detail view.
+   *
+   * Holds ONLY the historical snapshot (spec points 3/35: "prefer reference over copy" —
+   * store just the values that must survive a later schedule change unaltered, nothing
+   * else about the activity is duplicated here). `original_planned_start`/
+   * `original_planned_finish`/`original_total_float` are captured once, at link
+   * creation, and never touched again — every CURRENT/forecast value (early_finish,
+   * total_float, criticality, percent_complete, ...) is read live from
+   * `data.activities` by id through delayImpactEngine.js, never copied here. */
+  function newDelayActivityLink(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newDelayActivityLinkId(),
+      delay_id: "",
+      activity_id: "",
+      project_id: "",
+      original_planned_start: "",
+      original_planned_finish: "",
+      original_total_float: null,
+      created_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
 
   function newSchedulePerformanceSnapshotId() {
     return "sps_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
@@ -8057,6 +8395,67 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       loaded.schema_version = 58;
     }
 
+    if (loaded.schema_version < 59) {
+      // Planning & Scheduling-Centric Delay Management, Gate A/B: enriches every
+      // existing Delay Record with the fuller model (status/category/responsibility/
+      // cause structure/cross-links/timeline — see newDelayRecord()'s own header
+      // comment) and backfills a delay_activity_links row for each one's existing
+      // `activity_id`, so the new multi-activity list (spec point 9) is never empty for
+      // a delay that already had its one activity — it just starts as a list of one.
+      if (!loaded.delay_activity_links) loaded.delay_activity_links = [];
+      var activitiesById = {};
+      (loaded.activities || []).forEach(function (a) {
+        activitiesById[a.id] = a;
+      });
+      (loaded.delay_records || []).forEach(function (r) {
+        if (r.status === undefined) r.status = "open";
+        if (r.delay_category === undefined) r.delay_category = "other";
+        if (r.responsibility_classification === undefined) r.responsibility_classification = "unconfirmed";
+        if (r.immediate_cause === undefined) r.immediate_cause = "";
+        if (r.underlying_cause === undefined) r.underlying_cause = "";
+        if (r.actual_impact_days === undefined) r.actual_impact_days = null;
+        if (r.milestone_activity_id === undefined) r.milestone_activity_id = "";
+        if (r.risk_id === undefined) r.risk_id = "";
+        if (r.issue_id === undefined) r.issue_id = "";
+        if (r.rfi_id === undefined) r.rfi_id = "";
+        if (r.daily_log_id === undefined) r.daily_log_id = "";
+        if (r.meeting_id === undefined) r.meeting_id = "";
+        if (r.vendor_id === undefined) r.vendor_id = "";
+        if (r.change_order_id === undefined) r.change_order_id = "";
+        if (!r.status_history) r.status_history = [];
+
+        // Best-effort historical snapshot: no earlier snapshot ever existed before this
+        // gate, so the activity's CURRENT planned dates/float are used as the closest
+        // available reconstruction — an honest limitation (there's no way to recover
+        // what the schedule genuinely showed back when the delay was first identified),
+        // not a fabricated exact history. Every delay created from this gate forward
+        // gets a real point-in-time snapshot captured at link creation.
+        if (r.activity_id) {
+          var alreadyLinked = loaded.delay_activity_links.some(function (l) {
+            return l.delay_id === r.id && l.activity_id === r.activity_id;
+          });
+          if (!alreadyLinked) {
+            var act = activitiesById[r.activity_id];
+            loaded.delay_activity_links.push(
+              newDelayActivityLink({
+                delay_id: r.id,
+                activity_id: r.activity_id,
+                project_id: r.project_id || (act ? act.project_id : ""),
+                original_planned_start: act ? act.planned_start || "" : "",
+                original_planned_finish: act ? act.planned_finish || "" : "",
+                original_total_float: act && act.total_float != null ? act.total_float : null,
+              })
+            );
+          }
+        }
+      });
+      (loaded.recovery_actions || []).forEach(function (r) {
+        if (r.actual_recovery_days === undefined) r.actual_recovery_days = null;
+        if (r.delay_id === undefined) r.delay_id = "";
+      });
+      loaded.schema_version = 59;
+    }
+
     return loaded;
   }
 
@@ -8430,6 +8829,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     RECOVERY_ACTION_STATUSES: RECOVERY_ACTION_STATUSES,
     newDelayRecord: newDelayRecord,
     DELAY_RECORD_CAUSES: DELAY_RECORD_CAUSES,
+    DELAY_RECORD_STATUSES: DELAY_RECORD_STATUSES,
+    DELAY_CATEGORIES: DELAY_CATEGORIES,
+    DELAY_RESPONSIBILITY_CLASSIFICATIONS: DELAY_RESPONSIBILITY_CLASSIFICATIONS,
+    newDelayActivityLink: newDelayActivityLink,
     newSchedulePerformanceSnapshot: newSchedulePerformanceSnapshot,
     newLessonLearned: newLessonLearned,
     LESSON_LEARNED_CATEGORIES: LESSON_LEARNED_CATEGORIES,
@@ -27045,6 +27448,68 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     other: "Other",
   };
 
+  // Planning & Scheduling-Centric Delay Management, Gate A/B.
+  var DELAY_STATUS_LABELS = {
+    open: "Open",
+    investigating: "Under Investigation",
+    mitigation_in_progress: "Mitigation in Progress",
+    recovery_in_progress: "Recovery in Progress",
+    recovered: "Recovered",
+    closed: "Closed",
+  };
+  var DELAY_STATUS_BADGE_CLASS = {
+    open: "at_risk",
+    investigating: "at_risk",
+    mitigation_in_progress: "info",
+    recovery_in_progress: "info",
+    recovered: "complete",
+    closed: "complete",
+  };
+  var DELAY_CATEGORY_LABELS = {
+    late_material: "Late Material",
+    late_vendor_submission: "Late Vendor Submission",
+    late_drawing: "Late Drawing",
+    design_change: "Design Change",
+    client_delay: "Client Delay",
+    consultant_delay: "Consultant Delay",
+    vendor_delay: "Vendor Delay",
+    contractor_delay: "Contractor Delay",
+    approval_delay: "Approval Delay",
+    rfi_delay: "RFI Delay",
+    resource_shortage: "Resource Shortage",
+    equipment_shortage: "Equipment Shortage",
+    site_access: "Site Access",
+    site_constraint: "Site Constraint",
+    interface_issue: "Interface Issue",
+    weather: "Weather",
+    procurement: "Procurement",
+    quality_issue: "Quality Issue",
+    rework: "Rework",
+    change_variation: "Change / Variation",
+    other: "Other",
+  };
+  var DELAY_RESPONSIBILITY_LABELS = {
+    client: "Client",
+    consultant: "Consultant",
+    main_contractor: "Main Contractor",
+    subcontractor: "Subcontractor",
+    vendor: "Vendor",
+    internal: "Internal",
+    external: "External",
+    shared: "Shared",
+    unconfirmed: "Unconfirmed",
+  };
+  var DELAY_CRITICALITY_LABELS = {
+    critical: "Critical",
+    near_critical: "Near Critical",
+    non_critical: "Non-Critical",
+  };
+  var DELAY_CRITICALITY_BADGE_CLASS = {
+    critical: "critical",
+    near_critical: "at_risk",
+    non_critical: "complete",
+  };
+
   var uiState = {
     projectId: "", // currently selected project \u2014 everything below scopes to this
     scheduleId: "", // currently selected schedule within that project
@@ -27060,6 +27525,13 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     // Gate 23: delay record id currently being added/edited in the Activity Detail
     // Panel, or "new", or null.
     editingDelayRecordId: null,
+    // Gate A/B (Delay Management): delay id whose "+ Link Another Activity" picker is
+    // currently open, or null — the pending activity selection lives in
+    // delayLinkActivitySelection until "Link" is clicked (nothing written to the store
+    // until then, same uncommitted-until-save treatment every other inline picker in
+    // this app already follows).
+    delayLinkingDelayId: null,
+    delayLinkActivitySelection: "",
     // Gate 24: What-If Sandbox tab state. Purely in-memory and never persisted — see
     // renderWhatIfTab()'s own header comment for why this is a standalone exploration
     // tool rather than tied to any one Recovery Action.
@@ -31533,6 +32005,42 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         costField.appendChild(costInput);
         grid.appendChild(costField);
 
+        // Gate D (Delay Management, spec point 18): the actual outcome, once known —
+        // kept separate from estimated_recovery_days above so the original plan is
+        // never overwritten by the result.
+        var actualRecDaysField = document.createElement("div");
+        actualRecDaysField.className = "field";
+        actualRecDaysField.innerHTML = "<label>Actual Recovery (days)</label>";
+        var actualRecDaysInput = document.createElement("input");
+        actualRecDaysInput.type = "number";
+        actualRecDaysInput.id = "recactionfield-actual_recovery_days";
+        actualRecDaysInput.value = editing.actual_recovery_days == null ? "" : editing.actual_recovery_days;
+        actualRecDaysField.appendChild(actualRecDaysInput);
+        grid.appendChild(actualRecDaysField);
+
+        // Gate D: optional link to the specific Delay this action responds to — "No
+        // specific delay" (the original Gate 24 shape, activity-only) stays fully valid.
+        var delayLinkField = document.createElement("div");
+        delayLinkField.className = "field";
+        delayLinkField.innerHTML = "<label>Responds to Delay</label>";
+        var delayLinkSelect = document.createElement("select");
+        delayLinkSelect.id = "recactionfield-delay_id";
+        var noDelayOpt = document.createElement("option");
+        noDelayOpt.value = "";
+        noDelayOpt.textContent = "No specific delay";
+        delayLinkSelect.appendChild(noDelayOpt);
+        data.delay_records
+          .filter(function (dr) { return dr.activity_id === activity.id; })
+          .forEach(function (dr) {
+            var opt = document.createElement("option");
+            opt.value = dr.id;
+            opt.textContent = dr.description || "(untitled delay)";
+            delayLinkSelect.appendChild(opt);
+          });
+        delayLinkSelect.value = editing.delay_id || "";
+        delayLinkField.appendChild(delayLinkSelect);
+        grid.appendChild(delayLinkField);
+
         form.appendChild(grid);
 
         var errorMsg = document.createElement("p");
@@ -31576,6 +32084,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
             status: statusSelect.value,
             estimated_recovery_days: recDaysInput.value === "" ? null : Number(recDaysInput.value),
             estimated_cost: costInput.value === "" ? null : Number(costInput.value),
+            actual_recovery_days: actualRecDaysInput.value === "" ? null : Number(actualRecDaysInput.value),
+            delay_id: delayLinkSelect.value,
             updated_at: new Date().toISOString(),
           };
           window.PCC.store.update(function (d) {
@@ -31622,7 +32132,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         (r.responsible_person ? r.responsible_person + " · " : "") +
         (r.target_recovery_date ? "target " + r.target_recovery_date : "no target date") +
         (r.estimated_recovery_days != null ? " · est. " + r.estimated_recovery_days + "d recovery" : "") +
+        (r.actual_recovery_days != null ? " · actual " + r.actual_recovery_days + "d" : "") +
         (fmtMoney(r.estimated_cost) != null ? " · est. cost " + fmtMoney(r.estimated_cost) : "") +
+        (r.delay_id ? " · linked to delay" : "") +
         "</p>";
       rowEl.appendChild(left);
 
@@ -31665,13 +32177,197 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     return wrap;
   }
 
-  /** PCC Evolution Roadmap, Tier F: Advanced Delay Analysis (Gate 23). Delay EVENTS
-   * logged against THIS activity — why it happened, whose responsibility, and whether
-   * it's excusable — as its own structured register, distinct from Recovery Actions
-   * above (which track the corrective response, not the cause). Same inline full-CRUD
-   * pattern as renderRecoveryActionsSection() immediately above, deliberately mirrored
-   * rather than sharing a helper — the two forms have different fields entirely, and
-   * this app's own convention favors small per-purpose builders over a generalized one. */
+  /** Planning & Scheduling-Centric Delay Management, Gate A/B — the schedule impact
+   * summary (spec points 10-11) for one Delay Record: every linked activity's live
+   * current/forecast dates, float consumed, and criticality, read straight from the
+   * Schedule via delayImpactEngine.js (never a second calculation). Purely
+   * presentational — nothing here writes to the store. */
+  function renderDelayScheduleImpact(delayRecord, links, data) {
+    var box = document.createElement("div");
+    box.style.marginTop = "var(--space-2)";
+    box.style.padding = "var(--space-2) var(--space-3)";
+    box.style.border = "1px solid var(--divider)";
+    box.style.borderRadius = "var(--radius-md)";
+    box.style.background = "var(--bg-default)";
+
+    if (links.length === 0) {
+      box.className = "text-secondary";
+      box.style.fontSize = "var(--text-sm)";
+      box.textContent = "Schedule Impact Not Yet Assessed — no activity linked.";
+      return box;
+    }
+
+    var impact = window.PCC.delayImpactEngine.computeDelayImpact(delayRecord, links, data);
+    var summaryLine = document.createElement("div");
+    summaryLine.style.display = "flex";
+    summaryLine.style.flexWrap = "wrap";
+    summaryLine.style.gap = "var(--space-2)";
+    summaryLine.style.alignItems = "center";
+    summaryLine.style.marginBottom = impact.per_activity.length > 0 ? "var(--space-2)" : "0";
+
+    if (impact.overall_criticality) {
+      var critBadge = document.createElement("span");
+      critBadge.className = "status-badge status-badge--" + DELAY_CRITICALITY_BADGE_CLASS[impact.overall_criticality];
+      critBadge.style.fontSize = "var(--text-xs)";
+      critBadge.textContent = DELAY_CRITICALITY_LABELS[impact.overall_criticality];
+      summaryLine.appendChild(critBadge);
+    } else {
+      var notCalc = document.createElement("span");
+      notCalc.className = "text-secondary";
+      notCalc.style.fontSize = "var(--text-xs)";
+      notCalc.textContent = "Schedule not yet calculated — run Calculate Schedule for float/criticality.";
+      summaryLine.appendChild(notCalc);
+    }
+    if (impact.max_float_consumed != null) {
+      var floatSpan = document.createElement("span");
+      floatSpan.className = "text-secondary";
+      floatSpan.style.fontSize = "var(--text-xs)";
+      floatSpan.textContent = "Float Consumed: " + impact.max_float_consumed + "d";
+      summaryLine.appendChild(floatSpan);
+    }
+    box.appendChild(summaryLine);
+
+    impact.per_activity.forEach(function (a) {
+      var row = document.createElement("div");
+      row.style.fontSize = "var(--text-xs)";
+      row.style.marginTop = "2px";
+      row.className = "text-secondary";
+      row.textContent =
+        (a.activity_name || "(activity)") +
+        (delayRecord.milestone_activity_id === a.activity_id ? " (milestone)" : "") +
+        " — Original Finish " + (a.original_planned_finish || "—") +
+        " → Current Forecast " + (a.forecast_finish || "—") +
+        (a.finish_slippage_days != null ? " (" + (a.finish_slippage_days >= 0 ? "+" : "") + a.finish_slippage_days + "d)" : "") +
+        " · Float " + (a.current_total_float != null ? a.current_total_float + "d" : "not calculated") +
+        (a.criticality ? " · " + DELAY_CRITICALITY_LABELS[a.criticality] : "");
+      box.appendChild(row);
+    });
+
+    return box;
+  }
+
+  /** Planning & Scheduling-Centric Delay Management, Gate A/B (spec point 9): "+ Link
+   * Another Activity" — lets one Delay accumulate more than one affected activity
+   * without creating a duplicate Delay per activity. Scoped to activities in the SAME
+   * schedule as the delay's own primary activity, since a delay event's affected
+   * activities are, in practice, always on the one schedule being managed. */
+  function renderDelayLinkActivityPicker(delayRecord, links, data, rerender) {
+    var wrap = document.createElement("div");
+    wrap.style.marginTop = "var(--space-2)";
+
+    if (uiState.delayLinkingDelayId !== delayRecord.id) {
+      var openBtn = document.createElement("button");
+      openBtn.type = "button";
+      openBtn.className = "btn btn--ghost";
+      openBtn.style.fontSize = "var(--text-xs)";
+      openBtn.textContent = "+ Link Another Activity";
+      openBtn.onclick = function () {
+        uiState.delayLinkingDelayId = delayRecord.id;
+        uiState.delayLinkActivitySelection = "";
+        rerender();
+      };
+      wrap.appendChild(openBtn);
+      return wrap;
+    }
+
+    var linkedIds = {};
+    links.forEach(function (l) {
+      linkedIds[l.activity_id] = true;
+    });
+    var candidateActivities = data.activities
+      .filter(function (a) { return a.schedule_id === activityScheduleId(data, delayRecord) && !linkedIds[a.id]; })
+      .sort(function (a, b) { return (a.name || "").localeCompare(b.name || ""); });
+
+    var row = document.createElement("div");
+    row.style.display = "flex";
+    row.style.gap = "var(--space-2)";
+    row.style.alignItems = "center";
+
+    var select = document.createElement("select");
+    if (candidateActivities.length === 0) {
+      var noneOpt = document.createElement("option");
+      noneOpt.value = "";
+      noneOpt.textContent = "No other activities on this schedule";
+      select.appendChild(noneOpt);
+      select.disabled = true;
+    } else {
+      var chooseOpt = document.createElement("option");
+      chooseOpt.value = "";
+      chooseOpt.textContent = "Choose an activity…";
+      select.appendChild(chooseOpt);
+      candidateActivities.forEach(function (a) {
+        var opt = document.createElement("option");
+        opt.value = a.id;
+        opt.textContent = a.name || "(unnamed activity)";
+        select.appendChild(opt);
+      });
+    }
+    select.value = uiState.delayLinkActivitySelection;
+    select.onchange = function () {
+      uiState.delayLinkActivitySelection = select.value;
+      rerender();
+    };
+    row.appendChild(select);
+
+    var linkBtn = document.createElement("button");
+    linkBtn.type = "button";
+    linkBtn.className = "btn btn--primary";
+    linkBtn.textContent = "Link";
+    linkBtn.disabled = !uiState.delayLinkActivitySelection;
+    linkBtn.onclick = function () {
+      var act = data.activities.find(function (a) { return a.id === uiState.delayLinkActivitySelection; });
+      if (!act) return;
+      window.PCC.store.update(function (d) {
+        d.delay_activity_links.push(
+          window.PCC.store.newDelayActivityLink({
+            delay_id: delayRecord.id,
+            activity_id: act.id,
+            project_id: act.project_id,
+            original_planned_start: act.planned_start || "",
+            original_planned_finish: act.planned_finish || "",
+            original_total_float: act.total_float != null ? act.total_float : null,
+          })
+        );
+      });
+      window.PCC.notify("Activity linked to delay.", "success");
+      uiState.delayLinkingDelayId = null;
+      uiState.delayLinkActivitySelection = "";
+      rerender();
+    };
+    row.appendChild(linkBtn);
+
+    var cancelLinkBtn = document.createElement("button");
+    cancelLinkBtn.type = "button";
+    cancelLinkBtn.className = "btn btn--ghost";
+    cancelLinkBtn.textContent = "Cancel";
+    cancelLinkBtn.onclick = function () {
+      uiState.delayLinkingDelayId = null;
+      rerender();
+    };
+    row.appendChild(cancelLinkBtn);
+
+    wrap.appendChild(row);
+    return wrap;
+  }
+
+  /** The schedule_id of a Delay's own primary activity — used to scope the "+ Link
+   * Another Activity" picker to the same schedule. Falls back to the currently open
+   * schedule tab if the primary activity was since deleted. */
+  function activityScheduleId(data, delayRecord) {
+    var primary = data.activities.find(function (a) { return a.id === delayRecord.activity_id; });
+    return primary ? primary.schedule_id : uiState.scheduleId;
+  }
+
+  /** PCC Evolution Roadmap, Tier F: Advanced Delay Analysis (Gate 23), extended by the
+   * Planning & Scheduling-Centric Delay Management initiative (Gate A/B) into the full
+   * DELAY EVENT chain (status, category, responsibility classification, immediate/
+   * underlying cause, multi-activity linking, and a live schedule-impact summary).
+   * Delay EVENTS logged against THIS activity as its own structured register, distinct
+   * from Recovery Actions above (which track the corrective response, not the cause).
+   * Same inline full-CRUD pattern as renderRecoveryActionsSection() immediately above,
+   * deliberately mirrored rather than sharing a helper — the two forms have different
+   * fields entirely, and this app's own convention favors small per-purpose builders
+   * over a generalized one. */
   function renderDelayRecordsSection(activity, data, rerender) {
     var wrap = document.createElement("div");
     wrap.style.marginTop = "var(--space-4)";
@@ -31711,9 +32407,54 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         var grid = document.createElement("div");
         grid.className = "form-grid";
 
+        var statusField = document.createElement("div");
+        statusField.className = "field";
+        statusField.innerHTML = "<label>Status</label>";
+        var statusSelect = document.createElement("select");
+        statusSelect.id = "delayfield-status";
+        window.PCC.store.DELAY_RECORD_STATUSES.forEach(function (s) {
+          var opt = document.createElement("option");
+          opt.value = s;
+          opt.textContent = DELAY_STATUS_LABELS[s];
+          statusSelect.appendChild(opt);
+        });
+        statusSelect.value = editing.status || "open";
+        statusField.appendChild(statusSelect);
+        grid.appendChild(statusField);
+
+        var categoryField = document.createElement("div");
+        categoryField.className = "field";
+        categoryField.innerHTML = "<label>Delay Category</label>";
+        var categorySelect = document.createElement("select");
+        categorySelect.id = "delayfield-delay_category";
+        window.PCC.store.DELAY_CATEGORIES.forEach(function (c) {
+          var opt = document.createElement("option");
+          opt.value = c;
+          opt.textContent = DELAY_CATEGORY_LABELS[c];
+          categorySelect.appendChild(opt);
+        });
+        categorySelect.value = editing.delay_category || "other";
+        categoryField.appendChild(categorySelect);
+        grid.appendChild(categoryField);
+
+        var responsibilityField = document.createElement("div");
+        responsibilityField.className = "field";
+        responsibilityField.innerHTML = "<label>Responsibility Classification</label>";
+        var responsibilitySelect = document.createElement("select");
+        responsibilitySelect.id = "delayfield-responsibility_classification";
+        window.PCC.store.DELAY_RESPONSIBILITY_CLASSIFICATIONS.forEach(function (c) {
+          var opt = document.createElement("option");
+          opt.value = c;
+          opt.textContent = DELAY_RESPONSIBILITY_LABELS[c];
+          responsibilitySelect.appendChild(opt);
+        });
+        responsibilitySelect.value = editing.responsibility_classification || "unconfirmed";
+        responsibilityField.appendChild(responsibilitySelect);
+        grid.appendChild(responsibilityField);
+
         var causeField = document.createElement("div");
         causeField.className = "field";
-        causeField.innerHTML = "<label>Delay Cause</label>";
+        causeField.innerHTML = "<label>Delay Cause (contractual bucket)</label>";
         var causeSelect = document.createElement("select");
         causeSelect.id = "delayfield-delay_cause";
         window.PCC.store.DELAY_RECORD_CAUSES.forEach(function (c) {
@@ -31728,13 +32469,23 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
         var daysField = document.createElement("div");
         daysField.className = "field";
-        daysField.innerHTML = "<label>Delay Days</label>";
+        daysField.innerHTML = "<label>Estimated Impact (days)</label>";
         var daysInput = document.createElement("input");
         daysInput.type = "number";
         daysInput.id = "delayfield-delay_days";
         daysInput.value = editing.delay_days == null ? "" : editing.delay_days;
         daysField.appendChild(daysInput);
         grid.appendChild(daysField);
+
+        var actualDaysField = document.createElement("div");
+        actualDaysField.className = "field";
+        actualDaysField.innerHTML = "<label>Actual Impact (days)</label>";
+        var actualDaysInput = document.createElement("input");
+        actualDaysInput.type = "number";
+        actualDaysInput.id = "delayfield-actual_impact_days";
+        actualDaysInput.value = editing.actual_impact_days == null ? "" : editing.actual_impact_days;
+        actualDaysField.appendChild(actualDaysInput);
+        grid.appendChild(actualDaysField);
 
         var identifiedField = document.createElement("div");
         identifiedField.className = "field";
@@ -31770,6 +32521,28 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         excusableLabel.appendChild(document.createTextNode("Excusable"));
         excusableField.appendChild(excusableLabel);
         grid.appendChild(excusableField);
+
+        var immediateCauseField = document.createElement("div");
+        immediateCauseField.style.gridColumn = "1 / -1";
+        immediateCauseField.className = "field";
+        immediateCauseField.innerHTML = "<label>Immediate Cause — what directly prevented/delayed the activity?</label>";
+        var immediateCauseInput = document.createElement("input");
+        immediateCauseInput.type = "text";
+        immediateCauseInput.id = "delayfield-immediate_cause";
+        immediateCauseInput.value = editing.immediate_cause || "";
+        immediateCauseField.appendChild(immediateCauseInput);
+        grid.appendChild(immediateCauseField);
+
+        var underlyingCauseField = document.createElement("div");
+        underlyingCauseField.style.gridColumn = "1 / -1";
+        underlyingCauseField.className = "field";
+        underlyingCauseField.innerHTML = "<label>Underlying Cause — why did that condition occur?</label>";
+        var underlyingCauseInput = document.createElement("input");
+        underlyingCauseInput.type = "text";
+        underlyingCauseInput.id = "delayfield-underlying_cause";
+        underlyingCauseInput.value = editing.underlying_cause || "";
+        underlyingCauseField.appendChild(underlyingCauseInput);
+        grid.appendChild(underlyingCauseField);
 
         var descField = document.createElement("div");
         descField.style.gridColumn = "1 / -1";
@@ -31818,21 +32591,55 @@ https://github.com/nodeca/pako/blob/main/LICENSE
             return;
           }
           errorMsg.style.display = "none";
+          var newStatus = statusSelect.value;
           var values = {
+            status: newStatus,
+            delay_category: categorySelect.value,
+            responsibility_classification: responsibilitySelect.value,
             delay_cause: causeSelect.value,
             delay_days: daysInput.value === "" ? null : Number(daysInput.value),
+            actual_impact_days: actualDaysInput.value === "" ? null : Number(actualDaysInput.value),
             identified_date: identifiedInput.value,
             responsible_party: respInput.value,
             is_excusable: excusableCheckbox.checked,
+            immediate_cause: immediateCauseInput.value,
+            underlying_cause: underlyingCauseInput.value,
             description: descInput.value.trim(),
             updated_at: new Date().toISOString(),
           };
           window.PCC.store.update(function (d) {
             if (uiState.editingDelayRecordId === "new") {
-              d.delay_records.push(window.PCC.store.newDelayRecord(Object.assign({ activity_id: activity.id, project_id: activity.project_id }, values)));
+              var created = window.PCC.store.newDelayRecord(Object.assign({ activity_id: activity.id, project_id: activity.project_id }, values));
+              // Spec point 20 (Delay Timeline): the first status_history entry — every
+              // delay starts somewhere, usually "Open," and this is what makes that a
+              // real timestamped fact rather than just an implicit default.
+              created.status_history = [{ status: newStatus, changed_at: created.created_at, note: "Delay identified." }];
+              d.delay_records.push(created);
+              // Spec point 9: the primary activity is always linked as an affected
+              // activity from the start, with its historical snapshot frozen right now
+              // — see newDelayActivityLink()'s own header comment for why only these
+              // three values are captured, never a full copy of the activity.
+              d.delay_activity_links.push(
+                window.PCC.store.newDelayActivityLink({
+                  delay_id: created.id,
+                  activity_id: activity.id,
+                  project_id: activity.project_id,
+                  original_planned_start: activity.planned_start || "",
+                  original_planned_finish: activity.planned_finish || "",
+                  original_total_float: activity.total_float != null ? activity.total_float : null,
+                })
+              );
             } else {
               var existing = d.delay_records.find(function (r) { return r.id === editing.id; });
-              if (existing) Object.assign(existing, values);
+              if (existing) {
+                // Spec point 20: the timeline preserves meaningful historical changes —
+                // a real status transition, not every field edit.
+                if (existing.status !== newStatus) {
+                  if (!existing.status_history) existing.status_history = [];
+                  existing.status_history.push({ status: newStatus, changed_at: values.updated_at, note: "" });
+                }
+                Object.assign(existing, values);
+              }
             }
           });
           window.PCC.notify("Delay record saved.", "success");
@@ -31860,31 +32667,54 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       rowEl.style.justifyContent = "space-between";
       rowEl.style.alignItems = "flex-start";
       rowEl.style.gap = "var(--space-2)";
-      rowEl.style.marginBottom = "var(--space-2)";
+      rowEl.style.marginBottom = "var(--space-3)";
       rowEl.style.fontSize = "var(--text-sm)";
 
       var left = document.createElement("div");
+      left.style.flex = "1";
+      left.style.minWidth = "0";
       left.innerHTML =
-        "<strong>" + r.description + "</strong>" +
+        "<strong>" + escHtml(r.description) + "</strong>" +
         "<p class='text-secondary' style='font-size:12px;margin:4px 0 0'>" +
-        DELAY_CAUSE_LABELS[r.delay_cause] +
-        (r.responsible_party ? " · " + r.responsible_party : "") +
-        (r.delay_days != null ? " · " + r.delay_days + "d" : "") +
+        DELAY_CATEGORY_LABELS[r.delay_category] + " · " + DELAY_RESPONSIBILITY_LABELS[r.responsibility_classification] +
+        " · " + DELAY_CAUSE_LABELS[r.delay_cause] +
+        (r.responsible_party ? " (" + escHtml(r.responsible_party) + ")" : "") +
+        (r.delay_days != null ? " · est. " + r.delay_days + "d" : "") +
+        (r.actual_impact_days != null ? " · actual " + r.actual_impact_days + "d" : "") +
         (r.identified_date ? " · identified " + r.identified_date : "") +
         "</p>";
+
+      var links = data.delay_activity_links.filter(function (l) { return l.delay_id === r.id; });
+      left.appendChild(renderDelayScheduleImpact(r, links, data));
+      left.appendChild(renderDelayLinkActivityPicker(r, links, data, rerender));
+
       rowEl.appendChild(left);
 
       var right = document.createElement("div");
       right.style.display = "flex";
-      right.style.alignItems = "center";
+      right.style.flexDirection = "column";
+      right.style.alignItems = "flex-end";
       right.style.gap = "var(--space-2)";
       right.style.flexShrink = "0";
 
-      var badge = document.createElement("span");
-      badge.className = "status-badge status-badge--" + (r.is_excusable ? "complete" : "at_risk");
-      badge.style.fontSize = "var(--text-xs)";
-      badge.textContent = r.is_excusable ? "Excusable" : "Non-Excusable";
-      right.appendChild(badge);
+      var badgeRow = document.createElement("div");
+      badgeRow.style.display = "flex";
+      badgeRow.style.gap = "var(--space-1)";
+      var statusBadge = document.createElement("span");
+      statusBadge.className = "status-badge status-badge--" + DELAY_STATUS_BADGE_CLASS[r.status];
+      statusBadge.style.fontSize = "var(--text-xs)";
+      statusBadge.textContent = DELAY_STATUS_LABELS[r.status];
+      badgeRow.appendChild(statusBadge);
+      var excusableBadge = document.createElement("span");
+      excusableBadge.className = "status-badge status-badge--" + (r.is_excusable ? "complete" : "at_risk");
+      excusableBadge.style.fontSize = "var(--text-xs)";
+      excusableBadge.textContent = r.is_excusable ? "Excusable" : "Non-Excusable";
+      badgeRow.appendChild(excusableBadge);
+      right.appendChild(badgeRow);
+
+      var actionsRow = document.createElement("div");
+      actionsRow.style.display = "flex";
+      actionsRow.style.gap = "var(--space-2)";
 
       var editRowBtn = document.createElement("button");
       editRowBtn.className = "btn btn--ghost";
@@ -31893,16 +32723,23 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         uiState.editingDelayRecordId = r.id;
         rerender();
       };
-      right.appendChild(editRowBtn);
+      actionsRow.appendChild(editRowBtn);
 
       var removeBtn = document.createElement("button");
       removeBtn.className = "btn btn--ghost";
       removeBtn.textContent = "Remove";
       removeBtn.onclick = function () {
-        window.PCC.store.update(function (d) { d.delay_records = d.delay_records.filter(function (x) { return x.id !== r.id; }); });
+        window.PCC.store.update(function (d) {
+          d.delay_records = d.delay_records.filter(function (x) { return x.id !== r.id; });
+          d.delay_activity_links = d.delay_activity_links.filter(function (x) { return x.delay_id !== r.id; });
+          d.recovery_actions.forEach(function (ra) {
+            if (ra.delay_id === r.id) ra.delay_id = "";
+          });
+        });
         rerender();
       };
-      right.appendChild(removeBtn);
+      actionsRow.appendChild(removeBtn);
+      right.appendChild(actionsRow);
 
       rowEl.appendChild(right);
       wrap.appendChild(rowEl);

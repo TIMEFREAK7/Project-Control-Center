@@ -4465,6 +4465,90 @@ non-standard source format becomes a real recurring friction point. The in-app E
 is unaffected — its own headers are always the canonical PCC labels it generated itself, so a mapping step
 there would have nothing to resolve.
 
+## Planning & Scheduling-Centric Delay Management — a TENTH, separate initiative, started
+## 2026-08-25 immediately after Schedule Excel Import Manual Column Mapping above
+
+**Why**: requested as a full architecture spec (not "add a delay register") explicitly warning against
+building a second, generic CRUD delay tracker disconnected from the Schedule — the Schedule must stay
+the one source of truth for dates/float/criticality/forecast, with Delays as a management LAYER that
+references it, never a second calculation engine or a duplicated copy of activity data. The spec mandated
+its own INSPECT → DESIGN → IMPLEMENT → BUILD → TEST → REGRESSION-TEST → NEXT-GATE method, gated A through
+H, explicitly instructing not to implement everything in one pass.
+
+**Inspection findings** (before any code changed): PCC already had `delay_records`/`recovery_actions`
+(Gates 23-24, Tier F) — but exactly the "generic CRUD register" the spec warns against: one delay per one
+activity (no multi-activity events), no status lifecycle, no historical snapshot, no live schedule-derived
+impact summary, `delay_cause` as the only classification. `scheduleCpmEngine.js` already calculates and
+caches `total_float`/`early_finish`/etc. directly onto `data.activities` every time "Calculate Schedule"
+runs (see `runCalculation()` in `schedule.js`) — exactly the "existing engine" the spec insists on reusing,
+never duplicating.
+
+**Gates A (Delay Data Foundation) + B (Schedule Integration) — done, together** (tightly coupled in
+practice, per the spec's own note that B is "the most important gate"):
+- **`store.js` (schema v59)**: every existing `delay_records`/`recovery_actions` field kept byte-for-byte
+  (`delay_cause`, `delay_days`, `is_excusable`, `responsible_party`, `estimated_recovery_days`, ... — the
+  existing Gate 23/24 Activity Detail Panel form and its tests depend on these exact names) — extended
+  additively with `status` (open/investigating/mitigation_in_progress/recovery_in_progress/recovered/
+  closed), a richer `delay_category` (21 operational categories, spec's own list) kept deliberately
+  separate from `delay_cause` (the existing coarser contractual-excusability bucket the dashboard already
+  charts by), `responsibility_classification` (Client/Consultant/Main Contractor/.../Unconfirmed — never
+  conflated with contractual liability, per the spec's own explicit instruction), `immediate_cause`/
+  `underlying_cause` (cause structure), `actual_impact_days`, cross-links to Risk/Issue/RFI/Daily
+  Log/Meeting/Vendor/Change Order (plain optional ids, matching Gate 10's existing single-link convention
+  — never a duplicated copy of the linked record), and an auto-appended `status_history` timeline. New
+  `delay_activity_links` join array (`newDelayActivityLink()`) is the "one Delay, many Activities"
+  mechanism (spec point 9) — holds ONLY the frozen historical snapshot (`original_planned_start/finish`,
+  `original_total_float`) captured once at link creation; every current/forecast value is read live from
+  `data.activities`, never copied. `recovery_actions` gained `delay_id` (nullable — links a specific
+  action to a specific Delay) and `actual_recovery_days`. Migration backfills every new field and
+  reconstructs a best-effort `delay_activity_links` row for each pre-existing delay's own `activity_id`
+  (from CURRENT activity state, honestly — there's no way to recover what the schedule showed back when
+  an old delay was first identified; every delay created from this gate forward gets a real point-in-time
+  snapshot).
+- **New `delayImpactEngine.js`**: explicitly NOT a second schedule engine — every "current" value is read
+  straight off `data.activities`' own cached `total_float`/`early_finish` (never recalculated); the same
+  simple critical/near-critical threshold rule `scheduleCpmEngine.js` itself applies is reapplied to that
+  cached number, not duplicated logic. `computeProjectFinishImpact()` — the one function needing an actual
+  project-finish recalculation — calls the REAL `scheduleCpmEngine.calculateSchedule()` fresh and
+  read-only, the exact same way `schedule.js`'s existing What-If Sandbox already does for on-demand
+  comparisons, never writing back to any record. `computeDelayImpact()` deliberately never returns a
+  project-level figure itself (spec's own "Delay Days != Project Delay Days" rule, section 11) — that's
+  only ever `computeProjectFinishImpact()`'s own explicit, separate call.
+- **`schedule.js`'s Activity Detail Panel**: the Delay Record form gained Status/Category/Responsibility/
+  Immediate & Underlying Cause fields (existing fields relabeled only where genuinely clearer — "Delay
+  Days" reads "Estimated Impact (days)" now, same field, same id); a live **Schedule Impact** summary per
+  delay (current/forecast finish, float consumed, criticality — all read from
+  `delayImpactEngine.computeDelayImpact()`, shown as "Schedule Impact Not Yet Assessed" when nothing's
+  linked yet, per spec section 5); a **"+ Link Another Activity"** picker (spec point 9 — one physical
+  event, several affected activities, never duplicate delays); status changes auto-append to
+  `status_history`. Recovery Actions gained a "Responds to Delay" picker and an Actual Recovery (days)
+  field. Removing a Delay cleans up its links and un-links (never deletes) any Recovery Action that
+  pointed to it.
+
+**Verified**: full jsdom suite (83 files, 0 failures) — every pre-existing delay/recovery test
+(`test_advanced_delay_analysis_e2e.js`, `test_recovery_actions_e2e.js`, `test_delay_recovery_dashboard_e2e.js`,
+`test_integrated_project_controls_e2e.js`, `test_recovery_decision_reporting_e2e.js`,
+`test_recovery_mitigation_planning_e2e.js`) still passes unchanged, confirming the extension stayed fully
+additive. Two new dedicated test files: `test_delay_impact_engine.js` (16 checks) directly mirrors the
+spec's own seven numbered test scenarios (section 41) — TEST 1 (float absorbs delay), TEST 2 (delay
+consumes all float → critical), TEST 4 (one Delay, three Activities, each keeping its own state), TEST 5
+(a non-critical delay is never reported as a project delay), TEST 6 (project finish impact, using the
+REAL CPM engine — not hand-predicted numbers), and TEST 7 (a later schedule change moves the current
+values but never touches the frozen historical snapshot) all pass against real, calculated CPM output,
+not mocked math. `test_delay_management_gate_ab_e2e.js` (9 checks) drives the real Activity Detail Panel
+UI end-to-end: creating an enriched Delay Record, the live Schedule Impact summary, multi-activity
+linking, the auto-timeline on status change, Recovery Action ↔ Delay linking, and cleanup on delete.
+
+**Not done — Gates C through H, per the spec's own explicit "do not implement everything in one change"
+instruction**: C (Float & Impact UI surfacing beyond the Activity Detail Panel — e.g. a criticality
+legend/threshold explainer), D (a dedicated Recovery Forecast progression display — Original → Delay
+Forecast → Recovery Forecast → Latest Forecast → Actual, currently only the raw fields exist, not the
+narrative view), E (Risk/Issue/RFI/Daily Log/Meeting/Vendor/Change cross-linking UI — the store fields
+exist from Gate A but nothing yet lets a user actually pick a Risk/RFI/etc. from the Delay form), F
+(Planner Action Centre surfacing), G (Dashboard/Lookahead/Executive Center integration), H (portfolio-wide
+analytics beyond the existing `delayRecoveryDashboard.js` rollup). Each is real, separately-scoped
+follow-on work — not started, not stubbed.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →

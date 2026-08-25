@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 58;
+  var SCHEMA_VERSION = 59;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -150,6 +150,10 @@
       // delay EVENT logged against a Schedule activity — see newDelayRecord() below for
       // why this is deliberately a separate register from recovery_actions above.
       delay_records: [],
+      // Planning & Scheduling-Centric Delay Management, Gate A/B: the many-to-many
+      // Delay↔Activity join — see newDelayActivityLink() below for why this exists
+      // separately from delay_records' own `activity_id` (one Delay, many Activities).
+      delay_activity_links: [],
       // PCC Evolution Roadmap, Tier F: Advanced Schedule Performance (Gate 25). One row
       // per manually-captured point-in-time performance reading (SPI/SPI(t)/schedule
       // performance score) — see newSchedulePerformanceSnapshot() below for why this is
@@ -1416,6 +1420,18 @@
       // exploration" split Baselines already draws between the Gantt and Baselines tab.
       estimated_recovery_days: null,
       estimated_cost: null,
+      // Gate D (Delay Management, spec point 18): the actual days this action
+      // recovered, once known — kept separate from estimated_recovery_days above so the
+      // original plan is never overwritten by the outcome (same "never overwrite a
+      // historical estimate" rule the parent Delay itself follows).
+      actual_recovery_days: null,
+      // Gate D: optional link to the specific Delay this action responds to — "" (only
+      // linked to an activity, Gate 23's original shape) is still fully valid; a delay
+      // can accumulate several recovery actions the same way it already could without
+      // this field. Deliberately nullable/additive rather than replacing activity_id,
+      // so every existing recovery action (and every existing test) keeps working
+      // unchanged.
+      delay_id: "",
       created_at: now,
       updated_at: now,
     };
@@ -1428,16 +1444,31 @@
     return "dly_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
   }
 
-  /** PCC Evolution Roadmap, Tier F: Advanced Delay Analysis (Gate 23). A distinct delay
-   * EVENT logged against one Schedule activity — why it happened and whose responsibility
-   * it was, as its own structured record rather than free text buried in a Recovery
-   * Action's description. Deliberately a separate register from Recovery Actions above,
-   * not a shared shape: a Delay Record answers "what happened and why" (analysis, often
-   * needed for a contractual claim), a Recovery Action answers "what are we doing about
-   * it" (corrective workflow) — related but genuinely distinct questions, and an activity
-   * can accumulate several Delay Records over time (e.g. concurrent causes) the same way
-   * it can accumulate several Recovery Actions. `project_id` denormalized from the
-   * activity for portfolio-wide queries, same convention newRecoveryAction() uses. */
+  /** PCC Evolution Roadmap, Tier F: Advanced Delay Analysis (Gate 23), extended by the
+   * Planning & Scheduling-Centric Delay Management initiative (Gate A/B) into the full
+   * DELAY EVENT → CAUSE → SCHEDULE IMPACT → RECOVERY → OUTCOME chain that spec describes.
+   * A distinct delay EVENT — why it happened and whose responsibility it was — as its
+   * own structured record, separate from Recovery Actions (which track the corrective
+   * response, not the cause). `delay_cause`/`is_excusable`/`responsible_party`/
+   * `delay_days`/`identified_date`/`description` are the original Gate 23 fields, kept
+   * byte-for-byte (existing tests and the existing Activity Detail Panel form both
+   * depend on these exact names) — `delay_days` doubles as "Estimated Impact (days)" in
+   * the new UI rather than being duplicated under a second name.
+   *
+   * `activity_id` stays as the PRIMARY affected activity (the one this delay was
+   * created from — every existing per-activity list, e.g. schedule.js's
+   * renderDelayRecordsSection() and delayRecoveryDashboard.js, filters on this field
+   * unchanged). A delay affecting MULTIPLE activities (spec point 9 — "one physical
+   * event, several affected activities, not three duplicate delays") is recorded as
+   * additional rows in `data.delay_activity_links` — see newDelayActivityLink() below —
+   * one of which always exists for `activity_id` itself, created alongside the delay.
+   *
+   * Per spec point 34 ("prefer REFERENCE over COPY"), every cross-module relationship
+   * below is a plain optional id, matching the single-link convention Gate 10 already
+   * established for Risk/RFI/Meeting/Daily Log (`activity_id` on each of those) — never
+   * a duplicated copy of the linked record. `status_history` is the delay's own
+   * lightweight timeline (spec point 20), appended automatically whenever `status`
+   * changes — not a manually-curated log a user has to remember to update. */
   function newDelayRecord(overrides) {
     var now = new Date().toISOString();
     var base = {
@@ -1447,9 +1478,54 @@
       delay_cause: "other", // owner_caused | contractor_caused | weather_force_majeure | design_rfi_driven | other
       is_excusable: false,
       responsible_party: "",
-      delay_days: null,
+      delay_days: null, // "Estimated Impact (days)" — the initial assessment, see header comment
       identified_date: "",
       description: "",
+      // Gate A: the delay's own lifecycle, distinct from Recovery Actions' own per-action
+      // status — a delay isn't automatically "closed" just because its activity finished
+      // (spec point 16); the planner records the final outcome explicitly.
+      status: "open", // open | investigating | mitigation_in_progress | recovery_in_progress | recovered | closed
+      // Gate A: richer operational categorization (spec point 7) — deliberately separate
+      // from delay_cause above, which stays as the coarser contractual-excusability
+      // bucket the existing analytics (delayRecoveryDashboard.js) already chart by.
+      delay_category: "other",
+      // Gate A: who's associated with the event, distinct from contractual liability
+      // (spec point 6's own explicit instruction) — separate from is_excusable
+      // (excusability) and responsible_party (a free-text name/company).
+      responsibility_classification: "unconfirmed",
+      // Gate A: cause structure (spec point 8) — what directly prevented the work, vs.
+      // why that condition existed in the first place. `description` above stays the
+      // overall narrative/title, unchanged from Gate 23.
+      immediate_cause: "",
+      underlying_cause: "",
+      // Gate A: the final realized impact, recorded once known — never overwrites
+      // delay_days (the original estimate) or the schedule's own live-computed forecast
+      // (see delayImpactEngine.js — deliberately never stored, always read fresh from
+      // the Schedule so it can never go stale or fight with a cached copy).
+      actual_impact_days: null,
+      // Gate A: optional link to the milestone activity this delay threatens, if any —
+      // a single reference (not auto-derived from downstream schedule logic; the planner
+      // sets it) kept deliberately simple per this gate's "smallest safe implementation"
+      // scope. Milestone impact is computed by comparing this activity's own schedule
+      // snapshot/current state, same as any other linked activity — see
+      // delayImpactEngine.js.
+      milestone_activity_id: "",
+      // Gate A (spec point 21-24, "supporting relationships, not the centre of the
+      // screen"): optional single-id links into existing PCC registers. `issue_id`
+      // points into the same unified `data.risks` array as a risk does (type: "issue"
+      // there, per this app's one-shape-one-type-field convention) — a separate field
+      // name here only because "which register" isn't otherwise obvious from the id
+      // alone.
+      risk_id: "",
+      issue_id: "",
+      rfi_id: "",
+      daily_log_id: "",
+      meeting_id: "",
+      vendor_id: "",
+      change_order_id: "",
+      // Gate A: lightweight auto-timeline (spec point 20) — [{ status, changed_at, note }],
+      // appended by the save handler whenever `status` actually changes; never hand-edited.
+      status_history: [],
       created_at: now,
       updated_at: now,
     };
@@ -1457,6 +1533,60 @@
   }
 
   var DELAY_RECORD_CAUSES = ["owner_caused", "contractor_caused", "weather_force_majeure", "design_rfi_driven", "other"];
+
+  var DELAY_RECORD_STATUSES = ["open", "investigating", "mitigation_in_progress", "recovery_in_progress", "recovered", "closed"];
+
+  // Gate A (spec point 7): operational delay categories, distinct from DELAY_RECORD_CAUSES'
+  // contractual-excusability bucket above. A plain hardcoded list for this gate — spec
+  // point 7 itself says "the user must EVENTUALLY be able to add/edit categories," not
+  // that this gate has to build that management UI (the same "hardcoded first, editable
+  // register later if actually asked for" path RESOURCE_TYPES/VENDOR_DOCUMENT_CATEGORIES
+  // took before Document Types eventually got one, Gate 14).
+  var DELAY_CATEGORIES = [
+    "late_material", "late_vendor_submission", "late_drawing", "design_change", "client_delay",
+    "consultant_delay", "vendor_delay", "contractor_delay", "approval_delay", "rfi_delay",
+    "resource_shortage", "equipment_shortage", "site_access", "site_constraint", "interface_issue",
+    "weather", "procurement", "quality_issue", "rework", "change_variation", "other",
+  ];
+
+  // Gate A (spec point 6): who's associated with the delay event. Explicitly NOT a
+  // statement of contractual liability — see newDelayRecord()'s own field comment.
+  var DELAY_RESPONSIBILITY_CLASSIFICATIONS = [
+    "client", "consultant", "main_contractor", "subcontractor", "vendor",
+    "internal", "external", "shared", "unconfirmed",
+  ];
+
+  function newDelayActivityLinkId() {
+    return "dal_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  /** Gate A/B (spec point 9): the many-to-many join that lets ONE Delay affect MANY
+   * Activities without duplicating the Delay record itself — "late transformer delivery"
+   * links to A-1045/A-1050/A-1060 as three rows here, not three separate delays. Always
+   * has at least one row (the delay's own primary `activity_id`), created alongside the
+   * delay; additional activities are linked later from the delay's own detail view.
+   *
+   * Holds ONLY the historical snapshot (spec points 3/35: "prefer reference over copy" —
+   * store just the values that must survive a later schedule change unaltered, nothing
+   * else about the activity is duplicated here). `original_planned_start`/
+   * `original_planned_finish`/`original_total_float` are captured once, at link
+   * creation, and never touched again — every CURRENT/forecast value (early_finish,
+   * total_float, criticality, percent_complete, ...) is read live from
+   * `data.activities` by id through delayImpactEngine.js, never copied here. */
+  function newDelayActivityLink(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newDelayActivityLinkId(),
+      delay_id: "",
+      activity_id: "",
+      project_id: "",
+      original_planned_start: "",
+      original_planned_finish: "",
+      original_total_float: null,
+      created_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
 
   function newSchedulePerformanceSnapshotId() {
     return "sps_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
@@ -2788,6 +2918,67 @@
       loaded.schema_version = 58;
     }
 
+    if (loaded.schema_version < 59) {
+      // Planning & Scheduling-Centric Delay Management, Gate A/B: enriches every
+      // existing Delay Record with the fuller model (status/category/responsibility/
+      // cause structure/cross-links/timeline — see newDelayRecord()'s own header
+      // comment) and backfills a delay_activity_links row for each one's existing
+      // `activity_id`, so the new multi-activity list (spec point 9) is never empty for
+      // a delay that already had its one activity — it just starts as a list of one.
+      if (!loaded.delay_activity_links) loaded.delay_activity_links = [];
+      var activitiesById = {};
+      (loaded.activities || []).forEach(function (a) {
+        activitiesById[a.id] = a;
+      });
+      (loaded.delay_records || []).forEach(function (r) {
+        if (r.status === undefined) r.status = "open";
+        if (r.delay_category === undefined) r.delay_category = "other";
+        if (r.responsibility_classification === undefined) r.responsibility_classification = "unconfirmed";
+        if (r.immediate_cause === undefined) r.immediate_cause = "";
+        if (r.underlying_cause === undefined) r.underlying_cause = "";
+        if (r.actual_impact_days === undefined) r.actual_impact_days = null;
+        if (r.milestone_activity_id === undefined) r.milestone_activity_id = "";
+        if (r.risk_id === undefined) r.risk_id = "";
+        if (r.issue_id === undefined) r.issue_id = "";
+        if (r.rfi_id === undefined) r.rfi_id = "";
+        if (r.daily_log_id === undefined) r.daily_log_id = "";
+        if (r.meeting_id === undefined) r.meeting_id = "";
+        if (r.vendor_id === undefined) r.vendor_id = "";
+        if (r.change_order_id === undefined) r.change_order_id = "";
+        if (!r.status_history) r.status_history = [];
+
+        // Best-effort historical snapshot: no earlier snapshot ever existed before this
+        // gate, so the activity's CURRENT planned dates/float are used as the closest
+        // available reconstruction — an honest limitation (there's no way to recover
+        // what the schedule genuinely showed back when the delay was first identified),
+        // not a fabricated exact history. Every delay created from this gate forward
+        // gets a real point-in-time snapshot captured at link creation.
+        if (r.activity_id) {
+          var alreadyLinked = loaded.delay_activity_links.some(function (l) {
+            return l.delay_id === r.id && l.activity_id === r.activity_id;
+          });
+          if (!alreadyLinked) {
+            var act = activitiesById[r.activity_id];
+            loaded.delay_activity_links.push(
+              newDelayActivityLink({
+                delay_id: r.id,
+                activity_id: r.activity_id,
+                project_id: r.project_id || (act ? act.project_id : ""),
+                original_planned_start: act ? act.planned_start || "" : "",
+                original_planned_finish: act ? act.planned_finish || "" : "",
+                original_total_float: act && act.total_float != null ? act.total_float : null,
+              })
+            );
+          }
+        }
+      });
+      (loaded.recovery_actions || []).forEach(function (r) {
+        if (r.actual_recovery_days === undefined) r.actual_recovery_days = null;
+        if (r.delay_id === undefined) r.delay_id = "";
+      });
+      loaded.schema_version = 59;
+    }
+
     return loaded;
   }
 
@@ -3161,6 +3352,10 @@
     RECOVERY_ACTION_STATUSES: RECOVERY_ACTION_STATUSES,
     newDelayRecord: newDelayRecord,
     DELAY_RECORD_CAUSES: DELAY_RECORD_CAUSES,
+    DELAY_RECORD_STATUSES: DELAY_RECORD_STATUSES,
+    DELAY_CATEGORIES: DELAY_CATEGORIES,
+    DELAY_RESPONSIBILITY_CLASSIFICATIONS: DELAY_RESPONSIBILITY_CLASSIFICATIONS,
+    newDelayActivityLink: newDelayActivityLink,
     newSchedulePerformanceSnapshot: newSchedulePerformanceSnapshot,
     newLessonLearned: newLessonLearned,
     LESSON_LEARNED_CATEGORIES: LESSON_LEARNED_CATEGORIES,
