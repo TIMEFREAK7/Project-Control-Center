@@ -4406,45 +4406,59 @@ committed-to next feature as of this HEAD. When a fresh session picks this up:
 4. Windows/macOS code signing is a **closed** decision (personal use only, no cert, no Mac
    hardware) — don't re-raise it unless Aditya explicitly reopens the topic himself.
 
-### Current state update (2026-08-24, after Daily-Use Audit Phases 1-5, ALL FIVE PHASES NOW COMPLETE — supersedes the numbers above)
+### Current state update (2026-08-25, after the Android versionCode fix + fresh APK/EXE delivery — supersedes the numbers above)
 
-`main` is fully up to date through **Daily-Use Audit Phase 5** at commit `f90f475` (merge commit;
-Phase 5's own commit is `11342ff`, on top of the Phase 4 docs commit `4b81fea` and Phase 4's own merge
-`fb96618`). The working branch, `claude/new-session-knj62z`, was just restarted from this `main` and
-carries the exact same history — `git rev-parse main` and `git rev-parse claude/new-session-knj62z`
-both resolve to `f90f475` as of this writing. **Verify this is still true by the time you read this**
-rather than trusting it blindly.
+`main` is fully up to date through commit `5f37f7f` ("Fix Android APK versionCode never being bumped
+across release builds"), directly on top of the Phase 5 docs commit `9ef85f8` and Phase 5's own merge
+`f90f475` — no separate merge commit for this one, it's a single small fix pushed straight to `main`
+(still a fast-forward, nothing to reconcile). The working branch, `claude/new-session-knj62z`, carries
+the exact same history — `git rev-parse main` and `git rev-parse claude/new-session-knj62z` both
+resolve to `5f37f7f` as of this writing. **Verify this is still true by the time you read this** rather
+than trusting it blindly.
 
-- `schema_version` is now **57** (check `src/js/store.js`'s own `SCHEMA_VERSION` constant directly if
-  this ever looks inconsistent, don't trust prose numbers). v55 added `cpm_calculated_fingerprint` to
-  schedules (Phase 1, bug #2). v56 added `settings.last_used_names` (Phase 3, field memory). v57 added
-  `settings.pinned_project_ids` (Phase 5, pinned projects).
-- **Test suite**: 77 files as of this HEAD (`ls tests/*.js | wc -l`, unchanged since Phase 3 — no new
-  test files added in Phases 4 or 5, existing ones updated instead), all chained in
-  `tests/package.json`'s `test` script — 2119 individual checks, 0 failures at last run. Recount
-  rather than trust this number blindly — it grows almost every gate.
-- Both an Android APK and a Windows EXE were rebuilt and delivered directly to Aditya once this round
-  (before Phase 1 started, from the state as of PCC Redesign Gate 12) — see the Mobile & Desktop
-  Packaging section and the split-file delivery convention (CLAUDE.md, `packaging/README.md`) for the
-  exact artifacts and verification hashes. Neither has been rebuilt since — the APK/EXE Aditya has do
-  NOT include any of Phases 1-5's changes; only the Phase 2/3/4/5 end-user zips do (`index.html` only,
-  no native packaging). Rebuild+repackage before handing over another APK/EXE if that matters for
-  what's being delivered next.
-- **What shipped this round, in order**: PCC Redesign Gate 12 (App Icon & Branding, closing out that
-  whole 12-gate initiative) → Daily-Use Audit kickoff (39 findings, 5-phase proposal) → **Phase 1**
-  (9 real bugs — router double-render, CPM staleness, RFI date_answered, Gantt search focus loss,
-  circular relationships, negative Duration, SAVED-label race, no beforeunload warning, Daily Log
-  duplicate guard) → **Phase 2** (Global Project Context live-sync wired into Dashboard/My Work/
-  Action Centre/Project Lookahead; a first keyboard-shortcut pass — `/`, `n`, `?`) → **Phase 3**
-  (Clone on 6 registers, bulk actions on 5 registers, field memory on 4 "who" fields) → **Phase 4**
-  (Activities grid inline edit + per-section report day-window, both requested directly by Aditya;
-  plus the audit's own bulk date-shift, copy-activity, WBS indent/outdent, and Activities grid
-  virtualization) → **Phase 5** (a mobile header title/icon overlap bug Aditya reported directly with
-  screenshots, affecting every tab since it's one shared component; plus the audit's own clickable KPI
-  tiles, sorted project pickers, and pinned projects). Full detail on all five phases is in this file's
-  own Daily-Use Audit section above and in README.md's matching section — don't re-derive it from git
-  log.
-- **The Daily-Use Audit initiative is now CLOSED OUT** — all 5 phases of its own proposed sequencing
-  are done. There is no "Phase 6" waiting; any further work is a fresh ask from Aditya, not a
-  continuation of this initiative. Don't assume more audit phases are coming without him explicitly
-  starting a new one.
+- **The Daily-Use Audit initiative is CLOSED OUT** — all 5 phases of its own proposed sequencing are
+  done (see this file's own Daily-Use Audit section above, and README.md's matching section, for full
+  detail on all five — don't re-derive it from git log). There is no "Phase 6" waiting; any further app
+  feature work is a fresh ask from Aditya, not a continuation of that initiative.
+- **The one thing that happened after Phase 5 closed it out**: Aditya reported a real, separate
+  packaging bug — the Android APK's `versionCode` had been hardcoded at `1` since the very first
+  release build and was NEVER bumped across any of the 5 audit-phase rebuilds, so every "new" APK he
+  was handed looked identical to Android's package manager, which refuses an in-place update unless the
+  new APK's `versionCode` is strictly greater than what's already installed — he had to uninstall the
+  old APK before every single install. Fixed: `packaging/android/android/app/build.gradle` now has
+  `versionCode 2` / `versionName "1.1"`; `packaging/package.json`'s `"version"` bumped to match
+  (`1.1.0`). **Now a standing instruction in CLAUDE.md, this file's own "Standing instructions" section
+  above, and `packaging/README.md`** — bump both before every future release build, check the file's
+  current values first, don't assume a starting point.
+- **Both the Android APK and Windows EXE were rebuilt fresh and delivered directly to Aditya after this
+  fix** — genuinely fresh this time, containing every change through all 5 Daily-Use Audit phases (not
+  the stale pre-Phase-1 build the last packaging round left behind). Verified byte-for-byte before
+  sending: the APK's embedded `assets/public/index.html` and the EXE's embedded `app.asar`'s
+  `electron/index.html` both hash-matched the repo root's freshly-built `index.html` exactly
+  (`3c4a77121b2a9079f29c0575a8e514cc39a002ddcd14a8925db8505ed4c4d924`) — catch this class of bug by
+  always diffing the embedded copy against the fresh build, not just trusting the build succeeded.
+  **Real mid-session mistake worth knowing about**: the first EXE build attempt used `npx
+  electron-builder` directly instead of `npm run electron:build`, which skips `scripts/copy-app.js` (the
+  step that actually copies the repo root's fresh `index.html` into `packaging/electron/` before
+  packaging) — that first EXE silently embedded the OLD `packaging/electron/index.html` left over from
+  the prior packaging round. Caught by the byte-for-byte verification step above, not by the build
+  itself succeeding (it built "successfully" either way). **Always run `node scripts/copy-app.js`
+  yourself first if invoking `electron-builder` directly instead of through the `npm run electron:build`
+  script** — or just always use the npm script, which does this for you automatically.
+  - APK: `versionCode 2`, `versionName "1.1"`, SHA-256 `0d8fd7bb1cbff74fba8b4fb5f63bcba3a772464525943d0d6f6124b6c4005232`, signed with the same
+    `CN=Project Control Center` cert as every prior release build, zipalign-verified.
+  - EXE: `Project Control Center Setup 1.1.0.exe`, unsigned per Aditya's standing decision (no
+    Windows code-signing cert), SHA-256
+    `5b88fa372ec7e3750df64db20520c95602718894612e64e928e43b31fe2ffdea`, split into 5 parts
+    (`ProjectControlCenter-Setup-1.1.0.exe.part00`-`part04`, 25MB each except the last ~0.78MB) per the
+    standing split-file delivery convention, reassembly verified byte-exact before sending.
+- `schema_version` is **57** (check `src/js/store.js`'s own `SCHEMA_VERSION` constant directly if this
+  ever looks inconsistent, don't trust prose numbers) — unchanged by this round, it's a UI/packaging-only
+  fix. v55 added `cpm_calculated_fingerprint` to schedules (Phase 1). v56 added `settings.last_used_names`
+  (Phase 3). v57 added `settings.pinned_project_ids` (Phase 5).
+- **Test suite**: 77 files (`ls tests/*.js | wc -l`), all chained in `tests/package.json`'s `test`
+  script — 2119 individual checks, 0 failures at last run (unchanged by this round — no source code
+  changed, only `packaging/`'s two version files and the three doc files). Recount rather than trust
+  this number blindly.
+- **No other feature work is currently committed to.** When a fresh session picks this up, don't
+  assume there's a next gate/phase queued — check with Aditya first.

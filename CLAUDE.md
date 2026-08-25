@@ -122,6 +122,16 @@ node --check src/js/whatever.js   # quick syntax check on a single file
   `packaging/package.json`'s `"version"` field to match before an `electron:build` — Windows/NSIS
   isn't as strict about this as Android, but keeping both packages' version numbers in sync and moving
   forward is still correct practice, not optional.
+- **Always build the Windows/macOS/Linux installer via `npm run electron:build`, never `npx
+  electron-builder` directly** — real mistake made 2026-08-24: calling `electron-builder` directly
+  skips `scripts/copy-app.js`, the step that copies the repo root's freshly-built `index.html` into
+  `packaging/electron/` before packaging, so the resulting installer silently embeds whatever stale
+  copy happened to already be sitting in `packaging/electron/index.html` from the previous packaging
+  round — the build still "succeeds" with no error or warning. Caught only by the existing
+  verification step (extract `app.asar`, diff the embedded `electron/index.html` against the repo
+  root's current `index.html`, byte-for-byte) — always do that verification before sending an EXE to
+  Aditya, it's the only thing that actually catches this. If you must invoke `electron-builder`
+  directly for some reason, run `node scripts/copy-app.js` yourself immediately before it.
 - If the branch backing an already-merged PR is reused for the next piece of work, restart it from
   the latest `main` first (`git fetch origin main && git reset --hard origin/main`, or rebase if
   there's already unmerged work sitting on the branch) rather than stacking new commits on old
