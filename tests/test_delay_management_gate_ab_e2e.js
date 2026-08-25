@@ -141,10 +141,12 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("the live Schedule Impact summary reads current float/criticality straight from the Schedule, not a duplicated calculation", () => {
+  await check("the live Impact Summary reads current float/criticality straight from the Schedule, not a duplicated calculation", () => {
     var text = outlet().textContent;
-    assert.ok(text.indexOf("Non-Critical") !== -1, "10 days of float, threshold 5 -> non-critical");
-    assert.ok(text.indexOf("Float Consumed: 0d") !== -1, "no schedule change since the snapshot was taken — nothing consumed yet");
+    assert.ok(text.indexOf("IMPACT SUMMARY") !== -1);
+    assert.ok(text.indexOf("ON TRACK") !== -1, "10 days of float, threshold 5 -> non-critical -> ON TRACK status");
+    assert.ok(text.indexOf("Consumed 0d") !== -1, "no schedule change since the snapshot was taken — nothing consumed yet");
+    assert.ok(text.indexOf("No current impact") !== -1, "non-critical delay must never report a project-finish impact");
     assert.ok(text.indexOf("Foundation") !== -1);
   });
 

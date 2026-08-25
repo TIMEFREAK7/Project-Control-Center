@@ -4760,11 +4760,58 @@
     return wrap;
   }
 
-  /** Planning & Scheduling-Centric Delay Management, Gate A/B — the schedule impact
-   * summary (spec points 10-11) for one Delay Record: every linked activity's live
-   * current/forecast dates, float consumed, and criticality, read straight from the
-   * Schedule via delayImpactEngine.js (never a second calculation). Purely
-   * presentational — nothing here writes to the store. */
+  /** Gate C (Float & Impact) label for one summary row inside the Impact Summary box —
+   * keeps every row's markup identical so the four levels (Activity/Float/Milestone/
+   * Project — spec point 11) read as one consistent list, not four differently-styled
+   * fragments. */
+  function impactSummaryRow(label, valueText, valueColorVar) {
+    var row = document.createElement("div");
+    row.style.display = "flex";
+    row.style.justifyContent = "space-between";
+    row.style.gap = "var(--space-2)";
+    row.style.fontSize = "var(--text-xs)";
+    row.style.marginTop = "2px";
+    var labelEl = document.createElement("span");
+    labelEl.className = "text-secondary";
+    labelEl.textContent = label;
+    row.appendChild(labelEl);
+    var valueEl = document.createElement("span");
+    valueEl.style.fontWeight = "600";
+    if (valueColorVar) valueEl.style.color = "var(" + valueColorVar + ")";
+    valueEl.textContent = valueText;
+    row.appendChild(valueEl);
+    return row;
+  }
+
+  /** Gate C: a single-word status judgement combining criticality, milestone impact,
+   * and project impact — spec point 15's own "the planner should be able to understand
+   * in seconds" bar. Project impact (if any) always wins over a merely-critical
+   * activity with no measured project consequence yet; milestone impact wins over plain
+   * criticality; otherwise this just reads off the activity-level criticality. Never
+   * invents a number — "not assessed" when the schedule hasn't been calculated at all. */
+  function deriveDelayStatusLabel(impact, milestoneSlippageDays, projectImpactDays) {
+    if (projectImpactDays != null && projectImpactDays > 0) return { text: "PROJECT IMPACT", colorVar: "--status-critical" };
+    if (milestoneSlippageDays != null && milestoneSlippageDays > 0) return { text: "MILESTONE AT RISK", colorVar: "--status-critical" };
+    if (impact.overall_criticality === "critical") return { text: "CRITICAL", colorVar: "--status-critical" };
+    if (impact.overall_criticality === "near_critical") return { text: "AT RISK", colorVar: "--status-at-risk" };
+    if (impact.overall_criticality === "non_critical") return { text: "ON TRACK", colorVar: "--status-complete" };
+    return { text: "NOT ASSESSED", colorVar: null };
+  }
+
+  /** Planning & Scheduling-Centric Delay Management, Gate A/B/C — the Impact Summary
+   * (spec points 11/15) for one Delay Record, distinguishing the four levels a delay can
+   * threaten (spec point 11 — "Delay Days != Project Delay Days"):
+   *   ACTIVITY  — the worst-affected linked activity's own finish slippage
+   *   FLOAT     — that same activity's Original/Current/Consumed float
+   *   MILESTONE — the delay's own milestone_activity_id, if one is set
+   *   PROJECT   — only ever computed (via the REAL CPM engine, read-only — see
+   *               delayImpactEngine.computeProjectFinishImpact()) when at least one
+   *               linked activity is currently critical; a non-critical delay is
+   *               absorbed by float by definition and cannot be moving the project
+   *               finish, so this deliberately skips the recalculation rather than
+   *               running it needlessly on every render.
+   * Every value is read straight from the Schedule via delayImpactEngine.js — never a
+   * second calculation. Purely presentational — nothing here writes to the store. */
   function renderDelayScheduleImpact(delayRecord, links, data) {
     var box = document.createElement("div");
     box.style.marginTop = "var(--space-2)";
@@ -4781,34 +4828,108 @@
     }
 
     var impact = window.PCC.delayImpactEngine.computeDelayImpact(delayRecord, links, data);
-    var summaryLine = document.createElement("div");
-    summaryLine.style.display = "flex";
-    summaryLine.style.flexWrap = "wrap";
-    summaryLine.style.gap = "var(--space-2)";
-    summaryLine.style.alignItems = "center";
-    summaryLine.style.marginBottom = impact.per_activity.length > 0 ? "var(--space-2)" : "0";
 
-    if (impact.overall_criticality) {
-      var critBadge = document.createElement("span");
-      critBadge.className = "status-badge status-badge--" + DELAY_CRITICALITY_BADGE_CLASS[impact.overall_criticality];
-      critBadge.style.fontSize = "var(--text-xs)";
-      critBadge.textContent = DELAY_CRITICALITY_LABELS[impact.overall_criticality];
-      summaryLine.appendChild(critBadge);
+    var summaryHeading = document.createElement("p");
+    summaryHeading.className = "text-secondary";
+    summaryHeading.style.fontSize = "11px";
+    summaryHeading.style.fontWeight = "600";
+    summaryHeading.style.letterSpacing = "0.4px";
+    summaryHeading.style.margin = "0 0 4px";
+    summaryHeading.textContent = "IMPACT SUMMARY";
+    box.appendChild(summaryHeading);
+
+    if (!impact.any_schedule_calculated) {
+      box.appendChild(impactSummaryRow("Status", "Schedule not yet calculated", null));
+      var calcNote = document.createElement("p");
+      calcNote.className = "text-secondary";
+      calcNote.style.fontSize = "var(--text-xs)";
+      calcNote.style.margin = "4px 0 0";
+      calcNote.textContent = "Run Calculate Schedule on this schedule for float/criticality/project-impact figures.";
+      box.appendChild(calcNote);
+      return box;
+    }
+
+    // ACTIVITY + FLOAT: the worst-affected linked activity (max float consumed) —
+    // spec section 15's own worked example reports one representative activity at the
+    // top; every linked activity's own detail still follows below.
+    var worst = impact.per_activity.reduce(function (best, a) {
+      if (a.float_consumed == null) return best;
+      if (!best || a.float_consumed > best.float_consumed) return a;
+      return best;
+    }, null) || impact.per_activity[0];
+
+    box.appendChild(
+      impactSummaryRow(
+        "Activity Impact",
+        worst && worst.finish_slippage_days != null
+          ? (worst.finish_slippage_days >= 0 ? "+" : "") + worst.finish_slippage_days + "d (" + (worst.activity_name || "activity") + ")"
+          : "—"
+      )
+    );
+    box.appendChild(
+      impactSummaryRow(
+        "Float",
+        worst && worst.current_total_float != null
+          ? "Original " + (worst.original_total_float != null ? worst.original_total_float + "d" : "—") +
+            " → Current " + worst.current_total_float + "d (Consumed " + (worst.float_consumed != null ? worst.float_consumed + "d" : "—") + ")"
+          : "Not yet calculated"
+      )
+    );
+
+    // MILESTONE
+    var milestoneSlippageDays = impact.milestone_impact ? impact.milestone_impact.finish_slippage_days : null;
+    if (!delayRecord.milestone_activity_id) {
+      box.appendChild(impactSummaryRow("Milestone Impact", "None"));
+    } else if (!impact.milestone_impact) {
+      box.appendChild(impactSummaryRow("Milestone Impact", "Linked milestone not found", "--status-at-risk"));
     } else {
-      var notCalc = document.createElement("span");
-      notCalc.className = "text-secondary";
-      notCalc.style.fontSize = "var(--text-xs)";
-      notCalc.textContent = "Schedule not yet calculated — run Calculate Schedule for float/criticality.";
-      summaryLine.appendChild(notCalc);
+      var msEntry = impact.milestone_impact;
+      box.appendChild(
+        impactSummaryRow(
+          "Milestone Impact",
+          (msEntry.activity_name || "Milestone") +
+            (milestoneSlippageDays != null ? ": " + (milestoneSlippageDays > 0 ? "+" : "") + milestoneSlippageDays + "d" : " — not yet calculated"),
+          milestoneSlippageDays > 0 ? "--status-critical" : null
+        )
+      );
     }
-    if (impact.max_float_consumed != null) {
-      var floatSpan = document.createElement("span");
-      floatSpan.className = "text-secondary";
-      floatSpan.style.fontSize = "var(--text-xs)";
-      floatSpan.textContent = "Float Consumed: " + impact.max_float_consumed + "d";
-      summaryLine.appendChild(floatSpan);
+
+    // PROJECT FINISH — only actually recalculated (read-only, via the real CPM engine)
+    // when the delay is currently critical; otherwise it's absorbed by float by
+    // definition (spec's own Test 1/5) and there's nothing to compute.
+    var projectImpactDays = null;
+    if (impact.overall_criticality === "critical") {
+      var scheduleId = activityScheduleId(data, delayRecord);
+      var projectImpact = scheduleId ? window.PCC.delayImpactEngine.computeProjectFinishImpact(scheduleId, data) : { available: false };
+      if (projectImpact.available) {
+        projectImpactDays = projectImpact.project_impact_days;
+        box.appendChild(
+          impactSummaryRow(
+            "Project Finish Impact",
+            projectImpactDays === 0 ? "No current impact" : (projectImpactDays > 0 ? "+" : "") + projectImpactDays + "d",
+            projectImpactDays > 0 ? "--status-critical" : null
+          )
+        );
+      } else {
+        box.appendChild(impactSummaryRow("Project Finish Impact", "Not available — " + (projectImpact.reason || "schedule incomplete")));
+      }
+    } else {
+      box.appendChild(impactSummaryRow("Project Finish Impact", "No current impact"));
     }
-    box.appendChild(summaryLine);
+
+    var status = deriveDelayStatusLabel(impact, milestoneSlippageDays, projectImpactDays);
+    box.appendChild(impactSummaryRow("Status", status.text, status.colorVar));
+
+    // Per-activity detail (spec point 10 — Activity-Level Delay View): every linked
+    // activity's own current/forecast/float, not just the one summarized above.
+    var detailHeading = document.createElement("p");
+    detailHeading.className = "text-secondary";
+    detailHeading.style.fontSize = "11px";
+    detailHeading.style.fontWeight = "600";
+    detailHeading.style.letterSpacing = "0.4px";
+    detailHeading.style.margin = "var(--space-2) 0 4px";
+    detailHeading.textContent = "AFFECTED ACTIVITIES (" + impact.per_activity.length + ")";
+    box.appendChild(detailHeading);
 
     impact.per_activity.forEach(function (a) {
       var row = document.createElement("div");
@@ -5105,6 +5226,35 @@
         excusableField.appendChild(excusableLabel);
         grid.appendChild(excusableField);
 
+        // Gate C (Float & Impact, spec point 15/33): which milestone, if any, this delay
+        // threatens — scoped to the same schedule as "+ Link Another Activity" below, for
+        // the same reason (a delay's affected activities/milestone are, in practice,
+        // always on the one schedule being managed). Selecting one auto-links it as an
+        // affected activity on save (see the onsubmit handler below) so its own
+        // historical snapshot exists, the same treatment every other linked activity
+        // gets — a milestone IS an activity, not a special case.
+        var milestoneField = document.createElement("div");
+        milestoneField.className = "field";
+        milestoneField.innerHTML = "<label>Affected Milestone</label>";
+        var milestoneSelect = document.createElement("select");
+        milestoneSelect.id = "delayfield-milestone_activity_id";
+        var noMilestoneOpt = document.createElement("option");
+        noMilestoneOpt.value = "";
+        noMilestoneOpt.textContent = "(none)";
+        milestoneSelect.appendChild(noMilestoneOpt);
+        data.activities
+          .filter(function (a) { return a.schedule_id === activity.schedule_id && a.activity_type === "milestone"; })
+          .sort(function (a, b) { return (a.name || "").localeCompare(b.name || ""); })
+          .forEach(function (m) {
+            var opt = document.createElement("option");
+            opt.value = m.id;
+            opt.textContent = m.name || "(unnamed milestone)";
+            milestoneSelect.appendChild(opt);
+          });
+        milestoneSelect.value = editing.milestone_activity_id || "";
+        milestoneField.appendChild(milestoneSelect);
+        grid.appendChild(milestoneField);
+
         var immediateCauseField = document.createElement("div");
         immediateCauseField.style.gridColumn = "1 / -1";
         immediateCauseField.className = "field";
@@ -5187,9 +5337,34 @@
             is_excusable: excusableCheckbox.checked,
             immediate_cause: immediateCauseInput.value,
             underlying_cause: underlyingCauseInput.value,
+            milestone_activity_id: milestoneSelect.value,
             description: descInput.value.trim(),
             updated_at: new Date().toISOString(),
           };
+          // Gate C: a milestone selected here IS an affected activity — ensure it has
+          // its own delay_activity_links snapshot, the same "linked activity" treatment
+          // "+ Link Another Activity" already gives every other one. A no-op if it's
+          // already linked (e.g. it's the delay's own primary activity, or was already
+          // added via that picker).
+          function ensureActivityLinked(d, delayRecordId, activityId) {
+            if (!activityId) return;
+            var already = d.delay_activity_links.some(function (l) {
+              return l.delay_id === delayRecordId && l.activity_id === activityId;
+            });
+            if (already) return;
+            var act = d.activities.find(function (a) { return a.id === activityId; });
+            if (!act) return;
+            d.delay_activity_links.push(
+              window.PCC.store.newDelayActivityLink({
+                delay_id: delayRecordId,
+                activity_id: act.id,
+                project_id: act.project_id,
+                original_planned_start: act.planned_start || "",
+                original_planned_finish: act.planned_finish || "",
+                original_total_float: act.total_float != null ? act.total_float : null,
+              })
+            );
+          }
           window.PCC.store.update(function (d) {
             if (uiState.editingDelayRecordId === "new") {
               var created = window.PCC.store.newDelayRecord(Object.assign({ activity_id: activity.id, project_id: activity.project_id }, values));
@@ -5212,6 +5387,7 @@
                   original_total_float: activity.total_float != null ? activity.total_float : null,
                 })
               );
+              ensureActivityLinked(d, created.id, values.milestone_activity_id);
             } else {
               var existing = d.delay_records.find(function (r) { return r.id === editing.id; });
               if (existing) {
@@ -5222,6 +5398,7 @@
                   existing.status_history.push({ status: newStatus, changed_at: values.updated_at, note: "" });
                 }
                 Object.assign(existing, values);
+                ensureActivityLinked(d, existing.id, values.milestone_activity_id);
               }
             }
           });

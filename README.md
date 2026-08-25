@@ -4549,6 +4549,51 @@ exist from Gate A but nothing yet lets a user actually pick a Risk/RFI/etc. from
 analytics beyond the existing `delayRecoveryDashboard.js` rollup). Each is real, separately-scoped
 follow-on work — not started, not stubbed.
 
+## Planning & Scheduling-Centric Delay Management — Gate C (Float & Impact), 2026-08-25
+
+**What Gate C added on top of Gates A/B**: `delayImpactEngine.js`'s own `computeDelayImpact()`/
+`computeProjectFinishImpact()` (built in Gate B) already produced everything Gate C needed — this gate was
+mostly about actually SURFACING it clearly, plus one real data-model gap inspection caught: `newDelayRecord()`
+has had a `milestone_activity_id` field since Gate A, but nothing ever let a user actually set it. Fixed:
+
+- **Milestone picker**: the Delay Record form gained an "Affected Milestone" select (activities with
+  `activity_type: "milestone"` on the same schedule). Selecting one auto-creates its own
+  `delay_activity_links` snapshot on save — a milestone IS an activity, so it gets the exact same
+  "frozen historical snapshot, live current values" treatment every other linked activity already does,
+  not a special case.
+- **Impact Summary redesign** (`renderDelayScheduleImpact()`, replacing Gate B's flatter version):
+  distinct labeled rows for the four levels the spec insists must never be conflated (point 11, "Delay
+  Days != Project Delay Days") — **Activity Impact** (the worst-affected linked activity's own finish
+  slippage), **Float** (Original → Current, Consumed), **Milestone Impact** ("None" when nothing's
+  linked, else the milestone's own name and slippage), and **Project Finish Impact**. The last one is
+  the real payoff of Gate B's engine design: it's `"No current impact"` whenever nothing linked is
+  currently critical (a non-critical delay is absorbed by float by definition and literally cannot move
+  the project finish — recalculating would just waste a CPM pass for a guaranteed-zero answer) and only
+  actually invokes `computeProjectFinishImpact()` — the real `scheduleCpmEngine.calculateSchedule()`,
+  read-only, same as the existing What-If Sandbox — when a linked activity IS critical. A derived one-word
+  **Status** (ON TRACK / AT RISK / CRITICAL / MILESTONE AT RISK / PROJECT IMPACT) closes the summary, per
+  spec point 15's own "the planner should be able to understand in seconds" bar — project impact always
+  outranks a merely-critical activity with no measured consequence yet, milestone impact outranks plain
+  criticality, and "not assessed" is shown honestly rather than guessing when the schedule's never been
+  calculated. Per-activity detail (Gate B's own contribution, spec point 10) stays underneath, unchanged.
+- No CPM logic was touched, per the spec's own explicit instruction for this gate — every number here is
+  either read straight off an activity's already-cached `total_float`/`early_finish`, or comes from a
+  fresh, read-only, unmodified call to the existing `calculateSchedule()`.
+
+**Verified**: full jsdom suite (85 files, 0 failures). A new `test_delay_gate_c_impact_e2e.js` (6 checks)
+seeds a fully critical two-activity chain feeding a milestone, confirms the milestone picker offers
+milestone-type activities by name and auto-links one on save, confirms Project Finish Impact reads "No
+current impact" before any schedule change despite the activity already being critical, then grows the
+critical activity's duration by 5 days and recalculates — confirming BOTH the milestone slippage and the
+Project Finish Impact move by the same 5 days, read from the real engine, not predicted. Gate A/B's own
+test file was updated for the new Impact Summary wording (its assertions checked the old flatter output's
+literal text) — no behavior it originally verified was weakened, only the display format changed.
+
+**Not done — Gates D through H remain deliberately unstarted**, same reasoning as after Gates A/B: each is
+real, separately-scoped follow-on work (Mitigation & Recovery's own Forecast progression narrative,
+Risk/Issue/RFI/Daily Log/Meeting/Vendor/Change linking UI, Planner Action Centre, Dashboard/Lookahead/
+Executive Center integration, portfolio-wide analytics).
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
