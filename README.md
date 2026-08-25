@@ -4406,6 +4406,65 @@ hidden on mobile). Portfolio's own Client/Country/etc. filter row is unchanged (
 `client`/`company` text fields it always has) — same fields, now sourced from linked master data instead
 of hand-typed text, so no filter behavior actually changed.
 
+## Schedule Excel Import — Manual Column Mapping (a NINTH, separate initiative, started
+## 2026-08-25, immediately after Company/Client/Project Management above)
+
+**Why**: Schedule's Excel import (`scheduleImportService.js`) has always matched uploaded column headers
+against a fixed `HEADER_MAP` of recognized names/aliases ("Activity ID", "Task Name", "Planned Start",
+...). A column whose header didn't match anything in that list was silently dropped — not imported blank
+with a warning like a bad date cell, just invisible, with only a summary line ("Column header(s) not
+recognized and ignored: ...") telling the user something didn't make it in. For a file whose own naming
+convention doesn't happen to match PCC's (a different PM tool's export, a client-mandated template, a
+non-English header), that meant renaming columns in the source file and re-uploading — repeatedly, by
+trial and error — or accepting the data loss. Requested directly: let the user manually tell PCC which
+uploaded column is which PCC field when the automatic match fails, rather than only auto-detect-or-lose.
+
+**What was decided**: only add friction where it's actually needed — a file whose headers already match
+(the common case, every existing test file, every well-formed export) goes straight to the existing
+review step exactly as before, zero behavior change. Only when at least one non-blank header fails to
+auto-match does a new **Column Mapping** step appear between "pick a file" and "review," pre-filled with
+whatever the automatic detection DID recognize (so the user only has to fix what didn't match, not
+re-map every column from scratch) — same "guess first, let a human confirm/correct" pattern this app
+already uses nowhere else, adapted fresh. A "→ Ignore this column —" option lets a column be deliberately
+excluded (distinct from being auto-dropped without anyone choosing that). Each PCC field can only be
+sourced from one uploaded column — mapping two columns to "Activity Name," say, is caught immediately
+with a clear message and blocks continuing, rather than one silently overwriting the other row-by-row.
+
+**What was built**:
+- **`scheduleImportService.js`**: `parseRows(headers, rows, columnMapping)` — a new, optional third
+  argument. When given, it's `{ [headerIndex]: canonicalKey | "" }` and fully replaces the automatic
+  `HEADER_MAP` lookup for that parse (every column's fate was already decided by the user); when omitted,
+  behavior is byte-for-byte identical to before this feature existed — every existing caller (the in-app
+  Excel grid editor's own review step) needed zero changes. New `autoDetectColumnMapping(headers)` export
+  exposes the same guess-lookup `parseRows()` always did internally, now available to the UI to pre-fill
+  its pickers.
+- **`schedule.js`'s Import Excel flow**: a new `importStep === "mapping"` screen (between `"pick"` and the
+  existing `"reviewing"`) — a table of every uploaded column (header text, a sample value from the data so
+  a blank/cryptic header can still be identified, and a `<select>` of PCC target fields pre-selected from
+  the auto-detected guess). Required fields (Activity ID, Activity Name) are marked `*` in the picker and
+  a warning appears if neither is mapped yet; a duplicate-target selection disables "Continue" until
+  resolved. "Continue" re-runs `parseRows()` with the confirmed mapping and lands on the same review step
+  the auto-detected path already used — from there on, the two paths are identical.
+
+**Verified**: full jsdom suite (81 files, 0 failures) — 4 new checks in `test_schedule_import_service.js`
+covering `autoDetectColumnMapping()`, an explicit mapping producing correctly-mapped activities, the
+"unrecognized header" warning correctly suppressed under manual mapping (a deliberate choice isn't the
+same failure as an accidental miss), and the original two-argument call still behaving exactly as before.
+A new DOM-level e2e test (`test_schedule_import_column_mapping_e2e.js`, 5 checks) drives the real flow
+through the actual bundled `index.html` — building a real `.xlsx` in-memory via the app's own bundled
+SheetJS and delivering it through the real `<input type="file">` (jsdom supports `File`/`FileReader`/
+`readAsArrayBuffer` natively, no stub needed) — confirming: a matching-header file skips the mapping step
+entirely; a mismatched-header file opens it, pre-filled and showing sample values; manually mapping and
+continuing produces a correctly-imported activity with the right field values; and a duplicate-target
+mapping is blocked with a clear message, then re-enables once fixed.
+
+**Not done / deliberately deferred**: no "save this mapping as a template for next time" — every
+CLAUDE.md-documented convention that already exists for a recurring choice (e.g. `last_used_names`) was
+judged out of scope for this ask specifically; worth a fresh ask if repeated re-mapping of the same
+non-standard source format becomes a real recurring friction point. The in-app Excel grid editor (Gate 12)
+is unaffected — its own headers are always the canonical PCC labels it generated itself, so a mapping step
+there would have nothing to resolve.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →

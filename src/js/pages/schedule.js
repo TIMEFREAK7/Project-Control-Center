@@ -65,7 +65,7 @@
     renamingBaselineId: null,
     // Gate 2 import flow
     importPanelOpen: false,
-    importStep: "pick", // 'pick' | 'reviewing' | 'importing'
+    importStep: "pick", // 'pick' | 'mapping' | 'reviewing' | 'importing'
     importFile: null, // { name, size, hash, hashMethod, fileData } — fileData is a base64 data URI, stored via blobStore on commit
     importParsed: null, // result of scheduleImportService.parseRows()
     importDuplicateMatches: [], // schedules in this project that appear to be the same source file
@@ -73,6 +73,16 @@
     importScheduleName: "",
     importError: null,
     importCommitting: false,
+    // Manual Column Mapping: when the uploaded file has a column header
+    // scheduleImportService's HEADER_MAP doesn't recognize, importStep goes to
+    // 'mapping' instead of straight to 'reviewing' — importHeaders/importRawRows hold
+    // the raw parsed sheet (needed to re-run parseRows() once the user confirms a
+    // mapping), and importColumnMapping is { [headerIndex]: canonicalKey | "" },
+    // seeded from autoDetectColumnMapping() so the user only has to fix what didn't
+    // auto-match rather than map every column by hand.
+    importHeaders: [],
+    importRawRows: [],
+    importColumnMapping: {},
     // Gate 8 (interactive Gantt editing).
     ganttFilter: {
       search: "",
@@ -400,6 +410,9 @@
     uiState.importScheduleName = "";
     uiState.importError = null;
     uiState.importCommitting = false;
+    uiState.importHeaders = [];
+    uiState.importRawRows = [];
+    uiState.importColumnMapping = {};
   }
 
   function handleImportFileSelected(file, data, rerender) {
@@ -433,12 +446,19 @@
         return;
       }
 
-      var parsed = window.PCC.scheduleImportService.parseRows(headers, rows);
+      // Manual Column Mapping: only detour through the 'mapping' step when at least one
+      // non-blank header didn't auto-match — a file whose headers already match PCC's
+      // expected names goes straight to 'reviewing' exactly as before (zero added
+      // friction for the common case, and identical to pre-mapping-feature behavior:
+      // parseRows() is called the same two-argument way below).
+      var autoMapping = window.PCC.scheduleImportService.autoDetectColumnMapping(headers);
+      var needsManualMapping = headers.some(function (h, i) {
+        return String(h || "").trim() !== "" && autoMapping[i] === undefined;
+      });
       var fileDataUri = "data:" + (XLSX_MIME_TYPES[ext] || "application/octet-stream") + ";base64," + arrayBufferToBase64(buffer);
 
       window.PCC.duplicateService.fingerprintFile(buffer, file.name, file.size).then(function (fp) {
         uiState.importFile = { name: file.name, size: file.size, hash: fp.hash, hashMethod: fp.method, fileData: fileDataUri };
-        uiState.importParsed = parsed;
         uiState.importScheduleName = file.name.replace(/\.(xlsx|xls)$/i, "");
         uiState.importDuplicateAcknowledged = false;
 
@@ -451,11 +471,32 @@
           { fields: { hash: "content_hash", method: "hash_method", filename: "source_file_name", size: "source_file_size", projectId: "project_id" } }
         );
 
-        uiState.importStep = "reviewing";
+        if (needsManualMapping) {
+          uiState.importHeaders = headers;
+          uiState.importRawRows = rows;
+          uiState.importColumnMapping = autoMapping;
+          uiState.importStep = "mapping";
+        } else {
+          uiState.importParsed = window.PCC.scheduleImportService.parseRows(headers, rows);
+          uiState.importStep = "reviewing";
+        }
         rerender();
       });
     };
     reader.readAsArrayBuffer(file);
+  }
+
+  /** Re-runs parseRows() with the user's confirmed column mapping (Manual Column
+   * Mapping step) and moves on to the same 'reviewing' step the auto-detected path
+   * already uses — from here on the two paths are identical. */
+  function applyColumnMappingAndReview(rerender) {
+    uiState.importParsed = window.PCC.scheduleImportService.parseRows(
+      uiState.importHeaders,
+      uiState.importRawRows,
+      uiState.importColumnMapping
+    );
+    uiState.importStep = "reviewing";
+    rerender();
   }
 
   /** Turns a scheduleImportService.parseRows() result into store-shaped WBS/Activity/
@@ -688,6 +729,140 @@
         rerender();
       };
       panel.appendChild(cancelBtn);
+    } else if (uiState.importStep === "mapping") {
+      var mapHelp = document.createElement("p");
+      mapHelp.className = "text-secondary";
+      mapHelp.style.fontSize = "var(--text-sm)";
+      mapHelp.style.marginBottom = "var(--space-3)";
+      mapHelp.innerHTML =
+        "Some column headers in <strong>" + escHtml(uiState.importFile ? uiState.importFile.name : "this file") +
+        "</strong> didn't match PCC's expected names. Match each uploaded column to a PCC field below, or leave it as " +
+        "“— Ignore this column —”. <strong>Activity ID</strong> and <strong>Activity Name</strong> (marked *) are required for a row to import.";
+      panel.appendChild(mapHelp);
+
+      var mappingTargets = window.PCC.scheduleImportService.CANONICAL_HEADERS;
+      var REQUIRED_MAPPING_KEYS = { external_id: true, name: true };
+
+      // Duplicate-target validation: each PCC field can only be sourced from one column.
+      var targetCounts = {};
+      uiState.importHeaders.forEach(function (h, i) {
+        var v = uiState.importColumnMapping[i];
+        if (v) targetCounts[v] = (targetCounts[v] || 0) + 1;
+      });
+      var duplicateTargets = mappingTargets.filter(function (t) {
+        return (targetCounts[t.key] || 0) > 1;
+      });
+
+      var table = document.createElement("div");
+      table.style.display = "grid";
+      table.style.gridTemplateColumns = "minmax(120px, 1fr) minmax(100px, 1fr) minmax(160px, 1.2fr)";
+      table.style.gap = "var(--space-2) var(--space-3)";
+      table.style.alignItems = "center";
+      table.style.marginBottom = "var(--space-3)";
+      table.style.maxHeight = "360px";
+      table.style.overflowY = "auto";
+
+      [["UPLOADED COLUMN"], ["SAMPLE VALUE"], ["MAPS TO PCC FIELD"]].forEach(function (h) {
+        var headCell = document.createElement("div");
+        headCell.className = "text-secondary";
+        headCell.style.fontSize = "11px";
+        headCell.style.fontWeight = "600";
+        headCell.style.letterSpacing = "0.4px";
+        headCell.textContent = h[0];
+        table.appendChild(headCell);
+      });
+
+      uiState.importHeaders.forEach(function (h, i) {
+        var label = document.createElement("div");
+        label.style.fontSize = "var(--text-sm)";
+        label.style.fontWeight = "600";
+        label.textContent = String(h || "").trim() || "(Column " + (i + 1) + ")";
+        table.appendChild(label);
+
+        var sampleCell = document.createElement("div");
+        sampleCell.className = "text-secondary";
+        sampleCell.style.fontSize = "var(--text-sm)";
+        sampleCell.style.overflow = "hidden";
+        sampleCell.style.textOverflow = "ellipsis";
+        sampleCell.style.whiteSpace = "nowrap";
+        var sampleRow = uiState.importRawRows.find(function (r) {
+          return r[i] !== undefined && r[i] !== "";
+        });
+        var sampleVal = sampleRow ? sampleRow[i] : "";
+        sampleCell.textContent = sampleVal instanceof Date ? sampleVal.toISOString().slice(0, 10) : String(sampleVal);
+        table.appendChild(sampleCell);
+
+        var select = document.createElement("select");
+        var ignoreOpt = document.createElement("option");
+        ignoreOpt.value = "";
+        ignoreOpt.textContent = "— Ignore this column —";
+        select.appendChild(ignoreOpt);
+        mappingTargets.forEach(function (t) {
+          var opt = document.createElement("option");
+          opt.value = t.key;
+          opt.textContent = t.label + (REQUIRED_MAPPING_KEYS[t.key] ? " *" : "");
+          select.appendChild(opt);
+        });
+        select.value = uiState.importColumnMapping[i] || "";
+        select.onchange = function () {
+          uiState.importColumnMapping[i] = select.value;
+          rerender();
+        };
+        table.appendChild(select);
+      });
+
+      panel.appendChild(table);
+
+      if (duplicateTargets.length > 0) {
+        var dupErr = document.createElement("p");
+        dupErr.style.color = "var(--status-critical)";
+        dupErr.style.fontSize = "var(--text-sm)";
+        dupErr.style.marginBottom = "var(--space-2)";
+        dupErr.textContent =
+          "Each PCC field can only come from one column — fix the duplicate mapping for: " +
+          duplicateTargets.map(function (t) { return t.label; }).join(", ") + ".";
+        panel.appendChild(dupErr);
+      }
+
+      var missingRequired = mappingTargets.filter(function (t) {
+        return REQUIRED_MAPPING_KEYS[t.key] && (targetCounts[t.key] || 0) === 0;
+      });
+      if (missingRequired.length > 0) {
+        var missingNote = document.createElement("p");
+        missingNote.style.color = "var(--status-at-risk)";
+        missingNote.style.fontSize = "var(--text-sm)";
+        missingNote.style.marginBottom = "var(--space-2)";
+        missingNote.textContent =
+          missingRequired.map(function (t) { return t.label; }).join(" and ") +
+          " " + (missingRequired.length === 1 ? "isn't" : "aren't") +
+          " mapped to any column — rows will fail to import without " + (missingRequired.length === 1 ? "it" : "them") + ".";
+        panel.appendChild(missingNote);
+      }
+
+      var mapActions = document.createElement("div");
+      mapActions.style.display = "flex";
+      mapActions.style.gap = "var(--space-3)";
+      mapActions.style.marginTop = "var(--space-3)";
+
+      var continueBtn = document.createElement("button");
+      continueBtn.className = "btn btn--primary";
+      continueBtn.textContent = "Continue";
+      continueBtn.disabled = duplicateTargets.length > 0;
+      continueBtn.onclick = function () {
+        applyColumnMappingAndReview(rerender);
+      };
+      mapActions.appendChild(continueBtn);
+
+      var cancelMapBtn = document.createElement("button");
+      cancelMapBtn.className = "btn btn--ghost";
+      cancelMapBtn.textContent = "Cancel";
+      cancelMapBtn.onclick = function () {
+        resetImportState();
+        rerender();
+      };
+      mapActions.appendChild(cancelMapBtn);
+
+      panel.appendChild(mapActions);
     } else if (uiState.importStep === "reviewing") {
       var parsed = uiState.importParsed;
       var summary = parsed.summary;

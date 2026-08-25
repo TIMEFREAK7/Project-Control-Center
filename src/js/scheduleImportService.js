@@ -103,6 +103,22 @@
     return String(h || "").trim().toLowerCase();
   }
 
+  /** Best-guess column mapping for an uploaded header row — the same lookup parseRows()
+   * used to do unconditionally before manual column mapping existed. Returns
+   * { [headerIndex]: canonicalKey }, omitting any index HEADER_MAP doesn't recognize (the
+   * caller/UI treats a missing entry as "unmapped," same as an empty string would).
+   * Exposed so schedule.js's column-mapping step can pre-fill its pickers with this guess
+   * rather than starting the user from a blank sheet every time — they only need to fix
+   * the columns that didn't match, not re-map everything by hand. */
+  function autoDetectColumnMapping(headers) {
+    var mapping = {};
+    headers.forEach(function (h, i) {
+      var key = HEADER_MAP[normalizeHeader(h)];
+      if (key) mapping[i] = key;
+    });
+    return mapping;
+  }
+
   function parseDate(v) {
     if (v === "" || v == null) return { value: "", valid: true };
     if (v instanceof Date && !isNaN(v.getTime())) {
@@ -128,13 +144,29 @@
    * counted in `errors` \u2014 they truly can't be salvaged. Everything else that's
    * questionable (bad date, bad duration, unknown predecessor, unrecognized type)
    * becomes a `warning`: the field is left blank/defaulted and the row still imports,
-   * per "do not silently discard invalid records, do not invent data." */
-  function parseRows(headers, rows) {
+   * per "do not silently discard invalid records, do not invent data."
+   *
+   * `columnMapping`, if given, is { [headerIndex]: canonicalKey | "" } and FULLY
+   * overrides the automatic HEADER_MAP lookup \u2014 schedule.js's manual column-mapping step
+   * builds this from autoDetectColumnMapping() plus whatever the user corrected, so by
+   * the time it reaches here every column's fate (mapped to a specific field, or
+   * deliberately ignored) has already been decided by a human, not guessed again. Omit
+   * it (or pass null/undefined) to fall back to the original auto-detect-only behavior \u2014
+   * every existing caller that never heard of manual mapping keeps working unchanged. */
+  function parseRows(headers, rows, columnMapping) {
     var colMap = {};
-    headers.forEach(function (h, i) {
-      var key = HEADER_MAP[normalizeHeader(h)];
-      if (key) colMap[i] = key;
-    });
+    var manualMapping = !!columnMapping;
+    if (manualMapping) {
+      Object.keys(columnMapping).forEach(function (idx) {
+        var key = columnMapping[idx];
+        if (key) colMap[Number(idx)] = key;
+      });
+    } else {
+      headers.forEach(function (h, i) {
+        var key = HEADER_MAP[normalizeHeader(h)];
+        if (key) colMap[i] = key;
+      });
+    }
 
     var errors = [];
     var warnings = [];
@@ -147,15 +179,20 @@
     // "imported blank with a warning" like a bad date, just gone, no per-row signal at
     // all. That's a worse failure mode than a bad cell, so it gets reported once, up
     // front, rather than relying on per-row symptoms (e.g. "no dates anywhere") to
-    // surface it indirectly.
+    // surface it indirectly. Skipped entirely under manual mapping \u2014 the schedule.js
+    // column-mapping step already showed the user every column and let them decide, so
+    // a column left unmapped there was a deliberate "ignore this one," not an oversight
+    // worth a redundant warning about.
     var mappedKeys = {};
     Object.keys(colMap).forEach(function (i) {
       mappedKeys[colMap[i]] = true;
     });
-    var unrecognizedHeaders = headers.filter(function (h) {
-      var norm = normalizeHeader(h);
-      return norm && !HEADER_MAP[norm];
-    });
+    var unrecognizedHeaders = manualMapping
+      ? []
+      : headers.filter(function (h) {
+          var norm = normalizeHeader(h);
+          return norm && !HEADER_MAP[norm];
+        });
     if (unrecognizedHeaders.length > 0) {
       warnings.push({
         row: null,
@@ -385,5 +422,9 @@
     };
   }
 
-  window.PCC.scheduleImportService = { parseRows: parseRows, CANONICAL_HEADERS: CANONICAL_HEADERS };
+  window.PCC.scheduleImportService = {
+    parseRows: parseRows,
+    CANONICAL_HEADERS: CANONICAL_HEADERS,
+    autoDetectColumnMapping: autoDetectColumnMapping,
+  };
 })();
