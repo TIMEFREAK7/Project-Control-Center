@@ -93,6 +93,22 @@
     non_critical: "complete",
   };
 
+  // Gate D (Mitigation & Recovery, spec point 17).
+  var MITIGATION_TYPE_LABELS = {
+    resequence_work: "Resequence Work",
+    add_resources: "Add Resources",
+    add_equipment: "Add Equipment",
+    additional_shift: "Additional Shift",
+    overtime: "Overtime",
+    parallel_working: "Parallel Working",
+    alternative_work_front: "Alternative Work Front",
+    vendor_expediting: "Vendor Expediting",
+    alternative_procurement: "Alternative Procurement",
+    engineering_solution: "Engineering Solution",
+    temporary_works: "Temporary Works",
+    other: "Other",
+  };
+
   var uiState = {
     projectId: "", // currently selected project \u2014 everything below scopes to this
     scheduleId: "", // currently selected schedule within that project
@@ -4624,7 +4640,35 @@
         delayLinkField.appendChild(delayLinkSelect);
         grid.appendChild(delayLinkField);
 
+        // Gate D (spec point 17 — Mitigation): what KIND of corrective action this is.
+        var mitigationField = document.createElement("div");
+        mitigationField.className = "field";
+        mitigationField.innerHTML = "<label>Mitigation Type</label>";
+        var mitigationSelect = document.createElement("select");
+        mitigationSelect.id = "recactionfield-mitigation_type";
+        window.PCC.store.MITIGATION_TYPES.forEach(function (t) {
+          var opt = document.createElement("option");
+          opt.value = t;
+          opt.textContent = MITIGATION_TYPE_LABELS[t];
+          mitigationSelect.appendChild(opt);
+        });
+        mitigationSelect.value = editing.mitigation_type || "other";
+        mitigationField.appendChild(mitigationSelect);
+        grid.appendChild(mitigationField);
+
         form.appendChild(grid);
+
+        // Gate D (spec point 18's own field list — Comments, distinct from the short
+        // action label above).
+        var commentsField = document.createElement("div");
+        commentsField.className = "field";
+        commentsField.innerHTML = "<label>Comments</label>";
+        var commentsInput = document.createElement("textarea");
+        commentsInput.id = "recactionfield-comments";
+        commentsInput.rows = 2;
+        commentsInput.value = editing.comments || "";
+        commentsField.appendChild(commentsInput);
+        form.appendChild(commentsField);
 
         var errorMsg = document.createElement("p");
         errorMsg.style.color = "var(--status-critical)";
@@ -4669,6 +4713,8 @@
             estimated_cost: costInput.value === "" ? null : Number(costInput.value),
             actual_recovery_days: actualRecDaysInput.value === "" ? null : Number(actualRecDaysInput.value),
             delay_id: delayLinkSelect.value,
+            mitigation_type: mitigationSelect.value,
+            comments: commentsInput.value,
             updated_at: new Date().toISOString(),
           };
           window.PCC.store.update(function (d) {
@@ -4710,7 +4756,8 @@
 
       var left = document.createElement("div");
       left.innerHTML =
-        "<strong>" + r.description + "</strong>" +
+        "<strong>" + escHtml(r.description) + "</strong>" +
+        " <span class='text-secondary' style='font-size:12px;'>(" + MITIGATION_TYPE_LABELS[r.mitigation_type] + ")</span>" +
         "<p class='text-secondary' style='font-size:12px;margin:4px 0 0'>" +
         (r.responsible_person ? r.responsible_person + " · " : "") +
         (r.target_recovery_date ? "target " + r.target_recovery_date : "no target date") +
@@ -4718,7 +4765,8 @@
         (r.actual_recovery_days != null ? " · actual " + r.actual_recovery_days + "d" : "") +
         (fmtMoney(r.estimated_cost) != null ? " · est. cost " + fmtMoney(r.estimated_cost) : "") +
         (r.delay_id ? " · linked to delay" : "") +
-        "</p>";
+        "</p>" +
+        (r.comments ? "<p class='text-secondary' style='font-size:12px;margin:4px 0 0'>" + escHtml(r.comments) + "</p>" : "");
       rowEl.appendChild(left);
 
       var right = document.createElement("div");
@@ -4948,6 +4996,82 @@
     });
 
     return box;
+  }
+
+  /** Gate D (Mitigation & Recovery, spec point 19): the Original Finish → Delay
+   * Forecast → Recovery Forecast → Latest Forecast → Actual Finish progression —
+   * delayImpactEngine.computeRecoveryForecast() does the actual work (every value
+   * either a stored fact or read live off the Schedule, nothing here computes
+   * anything). Returns null when there's nothing to show (no activity linked yet),
+   * same "caller checks and skips" convention as the rest of this section. */
+  function renderRecoveryForecastProgression(delayRecord, links, data) {
+    if (links.length === 0) return null;
+    var forecast = window.PCC.delayImpactEngine.computeRecoveryForecast(delayRecord, links, data.recovery_actions, data);
+    if (!forecast.available) return null;
+
+    var box = document.createElement("div");
+    box.style.marginTop = "var(--space-2)";
+    box.style.padding = "var(--space-2) var(--space-3)";
+    box.style.border = "1px solid var(--divider)";
+    box.style.borderRadius = "var(--radius-md)";
+    box.style.background = "var(--bg-default)";
+
+    var heading = document.createElement("p");
+    heading.className = "text-secondary";
+    heading.style.fontSize = "11px";
+    heading.style.fontWeight = "600";
+    heading.style.letterSpacing = "0.4px";
+    heading.style.margin = "0 0 4px";
+    heading.textContent = "RECOVERY FORECAST";
+    box.appendChild(heading);
+
+    box.appendChild(impactSummaryRow("Original Finish", forecast.original_finish || "—"));
+    box.appendChild(impactSummaryRow("Delay Forecast", forecast.delay_forecast || "—"));
+    box.appendChild(
+      impactSummaryRow(
+        "Recovery Forecast",
+        forecast.recovery_forecast
+          ? forecast.recovery_forecast + (forecast.active_recovery_days_planned > 0 ? " (" + forecast.active_recovery_days_planned + "d planned recovery)" : "")
+          : "—"
+      )
+    );
+    box.appendChild(impactSummaryRow("Latest Forecast", forecast.latest_forecast || "—"));
+    box.appendChild(impactSummaryRow("Actual Finish", forecast.actual_finish || "Not yet finished"));
+
+    return box;
+  }
+
+  /** Gate D (spec point 20 — Delay Timeline): a collapsed-by-default list of this
+   * delay's own status_history — auto-appended by the save handler whenever `status`
+   * actually changes (see renderDelayRecordsSection()'s onsubmit), never hand-curated
+   * here. Uses <details>/<summary> the same way renderParsedIssuesToggle() already does
+   * for Schedule import's own review issues list — a consistent, established pattern
+   * for "collapsed unless you want it" content in this file. */
+  function renderDelayTimeline(delayRecord) {
+    var history = delayRecord.status_history || [];
+    var details = document.createElement("details");
+    details.style.marginTop = "var(--space-2)";
+    var summaryTag = document.createElement("summary");
+    summaryTag.className = "text-secondary";
+    summaryTag.style.cursor = "pointer";
+    summaryTag.style.fontSize = "var(--text-xs)";
+    summaryTag.textContent = "Timeline (" + history.length + ")";
+    details.appendChild(summaryTag);
+
+    var list = document.createElement("div");
+    list.style.marginTop = "4px";
+    history.forEach(function (entry) {
+      var row = document.createElement("div");
+      row.className = "text-secondary";
+      row.style.fontSize = "var(--text-xs)";
+      row.style.marginTop = "2px";
+      var when = entry.changed_at ? new Date(entry.changed_at).toLocaleDateString() : "—";
+      row.textContent = when + " — " + (DELAY_STATUS_LABELS[entry.status] || entry.status) + (entry.note ? ": " + entry.note : "");
+      list.appendChild(row);
+    });
+    details.appendChild(list);
+
+    return details;
   }
 
   /** Planning & Scheduling-Centric Delay Management, Gate A/B (spec point 9): "+ Link
@@ -5446,6 +5570,9 @@
 
       var links = data.delay_activity_links.filter(function (l) { return l.delay_id === r.id; });
       left.appendChild(renderDelayScheduleImpact(r, links, data));
+      var recoveryForecastBox = renderRecoveryForecastProgression(r, links, data);
+      if (recoveryForecastBox) left.appendChild(recoveryForecastBox);
+      left.appendChild(renderDelayTimeline(r));
       left.appendChild(renderDelayLinkActivityPicker(r, links, data, rerender));
 
       rowEl.appendChild(left);

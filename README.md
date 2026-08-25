@@ -4594,6 +4594,49 @@ real, separately-scoped follow-on work (Mitigation & Recovery's own Forecast pro
 Risk/Issue/RFI/Daily Log/Meeting/Vendor/Change linking UI, Planner Action Centre, Dashboard/Lookahead/
 Executive Center integration, portfolio-wide analytics).
 
+## Planning & Scheduling-Centric Delay Management — Gate D (Mitigation & Recovery), 2026-08-25
+
+**What Gate D added**: Recovery Actions (Gate 24) already had almost every field spec point 18 lists
+(Owner, Target Date, Expected/Actual Recovery Days, Status), and the Delay Timeline mechanism
+(`status_history`, auto-appended) already existed from Gate A — but two real gaps: Mitigation (spec point
+17) had no home at all, and nothing displayed the timeline or the Recovery Forecast progression spec point
+19 describes anywhere.
+
+- **`store.js` (schema v60)**: `recovery_actions` gained `mitigation_type` (the spec's own 12-item list —
+  Resequence Work, Add Resources, Additional Shift, Overtime, ... — verbatim) and `comments` (distinct
+  from the existing `description`, which stays the short action label/title matching the spec's own
+  examples like "Additional shift"). Deliberately a field ON a Recovery Action, not a second parallel
+  register — the spec's own worked Mitigation examples already read exactly like Recovery Action titles.
+- **`delayImpactEngine.js`**: new `computeRecoveryForecast()` — Original Finish → Delay Forecast →
+  Recovery Forecast → Latest Forecast → Actual Finish (spec point 19), anchored on the delay's own primary
+  activity. Delay Forecast = the frozen Original Finish snapshot + the delay's own `delay_days` (the
+  original estimate, never touched by later events); Recovery Forecast = Delay Forecast minus the sum of
+  `estimated_recovery_days` across the delay's still-open/in-progress Recovery Actions (a cancelled or
+  already-completed action doesn't count — completed's effect is already in the Schedule's own live
+  numbers, not double-counted); Latest Forecast is read straight off the activity's own live
+  `early_finish`/`planned_finish`; Actual Finish prefers the Schedule's own `actual_finish` when the
+  activity is genuinely marked complete, falling back to a value derived from the delay's own
+  `actual_impact_days` only when the Schedule hasn't recorded a real finish yet. Every value is either a
+  stored fact or read live — nothing here is a second, independently-maintained forecast.
+- **`schedule.js`**: the Recovery Action form gained Mitigation Type and Comments fields. Each Delay
+  Record now shows a **Recovery Forecast** panel (the five-stage progression above) beneath its Impact
+  Summary, and a collapsed-by-default **Timeline** (spec point 20) listing every `status_history` entry —
+  the auto-appended mechanism built in Gate A finally has somewhere to actually be seen.
+
+**Verified**: full jsdom suite (87 files, 0 failures). `test_delay_impact_engine.js` gained 5 new checks
+directly mirroring the spec's own TEST 3 (recovery scenario) plus edge cases (cancelled/completed actions
+excluded from the recovery total, Actual Finish's fallback ordering, a deleted primary activity handled
+gracefully). New `test_delay_gate_d_recovery_e2e.js` (7 checks) drives the real UI through the exact TEST
+3 numbers end-to-end — a 20 Aug original finish, a 10-day delay (30 Aug Delay Forecast), a 5-day Recovery
+Action (25 Aug Recovery Forecast) — then confirms the Timeline records both the initial and a later status
+change, and that marking the activity complete makes Actual Finish switch from its derived fallback to
+the Schedule's own real date.
+
+**Not done — Gates E through H remain deliberately unstarted**: Risk/Issue/RFI/Daily Log/Meeting/Vendor/
+Change linking UI (the store fields have existed since Gate A, but nothing yet lets a user actually pick
+one from the Delay form), Planner Action Centre, Dashboard/Lookahead/Executive Center integration,
+portfolio-wide analytics.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →

@@ -3689,6 +3689,13 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     return Math.round((msB - msA) / DAY_MS);
   }
 
+  function addDays(iso, days) {
+    if (!iso || days === null || days === undefined) return null;
+    var ms = new Date(iso + "T00:00:00Z").getTime();
+    if (isNaN(ms)) return null;
+    return new Date(ms + days * DAY_MS).toISOString().slice(0, 10);
+  }
+
   var DEFAULT_NEAR_CRITICAL_THRESHOLD_DAYS = 5;
 
   /** Same simple threshold rule scheduleCpmEngine.js's own calculateSchedule() applies
@@ -3852,11 +3859,74 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     };
   }
 
+  /** Gate D (Mitigation & Recovery, spec point 19): the Original Finish → Delay
+   * Forecast → Recovery Forecast → Latest Forecast → Actual Finish progression.
+   * Everything here is either a stored fact (the frozen snapshot, the delay's own
+   * estimated/actual impact days, a Recovery Action's own estimated_recovery_days) or
+   * read live from the Schedule (Latest Forecast, and Actual Finish when the activity
+   * itself has been marked complete) — nothing is a second, independently-maintained
+   * forecast. Anchored on the delay's own PRIMARY activity (delayRecord.activity_id) —
+   * a multi-activity delay's other linked activities each have their own real dates,
+   * but this progression narrative is inherently about ONE finish date moving through
+   * one story, matching the spec's own single-date worked example (section 19). Returns
+   * available:false only when the primary activity/link can't be found at all (e.g. it
+   * was since deleted). */
+  function computeRecoveryForecast(delayRecord, links, recoveryActions, data) {
+    var primaryLink =
+      links.find(function (l) {
+        return l.activity_id === delayRecord.activity_id;
+      }) || links[0];
+    if (!primaryLink) return { available: false };
+    var activity = data.activities.find(function (a) {
+      return a.id === primaryLink.activity_id;
+    });
+    if (!activity) return { available: false };
+
+    var originalFinish = primaryLink.original_planned_finish || null;
+    var delayForecast = addDays(originalFinish, delayRecord.delay_days);
+
+    // Only OPEN/IN-PROGRESS recovery actions responding to THIS delay count toward the
+    // recovery forecast — a cancelled action was never going to happen, and a completed
+    // one's actual effect is already reflected in the Schedule's own live dates
+    // (Latest Forecast below), not double-counted here.
+    var activeRecoveryDays = recoveryActions
+      .filter(function (ra) {
+        return ra.delay_id === delayRecord.id && ra.status !== "cancelled" && ra.status !== "completed";
+      })
+      .reduce(function (sum, ra) {
+        return sum + (ra.estimated_recovery_days || 0);
+      }, 0);
+    var recoveryForecast = delayForecast != null ? addDays(delayForecast, -activeRecoveryDays) : null;
+
+    var latestForecast = activity.actual_finish || activity.early_finish || activity.planned_finish || null;
+
+    // Actual Finish: the Schedule's own actual_finish is authoritative when set (it IS
+    // the schedule, per spec point 34 — reference, don't duplicate). Falls back to a
+    // value derived from the delay's own actual_impact_days only when the activity
+    // hasn't been marked finished yet but the delay's own outcome has already been
+    // recorded (e.g. logged before the schedule itself was updated).
+    var actualFinish = activity.actual_finish || null;
+    if (!actualFinish && delayRecord.actual_impact_days != null && originalFinish) {
+      actualFinish = addDays(originalFinish, delayRecord.actual_impact_days);
+    }
+
+    return {
+      available: true,
+      original_finish: originalFinish,
+      delay_forecast: delayForecast,
+      recovery_forecast: recoveryForecast,
+      latest_forecast: latestForecast,
+      actual_finish: actualFinish,
+      active_recovery_days_planned: activeRecoveryDays,
+    };
+  }
+
   window.PCC.delayImpactEngine = {
     classifyCriticality: classifyCriticality,
     computeActivityImpact: computeActivityImpact,
     computeDelayImpact: computeDelayImpact,
     computeProjectFinishImpact: computeProjectFinishImpact,
+    computeRecoveryForecast: computeRecoveryForecast,
   };
 })();
 
@@ -5486,7 +5556,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 59;
+  var SCHEMA_VERSION = 60;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -6909,6 +6979,20 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       // so every existing recovery action (and every existing test) keeps working
       // unchanged.
       delay_id: "",
+      // Gate D (Delay Management, spec point 17 — Mitigation): a standardized type for
+      // WHAT KIND of corrective action this is (Resequence Work, Add Resources,
+      // Overtime, ...). Deliberately a field ON a Recovery Action rather than a wholly
+      // separate "Mitigation" register — the spec's own worked examples ("Additional
+      // shift," "Additional installation crew") are exactly Recovery Actions with a
+      // type, not a different kind of record; a second parallel register for the same
+      // underlying concept would be exactly the "generic CRUD" duplication this whole
+      // initiative is meant to avoid.
+      mitigation_type: "other",
+      // Gate D (spec point 18's own field list — "Recovery Action, Owner, Target Date,
+      // Expected Recovery Days, Actual Recovery Days, Status, Comments"): free-text
+      // notes distinct from `description` (which stays the short action label/title,
+      // e.g. "Additional shift" — matching the spec's own examples).
+      comments: "",
       created_at: now,
       updated_at: now,
     };
@@ -6916,6 +7000,15 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   }
 
   var RECOVERY_ACTION_STATUSES = ["open", "in_progress", "completed", "cancelled"];
+
+  // Gate D (spec point 17): the mitigation-type taxonomy, verbatim from the spec's own
+  // list. A plain hardcoded list for this gate, same "hardcoded first, editable register
+  // later if actually asked for" path DELAY_CATEGORIES took in Gate A.
+  var MITIGATION_TYPES = [
+    "resequence_work", "add_resources", "add_equipment", "additional_shift", "overtime",
+    "parallel_working", "alternative_work_front", "vendor_expediting", "alternative_procurement",
+    "engineering_solution", "temporary_works", "other",
+  ];
 
   function newDelayRecordId() {
     return "dly_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
@@ -8456,6 +8549,16 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       loaded.schema_version = 59;
     }
 
+    if (loaded.schema_version < 60) {
+      // Delay Management, Gate D (Mitigation & Recovery): mitigation_type/comments on
+      // every existing Recovery Action — see newRecoveryAction()'s own header comment.
+      (loaded.recovery_actions || []).forEach(function (r) {
+        if (r.mitigation_type === undefined) r.mitigation_type = "other";
+        if (r.comments === undefined) r.comments = "";
+      });
+      loaded.schema_version = 60;
+    }
+
     return loaded;
   }
 
@@ -8827,6 +8930,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     newScheduleBaseline: newScheduleBaseline,
     newRecoveryAction: newRecoveryAction,
     RECOVERY_ACTION_STATUSES: RECOVERY_ACTION_STATUSES,
+    MITIGATION_TYPES: MITIGATION_TYPES,
     newDelayRecord: newDelayRecord,
     DELAY_RECORD_CAUSES: DELAY_RECORD_CAUSES,
     DELAY_RECORD_STATUSES: DELAY_RECORD_STATUSES,
@@ -27510,6 +27614,22 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     non_critical: "complete",
   };
 
+  // Gate D (Mitigation & Recovery, spec point 17).
+  var MITIGATION_TYPE_LABELS = {
+    resequence_work: "Resequence Work",
+    add_resources: "Add Resources",
+    add_equipment: "Add Equipment",
+    additional_shift: "Additional Shift",
+    overtime: "Overtime",
+    parallel_working: "Parallel Working",
+    alternative_work_front: "Alternative Work Front",
+    vendor_expediting: "Vendor Expediting",
+    alternative_procurement: "Alternative Procurement",
+    engineering_solution: "Engineering Solution",
+    temporary_works: "Temporary Works",
+    other: "Other",
+  };
+
   var uiState = {
     projectId: "", // currently selected project \u2014 everything below scopes to this
     scheduleId: "", // currently selected schedule within that project
@@ -32041,7 +32161,35 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         delayLinkField.appendChild(delayLinkSelect);
         grid.appendChild(delayLinkField);
 
+        // Gate D (spec point 17 — Mitigation): what KIND of corrective action this is.
+        var mitigationField = document.createElement("div");
+        mitigationField.className = "field";
+        mitigationField.innerHTML = "<label>Mitigation Type</label>";
+        var mitigationSelect = document.createElement("select");
+        mitigationSelect.id = "recactionfield-mitigation_type";
+        window.PCC.store.MITIGATION_TYPES.forEach(function (t) {
+          var opt = document.createElement("option");
+          opt.value = t;
+          opt.textContent = MITIGATION_TYPE_LABELS[t];
+          mitigationSelect.appendChild(opt);
+        });
+        mitigationSelect.value = editing.mitigation_type || "other";
+        mitigationField.appendChild(mitigationSelect);
+        grid.appendChild(mitigationField);
+
         form.appendChild(grid);
+
+        // Gate D (spec point 18's own field list — Comments, distinct from the short
+        // action label above).
+        var commentsField = document.createElement("div");
+        commentsField.className = "field";
+        commentsField.innerHTML = "<label>Comments</label>";
+        var commentsInput = document.createElement("textarea");
+        commentsInput.id = "recactionfield-comments";
+        commentsInput.rows = 2;
+        commentsInput.value = editing.comments || "";
+        commentsField.appendChild(commentsInput);
+        form.appendChild(commentsField);
 
         var errorMsg = document.createElement("p");
         errorMsg.style.color = "var(--status-critical)";
@@ -32086,6 +32234,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
             estimated_cost: costInput.value === "" ? null : Number(costInput.value),
             actual_recovery_days: actualRecDaysInput.value === "" ? null : Number(actualRecDaysInput.value),
             delay_id: delayLinkSelect.value,
+            mitigation_type: mitigationSelect.value,
+            comments: commentsInput.value,
             updated_at: new Date().toISOString(),
           };
           window.PCC.store.update(function (d) {
@@ -32127,7 +32277,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
       var left = document.createElement("div");
       left.innerHTML =
-        "<strong>" + r.description + "</strong>" +
+        "<strong>" + escHtml(r.description) + "</strong>" +
+        " <span class='text-secondary' style='font-size:12px;'>(" + MITIGATION_TYPE_LABELS[r.mitigation_type] + ")</span>" +
         "<p class='text-secondary' style='font-size:12px;margin:4px 0 0'>" +
         (r.responsible_person ? r.responsible_person + " · " : "") +
         (r.target_recovery_date ? "target " + r.target_recovery_date : "no target date") +
@@ -32135,7 +32286,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         (r.actual_recovery_days != null ? " · actual " + r.actual_recovery_days + "d" : "") +
         (fmtMoney(r.estimated_cost) != null ? " · est. cost " + fmtMoney(r.estimated_cost) : "") +
         (r.delay_id ? " · linked to delay" : "") +
-        "</p>";
+        "</p>" +
+        (r.comments ? "<p class='text-secondary' style='font-size:12px;margin:4px 0 0'>" + escHtml(r.comments) + "</p>" : "");
       rowEl.appendChild(left);
 
       var right = document.createElement("div");
@@ -32365,6 +32517,82 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     });
 
     return box;
+  }
+
+  /** Gate D (Mitigation & Recovery, spec point 19): the Original Finish → Delay
+   * Forecast → Recovery Forecast → Latest Forecast → Actual Finish progression —
+   * delayImpactEngine.computeRecoveryForecast() does the actual work (every value
+   * either a stored fact or read live off the Schedule, nothing here computes
+   * anything). Returns null when there's nothing to show (no activity linked yet),
+   * same "caller checks and skips" convention as the rest of this section. */
+  function renderRecoveryForecastProgression(delayRecord, links, data) {
+    if (links.length === 0) return null;
+    var forecast = window.PCC.delayImpactEngine.computeRecoveryForecast(delayRecord, links, data.recovery_actions, data);
+    if (!forecast.available) return null;
+
+    var box = document.createElement("div");
+    box.style.marginTop = "var(--space-2)";
+    box.style.padding = "var(--space-2) var(--space-3)";
+    box.style.border = "1px solid var(--divider)";
+    box.style.borderRadius = "var(--radius-md)";
+    box.style.background = "var(--bg-default)";
+
+    var heading = document.createElement("p");
+    heading.className = "text-secondary";
+    heading.style.fontSize = "11px";
+    heading.style.fontWeight = "600";
+    heading.style.letterSpacing = "0.4px";
+    heading.style.margin = "0 0 4px";
+    heading.textContent = "RECOVERY FORECAST";
+    box.appendChild(heading);
+
+    box.appendChild(impactSummaryRow("Original Finish", forecast.original_finish || "—"));
+    box.appendChild(impactSummaryRow("Delay Forecast", forecast.delay_forecast || "—"));
+    box.appendChild(
+      impactSummaryRow(
+        "Recovery Forecast",
+        forecast.recovery_forecast
+          ? forecast.recovery_forecast + (forecast.active_recovery_days_planned > 0 ? " (" + forecast.active_recovery_days_planned + "d planned recovery)" : "")
+          : "—"
+      )
+    );
+    box.appendChild(impactSummaryRow("Latest Forecast", forecast.latest_forecast || "—"));
+    box.appendChild(impactSummaryRow("Actual Finish", forecast.actual_finish || "Not yet finished"));
+
+    return box;
+  }
+
+  /** Gate D (spec point 20 — Delay Timeline): a collapsed-by-default list of this
+   * delay's own status_history — auto-appended by the save handler whenever `status`
+   * actually changes (see renderDelayRecordsSection()'s onsubmit), never hand-curated
+   * here. Uses <details>/<summary> the same way renderParsedIssuesToggle() already does
+   * for Schedule import's own review issues list — a consistent, established pattern
+   * for "collapsed unless you want it" content in this file. */
+  function renderDelayTimeline(delayRecord) {
+    var history = delayRecord.status_history || [];
+    var details = document.createElement("details");
+    details.style.marginTop = "var(--space-2)";
+    var summaryTag = document.createElement("summary");
+    summaryTag.className = "text-secondary";
+    summaryTag.style.cursor = "pointer";
+    summaryTag.style.fontSize = "var(--text-xs)";
+    summaryTag.textContent = "Timeline (" + history.length + ")";
+    details.appendChild(summaryTag);
+
+    var list = document.createElement("div");
+    list.style.marginTop = "4px";
+    history.forEach(function (entry) {
+      var row = document.createElement("div");
+      row.className = "text-secondary";
+      row.style.fontSize = "var(--text-xs)";
+      row.style.marginTop = "2px";
+      var when = entry.changed_at ? new Date(entry.changed_at).toLocaleDateString() : "—";
+      row.textContent = when + " — " + (DELAY_STATUS_LABELS[entry.status] || entry.status) + (entry.note ? ": " + entry.note : "");
+      list.appendChild(row);
+    });
+    details.appendChild(list);
+
+    return details;
   }
 
   /** Planning & Scheduling-Centric Delay Management, Gate A/B (spec point 9): "+ Link
@@ -32863,6 +33091,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
       var links = data.delay_activity_links.filter(function (l) { return l.delay_id === r.id; });
       left.appendChild(renderDelayScheduleImpact(r, links, data));
+      var recoveryForecastBox = renderRecoveryForecastProgression(r, links, data);
+      if (recoveryForecastBox) left.appendChild(recoveryForecastBox);
+      left.appendChild(renderDelayTimeline(r));
       left.appendChild(renderDelayLinkActivityPicker(r, links, data, rerender));
 
       rowEl.appendChild(left);

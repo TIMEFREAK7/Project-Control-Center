@@ -262,5 +262,73 @@ check("TEST 6 (project finish impact): a critical activity's duration growing pu
   assert.strictEqual(delayedImpact.project_impact_days, 7, "a 7-day critical-path delay must move the project finish by 7 days");
 });
 
+// ---------------------------------------------------------------------------
+// computeRecoveryForecast — TEST 3 (spec section 41): the Original Finish -> Delay
+// Forecast -> Recovery Forecast -> Latest Forecast -> Actual Finish progression.
+// ---------------------------------------------------------------------------
+
+function recoveryAction(overrides) {
+  return Object.assign(
+    { id: "rec_1", delay_id: "dly_1", activity_id: "act_1", project_id: "p1", description: "", status: "open", estimated_recovery_days: null, actual_recovery_days: null },
+    overrides
+  );
+}
+
+check("TEST 3 (recovery): Original Finish 20 Aug, +10d delay -> Delay Forecast 30 Aug, a 5-day recovery action -> Recovery Forecast 25 Aug, while Latest Forecast reads whatever the Schedule currently says (24 Aug)", () => {
+  var delayRecord = { id: "dly_1", activity_id: "act_1", delay_days: 10, actual_impact_days: null };
+  var lnk = link({ activity_id: "act_1", original_planned_finish: "2026-08-20" });
+  var act = activity({ id: "act_1", planned_finish: "2026-08-20", early_finish: "2026-08-24" }); // a later, independent schedule recalc landed on 24 Aug
+  var data = { activities: [act], schedules: [schedule()] };
+  var actions = [recoveryAction({ status: "in_progress", estimated_recovery_days: 5 })];
+
+  var forecast = delayEngine.computeRecoveryForecast(delayRecord, [lnk], actions, data);
+  assert.strictEqual(forecast.available, true);
+  assert.strictEqual(forecast.original_finish, "2026-08-20");
+  assert.strictEqual(forecast.delay_forecast, "2026-08-30", "20 Aug + 10 days = 30 Aug");
+  assert.strictEqual(forecast.recovery_forecast, "2026-08-25", "30 Aug - 5 days of planned recovery = 25 Aug");
+  assert.strictEqual(forecast.latest_forecast, "2026-08-24", "the Schedule's own live number wins, whatever it currently says");
+});
+
+check("computeRecoveryForecast excludes cancelled AND already-completed recovery actions from the recovery-days total", () => {
+  var delayRecord = { id: "dly_1", activity_id: "act_1", delay_days: 10, actual_impact_days: null };
+  var lnk = link({ activity_id: "act_1", original_planned_finish: "2026-08-20" });
+  var act = activity({ id: "act_1" });
+  var data = { activities: [act], schedules: [schedule()] };
+  var actions = [
+    recoveryAction({ id: "r1", status: "cancelled", estimated_recovery_days: 5 }),
+    recoveryAction({ id: "r2", status: "completed", estimated_recovery_days: 3 }),
+    recoveryAction({ id: "r3", status: "open", estimated_recovery_days: 2 }),
+    recoveryAction({ id: "r4", delay_id: "dly_OTHER", status: "open", estimated_recovery_days: 100 }), // a different delay entirely
+  ];
+  var forecast = delayEngine.computeRecoveryForecast(delayRecord, [lnk], actions, data);
+  assert.strictEqual(forecast.active_recovery_days_planned, 2, "only the one still-open action for THIS delay should count");
+  assert.strictEqual(forecast.recovery_forecast, "2026-08-28", "30 Aug delay forecast - 2 active recovery days = 28 Aug");
+});
+
+check("Actual Finish prefers the Schedule's own actual_finish when the activity is genuinely marked complete", () => {
+  var delayRecord = { id: "dly_1", activity_id: "act_1", delay_days: 10, actual_impact_days: 3 };
+  var lnk = link({ activity_id: "act_1", original_planned_finish: "2026-08-20" });
+  var act = activity({ id: "act_1", actual_finish: "2026-08-23" });
+  var data = { activities: [act], schedules: [schedule()] };
+  var forecast = delayEngine.computeRecoveryForecast(delayRecord, [lnk], [], data);
+  assert.strictEqual(forecast.actual_finish, "2026-08-23", "the Schedule's own actual_finish is authoritative — never overridden by the delay's own recorded actual_impact_days");
+});
+
+check("Actual Finish falls back to the delay's own actual_impact_days only when the Schedule hasn't recorded a real actual_finish yet", () => {
+  var delayRecord = { id: "dly_1", activity_id: "act_1", delay_days: 10, actual_impact_days: 3 };
+  var lnk = link({ activity_id: "act_1", original_planned_finish: "2026-08-20" });
+  var act = activity({ id: "act_1" }); // no actual_finish set on the Schedule yet
+  var data = { activities: [act], schedules: [schedule()] };
+  var forecast = delayEngine.computeRecoveryForecast(delayRecord, [lnk], [], data);
+  assert.strictEqual(forecast.actual_finish, "2026-08-23", "20 Aug + 3 days actual impact = 23 Aug, derived only as a fallback");
+});
+
+check("computeRecoveryForecast reports available:false when the primary activity/link can't be found (deleted since the delay was created)", () => {
+  var delayRecord = { id: "dly_1", activity_id: "act_gone", delay_days: 10, actual_impact_days: null };
+  var data = { activities: [], schedules: [schedule()] };
+  var forecast = delayEngine.computeRecoveryForecast(delayRecord, [], [], data);
+  assert.strictEqual(forecast.available, false);
+});
+
 console.log("\n" + passed + " passed, " + failed + " failed");
 process.exit(failed > 0 ? 1 : 0);

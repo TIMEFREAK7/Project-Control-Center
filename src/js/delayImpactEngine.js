@@ -33,6 +33,13 @@
     return Math.round((msB - msA) / DAY_MS);
   }
 
+  function addDays(iso, days) {
+    if (!iso || days === null || days === undefined) return null;
+    var ms = new Date(iso + "T00:00:00Z").getTime();
+    if (isNaN(ms)) return null;
+    return new Date(ms + days * DAY_MS).toISOString().slice(0, 10);
+  }
+
   var DEFAULT_NEAR_CRITICAL_THRESHOLD_DAYS = 5;
 
   /** Same simple threshold rule scheduleCpmEngine.js's own calculateSchedule() applies
@@ -196,10 +203,73 @@
     };
   }
 
+  /** Gate D (Mitigation & Recovery, spec point 19): the Original Finish → Delay
+   * Forecast → Recovery Forecast → Latest Forecast → Actual Finish progression.
+   * Everything here is either a stored fact (the frozen snapshot, the delay's own
+   * estimated/actual impact days, a Recovery Action's own estimated_recovery_days) or
+   * read live from the Schedule (Latest Forecast, and Actual Finish when the activity
+   * itself has been marked complete) — nothing is a second, independently-maintained
+   * forecast. Anchored on the delay's own PRIMARY activity (delayRecord.activity_id) —
+   * a multi-activity delay's other linked activities each have their own real dates,
+   * but this progression narrative is inherently about ONE finish date moving through
+   * one story, matching the spec's own single-date worked example (section 19). Returns
+   * available:false only when the primary activity/link can't be found at all (e.g. it
+   * was since deleted). */
+  function computeRecoveryForecast(delayRecord, links, recoveryActions, data) {
+    var primaryLink =
+      links.find(function (l) {
+        return l.activity_id === delayRecord.activity_id;
+      }) || links[0];
+    if (!primaryLink) return { available: false };
+    var activity = data.activities.find(function (a) {
+      return a.id === primaryLink.activity_id;
+    });
+    if (!activity) return { available: false };
+
+    var originalFinish = primaryLink.original_planned_finish || null;
+    var delayForecast = addDays(originalFinish, delayRecord.delay_days);
+
+    // Only OPEN/IN-PROGRESS recovery actions responding to THIS delay count toward the
+    // recovery forecast — a cancelled action was never going to happen, and a completed
+    // one's actual effect is already reflected in the Schedule's own live dates
+    // (Latest Forecast below), not double-counted here.
+    var activeRecoveryDays = recoveryActions
+      .filter(function (ra) {
+        return ra.delay_id === delayRecord.id && ra.status !== "cancelled" && ra.status !== "completed";
+      })
+      .reduce(function (sum, ra) {
+        return sum + (ra.estimated_recovery_days || 0);
+      }, 0);
+    var recoveryForecast = delayForecast != null ? addDays(delayForecast, -activeRecoveryDays) : null;
+
+    var latestForecast = activity.actual_finish || activity.early_finish || activity.planned_finish || null;
+
+    // Actual Finish: the Schedule's own actual_finish is authoritative when set (it IS
+    // the schedule, per spec point 34 — reference, don't duplicate). Falls back to a
+    // value derived from the delay's own actual_impact_days only when the activity
+    // hasn't been marked finished yet but the delay's own outcome has already been
+    // recorded (e.g. logged before the schedule itself was updated).
+    var actualFinish = activity.actual_finish || null;
+    if (!actualFinish && delayRecord.actual_impact_days != null && originalFinish) {
+      actualFinish = addDays(originalFinish, delayRecord.actual_impact_days);
+    }
+
+    return {
+      available: true,
+      original_finish: originalFinish,
+      delay_forecast: delayForecast,
+      recovery_forecast: recoveryForecast,
+      latest_forecast: latestForecast,
+      actual_finish: actualFinish,
+      active_recovery_days_planned: activeRecoveryDays,
+    };
+  }
+
   window.PCC.delayImpactEngine = {
     classifyCriticality: classifyCriticality,
     computeActivityImpact: computeActivityImpact,
     computeDelayImpact: computeDelayImpact,
     computeProjectFinishImpact: computeProjectFinishImpact,
+    computeRecoveryForecast: computeRecoveryForecast,
   };
 })();

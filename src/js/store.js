@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 59;
+  var SCHEMA_VERSION = 60;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -1432,6 +1432,20 @@
       // so every existing recovery action (and every existing test) keeps working
       // unchanged.
       delay_id: "",
+      // Gate D (Delay Management, spec point 17 — Mitigation): a standardized type for
+      // WHAT KIND of corrective action this is (Resequence Work, Add Resources,
+      // Overtime, ...). Deliberately a field ON a Recovery Action rather than a wholly
+      // separate "Mitigation" register — the spec's own worked examples ("Additional
+      // shift," "Additional installation crew") are exactly Recovery Actions with a
+      // type, not a different kind of record; a second parallel register for the same
+      // underlying concept would be exactly the "generic CRUD" duplication this whole
+      // initiative is meant to avoid.
+      mitigation_type: "other",
+      // Gate D (spec point 18's own field list — "Recovery Action, Owner, Target Date,
+      // Expected Recovery Days, Actual Recovery Days, Status, Comments"): free-text
+      // notes distinct from `description` (which stays the short action label/title,
+      // e.g. "Additional shift" — matching the spec's own examples).
+      comments: "",
       created_at: now,
       updated_at: now,
     };
@@ -1439,6 +1453,15 @@
   }
 
   var RECOVERY_ACTION_STATUSES = ["open", "in_progress", "completed", "cancelled"];
+
+  // Gate D (spec point 17): the mitigation-type taxonomy, verbatim from the spec's own
+  // list. A plain hardcoded list for this gate, same "hardcoded first, editable register
+  // later if actually asked for" path DELAY_CATEGORIES took in Gate A.
+  var MITIGATION_TYPES = [
+    "resequence_work", "add_resources", "add_equipment", "additional_shift", "overtime",
+    "parallel_working", "alternative_work_front", "vendor_expediting", "alternative_procurement",
+    "engineering_solution", "temporary_works", "other",
+  ];
 
   function newDelayRecordId() {
     return "dly_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
@@ -2979,6 +3002,16 @@
       loaded.schema_version = 59;
     }
 
+    if (loaded.schema_version < 60) {
+      // Delay Management, Gate D (Mitigation & Recovery): mitigation_type/comments on
+      // every existing Recovery Action — see newRecoveryAction()'s own header comment.
+      (loaded.recovery_actions || []).forEach(function (r) {
+        if (r.mitigation_type === undefined) r.mitigation_type = "other";
+        if (r.comments === undefined) r.comments = "";
+      });
+      loaded.schema_version = 60;
+    }
+
     return loaded;
   }
 
@@ -3350,6 +3383,7 @@
     newScheduleBaseline: newScheduleBaseline,
     newRecoveryAction: newRecoveryAction,
     RECOVERY_ACTION_STATUSES: RECOVERY_ACTION_STATUSES,
+    MITIGATION_TYPES: MITIGATION_TYPES,
     newDelayRecord: newDelayRecord,
     DELAY_RECORD_CAUSES: DELAY_RECORD_CAUSES,
     DELAY_RECORD_STATUSES: DELAY_RECORD_STATUSES,
