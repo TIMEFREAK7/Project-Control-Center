@@ -42,6 +42,89 @@
   var RFI_STATUS_LABELS = { open: "Open", answered: "Answered", closed: "Closed" };
   var EXPIRING_SOON_DAYS = 30;
 
+  // Gate E (Planning & Scheduling-Centric Delay Management, spec point 24 — Vendor
+  // Integration). Same category keys/labels schedule.js's own DELAY_CATEGORY_LABELS
+  // uses, duplicated per this app's established per-module-helpers convention (see this
+  // file's own header comment on why every vendor<->X view stays self-contained).
+  var VENDOR_DELAY_CATEGORY_LABELS = {
+    late_material: "Late Material",
+    late_vendor_submission: "Late Vendor Submission",
+    late_drawing: "Late Drawing",
+    design_change: "Design Change",
+    client_delay: "Client Delay",
+    consultant_delay: "Consultant Delay",
+    vendor_delay: "Vendor Delay",
+    contractor_delay: "Contractor Delay",
+    approval_delay: "Approval Delay",
+    rfi_delay: "RFI Delay",
+    resource_shortage: "Resource Shortage",
+    equipment_shortage: "Equipment Shortage",
+    site_access: "Site Access",
+    site_constraint: "Site Constraint",
+    interface_issue: "Interface Issue",
+    weather: "Weather",
+    procurement: "Procurement",
+    quality_issue: "Quality Issue",
+    rework: "Rework",
+    change_variation: "Change / Variation",
+    other: "Other",
+  };
+
+  /** Gate E (spec point 24): "Vendor information should support delay analysis... Open
+   * Delays, Critical, Delay Events, Total Delay Days" — computed fresh from
+   * data.delay_records/delay_activity_links every time, never a stored/cached score.
+   * Deliberately NO invented performance score here (spec's own explicit instruction:
+   * "Do NOT create an arbitrary vendor performance score unless its methodology is
+   * explicitly defined") — every number below is a plain, explainable count or sum. */
+  function computeVendorDelayStats(vendor, data) {
+    var vendorDelays = data.delay_records.filter(function (r) {
+      return r.vendor_id === vendor.id;
+    });
+    var openCount = vendorDelays.filter(function (r) {
+      return r.status !== "closed" && r.status !== "recovered";
+    }).length;
+    var totalDelayDays = vendorDelays.reduce(function (sum, r) {
+      return sum + (r.delay_days || 0);
+    }, 0);
+    var criticalCount = 0;
+    var causeCounts = {};
+    vendorDelays.forEach(function (r) {
+      var links = data.delay_activity_links.filter(function (l) {
+        return l.delay_id === r.id;
+      });
+      var impact = window.PCC.delayImpactEngine.computeDelayImpact(r, links, data);
+      if (impact.overall_criticality === "critical") criticalCount++;
+      var cat = r.delay_category || "other";
+      causeCounts[cat] = (causeCounts[cat] || 0) + 1;
+    });
+    var delayIds = {};
+    vendorDelays.forEach(function (r) {
+      delayIds[r.id] = true;
+    });
+    var recoveryActionsCount = data.recovery_actions.filter(function (ra) {
+      return ra.delay_id && delayIds[ra.delay_id];
+    }).length;
+    // "Repeated" causes only — a single one-off event isn't a pattern worth flagging.
+    var repeatedCauses = Object.keys(causeCounts)
+      .filter(function (k) {
+        return causeCounts[k] > 1;
+      })
+      .sort(function (a, b) {
+        return causeCounts[b] - causeCounts[a];
+      })
+      .map(function (k) {
+        return (VENDOR_DELAY_CATEGORY_LABELS[k] || k) + " (" + causeCounts[k] + ")";
+      });
+    return {
+      totalEvents: vendorDelays.length,
+      openCount: openCount,
+      criticalCount: criticalCount,
+      totalDelayDays: totalDelayDays,
+      recoveryActionsCount: recoveryActionsCount,
+      repeatedCauses: repeatedCauses,
+    };
+  }
+
   var VENDOR_FIELD_CONFIG = [
     { key: "vendor_code", label: "Vendor Code", type: "text" },
     { key: "vendor_name", label: "Vendor Name", type: "text", required: true },
@@ -1041,6 +1124,41 @@
     statsRow.appendChild(stat("RFI / TQ", data.vendor_rfi_links.filter(function (l) { return l.vendor_id === vendor.id; }).length));
     statsRow.appendChild(stat("Risks", data.vendor_risk_links.filter(function (l) { return l.vendor_id === vendor.id; }).length));
     panel.appendChild(statsRow);
+
+    // Gate E (Delay Management, spec point 24): shown only when this vendor actually
+    // has delay history — an empty section for every vendor that's never caused one
+    // would just be clutter, not information.
+    var delayStats = computeVendorDelayStats(vendor, data);
+    if (delayStats.totalEvents > 0) {
+      var delayHeading = document.createElement("p");
+      delayHeading.className = "text-secondary";
+      delayHeading.style.fontSize = "11px";
+      delayHeading.style.fontWeight = "600";
+      delayHeading.style.letterSpacing = "0.4px";
+      delayHeading.style.margin = "var(--space-4) 0 var(--space-2)";
+      delayHeading.textContent = "DELAY ANALYSIS";
+      panel.appendChild(delayHeading);
+
+      var delayStatsRow = document.createElement("div");
+      delayStatsRow.style.display = "flex";
+      delayStatsRow.style.gap = "var(--space-5)";
+      delayStatsRow.style.flexWrap = "wrap";
+      delayStatsRow.appendChild(stat("Delay Events", delayStats.totalEvents));
+      delayStatsRow.appendChild(stat("Open Delays", delayStats.openCount));
+      delayStatsRow.appendChild(stat("Critical", delayStats.criticalCount));
+      delayStatsRow.appendChild(stat("Total Delay Days", delayStats.totalDelayDays));
+      delayStatsRow.appendChild(stat("Recovery Actions", delayStats.recoveryActionsCount));
+      panel.appendChild(delayStatsRow);
+
+      if (delayStats.repeatedCauses.length > 0) {
+        var repeatedP = document.createElement("p");
+        repeatedP.className = "text-secondary";
+        repeatedP.style.fontSize = "12px";
+        repeatedP.style.marginTop = "var(--space-2)";
+        repeatedP.textContent = "Repeated causes: " + delayStats.repeatedCauses.join(", ");
+        panel.appendChild(repeatedP);
+      }
+    }
 
     container.appendChild(panel);
   }

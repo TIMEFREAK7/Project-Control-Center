@@ -37,6 +37,38 @@
     // photos are deliberately never included — a clone is a fresh day, not a copy of
     // yesterday's safety incident or photos.
     pendingPrefill: null,
+    // Gate E (Planning & Scheduling-Centric Delay Management, spec point 22 — Daily
+    // Site Log integration): id of the log entry whose "+ Log Delay" quick-create form
+    // is currently open, or null.
+    creatingDelayForLogId: null,
+  };
+
+  // Gate E (spec point 22): the daily-life examples the spec itself lists (material/
+  // equipment unavailable, labour shortage, ...) map onto schedule.js's own
+  // DELAY_CATEGORIES — duplicated here per this app's established per-module-helpers
+  // convention (see this file's own field-config pattern for the same treatment).
+  var DAILY_LOG_DELAY_CATEGORY_LABELS = {
+    late_material: "Late Material",
+    late_vendor_submission: "Late Vendor Submission",
+    late_drawing: "Late Drawing",
+    design_change: "Design Change",
+    client_delay: "Client Delay",
+    consultant_delay: "Consultant Delay",
+    vendor_delay: "Vendor Delay",
+    contractor_delay: "Contractor Delay",
+    approval_delay: "Approval Delay",
+    rfi_delay: "RFI Delay",
+    resource_shortage: "Resource Shortage (Labour Shortage)",
+    equipment_shortage: "Equipment Shortage",
+    site_access: "Site Access Restriction",
+    site_constraint: "Site Constraint (Workfront Unavailable)",
+    interface_issue: "Interface Issue",
+    weather: "Weather Interruption",
+    procurement: "Procurement",
+    quality_issue: "Quality Issue",
+    rework: "Rework",
+    change_variation: "Change / Variation",
+    other: "Other",
   };
 
   function projectName(projects, projectId) {
@@ -620,6 +652,213 @@
     return wrap;
   }
 
+  /** Gate E (spec point 22 — Daily Site Log integration): a minimal quick-create form
+   * for logging a delay directly from today's entry, without navigating to Schedule
+   * first. If the log already has a linked activity_id (Gate 10's own single-link
+   * field), the delay is created already linked to it (with a real historical snapshot,
+   * same as every other creation path); otherwise it's created with no activity at all
+   * — correctly surfacing as "Schedule Impact Not Yet Assessed" (spec point 5) rather
+   * than guessing a schedule impact that hasn't actually been assessed yet. */
+  function renderCreateDelayForm(log, onChanged) {
+    var panel = document.createElement("div");
+    panel.className = "panel";
+    panel.style.marginBottom = "10px";
+
+    var form = document.createElement("form");
+    var grid = document.createElement("div");
+    grid.className = "form-grid";
+
+    var categoryField = document.createElement("div");
+    categoryField.className = "field";
+    categoryField.innerHTML = "<label>Delay Category</label>";
+    var categorySelect = document.createElement("select");
+    categorySelect.id = "dailylogdelay-category";
+    window.PCC.store.DELAY_CATEGORIES.forEach(function (c) {
+      var opt = document.createElement("option");
+      opt.value = c;
+      opt.textContent = DAILY_LOG_DELAY_CATEGORY_LABELS[c] || c;
+      categorySelect.appendChild(opt);
+    });
+    categoryField.appendChild(categorySelect);
+    grid.appendChild(categoryField);
+
+    var daysField = document.createElement("div");
+    daysField.className = "field";
+    daysField.innerHTML = "<label>Estimated Impact (days)</label>";
+    var daysInput = document.createElement("input");
+    daysInput.type = "number";
+    daysInput.id = "dailylogdelay-days";
+    daysField.appendChild(daysInput);
+    grid.appendChild(daysField);
+
+    form.appendChild(grid);
+
+    var descField = document.createElement("div");
+    descField.className = "field";
+    descField.innerHTML = "<label>Description *</label>";
+    var descInput = document.createElement("textarea");
+    descInput.id = "dailylogdelay-description";
+    descInput.rows = 2;
+    descField.appendChild(descInput);
+    form.appendChild(descField);
+
+    var errorMsg = document.createElement("p");
+    errorMsg.style.color = "var(--status-critical)";
+    errorMsg.style.fontSize = "13px";
+    errorMsg.style.display = "none";
+    form.appendChild(errorMsg);
+
+    var actions = document.createElement("div");
+    actions.style.display = "flex";
+    actions.style.gap = "10px";
+    actions.style.marginTop = "10px";
+
+    var saveBtn = document.createElement("button");
+    saveBtn.type = "submit";
+    saveBtn.className = "btn btn--primary";
+    saveBtn.textContent = "Log Delay";
+    var cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.className = "btn btn--ghost";
+    cancelBtn.textContent = "Cancel";
+    cancelBtn.onclick = function () {
+      uiState.creatingDelayForLogId = null;
+      onChanged();
+    };
+    actions.appendChild(saveBtn);
+    actions.appendChild(cancelBtn);
+    form.appendChild(actions);
+
+    form.onsubmit = function (e) {
+      e.preventDefault();
+      if (!descInput.value.trim()) {
+        errorMsg.textContent = "Description is required.";
+        errorMsg.style.display = "block";
+        return;
+      }
+      errorMsg.style.display = "none";
+
+      var linkedToActivity = false;
+      window.PCC.store.update(function (d) {
+        var freshLog = d.daily_logs.find(function (x) { return x.id === log.id; });
+        if (!freshLog) return;
+        var activity = freshLog.activity_id ? d.activities.find(function (a) { return a.id === freshLog.activity_id; }) : null;
+        var created = window.PCC.store.newDelayRecord({
+          activity_id: freshLog.activity_id || "",
+          project_id: freshLog.project_id,
+          daily_log_id: freshLog.id,
+          identified_date: freshLog.log_date,
+          delay_category: categorySelect.value,
+          delay_days: daysInput.value === "" ? null : Number(daysInput.value),
+          description: descInput.value.trim(),
+        });
+        created.status_history = [{ status: "open", changed_at: created.created_at, note: "Delay identified from Daily Log." }];
+        d.delay_records.push(created);
+        if (activity) {
+          linkedToActivity = true;
+          d.delay_activity_links.push(
+            window.PCC.store.newDelayActivityLink({
+              delay_id: created.id,
+              activity_id: activity.id,
+              project_id: activity.project_id,
+              original_planned_start: activity.planned_start || "",
+              original_planned_finish: activity.planned_finish || "",
+              original_total_float: activity.total_float != null ? activity.total_float : null,
+            })
+          );
+        }
+      });
+      window.PCC.notify(
+        linkedToActivity
+          ? "Delay logged and linked to the Schedule activity."
+          : "Delay logged — Schedule Impact Not Yet Assessed until an activity is linked (edit the delay from Schedule to add one).",
+        "success"
+      );
+      uiState.creatingDelayForLogId = null;
+      onChanged();
+    };
+
+    panel.appendChild(form);
+    return panel;
+  }
+
+  /** Gate E: the delays logged against this entry, plus the "+ Log Delay" quick-create
+   * action — same .attention-list/.attention-item primitive the linked-activity
+   * cross-reference above already uses, for a consistent look. */
+  function renderDailyLogDelaysSection(log, data, onChanged) {
+    var wrap = document.createElement("div");
+    wrap.style.marginTop = "12px";
+    wrap.style.paddingTop = "10px";
+    wrap.style.borderTop = "1px solid var(--divider)";
+
+    var delaysForLog = data.delay_records.filter(function (r) {
+      return r.daily_log_id === log.id;
+    });
+
+    var heading = document.createElement("p");
+    heading.className = "detail-item__label";
+    heading.style.marginBottom = "8px";
+    heading.textContent = "DELAYS (" + delaysForLog.length + ")";
+    wrap.appendChild(heading);
+
+    var addBtn = document.createElement("button");
+    addBtn.className = "btn btn--ghost";
+    addBtn.style.marginBottom = "8px";
+    addBtn.textContent = "+ Log Delay";
+    addBtn.onclick = function () {
+      uiState.creatingDelayForLogId = log.id;
+      onChanged();
+    };
+    wrap.appendChild(addBtn);
+
+    if (uiState.creatingDelayForLogId === log.id) {
+      wrap.appendChild(renderCreateDelayForm(log, onChanged));
+    }
+
+    if (delaysForLog.length === 0) {
+      var empty = document.createElement("p");
+      empty.className = "text-secondary";
+      empty.style.fontSize = "13px";
+      empty.textContent = "No delays logged against this entry yet.";
+      wrap.appendChild(empty);
+      return wrap;
+    }
+
+    var list = document.createElement("div");
+    list.className = "attention-list";
+    delaysForLog.forEach(function (r) {
+      var row = document.createElement("div");
+      var isActive = r.status !== "closed" && r.status !== "recovered";
+      row.className = "attention-item" + (r.activity_id ? " attention-item--clickable" : "");
+      if (r.activity_id) {
+        row.onclick = function () {
+          var act = data.activities.find(function (a) { return a.id === r.activity_id; });
+          if (act && window.PCC.schedule) window.PCC.schedule.viewActivity(log.project_id, act.schedule_id, act.id);
+          window.PCC.router.go("schedule");
+        };
+      }
+      var icon = document.createElement("span");
+      icon.className = "attention-item__icon attention-item__icon--" + (isActive ? "warning" : "info");
+      row.appendChild(icon);
+      var body = document.createElement("div");
+      body.className = "attention-item__body";
+      var text = document.createElement("div");
+      text.className = "attention-item__text";
+      text.textContent = r.description || "(untitled delay)";
+      body.appendChild(text);
+      var meta = document.createElement("div");
+      meta.className = "attention-item__meta";
+      meta.textContent =
+        (DAILY_LOG_DELAY_CATEGORY_LABELS[r.delay_category] || r.delay_category) +
+        (r.activity_id ? "" : " · Schedule Impact Not Yet Assessed");
+      body.appendChild(meta);
+      row.appendChild(body);
+      list.appendChild(row);
+    });
+    wrap.appendChild(list);
+    return wrap;
+  }
+
   function renderLogDetails(log, onChanged) {
     var wrap = document.createElement("div");
     wrap.className = "project-details";
@@ -681,6 +920,7 @@
       }
     }
 
+    wrap.appendChild(renderDailyLogDelaysSection(log, window.PCC.store.get(), onChanged));
     wrap.appendChild(renderPhotosSection(log, onChanged));
     return wrap;
   }

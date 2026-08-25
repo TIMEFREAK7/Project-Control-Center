@@ -4637,6 +4637,56 @@ Change linking UI (the store fields have existed since Gate A, but nothing yet l
 one from the Delay form), Planner Action Centre, Dashboard/Lookahead/Executive Center integration,
 portfolio-wide analytics.
 
+## Planning & Scheduling-Centric Delay Management — Gate E (Supporting PCC Integrations), 2026-08-25
+
+**What Gate E added**: the seven cross-module id fields (`risk_id`, `issue_id`, `rfi_id`, `daily_log_id`,
+`meeting_id`, `vendor_id`, `change_order_id`) have existed on `delay_records` since Gate A, but nothing
+let a user actually set them, and nothing on the linked-record side showed a delay was connected. Spec
+points 21-25's own instruction — **"LINK IT, do not create another copy"** — meant this gate was entirely
+about wiring existing registers together by reference, never duplicating a record into the Delay's own
+shape:
+
+- **`schedule.js`**: the Delay Record form gained a "RELATED RECORDS (optional)" section — one `<select>`
+  per linked register, each populated straight from `data.risks`/`data.rfis`/`data.daily_logs`/
+  `data.meetings`/`data.vendors`/`data.change_orders` (Risk and Issue share `data.risks`, filtered by
+  `type`; Vendor is filtered through `vendor_project_links` to the activity's own project, same pattern
+  Gate 10 already used elsewhere). Each Delay row now shows a `"Related: Risk: X · Vendor: Y · ..."` line
+  built from `describeRelatedRecords()`, resolving each stored id to its live label rather than caching a
+  copy that could go stale.
+- **`vendors.js`**: the vendor Overview tab gained a **Delay Analysis** section (spec point 24), shown only
+  when the vendor has at least one linked delay — Delay Events, Open Delays, Critical (read live from
+  `delayImpactEngine.computeDelayImpact()`, not a stored flag), Total Delay Days, Recovery Actions, and a
+  "Repeated causes" line when the same `delay_category` recurs. Per the spec's own explicit instruction,
+  this deliberately stops there — **no invented vendor performance score**; the raw counts are the vendor
+  profile's whole contribution.
+- **`dailyLog.js`**: a "+ Log Delay" quick-create action on each Daily Log entry (spec point 22) — a
+  minimal form (category, estimated days, description) that creates a `delay_record` with `daily_log_id`
+  set to the entry and `identified_date` defaulting to the log's own date. When the entry already has an
+  `activity_id`, the new delay is auto-linked to that activity with a real `delay_activity_links` snapshot
+  (frozen original planned dates/float, same as every other linking path); when it doesn't, the delay is
+  created with `activity_id: ""` and its Impact Summary correctly reads **"Schedule Impact Not Yet
+  Assessed"** (spec point 5) rather than guessing — the Daily Log list itself shows this same label inline
+  for any delay still unlinked.
+- No schema version bump — every field this gate uses already existed in `store.js` since Gate A; Gate E
+  was pure UI wiring, not a new data model.
+
+**Verified**: full jsdom suite (88 files, 0 failures). New `test_delay_gate_e_integrations_e2e.js` (6
+checks) seeds one of every linkable register plus two Daily Log entries (one with an activity, one
+without), drives the real Delay form through all seven Related Records pickers and confirms nothing gets
+duplicated in any register, confirms the Vendor Overview's Delay Analysis renders the right counts with no
+"score" text anywhere in the page, and drives "+ Log Delay" from both Daily Log entries — confirming the
+activity-linked entry produces a real `delay_activity_links` snapshot matching the seeded activity's
+planned finish, and the unlinked entry produces neither a link nor a guessed schedule impact.
+
+**Not done — Gates F through H remain deliberately unstarted**: Planner Action Centre (surfacing delays
+needing planner attention across projects), PCC Dashboard/Lookahead/Executive Center integration,
+portfolio-wide Delay Analytics/Delay Register. Also deliberately out of scope for this gate specifically:
+bidirectional create-flows (creating a delay *from* the Risk/RFI/Meeting/Change Order side, rather than
+linking an existing one from the Delay form) and granular Meeting-Action-to-Delay linking — the spec's own
+sections 21-25 describe the Delay form doing the linking, not every other module growing its own delay
+picker; that stays a plain reference relationship, symmetric enough to revisit later if actually asked
+for, matching this gate's own "hardcoded first, editable later if needed" convention elsewhere in the app.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →

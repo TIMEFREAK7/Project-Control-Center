@@ -5186,10 +5186,76 @@
     return primary ? primary.schedule_id : uiState.scheduleId;
   }
 
+  /** Gate E: a compact "Related: X, Y, Z" description of a Delay Record's linked
+   * records, resolved by id from each register the same way the form's own pickers
+   * built their option lists — for the read-only row summary, not the form. Returns ""
+   * when nothing's linked (spec point 5: a Delay with no schedule activity, or no
+   * related records at all, isn't pretending to have relationships it doesn't). */
+  function describeRelatedRecords(r, data) {
+    var parts = [];
+    if (r.risk_id) {
+      var risk = data.risks.find(function (x) { return x.id === r.risk_id; });
+      if (risk) parts.push("Risk: " + (risk.title || "(untitled)"));
+    }
+    if (r.issue_id) {
+      var issue = data.risks.find(function (x) { return x.id === r.issue_id; });
+      if (issue) parts.push("Issue: " + (issue.title || "(untitled)"));
+    }
+    if (r.rfi_id) {
+      var rfi = data.rfis.find(function (x) { return x.id === r.rfi_id; });
+      if (rfi) parts.push("RFI: " + (rfi.number || rfi.subject || "(untitled)"));
+    }
+    if (r.daily_log_id) {
+      var log = data.daily_logs.find(function (x) { return x.id === r.daily_log_id; });
+      if (log) parts.push("Daily Log: " + (log.log_date || "(undated)"));
+    }
+    if (r.meeting_id) {
+      var meeting = data.meetings.find(function (x) { return x.id === r.meeting_id; });
+      if (meeting) parts.push("Meeting: " + (meeting.title || "(untitled)"));
+    }
+    if (r.vendor_id) {
+      var vendor = data.vendors.find(function (x) { return x.id === r.vendor_id; });
+      if (vendor) parts.push("Vendor: " + (vendor.vendor_name || "(unnamed)"));
+    }
+    if (r.change_order_id) {
+      var co = data.change_orders.find(function (x) { return x.id === r.change_order_id; });
+      if (co) parts.push("Change: " + (co.number || co.title || "(untitled)"));
+    }
+    return parts.join(" · ");
+  }
+
+  /** Gate E (Supporting PCC Integrations): one "link an existing record" <select> —
+   * shared by all seven Related Records fields in the Delay Record form below so their
+   * markup/behavior can't drift apart from each other. Returns { field, select } so the
+   * caller can both append the field div and read the select's value on submit. */
+  function buildRecordLinkField(fieldId, label, records, labelFn, currentValue) {
+    var field = document.createElement("div");
+    field.className = "field";
+    var labelEl = document.createElement("label");
+    labelEl.textContent = label;
+    field.appendChild(labelEl);
+    var select = document.createElement("select");
+    select.id = fieldId;
+    var noneOpt = document.createElement("option");
+    noneOpt.value = "";
+    noneOpt.textContent = "(none)";
+    select.appendChild(noneOpt);
+    records.forEach(function (r) {
+      var opt = document.createElement("option");
+      opt.value = r.id;
+      opt.textContent = labelFn(r);
+      select.appendChild(opt);
+    });
+    select.value = currentValue || "";
+    field.appendChild(select);
+    return { field: field, select: select };
+  }
+
   /** PCC Evolution Roadmap, Tier F: Advanced Delay Analysis (Gate 23), extended by the
-   * Planning & Scheduling-Centric Delay Management initiative (Gate A/B) into the full
+   * Planning & Scheduling-Centric Delay Management initiative (Gates A-E) into the full
    * DELAY EVENT chain (status, category, responsibility classification, immediate/
-   * underlying cause, multi-activity linking, and a live schedule-impact summary).
+   * underlying cause, multi-activity linking, a live schedule-impact summary, and
+   * optional Related Records links into Risk/Issue/RFI/Daily Log/Meeting/Vendor/Change).
    * Delay EVENTS logged against THIS activity as its own structured register, distinct
    * from Recovery Actions above (which track the corrective response, not the cause).
    * Same inline full-CRUD pattern as renderRecoveryActionsSection() immediately above,
@@ -5379,6 +5445,91 @@
         milestoneField.appendChild(milestoneSelect);
         grid.appendChild(milestoneField);
 
+        // Gate E (Supporting PCC Integrations, spec points 21-25): plain optional links
+        // into existing PCC registers, scoped to this delay's own project — "supporting
+        // relationships, not the centre of the screen" (spec point 33). Every select
+        // here only ever LINKS an existing record; nothing is duplicated (spec point 34).
+        var relatedHeading = document.createElement("p");
+        relatedHeading.style.gridColumn = "1 / -1";
+        relatedHeading.className = "text-secondary";
+        relatedHeading.style.fontSize = "11px";
+        relatedHeading.style.fontWeight = "600";
+        relatedHeading.style.letterSpacing = "0.4px";
+        relatedHeading.style.margin = "var(--space-2) 0 0";
+        relatedHeading.textContent = "RELATED RECORDS (optional)";
+        grid.appendChild(relatedHeading);
+
+        var relatedRiskField = buildRecordLinkField(
+          "delayfield-risk_id",
+          "Related Risk",
+          data.risks.filter(function (r) { return r.project_id === activity.project_id && r.type === "risk"; }),
+          function (r) { return r.title || "(untitled risk)"; },
+          editing.risk_id
+        );
+        grid.appendChild(relatedRiskField.field);
+
+        var relatedIssueField = buildRecordLinkField(
+          "delayfield-issue_id",
+          "Related Issue",
+          data.risks.filter(function (r) { return r.project_id === activity.project_id && r.type === "issue"; }),
+          function (r) { return r.title || "(untitled issue)"; },
+          editing.issue_id
+        );
+        grid.appendChild(relatedIssueField.field);
+
+        var relatedRfiField = buildRecordLinkField(
+          "delayfield-rfi_id",
+          "Related RFI / TQ",
+          data.rfis.filter(function (r) { return r.project_id === activity.project_id; }),
+          function (r) { return (r.number ? r.number + " — " : "") + (r.subject || "(untitled)"); },
+          editing.rfi_id
+        );
+        grid.appendChild(relatedRfiField.field);
+
+        var relatedDailyLogField = buildRecordLinkField(
+          "delayfield-daily_log_id",
+          "Related Daily Log",
+          data.daily_logs
+            .filter(function (r) { return r.project_id === activity.project_id; })
+            .sort(function (a, b) { return (b.log_date || "").localeCompare(a.log_date || ""); }),
+          function (r) { return "Daily Log — " + (r.log_date || "(undated)"); },
+          editing.daily_log_id
+        );
+        grid.appendChild(relatedDailyLogField.field);
+
+        var relatedMeetingField = buildRecordLinkField(
+          "delayfield-meeting_id",
+          "Related Meeting",
+          data.meetings.filter(function (r) { return r.project_id === activity.project_id; }),
+          function (r) { return (r.title || "(untitled meeting)") + (r.meeting_date ? " (" + r.meeting_date + ")" : ""); },
+          editing.meeting_id
+        );
+        grid.appendChild(relatedMeetingField.field);
+
+        var projectVendorIds = {};
+        data.vendor_project_links
+          .filter(function (l) { return l.project_id === activity.project_id; })
+          .forEach(function (l) { projectVendorIds[l.vendor_id] = true; });
+        var relatedVendorField = buildRecordLinkField(
+          "delayfield-vendor_id",
+          "Related Vendor",
+          data.vendors
+            .filter(function (v) { return projectVendorIds[v.id]; })
+            .sort(function (a, b) { return (a.vendor_name || "").localeCompare(b.vendor_name || ""); }),
+          function (v) { return v.vendor_name || "(unnamed vendor)"; },
+          editing.vendor_id
+        );
+        grid.appendChild(relatedVendorField.field);
+
+        var relatedChangeOrderField = buildRecordLinkField(
+          "delayfield-change_order_id",
+          "Related Change / Variation",
+          data.change_orders.filter(function (r) { return r.project_id === activity.project_id; }),
+          function (r) { return (r.number ? r.number + " — " : "") + (r.title || "(untitled)"); },
+          editing.change_order_id
+        );
+        grid.appendChild(relatedChangeOrderField.field);
+
         var immediateCauseField = document.createElement("div");
         immediateCauseField.style.gridColumn = "1 / -1";
         immediateCauseField.className = "field";
@@ -5462,6 +5613,13 @@
             immediate_cause: immediateCauseInput.value,
             underlying_cause: underlyingCauseInput.value,
             milestone_activity_id: milestoneSelect.value,
+            risk_id: relatedRiskField.select.value,
+            issue_id: relatedIssueField.select.value,
+            rfi_id: relatedRfiField.select.value,
+            daily_log_id: relatedDailyLogField.select.value,
+            meeting_id: relatedMeetingField.select.value,
+            vendor_id: relatedVendorField.select.value,
+            change_order_id: relatedChangeOrderField.select.value,
             description: descInput.value.trim(),
             updated_at: new Date().toISOString(),
           };
@@ -5567,6 +5725,16 @@
         (r.actual_impact_days != null ? " · actual " + r.actual_impact_days + "d" : "") +
         (r.identified_date ? " · identified " + r.identified_date : "") +
         "</p>";
+
+      var relatedText = describeRelatedRecords(r, data);
+      if (relatedText) {
+        var relatedP = document.createElement("p");
+        relatedP.className = "text-secondary";
+        relatedP.style.fontSize = "12px";
+        relatedP.style.margin = "4px 0 0";
+        relatedP.textContent = "Related: " + relatedText;
+        left.appendChild(relatedP);
+      }
 
       var links = data.delay_activity_links.filter(function (l) { return l.delay_id === r.id; });
       left.appendChild(renderDelayScheduleImpact(r, links, data));
