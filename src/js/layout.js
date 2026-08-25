@@ -33,6 +33,7 @@
         { key: "myWork", label: "My Work", code: "MW" },
         { key: "actionCentre", label: "Action Centre", code: "AC" },
         { key: "portfolio", label: "Portfolio", code: "PF" },
+        { key: "organizations", label: "Companies & Clients", code: "CC" },
         { key: "projectWorkspace", label: "Project Workspace", code: "PW" },
         { key: "executiveCenter", label: "Executive Center", code: "EC" },
       ],
@@ -102,6 +103,7 @@
     actionCentre: "Planner Action Centre",
     projectLookahead: "Project Lookahead",
     portfolio: "Portfolio",
+    organizations: "Companies & Clients",
     projectWorkspace: "Project Workspace",
     executiveCenter: "Executive Center",
     vendors: "Vendor Management",
@@ -186,6 +188,11 @@
     actionCentre: '<svg ' + ICON_SVG_ATTRS + '><path d="M12 3a5 5 0 0 0-5 5v3.5c0 .8-.3 1.6-.9 2.2L4.5 15.5A1 1 0 0 0 5.2 17h13.6a1 1 0 0 0 .7-1.7l-1.6-1.8c-.6-.6-.9-1.4-.9-2.2V8a5 5 0 0 0-5-5z"/><path d="M9.5 20a2.5 2.5 0 0 0 5 0"/></svg>',
     projectLookahead: '<svg ' + ICON_SVG_ATTRS + '><polyline points="6 5 12 12 6 19"/><polyline points="13 5 19 12 13 19"/></svg>',
     portfolio: '<svg ' + ICON_SVG_ATTRS + '><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M8 8V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="3" y1="13" x2="21" y2="13"/></svg>',
+    // Company/Client/Project Management redesign: a building (Company) — the smaller
+    // icons this app already uses for Vendors (a building silhouette too, see below) were
+    // deliberately avoided for the *distinct* windows-grid look, so the two don't read as
+    // the same nav item at a glance.
+    organizations: '<svg ' + ICON_SVG_ATTRS + '><rect x="4" y="3" width="16" height="18" rx="1"/><line x1="8" y1="7" x2="8" y2="7.01"/><line x1="12" y1="7" x2="12" y2="7.01"/><line x1="16" y1="7" x2="16" y2="7.01"/><line x1="8" y1="11" x2="8" y2="11.01"/><line x1="12" y1="11" x2="12" y2="11.01"/><line x1="16" y1="11" x2="16" y2="11.01"/><line x1="8" y1="15" x2="8" y2="15.01"/><line x1="16" y1="15" x2="16" y2="15.01"/><rect x="10" y="15" width="4" height="6"/></svg>',
     projectWorkspace: '<svg ' + ICON_SVG_ATTRS + '><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>',
     executiveCenter: '<svg ' + ICON_SVG_ATTRS + '><rect x="3" y="4" width="18" height="12" rx="2"/><line x1="8" y1="20" x2="16" y2="20"/><line x1="12" y1="16" x2="12" y2="20"/><polyline points="7 13 10 9 13 12 17 7"/></svg>',
     vendors: '<svg ' + ICON_SVG_ATTRS + '><rect x="5" y="3" width="14" height="18" rx="1"/><line x1="9" y1="7" x2="9" y2="7.01"/><line x1="15" y1="7" x2="15" y2="7.01"/><line x1="9" y1="12" x2="9" y2="12.01"/><line x1="15" y1="12" x2="15" y2="12.01"/><rect x="10" y="16" width="4" height="5"/></svg>',
@@ -478,97 +485,239 @@
     return div;
   }
 
-  /** Redesign Gate 6 (Global Project Context): the persistent "which project am I in"
-   * indicator + switcher, shown in the shell header on every page so it survives route
-   * changes (built once in buildTitleBlock(), refreshed in place — never torn down).
-   * Picking a project here writes straight to window.PCC.projectContext, then re-renders
-   * the current route so whatever page is showing picks up the new project immediately;
-   * a page's own project selector (Schedule, Risk Register, etc.) writes to the same
-   * shared context, so this select's value here reflects that page's own selection too
-   * (kept in sync via the store.onChange listener registered in mount() below). */
-  function populateProjectContextSelect(select) {
-    var data = window.PCC.store.get();
-    // Daily-Use Audit Phase 5 ("Project context selector isn't alphabetically sorted"):
-    // "Iterates the store in raw insertion order. For a Planner running a real
-    // multi-project portfolio, picking the right project from an unsorted list every
-    // time is real daily friction." Sorted case-insensitively so "amber" and "Amber"
-    // land together rather than splitting on case.
-    var activeProjects = data.projects
-      .filter(function (p) {
-        return !p.archived;
-      })
-      .sort(function (a, b) {
-        return (a.name || "").toLowerCase().localeCompare((b.name || "").toLowerCase());
-      });
+  /** Redesign Gate 6 (Global Project Context), extended by the Company/Client/Project
+   * Management redesign into a three-level cascade: the persistent "which Company/Client/
+   * Project am I in" indicator + switcher, shown in the shell header on every page so it
+   * survives route changes (built once in buildTitleBlock(), refreshed in place — never
+   * torn down). Picking any level here writes straight to window.PCC.projectContext, then
+   * re-renders the current route so whatever page is showing picks up the new context
+   * immediately; a page's own project selector (Schedule, Risk Register, etc.) writes to
+   * the same shared context, so these three selects reflect that page's own selection too
+   * (kept in sync via the store.onChange listener registered in mount() below). Spec point
+   * 15's compact layout recommendation ("Company ▾ Client ▾ Project ▾") is exactly
+   * these three title-block cells side by side. */
+  function optionForProject(p) {
+    var opt = document.createElement("option");
+    opt.value = p.id;
+    opt.textContent = p.name || "(unnamed project)";
+    return opt;
+  }
+
+  /** Fills the Project select's options, scoped to the current Company/Client per spec
+   * points 6-8: with neither chosen, every active project is offered (this is exactly the
+   * pre-Company/Client behavior, so an install that never sets up Companies/Clients sees
+   * no change at all); with a Company chosen but no Client yet, the spec is explicit that
+   * a Client must be picked first — no project list to arbitrarily guess from; with both
+   * chosen, only that exact Company+Client's projects are offered. */
+  function populateProjectSelect(select, data, companyId, clientId) {
+    var pc = window.PCC.projectContext;
     select.innerHTML = "";
+
+    if (companyId && !clientId) {
+      select.disabled = true;
+      var pickClientOpt = document.createElement("option");
+      pickClientOpt.value = "";
+      pickClientOpt.textContent = "Select a Client first";
+      select.appendChild(pickClientOpt);
+      select.value = "";
+      return;
+    }
+    select.disabled = false;
+
     var allOpt = document.createElement("option");
     allOpt.value = "";
     allOpt.textContent = "All Projects";
     select.appendChild(allOpt);
 
-    function optionFor(p) {
-      var opt = document.createElement("option");
-      opt.value = p.id;
-      opt.textContent = p.name || "(unnamed project)";
-      return opt;
-    }
+    // Daily-Use Audit Phase 5 ("Project context selector isn't alphabetically sorted"):
+    // sorted case-insensitively so "amber" and "Amber" land together rather than
+    // splitting on case.
+    var scopedProjects = (companyId && clientId ? pc.projectsForCompanyClient(data, companyId, clientId) : data.projects.filter(function (p) { return !p.archived; }))
+      .sort(function (a, b) {
+        return (a.name || "").toLowerCase().localeCompare((b.name || "").toLowerCase());
+      });
 
     // Daily-Use Audit Phase 5 (pinned projects): pinned ids come back in pin order
     // (most-recently-pinned first, see togglePin()'s own comment) — kept as-is here
     // rather than re-sorted alphabetically, so the one just pinned is exactly where a
-    // planner expects to find it, at the top.
-    var pinnedIds = window.PCC.projectContext.getPinnedIds();
-    if (pinnedIds.length > 0) {
+    // planner expects to find it, at the top. Only pins that fall within the current
+    // Company/Client scope are shown, same "never show unrelated projects" rule the
+    // scoping above already applies (spec point 6).
+    var pinnedIds = pc.getPinnedIds();
+    var scopedIdSet = {};
+    scopedProjects.forEach(function (p) {
+      scopedIdSet[p.id] = true;
+    });
+    var scopedPinnedIds = pinnedIds.filter(function (id) {
+      return scopedIdSet[id];
+    });
+    if (scopedPinnedIds.length > 0) {
       var pinnedGroup = document.createElement("optgroup");
       pinnedGroup.label = "Pinned";
-      pinnedIds.forEach(function (id) {
-        var p = activeProjects.find(function (proj) {
+      scopedPinnedIds.forEach(function (id) {
+        var p = scopedProjects.find(function (proj) {
           return proj.id === id;
         });
-        if (p) pinnedGroup.appendChild(optionFor(p));
+        if (p) pinnedGroup.appendChild(optionForProject(p));
       });
       select.appendChild(pinnedGroup);
     }
 
     var pinnedIdSet = {};
-    pinnedIds.forEach(function (id) {
+    scopedPinnedIds.forEach(function (id) {
       pinnedIdSet[id] = true;
     });
-    var unpinnedProjects = activeProjects.filter(function (p) {
+    var unpinnedProjects = scopedProjects.filter(function (p) {
       return !pinnedIdSet[p.id];
     });
     if (unpinnedProjects.length > 0) {
-      var restGroup = pinnedIds.length > 0 ? document.createElement("optgroup") : null;
+      var restGroup = scopedPinnedIds.length > 0 ? document.createElement("optgroup") : null;
       if (restGroup) restGroup.label = "All Projects";
       var target = restGroup || select;
       unpinnedProjects.forEach(function (p) {
-        target.appendChild(optionFor(p));
+        target.appendChild(optionForProject(p));
       });
       if (restGroup) select.appendChild(restGroup);
     }
 
-    select.value = window.PCC.projectContext.get();
+    select.value = pc.get();
+  }
+
+  function populateClientSelect(select, data, companyId) {
+    var pc = window.PCC.projectContext;
+    select.innerHTML = "";
+    var allOpt = document.createElement("option");
+    allOpt.value = "";
+    allOpt.textContent = "All Clients";
+    select.appendChild(allOpt);
+    select.disabled = !companyId;
+    if (companyId) {
+      pc.clientsForCompany(data, companyId)
+        .slice()
+        .sort(function (a, b) { return (a.name || "").toLowerCase().localeCompare((b.name || "").toLowerCase()); })
+        .forEach(function (c) {
+          var opt = document.createElement("option");
+          opt.value = c.id;
+          opt.textContent = c.name || "(unnamed client)";
+          select.appendChild(opt);
+        });
+    }
+    select.value = pc.getClient();
+  }
+
+  function populateCompanySelect(select, data) {
+    var pc = window.PCC.projectContext;
+    select.innerHTML = "";
+    var allOpt = document.createElement("option");
+    allOpt.value = "";
+    allOpt.textContent = "All Companies";
+    select.appendChild(allOpt);
+    pc.activeCompanies(data)
+      .slice()
+      .sort(function (a, b) { return (a.name || "").toLowerCase().localeCompare((b.name || "").toLowerCase()); })
+      .forEach(function (c) {
+        var opt = document.createElement("option");
+        opt.value = c.id;
+        opt.textContent = c.name || "(unnamed company)";
+        select.appendChild(opt);
+      });
+    select.value = pc.getCompany();
+  }
+
+  /** Refreshes one context switcher instance's three selects (identified by its DOM id
+   * prefix) from current store state — called once to build it and again any time the
+   * underlying data changes (store.onChange, see mount() below) or a level above changes
+   * (a company/client pick must immediately re-scope the levels below it, before the
+   * full-page router.render() below even runs). A no-op if this instance isn't currently
+   * in the DOM (e.g. the Dashboard-embedded one when some other page is showing). */
+  function populateContextSelectsFor(idPrefix) {
+    var companySelect = document.getElementById(idPrefix + "-company-select");
+    var clientSelect = document.getElementById(idPrefix + "-client-select");
+    var projectSelect = document.getElementById(idPrefix + "-project-select");
+    if (!companySelect || !clientSelect || !projectSelect) return;
+    var data = window.PCC.store.get();
+    populateCompanySelect(companySelect, data);
+    populateClientSelect(clientSelect, data, window.PCC.projectContext.getCompany());
+    populateProjectSelect(projectSelect, data, window.PCC.projectContext.getCompany(), window.PCC.projectContext.getClient());
+  }
+
+  // Every place a context switcher instance can currently exist in the DOM — the
+  // persistent shell header (always) and Dashboard's own prominent embedded copy (spec
+  // point 6, only while Dashboard is the current route). Refreshing all known instances
+  // on every data change is simplest and cheap: populateContextSelectsFor() above already
+  // no-ops instantly for any instance not actually present.
+  var CONTEXT_SWITCHER_ID_PREFIXES = ["title-block", "dashboard-context"];
+
+  function populateContextSelects() {
+    CONTEXT_SWITCHER_ID_PREFIXES.forEach(populateContextSelectsFor);
+  }
+
+  /** Builds one Company/Client/Project cascading switcher instance, its three selects
+   * namespaced by `idPrefix` so more than one can exist in the DOM at once (the shell
+   * header's "title-block" instance plus Dashboard's own "dashboard-context" instance —
+   * see buildDashboardContextSwitcher below). Exported as window.PCC.layout.
+   * buildContextSwitcher so dashboard.js can build its own prominent copy without
+   * duplicating this cascading logic. */
+  function buildContextSwitcherGroup(idPrefix) {
+    var wrap = document.createElement("div");
+    wrap.className = "title-block__context-group";
+    var selects = {};
+
+    function makeCell(key, label, id, title, onChange) {
+      var div = document.createElement("div");
+      div.className = "title-block__cell";
+      var lab = document.createElement("span");
+      lab.className = "title-block__label";
+      lab.textContent = label;
+      div.appendChild(lab);
+      var select = document.createElement("select");
+      select.className = "title-block__project-select";
+      select.id = id;
+      select.title = title;
+      select.onchange = function () {
+        onChange(select.value);
+        populateContextSelects();
+        window.PCC.router.render();
+      };
+      div.appendChild(select);
+      selects[key] = select;
+      return div;
+    }
+
+    wrap.appendChild(
+      makeCell("company", "COMPANY", idPrefix + "-company-select", "Current Company context — filters Client and Project below", function (v) {
+        window.PCC.projectContext.setCompany(v);
+      })
+    );
+    wrap.appendChild(
+      makeCell("client", "CLIENT", idPrefix + "-client-select", "Current Client context — filters Project below", function (v) {
+        window.PCC.projectContext.setClient(v);
+      })
+    );
+    wrap.appendChild(
+      makeCell("project", "PROJECT", idPrefix + "-project-select", "Current project context — carries across every project-scoped page", function (v) {
+        window.PCC.projectContext.set(v);
+      })
+    );
+
+    // Populate directly via the element references just created, NOT by looking them up
+    // through document.getElementById (that's what populateContextSelectsFor() above
+    // does, and it's the right tool for a later REFRESH once this group is already
+    // attached to the document) — at this exact point `wrap` hasn't been attached
+    // anywhere yet (the caller does that after this function returns, e.g. Dashboard
+    // builds its copy mid-render before appending it to the outlet), so a
+    // getElementById-based lookup would silently find nothing and leave these selects
+    // permanently empty.
+    var data = window.PCC.store.get();
+    populateCompanySelect(selects.company, data);
+    populateClientSelect(selects.client, data, window.PCC.projectContext.getCompany());
+    populateProjectSelect(selects.project, data, window.PCC.projectContext.getCompany(), window.PCC.projectContext.getClient());
+
+    return wrap;
   }
 
   function buildProjectContextCell() {
-    var div = document.createElement("div");
-    div.className = "title-block__cell";
-    var lab = document.createElement("span");
-    lab.className = "title-block__label";
-    lab.textContent = "PROJECT";
-    div.appendChild(lab);
-
-    var select = document.createElement("select");
-    select.className = "title-block__project-select";
-    select.id = "title-block-project-select";
-    select.title = "Current project context — carries across every project-scoped page";
-    populateProjectContextSelect(select);
-    select.onchange = function () {
-      window.PCC.projectContext.set(select.value);
-      window.PCC.router.render();
-    };
-    div.appendChild(select);
-    return div;
+    return buildContextSwitcherGroup("title-block");
   }
 
   function buildTitleBlock() {
@@ -956,8 +1105,7 @@
       if (status) status.textContent = "Saving\u2026";
       var companyEl = document.getElementById("title-block-company");
       if (companyEl) companyEl.textContent = window.PCC.store.get().settings.company_name || "\u2014";
-      var projectSelect = document.getElementById("title-block-project-select");
-      if (projectSelect) populateProjectContextSelect(projectSelect);
+      populateContextSelects();
     });
 
     window.PCC.store.onPersisted(function (data, ok) {
@@ -969,8 +1117,7 @@
   function refreshTitleBlock() {
     var companyEl = document.getElementById("title-block-company");
     if (companyEl) companyEl.textContent = window.PCC.store.get().settings.company_name || "\u2014";
-    var projectSelect = document.getElementById("title-block-project-select");
-    if (projectSelect) populateProjectContextSelect(projectSelect);
+    populateContextSelects();
     applyTheme(window.PCC.store.get().settings.theme || "dark");
     applyDensity(window.PCC.store.get().settings.density || "comfortable");
   }
@@ -981,5 +1128,9 @@
     refreshTitleBlock: refreshTitleBlock,
     refreshBackupNudge: refreshBackupNudge,
     isFocusMode: isFocusMode,
+    // Company/Client/Project Management redesign: lets dashboard.js build its own
+    // prominent copy of the same Company/Client/Project cascade (spec point 6) without
+    // duplicating the cascading-select logic.
+    buildContextSwitcher: buildContextSwitcherGroup,
   };
 })();

@@ -4303,6 +4303,109 @@ alphabetical order; and a full pin → appears in the header's Pinned optgroup �
 **Not done**: nothing — this closes out all five phases of the Daily-Use Audit's own proposed sequencing.
 Any further work is a fresh ask, not a continuation of this initiative.
 
+## Company/Client/Project Management — an EIGHTH, separate initiative from the Daily-Use
+## Audit above (started 2026-08-25)
+
+**Why**: PCC had exactly one "company" concept — `settings.company_name`, a single free-text field used
+purely for the report letterhead (Aditya's own firm name) — and Company/Client were plain free-text
+strings on each project (`project.client`, `project.company`), never independent records. That worked for
+a single ongoing engagement but not for PCC's other stated purpose: a lifetime professional portfolio
+across multiple employers/companies, each with their own clients and projects, some still active, most
+historical. Two projects both named "Ashoka" for two different Company/Client pairs would have silently
+looked unrelated (nothing tied them together) or, worse, been assumed to be the same thing if a filter
+ever matched on the text alone. Requested as a full architecture spec (Company → Client → Project as
+independent master-data entities with stable ids, cascading relationships, relationship history, and a
+global working context) rather than "just add two more text filters" — treated as a real Gate, not a
+UI-only patch, per the spec's own explicit instruction not to simplify it into three ordinary dropdowns.
+
+**What was decided, before building**:
+- **Companies and Clients are independent master-data arrays** (`data.companies`, `data.clients`), not
+  fields embedded in a project — same "own array, own `newX()` factory, archived not deleted" pattern
+  every other register in this app already follows (Portfolio's own projects, Vendor Master, Document
+  Types). A **Client is exclusive to exactly one Company** via `client.company_id` — "PepsiCo" under FABS
+  and "PepsiCo" under ABC Engineering are deliberately two separate Client records, never merged on name.
+- **Projects link by id, not name**: `project.company_id`/`project.client_id` are the real relationship;
+  the pre-existing `project.client`/`project.company` free-text fields stay on the record purely as
+  synced display labels (every existing page that reads them — Reports, Executive Center, Project
+  Workspace, Dashboard/Portfolio's client filter — needed zero changes), kept in sync by Portfolio's own
+  save handler, never hand-edited once a Company/Client is linked.
+- **Relationship history, not a shortcut**: reassigning a project's Company/Client (e.g. "FABS → PepsiCo"
+  becomes "ABC Engineering → PepsiCo" later) appends the PRIOR `{company_id, client_id, company_name,
+  client_name, changed_at}` onto the project's own `relationship_history` array before overwriting —
+  never on the initial assignment from blank, only on a genuine later change. A per-project array was
+  judged an "appropriate relationship/history model" for this app's scale rather than a shortcut, per the
+  spec's own instruction to avoid shortcuts if history got architecturally complex — it didn't, so a
+  lightweight append-only log on the project record itself was enough.
+- **Global context, one true source, extended not duplicated**: Redesign Gate 6 already established
+  `projectContext.js` as the single shared "which project" state backing every project-scoped page.
+  Rather than bolt on a second, separate Company/Client filter live only on Dashboard, `projectContext.js`
+  was extended with `getCompany()`/`getClient()`/`setCompany()`/`setClient()` cascading on top of the
+  existing `get()`/`set()` — and critically, `set(projectId)` (already called from ~30 existing project
+  pickers across every page) now also syncs Company/Client to match automatically, so none of those
+  existing call sites needed to learn Company/Client exist at all.
+- **"Remember Last Context" via `settings.company_context_memory`**: keyed by company id, remembers the
+  last Client+Project used under that company (spec point 9's own worked example — FABS → PepsiCo →
+  Ashoka, switch away, come back to FABS, land on PepsiCo → Ashoka again) — re-validated on every read
+  the same way `active_project_id`/`pinned_project_ids` already are, so an archived/deleted Client or
+  Project just quietly drops off rather than restoring a broken reference.
+
+**What was built**:
+- **`store.js` (schema v58)**: `companies`/`clients` arrays, `newCompany()`/`newClient()`, three new
+  `project` fields (`company_id`, `client_id`, `relationship_history`), three new `settings` fields
+  (`active_company_id`, `active_client_id`, `company_context_memory`). Migration promotes every existing
+  project's free-text `client`/`company` into deduplicated Company/Client records — same (company text,
+  client text) pair collapses to one shared record; the same client text under two different company
+  texts correctly becomes two separate Client records, proving out the spec's own FABS/PepsiCo vs ABC
+  Engineering/PepsiCo example. A project with blank company/client text is left unlinked rather than
+  invented a placeholder company for it.
+- **`projectContext.js`**: cascading `getCompany()/getClient()/setCompany()/setClient()` alongside the
+  existing `get()/set()`, plus `activeCompanies()/clientsForCompany()/projectsForCompanyClient()` — all
+  "active only, re-validate on every read" like `getPinnedIds()` already was. `setCompany()` deliberately
+  does NOT arbitrarily pick a Client when the company has several (spec point 7) — it only restores a
+  remembered one, otherwise leaves Client/Project unselected.
+- **New page, Companies & Clients (`organizations.js`)**: browse the full Company → Client → Project
+  hierarchy, add/edit/archive Companies and Clients (archive-only, same as every other register — there's
+  no delete action at all, which is also how "prevent deleting a company/client with dependent records"
+  is satisfied: the action doesn't exist). Each Client card's "+ New Project" hands off to Portfolio's own
+  Add Project form with Company/Client pre-selected — the spec's "Relationship-Based Creation" flow — via
+  a one-shot transient `window.PCC.pendingProjectPrefill` global, consumed exactly once so a later
+  unrelated "+ Add Project" click never inherits a stale prefill. A "Projects Without a Company Assigned"
+  section surfaces orphaned/unlinked projects for visibility (read-only; assigning one still happens on
+  Portfolio's own Edit form).
+- **Portfolio's Add/Edit Project form**: the old plain-text Client/Company inputs are replaced by two
+  cascading `<select>`s (Client's options always scoped to the chosen Company) with an inline "+ Add New
+  Company…"/"+ Add New Client…" affordance on each — creating the master record the moment a project
+  needs one, without leaving the form (the other direction of "Relationship-Based Creation"). Saving syncs
+  the legacy `client`/`company` text fields and records `relationship_history` on an actual change.
+- **Global context selector, both required places**: the shell header's persistent single Project
+  `<select>` (Gate 6) is now a compact three-level Company/Client/Project cascade, still hidden on mobile
+  the same deliberate way every non-growing title-block cell already was. Dashboard gets its own bigger,
+  always-reachable copy of the exact same cascade (spec's own "prominent global context selector"
+  requirement) — this is the one guaranteed reachable at every screen size, since the header's copy isn't
+  on phones. Both are the literal same shared state (`projectContext.js`), not two independent filters —
+  changing either updates the other instantly.
+
+**Verified**: full jsdom suite (79 files) plus two new dedicated test files — a standalone store/
+projectContext test (16 checks: migration dedup/non-merge behavior, cascading get/set, remember-last-
+context, archived-drops-from-active-but-data-intact) and a DOM-level e2e test (6 checks: Portfolio's
+inline Company/Client creation end-to-end, a relationship change correctly recording history, the
+Organizations page's browse/archive/handoff flows, and the header/Dashboard switchers cascading and
+staying in sync with each other). One real bug caught by the e2e test during development, not by
+inspection: `buildContextSwitcherGroup()`'s initial population looked its own just-created `<select>`
+elements up via `document.getElementById()` before they were attached to the document (fine for the
+shell header, which happens to get re-populated by the first subsequent data change anyway since it's
+built once and never torn down — but permanently empty for Dashboard's copy, rebuilt fresh on every
+render and never mutated afterward unless something else changed first). Fixed by populating directly
+from the element references already in hand, not a DOM lookup.
+
+**Not done / deliberately deferred**: no bespoke "prominent" visual styling for Dashboard's switcher
+beyond wrapping the shared compact cascade in its own labeled panel — reusing the header's exact select
+styling for visual consistency was judged more valuable than a separate large-select treatment, given the
+panel wrapper already satisfies "prominent" (its own heading, always at the top of Dashboard, never
+hidden on mobile). Portfolio's own Client/Country/etc. filter row is unchanged (still filters by the
+`client`/`company` text fields it always has) — same fields, now sourced from linked master data instead
+of hand-typed text, so no filter behavior actually changed.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →

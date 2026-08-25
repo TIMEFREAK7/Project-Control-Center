@@ -493,6 +493,27 @@
     wrap.appendChild(h1);
     wrap.appendChild(sub);
 
+    // Company/Client/Project Management redesign: the spec's own "prominent global
+    // context selector" (point 6) — a bigger, always-reachable copy of the shell header's
+    // own Company/Client/Project cascade (same underlying window.PCC.projectContext, so
+    // picking a level here IS the global context switch, kept in sync automatically via
+    // layout.js's store.onChange listener). Placed here specifically because the header's
+    // own copy is hidden on phones (an existing, deliberate space-saving rule applying to
+    // every non-growing title-block cell) — this is the one copy guaranteed reachable at
+    // every screen size, which is exactly what the spec asks for.
+    var contextPanel = document.createElement("div");
+    contextPanel.className = "panel no-print";
+    contextPanel.style.marginBottom = "16px";
+    var contextHeading = document.createElement("div");
+    contextHeading.className = "text-secondary";
+    contextHeading.style.fontSize = "11px";
+    contextHeading.style.letterSpacing = "0.4px";
+    contextHeading.style.marginBottom = "8px";
+    contextHeading.textContent = "CURRENT CONTEXT";
+    contextPanel.appendChild(contextHeading);
+    contextPanel.appendChild(window.PCC.layout.buildContextSwitcher("dashboard-context"));
+    wrap.appendChild(contextPanel);
+
     if (uiState.projectFilter) {
       var focusBanner = document.createElement("div");
       focusBanner.className = "toolbar no-print";

@@ -413,6 +413,18 @@ button {
   max-width: 100%;
 }
 
+/* Company/Client/Project Management redesign: the three cascading Company/Client/Project
+   cells sit inside this shared flex wrapper so they lay out as one compact group ("Company
+   ▾ Client ▾ Project ▾", spec point 15's own recommended layout) rather than each floating
+   independently among the title-block's other cells. Hidden on mobile the same way every
+   other non-growing title-block cell already is (see the .title-block__cell:not(--grow)
+   media-query rule) — this group's own children carry that same base class, so no extra
+   rule is needed there. */
+.title-block__context-group {
+  display: flex;
+  align-items: stretch;
+}
+
 /* Redesign Gate 6 (Global Project Context): the shell header's project switcher — a
    real <select> (not a custom dropdown) so it behaves consistently with every other
    project picker already in this app, just restyled to sit quietly inside a title-block
@@ -429,6 +441,24 @@ button {
   margin: -2px -4px;
   max-width: 180px;
   cursor: pointer;
+}
+
+/* Company/Client/Project Management redesign: three of these selects now sit side by side
+   (see .title-block__context-group above) — narrower max-width and tighter cell padding
+   than a single standalone select needed, so the trio doesn't crowd out the other
+   title-block cells (SHEET, letterhead COMPANY, DATE) at typical desktop widths. */
+.title-block__context-group .title-block__cell {
+  padding-left: var(--space-2);
+  padding-right: var(--space-2);
+}
+
+.title-block__context-group .title-block__project-select {
+  max-width: 120px;
+}
+
+.title-block__context-group .title-block__project-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .title-block__project-select:hover,

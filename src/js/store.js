@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 57;
+  var SCHEMA_VERSION = 58;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -92,7 +92,32 @@
         // (not a Set — order is meaningful, pin order is display order), project ids
         // only; see projectContext.js's getPinnedIds()/isPinned()/togglePin().
         pinned_project_ids: [],
+        // Company/Client/Project Management redesign: the global Company → Client →
+        // Project working context (see projectContext.js). active_project_id above is the
+        // leaf and remains the single field every existing project-scoped page already
+        // reads; these two let the shell-level switcher (and Dashboard's own prominent
+        // selector) filter Client options down to a Company and Project options down to a
+        // Company+Client pair, per the spec's cascading-selector requirement.
+        active_company_id: "",
+        active_client_id: "",
+        // Keyed by company id: the last Client + Project the user was working in under
+        // that company, so returning to a company later restores where they left off
+        // instead of forcing a re-pick every time (spec: "Remember Last Context").
+        // Populated by projectContext.js's setCompany()/setClient()/set(), never read or
+        // written directly by page modules.
+        company_context_memory: {},
       },
+      // Company/Client/Project Management redesign: independent master-data entities.
+      // Companies and Clients exist on their own (so PCC can keep a full historical
+      // portfolio of every company/client ever worked with, per the spec's "Independent
+      // Master Data" requirement) but Clients are always scoped to exactly one Company via
+      // `company_id` — the same client name under two different companies is deliberately
+      // two separate client records (see newClient() below), never shared. Projects link to
+      // both via `company_id`/`client_id` (see newProject()); the legacy free-text
+      // `client`/`company` string fields on a project stay in sync as display labels only
+      // (see portfolio.js's company/client field), never the source of truth.
+      companies: [],
+      clients: [],
       projects: [],
       documents: [],
       risks: [],
@@ -204,6 +229,48 @@
     return "p_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
   }
 
+  function newCompanyId() {
+    return "co_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  function newClientId() {
+    return "cl_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  /** A Company is an independent master-data record — the entity a project is executed
+   * for/through (e.g. "FABS", "ABC Engineering"). Archiving (not deleting) is the only
+   * retirement path, same "never lose history" rule every other register in this app
+   * follows — see CLAUDE.md's Company/Client/Project Management spec, point 14. */
+  function newCompany(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newCompanyId(),
+      name: "",
+      notes: "",
+      archived: false,
+      created_at: now,
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  /** A Client is exclusive to exactly one Company (`company_id`) — per the spec, the same
+   * client name under two different companies ("FABS → PepsiCo" vs "ABC Engineering →
+   * PepsiCo") is deliberately two separate Client records, never one shared record. */
+  function newClient(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newClientId(),
+      company_id: "",
+      name: "",
+      notes: "",
+      archived: false,
+      created_at: now,
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
   function newDocumentId() {
     return "d_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
   }
@@ -233,6 +300,22 @@
       // checking simply can't validate the PROJECT segment for a project that hasn't
       // set one (see documents.js), rather than fabricating one from `name`.
       project_code: "",
+      // Company/Client/Project Management redesign: the real relationship — stable
+      // internal ids into data.companies/data.clients, never names (see CLAUDE.md's
+      // spec, point 14: "display names are labels only"). "" means unlinked/independent
+      // (allowed — point 5A, independent master data). `client`/`company` below stay as
+      // synced display-label strings for every existing page that already reads them
+      // (reports.js, executiveCenter.js, dashboard.js's client filter, etc.) — kept in
+      // sync by portfolio.js's save handler whenever company_id/client_id change, never
+      // hand-edited directly once a company_id/client_id is set.
+      company_id: "",
+      client_id: "",
+      // Point 12/13 (Relationship Changes / Historical Relationship Integrity): every
+      // PRIOR {company_id, client_id} this project was linked to, oldest first, appended
+      // by portfolio.js's save handler the moment a linked relationship actually changes
+      // (never on initial assignment from blank). Names are captured alongside the ids so
+      // history stays readable even if a company/client is later renamed.
+      relationship_history: [],
       client: "",
       company: "",
       country: "",
@@ -2650,6 +2733,61 @@
       loaded.schema_version = 57;
     }
 
+    if (loaded.schema_version < 58) {
+      // Company/Client/Project Management redesign: promote the free-text `company`/
+      // `client` strings already on every project into independent Company/Client master
+      // records, linked by id — see newCompany()/newClient() above and CLAUDE.md's spec.
+      // A Client is exclusive to one Company, so dedup is scoped to (company name, client
+      // name) pairs, not client name alone — two projects that already had the same
+      // "company"/"client" text become the same Company/Client record (that's the same
+      // real-world relationship under the old text-only model), but "PepsiCo" under two
+      // different companies still becomes two separate Client records, per spec point 1.
+      if (!loaded.companies) loaded.companies = [];
+      if (!loaded.clients) loaded.clients = [];
+      var companyIdByName = {};
+      loaded.companies.forEach(function (c) {
+        companyIdByName[c.name] = c.id;
+      });
+      var clientIdByCompanyAndName = {};
+      loaded.clients.forEach(function (c) {
+        clientIdByCompanyAndName[c.company_id + "::" + c.name] = c.id;
+      });
+      function findOrCreateCompany(name) {
+        var key = name.trim();
+        if (companyIdByName[key]) return companyIdByName[key];
+        var company = newCompany({ name: key });
+        loaded.companies.push(company);
+        companyIdByName[key] = company.id;
+        return company.id;
+      }
+      function findOrCreateClient(companyId, name) {
+        var key = companyId + "::" + name.trim();
+        if (clientIdByCompanyAndName[key]) return clientIdByCompanyAndName[key];
+        var client = newClient({ company_id: companyId, name: name.trim() });
+        loaded.clients.push(client);
+        clientIdByCompanyAndName[key] = client.id;
+        return client.id;
+      }
+      (loaded.projects || []).forEach(function (p) {
+        if (p.company_id === undefined) p.company_id = "";
+        if (p.client_id === undefined) p.client_id = "";
+        if (!p.relationship_history) p.relationship_history = [];
+        if (!p.company_id && p.company && p.company.trim()) {
+          p.company_id = findOrCreateCompany(p.company);
+        }
+        // A client with no company text has nothing to be exclusive to — left unlinked
+        // rather than inventing a placeholder company; the free-text `client` field is
+        // untouched either way, so nothing is lost.
+        if (!p.client_id && p.client && p.client.trim() && p.company_id) {
+          p.client_id = findOrCreateClient(p.company_id, p.client);
+        }
+      });
+      if (!loaded.settings.active_company_id) loaded.settings.active_company_id = "";
+      if (!loaded.settings.active_client_id) loaded.settings.active_client_id = "";
+      if (!loaded.settings.company_context_memory) loaded.settings.company_context_memory = {};
+      loaded.schema_version = 58;
+    }
+
     return loaded;
   }
 
@@ -2987,6 +3125,8 @@
     resetAll: resetAll,
     newProject: newProject,
     PROJECT_STATUSES: PROJECT_STATUSES,
+    newCompany: newCompany,
+    newClient: newClient,
     newDocument: newDocument,
     DOCUMENT_CATEGORIES: DOCUMENT_CATEGORIES,
     DOCUMENT_STATUSES: DOCUMENT_STATUSES,

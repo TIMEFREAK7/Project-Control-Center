@@ -47,6 +47,23 @@ function findSelectWithOption(dom, optionText) {
   return selects.find((s) => Array.from(s.options).some((o) => o.textContent === optionText));
 }
 
+// Company/Client/Project Management redesign: Dashboard now also renders its own
+// prominent global Company/Client/Project context switcher (spec point 6) — a DIFFERENT,
+// intentionally independent picker from this page's own Client/Country/etc. filter row
+// under test here. That switcher's Project <select> is deliberately NOT scoped to this
+// page's local Client filter (it's the global context, not a local view filter), so its
+// <option> list legitimately keeps listing every active project — including one this
+// page's own filter just narrowed out — and <option> text counts toward .textContent even
+// though only the selected option is visible. Every "must not appear anywhere" check below
+// needs the body text with that switcher's own project list excluded, or it would see
+// "Harbor Plaza" sitting harmlessly in an unselected <option> and call it a bug.
+function bodyTextExcludingContextSwitcher(outletEl) {
+  const clone = outletEl.cloneNode(true);
+  const contextGroup = clone.querySelector(".title-block__context-group");
+  if (contextGroup) contextGroup.remove();
+  return clone.textContent;
+}
+
 (async () => {
   const html = fs.readFileSync(INDEX_PATH, "utf8");
   const thrownErrors = [];
@@ -106,7 +123,7 @@ function findSelectWithOption(dom, optionText) {
     assert.deepStrictEqual(clientOptions, ["All clients", "Acme Corp", "Beta Industries"]);
 
     assert.strictEqual(kpiValue(dom, "ACTIVE PROJECTS"), 2);
-    var text = outlet().textContent;
+    var text = bodyTextExcludingContextSwitcher(outlet());
     assert.ok(text.indexOf("Riverside Tower") !== -1 && text.indexOf("Harbor Plaza") !== -1);
     assert.ok(text.indexOf("across 2 active projects.") !== -1, "got: " + text.slice(0, 300));
   });
@@ -117,7 +134,7 @@ function findSelectWithOption(dom, optionText) {
     clientSelect.dispatchEvent(new win.Event("change", { bubbles: true }));
 
     assert.strictEqual(kpiValue(dom, "ACTIVE PROJECTS"), 1);
-    var text = outlet().textContent;
+    var text = bodyTextExcludingContextSwitcher(outlet());
     assert.ok(text.indexOf("Riverside Tower") !== -1);
     assert.ok(text.indexOf("Harbor Plaza") === -1, "Harbor Plaza must be filtered out everywhere, including Recent Projects and Management Attention");
     assert.ok(text.indexOf("Riverside Tower risk") !== -1, "Management Attention must still show the matching project's own alert");
@@ -132,7 +149,7 @@ function findSelectWithOption(dom, optionText) {
     countrySelect.dispatchEvent(new win.Event("change", { bubbles: true }));
 
     assert.strictEqual(kpiValue(dom, "ACTIVE PROJECTS"), 0);
-    var text = outlet().textContent;
+    var text = bodyTextExcludingContextSwitcher(outlet());
     assert.ok(text.indexOf("No active projects match these filters.") !== -1, "got: " + text.slice(0, 400));
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
 
@@ -146,7 +163,7 @@ function findSelectWithOption(dom, optionText) {
 
   await check("resetting filters back to 'All' restores the full unfiltered view", () => {
     assert.strictEqual(kpiValue(dom, "ACTIVE PROJECTS"), 2);
-    var text = outlet().textContent;
+    var text = bodyTextExcludingContextSwitcher(outlet());
     assert.ok(text.indexOf("Riverside Tower") !== -1 && text.indexOf("Harbor Plaza") !== -1);
   });
 

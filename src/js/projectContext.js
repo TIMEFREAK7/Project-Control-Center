@@ -26,6 +26,117 @@
     });
   }
 
+  /** Company/Client/Project Management redesign. Same "active only, re-validate on every
+   * read" treatment activeProjects() above already gives projects — see CLAUDE.md's spec,
+   * point 11 (Active vs Historical). Archived companies/clients still exist and stay fully
+   * intact/searchable everywhere else in the app; they just drop out of these three
+   * cascading pickers. */
+  function activeCompanies(data) {
+    return (data.companies || []).filter(function (c) {
+      return !c.archived;
+    });
+  }
+
+  function clientsForCompany(data, companyId) {
+    return (data.clients || []).filter(function (c) {
+      return !c.archived && c.company_id === companyId;
+    });
+  }
+
+  function projectsForCompanyClient(data, companyId, clientId) {
+    return activeProjects(data).filter(function (p) {
+      return p.company_id === companyId && p.client_id === clientId;
+    });
+  }
+
+  /** Returns the current active company id, or "" if none is set or it no longer points
+   * at a live (non-archived) company. */
+  function getCompany() {
+    var data = window.PCC.store.get();
+    var id = data.settings.active_company_id;
+    if (!id) return "";
+    return activeCompanies(data).some(function (c) {
+      return c.id === id;
+    })
+      ? id
+      : "";
+  }
+
+  /** Returns the current active client id — "" if none is set, if it's archived, or if it
+   * doesn't belong to the current active company (a stale id left over from before the
+   * company was switched some other way). */
+  function getClient() {
+    var data = window.PCC.store.get();
+    var companyId = getCompany();
+    var id = data.settings.active_client_id;
+    if (!id || !companyId) return "";
+    return clientsForCompany(data, companyId).some(function (c) {
+      return c.id === id;
+    })
+      ? id
+      : "";
+  }
+
+  /** Records the last Client + Project used under a given Company, so switching back to
+   * that Company later (see setCompany() below) restores where the user left off — spec
+   * point 9, "Remember Last Context." Internal; page modules never call this directly. */
+  function rememberCompanyContext(data, companyId, clientId, projectId) {
+    if (!companyId) return;
+    if (!data.settings.company_context_memory) data.settings.company_context_memory = {};
+    data.settings.company_context_memory[companyId] = { client_id: clientId || "", project_id: projectId || "" };
+  }
+
+  /** Switches the active Company. Per spec point 7, this must NOT arbitrarily pick a
+   * Client when the company has several — it only restores a previously-remembered
+   * Client+Project for this company (point 9) if one still exists and is still valid;
+   * otherwise Client/Project both clear to "unselected" and the cascading selects show
+   * their own "choose one" state. */
+  function setCompany(companyId) {
+    window.PCC.store.update(function (data) {
+      data.settings.active_company_id = companyId || "";
+      if (!companyId) {
+        data.settings.active_client_id = "";
+        data.settings.active_project_id = "";
+        return;
+      }
+      var mem = (data.settings.company_context_memory || {})[companyId];
+      var restoredClientId = "";
+      var restoredProjectId = "";
+      if (mem && mem.client_id && clientsForCompany(data, companyId).some(function (c) { return c.id === mem.client_id; })) {
+        restoredClientId = mem.client_id;
+        if (mem.project_id && projectsForCompanyClient(data, companyId, restoredClientId).some(function (p) { return p.id === mem.project_id; })) {
+          restoredProjectId = mem.project_id;
+        }
+      }
+      data.settings.active_client_id = restoredClientId;
+      data.settings.active_project_id = restoredProjectId;
+    });
+  }
+
+  /** Switches the active Client (and, defensively, the Company it belongs to — a Client
+   * is exclusive to one Company, so picking a Client always implies its Company). Restores
+   * a remembered Project for this exact Company+Client pair if one still exists, per the
+   * same "remember last context" rule setCompany() follows for Clients. */
+  function setClient(clientId) {
+    window.PCC.store.update(function (data) {
+      var client = (data.clients || []).find(function (c) {
+        return c.id === clientId;
+      });
+      var companyId = client ? client.company_id : "";
+      data.settings.active_company_id = companyId;
+      data.settings.active_client_id = clientId || "";
+      var restoredProjectId = "";
+      if (clientId && companyId) {
+        var mem = (data.settings.company_context_memory || {})[companyId];
+        if (mem && mem.client_id === clientId && mem.project_id && projectsForCompanyClient(data, companyId, clientId).some(function (p) { return p.id === mem.project_id; })) {
+          restoredProjectId = mem.project_id;
+        }
+      }
+      data.settings.active_project_id = restoredProjectId;
+      if (companyId) rememberCompanyContext(data, companyId, clientId, restoredProjectId);
+    });
+  }
+
   /** Returns the current active project id, or "" if none is set or the stored id no
    * longer points at a live (non-archived) project — e.g. the project was archived or
    * deleted since it was picked. Never throws, never auto-picks a fallback project;
@@ -47,9 +158,26 @@
    * a project `<select>` they just built off `data.projects`, so it's always valid at
    * the moment of the call; get() re-validates on every read regardless (see above), so
    * a project archived later is handled there, not here. */
+  /** Sets the active project ("" clears it, meaning "All Projects" within whatever
+   * Company/Client is currently active — clearing the project does NOT clear Company/
+   * Client, since those still describe the scope being browsed). Company/Client/Project
+   * Management redesign: a non-empty projectId also syncs settings.active_company_id/
+   * active_client_id to that project's own company_id/client_id and remembers this as the
+   * project's company's last-used context (spec point 10 — Project is the context's leaf,
+   * so picking one anywhere, including every existing page's own project picker, carries
+   * its Company/Client along automatically without those ~30 call sites needing to know
+   * Company/Client exist at all). */
   function set(projectId) {
     window.PCC.store.update(function (data) {
       data.settings.active_project_id = projectId || "";
+      if (!projectId) return;
+      var p = data.projects.find(function (x) {
+        return x.id === projectId;
+      });
+      if (!p) return;
+      data.settings.active_company_id = p.company_id || "";
+      data.settings.active_client_id = p.client_id || "";
+      if (p.company_id) rememberCompanyContext(data, p.company_id, p.client_id, projectId);
     });
   }
 
@@ -86,5 +214,18 @@
     });
   }
 
-  window.PCC.projectContext = { get: get, set: set, getPinnedIds: getPinnedIds, isPinned: isPinned, togglePin: togglePin };
+  window.PCC.projectContext = {
+    get: get,
+    set: set,
+    getPinnedIds: getPinnedIds,
+    isPinned: isPinned,
+    togglePin: togglePin,
+    getCompany: getCompany,
+    getClient: getClient,
+    setCompany: setCompany,
+    setClient: setClient,
+    activeCompanies: activeCompanies,
+    clientsForCompany: clientsForCompany,
+    projectsForCompanyClient: projectsForCompanyClient,
+  };
 })();

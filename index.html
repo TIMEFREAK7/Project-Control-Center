@@ -432,6 +432,18 @@ button {
   max-width: 100%;
 }
 
+/* Company/Client/Project Management redesign: the three cascading Company/Client/Project
+   cells sit inside this shared flex wrapper so they lay out as one compact group ("Company
+   ▾ Client ▾ Project ▾", spec point 15's own recommended layout) rather than each floating
+   independently among the title-block's other cells. Hidden on mobile the same way every
+   other non-growing title-block cell already is (see the .title-block__cell:not(--grow)
+   media-query rule) — this group's own children carry that same base class, so no extra
+   rule is needed there. */
+.title-block__context-group {
+  display: flex;
+  align-items: stretch;
+}
+
 /* Redesign Gate 6 (Global Project Context): the shell header's project switcher — a
    real <select> (not a custom dropdown) so it behaves consistently with every other
    project picker already in this app, just restyled to sit quietly inside a title-block
@@ -448,6 +460,24 @@ button {
   margin: -2px -4px;
   max-width: 180px;
   cursor: pointer;
+}
+
+/* Company/Client/Project Management redesign: three of these selects now sit side by side
+   (see .title-block__context-group above) — narrower max-width and tighter cell padding
+   than a single standalone select needed, so the trio doesn't crowd out the other
+   title-block cells (SHEET, letterhead COMPANY, DATE) at typical desktop widths. */
+.title-block__context-group .title-block__cell {
+  padding-left: var(--space-2);
+  padding-right: var(--space-2);
+}
+
+.title-block__context-group .title-block__project-select {
+  max-width: 120px;
+}
+
+.title-block__context-group .title-block__project-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .title-block__project-select:hover,
@@ -5207,7 +5237,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 57;
+  var SCHEMA_VERSION = 58;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -5290,7 +5320,32 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         // (not a Set — order is meaningful, pin order is display order), project ids
         // only; see projectContext.js's getPinnedIds()/isPinned()/togglePin().
         pinned_project_ids: [],
+        // Company/Client/Project Management redesign: the global Company → Client →
+        // Project working context (see projectContext.js). active_project_id above is the
+        // leaf and remains the single field every existing project-scoped page already
+        // reads; these two let the shell-level switcher (and Dashboard's own prominent
+        // selector) filter Client options down to a Company and Project options down to a
+        // Company+Client pair, per the spec's cascading-selector requirement.
+        active_company_id: "",
+        active_client_id: "",
+        // Keyed by company id: the last Client + Project the user was working in under
+        // that company, so returning to a company later restores where they left off
+        // instead of forcing a re-pick every time (spec: "Remember Last Context").
+        // Populated by projectContext.js's setCompany()/setClient()/set(), never read or
+        // written directly by page modules.
+        company_context_memory: {},
       },
+      // Company/Client/Project Management redesign: independent master-data entities.
+      // Companies and Clients exist on their own (so PCC can keep a full historical
+      // portfolio of every company/client ever worked with, per the spec's "Independent
+      // Master Data" requirement) but Clients are always scoped to exactly one Company via
+      // `company_id` — the same client name under two different companies is deliberately
+      // two separate client records (see newClient() below), never shared. Projects link to
+      // both via `company_id`/`client_id` (see newProject()); the legacy free-text
+      // `client`/`company` string fields on a project stay in sync as display labels only
+      // (see portfolio.js's company/client field), never the source of truth.
+      companies: [],
+      clients: [],
       projects: [],
       documents: [],
       risks: [],
@@ -5402,6 +5457,48 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     return "p_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
   }
 
+  function newCompanyId() {
+    return "co_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  function newClientId() {
+    return "cl_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  /** A Company is an independent master-data record — the entity a project is executed
+   * for/through (e.g. "FABS", "ABC Engineering"). Archiving (not deleting) is the only
+   * retirement path, same "never lose history" rule every other register in this app
+   * follows — see CLAUDE.md's Company/Client/Project Management spec, point 14. */
+  function newCompany(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newCompanyId(),
+      name: "",
+      notes: "",
+      archived: false,
+      created_at: now,
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  /** A Client is exclusive to exactly one Company (`company_id`) — per the spec, the same
+   * client name under two different companies ("FABS → PepsiCo" vs "ABC Engineering →
+   * PepsiCo") is deliberately two separate Client records, never one shared record. */
+  function newClient(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newClientId(),
+      company_id: "",
+      name: "",
+      notes: "",
+      archived: false,
+      created_at: now,
+      updated_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
   function newDocumentId() {
     return "d_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
   }
@@ -5431,6 +5528,22 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       // checking simply can't validate the PROJECT segment for a project that hasn't
       // set one (see documents.js), rather than fabricating one from `name`.
       project_code: "",
+      // Company/Client/Project Management redesign: the real relationship — stable
+      // internal ids into data.companies/data.clients, never names (see CLAUDE.md's
+      // spec, point 14: "display names are labels only"). "" means unlinked/independent
+      // (allowed — point 5A, independent master data). `client`/`company` below stay as
+      // synced display-label strings for every existing page that already reads them
+      // (reports.js, executiveCenter.js, dashboard.js's client filter, etc.) — kept in
+      // sync by portfolio.js's save handler whenever company_id/client_id change, never
+      // hand-edited directly once a company_id/client_id is set.
+      company_id: "",
+      client_id: "",
+      // Point 12/13 (Relationship Changes / Historical Relationship Integrity): every
+      // PRIOR {company_id, client_id} this project was linked to, oldest first, appended
+      // by portfolio.js's save handler the moment a linked relationship actually changes
+      // (never on initial assignment from blank). Names are captured alongside the ids so
+      // history stays readable even if a company/client is later renamed.
+      relationship_history: [],
       client: "",
       company: "",
       country: "",
@@ -7848,6 +7961,61 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       loaded.schema_version = 57;
     }
 
+    if (loaded.schema_version < 58) {
+      // Company/Client/Project Management redesign: promote the free-text `company`/
+      // `client` strings already on every project into independent Company/Client master
+      // records, linked by id — see newCompany()/newClient() above and CLAUDE.md's spec.
+      // A Client is exclusive to one Company, so dedup is scoped to (company name, client
+      // name) pairs, not client name alone — two projects that already had the same
+      // "company"/"client" text become the same Company/Client record (that's the same
+      // real-world relationship under the old text-only model), but "PepsiCo" under two
+      // different companies still becomes two separate Client records, per spec point 1.
+      if (!loaded.companies) loaded.companies = [];
+      if (!loaded.clients) loaded.clients = [];
+      var companyIdByName = {};
+      loaded.companies.forEach(function (c) {
+        companyIdByName[c.name] = c.id;
+      });
+      var clientIdByCompanyAndName = {};
+      loaded.clients.forEach(function (c) {
+        clientIdByCompanyAndName[c.company_id + "::" + c.name] = c.id;
+      });
+      function findOrCreateCompany(name) {
+        var key = name.trim();
+        if (companyIdByName[key]) return companyIdByName[key];
+        var company = newCompany({ name: key });
+        loaded.companies.push(company);
+        companyIdByName[key] = company.id;
+        return company.id;
+      }
+      function findOrCreateClient(companyId, name) {
+        var key = companyId + "::" + name.trim();
+        if (clientIdByCompanyAndName[key]) return clientIdByCompanyAndName[key];
+        var client = newClient({ company_id: companyId, name: name.trim() });
+        loaded.clients.push(client);
+        clientIdByCompanyAndName[key] = client.id;
+        return client.id;
+      }
+      (loaded.projects || []).forEach(function (p) {
+        if (p.company_id === undefined) p.company_id = "";
+        if (p.client_id === undefined) p.client_id = "";
+        if (!p.relationship_history) p.relationship_history = [];
+        if (!p.company_id && p.company && p.company.trim()) {
+          p.company_id = findOrCreateCompany(p.company);
+        }
+        // A client with no company text has nothing to be exclusive to — left unlinked
+        // rather than inventing a placeholder company; the free-text `client` field is
+        // untouched either way, so nothing is lost.
+        if (!p.client_id && p.client && p.client.trim() && p.company_id) {
+          p.client_id = findOrCreateClient(p.company_id, p.client);
+        }
+      });
+      if (!loaded.settings.active_company_id) loaded.settings.active_company_id = "";
+      if (!loaded.settings.active_client_id) loaded.settings.active_client_id = "";
+      if (!loaded.settings.company_context_memory) loaded.settings.company_context_memory = {};
+      loaded.schema_version = 58;
+    }
+
     return loaded;
   }
 
@@ -8185,6 +8353,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     resetAll: resetAll,
     newProject: newProject,
     PROJECT_STATUSES: PROJECT_STATUSES,
+    newCompany: newCompany,
+    newClient: newClient,
     newDocument: newDocument,
     DOCUMENT_CATEGORIES: DOCUMENT_CATEGORIES,
     DOCUMENT_STATUSES: DOCUMENT_STATUSES,
@@ -8295,6 +8465,117 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     });
   }
 
+  /** Company/Client/Project Management redesign. Same "active only, re-validate on every
+   * read" treatment activeProjects() above already gives projects — see CLAUDE.md's spec,
+   * point 11 (Active vs Historical). Archived companies/clients still exist and stay fully
+   * intact/searchable everywhere else in the app; they just drop out of these three
+   * cascading pickers. */
+  function activeCompanies(data) {
+    return (data.companies || []).filter(function (c) {
+      return !c.archived;
+    });
+  }
+
+  function clientsForCompany(data, companyId) {
+    return (data.clients || []).filter(function (c) {
+      return !c.archived && c.company_id === companyId;
+    });
+  }
+
+  function projectsForCompanyClient(data, companyId, clientId) {
+    return activeProjects(data).filter(function (p) {
+      return p.company_id === companyId && p.client_id === clientId;
+    });
+  }
+
+  /** Returns the current active company id, or "" if none is set or it no longer points
+   * at a live (non-archived) company. */
+  function getCompany() {
+    var data = window.PCC.store.get();
+    var id = data.settings.active_company_id;
+    if (!id) return "";
+    return activeCompanies(data).some(function (c) {
+      return c.id === id;
+    })
+      ? id
+      : "";
+  }
+
+  /** Returns the current active client id — "" if none is set, if it's archived, or if it
+   * doesn't belong to the current active company (a stale id left over from before the
+   * company was switched some other way). */
+  function getClient() {
+    var data = window.PCC.store.get();
+    var companyId = getCompany();
+    var id = data.settings.active_client_id;
+    if (!id || !companyId) return "";
+    return clientsForCompany(data, companyId).some(function (c) {
+      return c.id === id;
+    })
+      ? id
+      : "";
+  }
+
+  /** Records the last Client + Project used under a given Company, so switching back to
+   * that Company later (see setCompany() below) restores where the user left off — spec
+   * point 9, "Remember Last Context." Internal; page modules never call this directly. */
+  function rememberCompanyContext(data, companyId, clientId, projectId) {
+    if (!companyId) return;
+    if (!data.settings.company_context_memory) data.settings.company_context_memory = {};
+    data.settings.company_context_memory[companyId] = { client_id: clientId || "", project_id: projectId || "" };
+  }
+
+  /** Switches the active Company. Per spec point 7, this must NOT arbitrarily pick a
+   * Client when the company has several — it only restores a previously-remembered
+   * Client+Project for this company (point 9) if one still exists and is still valid;
+   * otherwise Client/Project both clear to "unselected" and the cascading selects show
+   * their own "choose one" state. */
+  function setCompany(companyId) {
+    window.PCC.store.update(function (data) {
+      data.settings.active_company_id = companyId || "";
+      if (!companyId) {
+        data.settings.active_client_id = "";
+        data.settings.active_project_id = "";
+        return;
+      }
+      var mem = (data.settings.company_context_memory || {})[companyId];
+      var restoredClientId = "";
+      var restoredProjectId = "";
+      if (mem && mem.client_id && clientsForCompany(data, companyId).some(function (c) { return c.id === mem.client_id; })) {
+        restoredClientId = mem.client_id;
+        if (mem.project_id && projectsForCompanyClient(data, companyId, restoredClientId).some(function (p) { return p.id === mem.project_id; })) {
+          restoredProjectId = mem.project_id;
+        }
+      }
+      data.settings.active_client_id = restoredClientId;
+      data.settings.active_project_id = restoredProjectId;
+    });
+  }
+
+  /** Switches the active Client (and, defensively, the Company it belongs to — a Client
+   * is exclusive to one Company, so picking a Client always implies its Company). Restores
+   * a remembered Project for this exact Company+Client pair if one still exists, per the
+   * same "remember last context" rule setCompany() follows for Clients. */
+  function setClient(clientId) {
+    window.PCC.store.update(function (data) {
+      var client = (data.clients || []).find(function (c) {
+        return c.id === clientId;
+      });
+      var companyId = client ? client.company_id : "";
+      data.settings.active_company_id = companyId;
+      data.settings.active_client_id = clientId || "";
+      var restoredProjectId = "";
+      if (clientId && companyId) {
+        var mem = (data.settings.company_context_memory || {})[companyId];
+        if (mem && mem.client_id === clientId && mem.project_id && projectsForCompanyClient(data, companyId, clientId).some(function (p) { return p.id === mem.project_id; })) {
+          restoredProjectId = mem.project_id;
+        }
+      }
+      data.settings.active_project_id = restoredProjectId;
+      if (companyId) rememberCompanyContext(data, companyId, clientId, restoredProjectId);
+    });
+  }
+
   /** Returns the current active project id, or "" if none is set or the stored id no
    * longer points at a live (non-archived) project — e.g. the project was archived or
    * deleted since it was picked. Never throws, never auto-picks a fallback project;
@@ -8316,9 +8597,26 @@ https://github.com/nodeca/pako/blob/main/LICENSE
    * a project `<select>` they just built off `data.projects`, so it's always valid at
    * the moment of the call; get() re-validates on every read regardless (see above), so
    * a project archived later is handled there, not here. */
+  /** Sets the active project ("" clears it, meaning "All Projects" within whatever
+   * Company/Client is currently active — clearing the project does NOT clear Company/
+   * Client, since those still describe the scope being browsed). Company/Client/Project
+   * Management redesign: a non-empty projectId also syncs settings.active_company_id/
+   * active_client_id to that project's own company_id/client_id and remembers this as the
+   * project's company's last-used context (spec point 10 — Project is the context's leaf,
+   * so picking one anywhere, including every existing page's own project picker, carries
+   * its Company/Client along automatically without those ~30 call sites needing to know
+   * Company/Client exist at all). */
   function set(projectId) {
     window.PCC.store.update(function (data) {
       data.settings.active_project_id = projectId || "";
+      if (!projectId) return;
+      var p = data.projects.find(function (x) {
+        return x.id === projectId;
+      });
+      if (!p) return;
+      data.settings.active_company_id = p.company_id || "";
+      data.settings.active_client_id = p.client_id || "";
+      if (p.company_id) rememberCompanyContext(data, p.company_id, p.client_id, projectId);
     });
   }
 
@@ -8355,7 +8653,20 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     });
   }
 
-  window.PCC.projectContext = { get: get, set: set, getPinnedIds: getPinnedIds, isPinned: isPinned, togglePin: togglePin };
+  window.PCC.projectContext = {
+    get: get,
+    set: set,
+    getPinnedIds: getPinnedIds,
+    isPinned: isPinned,
+    togglePin: togglePin,
+    getCompany: getCompany,
+    getClient: getClient,
+    setCompany: setCompany,
+    setClient: setClient,
+    activeCompanies: activeCompanies,
+    clientsForCompany: clientsForCompany,
+    projectsForCompanyClient: projectsForCompanyClient,
+  };
 })();
 
 
@@ -8506,6 +8817,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         { key: "myWork", label: "My Work", code: "MW" },
         { key: "actionCentre", label: "Action Centre", code: "AC" },
         { key: "portfolio", label: "Portfolio", code: "PF" },
+        { key: "organizations", label: "Companies & Clients", code: "CC" },
         { key: "projectWorkspace", label: "Project Workspace", code: "PW" },
         { key: "executiveCenter", label: "Executive Center", code: "EC" },
       ],
@@ -8575,6 +8887,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     actionCentre: "Planner Action Centre",
     projectLookahead: "Project Lookahead",
     portfolio: "Portfolio",
+    organizations: "Companies & Clients",
     projectWorkspace: "Project Workspace",
     executiveCenter: "Executive Center",
     vendors: "Vendor Management",
@@ -8659,6 +8972,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     actionCentre: '<svg ' + ICON_SVG_ATTRS + '><path d="M12 3a5 5 0 0 0-5 5v3.5c0 .8-.3 1.6-.9 2.2L4.5 15.5A1 1 0 0 0 5.2 17h13.6a1 1 0 0 0 .7-1.7l-1.6-1.8c-.6-.6-.9-1.4-.9-2.2V8a5 5 0 0 0-5-5z"/><path d="M9.5 20a2.5 2.5 0 0 0 5 0"/></svg>',
     projectLookahead: '<svg ' + ICON_SVG_ATTRS + '><polyline points="6 5 12 12 6 19"/><polyline points="13 5 19 12 13 19"/></svg>',
     portfolio: '<svg ' + ICON_SVG_ATTRS + '><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M8 8V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="3" y1="13" x2="21" y2="13"/></svg>',
+    // Company/Client/Project Management redesign: a building (Company) — the smaller
+    // icons this app already uses for Vendors (a building silhouette too, see below) were
+    // deliberately avoided for the *distinct* windows-grid look, so the two don't read as
+    // the same nav item at a glance.
+    organizations: '<svg ' + ICON_SVG_ATTRS + '><rect x="4" y="3" width="16" height="18" rx="1"/><line x1="8" y1="7" x2="8" y2="7.01"/><line x1="12" y1="7" x2="12" y2="7.01"/><line x1="16" y1="7" x2="16" y2="7.01"/><line x1="8" y1="11" x2="8" y2="11.01"/><line x1="12" y1="11" x2="12" y2="11.01"/><line x1="16" y1="11" x2="16" y2="11.01"/><line x1="8" y1="15" x2="8" y2="15.01"/><line x1="16" y1="15" x2="16" y2="15.01"/><rect x="10" y="15" width="4" height="6"/></svg>',
     projectWorkspace: '<svg ' + ICON_SVG_ATTRS + '><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>',
     executiveCenter: '<svg ' + ICON_SVG_ATTRS + '><rect x="3" y="4" width="18" height="12" rx="2"/><line x1="8" y1="20" x2="16" y2="20"/><line x1="12" y1="16" x2="12" y2="20"/><polyline points="7 13 10 9 13 12 17 7"/></svg>',
     vendors: '<svg ' + ICON_SVG_ATTRS + '><rect x="5" y="3" width="14" height="18" rx="1"/><line x1="9" y1="7" x2="9" y2="7.01"/><line x1="15" y1="7" x2="15" y2="7.01"/><line x1="9" y1="12" x2="9" y2="12.01"/><line x1="15" y1="12" x2="15" y2="12.01"/><rect x="10" y="16" width="4" height="5"/></svg>',
@@ -8951,97 +9269,239 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     return div;
   }
 
-  /** Redesign Gate 6 (Global Project Context): the persistent "which project am I in"
-   * indicator + switcher, shown in the shell header on every page so it survives route
-   * changes (built once in buildTitleBlock(), refreshed in place — never torn down).
-   * Picking a project here writes straight to window.PCC.projectContext, then re-renders
-   * the current route so whatever page is showing picks up the new project immediately;
-   * a page's own project selector (Schedule, Risk Register, etc.) writes to the same
-   * shared context, so this select's value here reflects that page's own selection too
-   * (kept in sync via the store.onChange listener registered in mount() below). */
-  function populateProjectContextSelect(select) {
-    var data = window.PCC.store.get();
-    // Daily-Use Audit Phase 5 ("Project context selector isn't alphabetically sorted"):
-    // "Iterates the store in raw insertion order. For a Planner running a real
-    // multi-project portfolio, picking the right project from an unsorted list every
-    // time is real daily friction." Sorted case-insensitively so "amber" and "Amber"
-    // land together rather than splitting on case.
-    var activeProjects = data.projects
-      .filter(function (p) {
-        return !p.archived;
-      })
-      .sort(function (a, b) {
-        return (a.name || "").toLowerCase().localeCompare((b.name || "").toLowerCase());
-      });
+  /** Redesign Gate 6 (Global Project Context), extended by the Company/Client/Project
+   * Management redesign into a three-level cascade: the persistent "which Company/Client/
+   * Project am I in" indicator + switcher, shown in the shell header on every page so it
+   * survives route changes (built once in buildTitleBlock(), refreshed in place — never
+   * torn down). Picking any level here writes straight to window.PCC.projectContext, then
+   * re-renders the current route so whatever page is showing picks up the new context
+   * immediately; a page's own project selector (Schedule, Risk Register, etc.) writes to
+   * the same shared context, so these three selects reflect that page's own selection too
+   * (kept in sync via the store.onChange listener registered in mount() below). Spec point
+   * 15's compact layout recommendation ("Company ▾ Client ▾ Project ▾") is exactly
+   * these three title-block cells side by side. */
+  function optionForProject(p) {
+    var opt = document.createElement("option");
+    opt.value = p.id;
+    opt.textContent = p.name || "(unnamed project)";
+    return opt;
+  }
+
+  /** Fills the Project select's options, scoped to the current Company/Client per spec
+   * points 6-8: with neither chosen, every active project is offered (this is exactly the
+   * pre-Company/Client behavior, so an install that never sets up Companies/Clients sees
+   * no change at all); with a Company chosen but no Client yet, the spec is explicit that
+   * a Client must be picked first — no project list to arbitrarily guess from; with both
+   * chosen, only that exact Company+Client's projects are offered. */
+  function populateProjectSelect(select, data, companyId, clientId) {
+    var pc = window.PCC.projectContext;
     select.innerHTML = "";
+
+    if (companyId && !clientId) {
+      select.disabled = true;
+      var pickClientOpt = document.createElement("option");
+      pickClientOpt.value = "";
+      pickClientOpt.textContent = "Select a Client first";
+      select.appendChild(pickClientOpt);
+      select.value = "";
+      return;
+    }
+    select.disabled = false;
+
     var allOpt = document.createElement("option");
     allOpt.value = "";
     allOpt.textContent = "All Projects";
     select.appendChild(allOpt);
 
-    function optionFor(p) {
-      var opt = document.createElement("option");
-      opt.value = p.id;
-      opt.textContent = p.name || "(unnamed project)";
-      return opt;
-    }
+    // Daily-Use Audit Phase 5 ("Project context selector isn't alphabetically sorted"):
+    // sorted case-insensitively so "amber" and "Amber" land together rather than
+    // splitting on case.
+    var scopedProjects = (companyId && clientId ? pc.projectsForCompanyClient(data, companyId, clientId) : data.projects.filter(function (p) { return !p.archived; }))
+      .sort(function (a, b) {
+        return (a.name || "").toLowerCase().localeCompare((b.name || "").toLowerCase());
+      });
 
     // Daily-Use Audit Phase 5 (pinned projects): pinned ids come back in pin order
     // (most-recently-pinned first, see togglePin()'s own comment) — kept as-is here
     // rather than re-sorted alphabetically, so the one just pinned is exactly where a
-    // planner expects to find it, at the top.
-    var pinnedIds = window.PCC.projectContext.getPinnedIds();
-    if (pinnedIds.length > 0) {
+    // planner expects to find it, at the top. Only pins that fall within the current
+    // Company/Client scope are shown, same "never show unrelated projects" rule the
+    // scoping above already applies (spec point 6).
+    var pinnedIds = pc.getPinnedIds();
+    var scopedIdSet = {};
+    scopedProjects.forEach(function (p) {
+      scopedIdSet[p.id] = true;
+    });
+    var scopedPinnedIds = pinnedIds.filter(function (id) {
+      return scopedIdSet[id];
+    });
+    if (scopedPinnedIds.length > 0) {
       var pinnedGroup = document.createElement("optgroup");
       pinnedGroup.label = "Pinned";
-      pinnedIds.forEach(function (id) {
-        var p = activeProjects.find(function (proj) {
+      scopedPinnedIds.forEach(function (id) {
+        var p = scopedProjects.find(function (proj) {
           return proj.id === id;
         });
-        if (p) pinnedGroup.appendChild(optionFor(p));
+        if (p) pinnedGroup.appendChild(optionForProject(p));
       });
       select.appendChild(pinnedGroup);
     }
 
     var pinnedIdSet = {};
-    pinnedIds.forEach(function (id) {
+    scopedPinnedIds.forEach(function (id) {
       pinnedIdSet[id] = true;
     });
-    var unpinnedProjects = activeProjects.filter(function (p) {
+    var unpinnedProjects = scopedProjects.filter(function (p) {
       return !pinnedIdSet[p.id];
     });
     if (unpinnedProjects.length > 0) {
-      var restGroup = pinnedIds.length > 0 ? document.createElement("optgroup") : null;
+      var restGroup = scopedPinnedIds.length > 0 ? document.createElement("optgroup") : null;
       if (restGroup) restGroup.label = "All Projects";
       var target = restGroup || select;
       unpinnedProjects.forEach(function (p) {
-        target.appendChild(optionFor(p));
+        target.appendChild(optionForProject(p));
       });
       if (restGroup) select.appendChild(restGroup);
     }
 
-    select.value = window.PCC.projectContext.get();
+    select.value = pc.get();
+  }
+
+  function populateClientSelect(select, data, companyId) {
+    var pc = window.PCC.projectContext;
+    select.innerHTML = "";
+    var allOpt = document.createElement("option");
+    allOpt.value = "";
+    allOpt.textContent = "All Clients";
+    select.appendChild(allOpt);
+    select.disabled = !companyId;
+    if (companyId) {
+      pc.clientsForCompany(data, companyId)
+        .slice()
+        .sort(function (a, b) { return (a.name || "").toLowerCase().localeCompare((b.name || "").toLowerCase()); })
+        .forEach(function (c) {
+          var opt = document.createElement("option");
+          opt.value = c.id;
+          opt.textContent = c.name || "(unnamed client)";
+          select.appendChild(opt);
+        });
+    }
+    select.value = pc.getClient();
+  }
+
+  function populateCompanySelect(select, data) {
+    var pc = window.PCC.projectContext;
+    select.innerHTML = "";
+    var allOpt = document.createElement("option");
+    allOpt.value = "";
+    allOpt.textContent = "All Companies";
+    select.appendChild(allOpt);
+    pc.activeCompanies(data)
+      .slice()
+      .sort(function (a, b) { return (a.name || "").toLowerCase().localeCompare((b.name || "").toLowerCase()); })
+      .forEach(function (c) {
+        var opt = document.createElement("option");
+        opt.value = c.id;
+        opt.textContent = c.name || "(unnamed company)";
+        select.appendChild(opt);
+      });
+    select.value = pc.getCompany();
+  }
+
+  /** Refreshes one context switcher instance's three selects (identified by its DOM id
+   * prefix) from current store state — called once to build it and again any time the
+   * underlying data changes (store.onChange, see mount() below) or a level above changes
+   * (a company/client pick must immediately re-scope the levels below it, before the
+   * full-page router.render() below even runs). A no-op if this instance isn't currently
+   * in the DOM (e.g. the Dashboard-embedded one when some other page is showing). */
+  function populateContextSelectsFor(idPrefix) {
+    var companySelect = document.getElementById(idPrefix + "-company-select");
+    var clientSelect = document.getElementById(idPrefix + "-client-select");
+    var projectSelect = document.getElementById(idPrefix + "-project-select");
+    if (!companySelect || !clientSelect || !projectSelect) return;
+    var data = window.PCC.store.get();
+    populateCompanySelect(companySelect, data);
+    populateClientSelect(clientSelect, data, window.PCC.projectContext.getCompany());
+    populateProjectSelect(projectSelect, data, window.PCC.projectContext.getCompany(), window.PCC.projectContext.getClient());
+  }
+
+  // Every place a context switcher instance can currently exist in the DOM — the
+  // persistent shell header (always) and Dashboard's own prominent embedded copy (spec
+  // point 6, only while Dashboard is the current route). Refreshing all known instances
+  // on every data change is simplest and cheap: populateContextSelectsFor() above already
+  // no-ops instantly for any instance not actually present.
+  var CONTEXT_SWITCHER_ID_PREFIXES = ["title-block", "dashboard-context"];
+
+  function populateContextSelects() {
+    CONTEXT_SWITCHER_ID_PREFIXES.forEach(populateContextSelectsFor);
+  }
+
+  /** Builds one Company/Client/Project cascading switcher instance, its three selects
+   * namespaced by `idPrefix` so more than one can exist in the DOM at once (the shell
+   * header's "title-block" instance plus Dashboard's own "dashboard-context" instance —
+   * see buildDashboardContextSwitcher below). Exported as window.PCC.layout.
+   * buildContextSwitcher so dashboard.js can build its own prominent copy without
+   * duplicating this cascading logic. */
+  function buildContextSwitcherGroup(idPrefix) {
+    var wrap = document.createElement("div");
+    wrap.className = "title-block__context-group";
+    var selects = {};
+
+    function makeCell(key, label, id, title, onChange) {
+      var div = document.createElement("div");
+      div.className = "title-block__cell";
+      var lab = document.createElement("span");
+      lab.className = "title-block__label";
+      lab.textContent = label;
+      div.appendChild(lab);
+      var select = document.createElement("select");
+      select.className = "title-block__project-select";
+      select.id = id;
+      select.title = title;
+      select.onchange = function () {
+        onChange(select.value);
+        populateContextSelects();
+        window.PCC.router.render();
+      };
+      div.appendChild(select);
+      selects[key] = select;
+      return div;
+    }
+
+    wrap.appendChild(
+      makeCell("company", "COMPANY", idPrefix + "-company-select", "Current Company context — filters Client and Project below", function (v) {
+        window.PCC.projectContext.setCompany(v);
+      })
+    );
+    wrap.appendChild(
+      makeCell("client", "CLIENT", idPrefix + "-client-select", "Current Client context — filters Project below", function (v) {
+        window.PCC.projectContext.setClient(v);
+      })
+    );
+    wrap.appendChild(
+      makeCell("project", "PROJECT", idPrefix + "-project-select", "Current project context — carries across every project-scoped page", function (v) {
+        window.PCC.projectContext.set(v);
+      })
+    );
+
+    // Populate directly via the element references just created, NOT by looking them up
+    // through document.getElementById (that's what populateContextSelectsFor() above
+    // does, and it's the right tool for a later REFRESH once this group is already
+    // attached to the document) — at this exact point `wrap` hasn't been attached
+    // anywhere yet (the caller does that after this function returns, e.g. Dashboard
+    // builds its copy mid-render before appending it to the outlet), so a
+    // getElementById-based lookup would silently find nothing and leave these selects
+    // permanently empty.
+    var data = window.PCC.store.get();
+    populateCompanySelect(selects.company, data);
+    populateClientSelect(selects.client, data, window.PCC.projectContext.getCompany());
+    populateProjectSelect(selects.project, data, window.PCC.projectContext.getCompany(), window.PCC.projectContext.getClient());
+
+    return wrap;
   }
 
   function buildProjectContextCell() {
-    var div = document.createElement("div");
-    div.className = "title-block__cell";
-    var lab = document.createElement("span");
-    lab.className = "title-block__label";
-    lab.textContent = "PROJECT";
-    div.appendChild(lab);
-
-    var select = document.createElement("select");
-    select.className = "title-block__project-select";
-    select.id = "title-block-project-select";
-    select.title = "Current project context — carries across every project-scoped page";
-    populateProjectContextSelect(select);
-    select.onchange = function () {
-      window.PCC.projectContext.set(select.value);
-      window.PCC.router.render();
-    };
-    div.appendChild(select);
-    return div;
+    return buildContextSwitcherGroup("title-block");
   }
 
   function buildTitleBlock() {
@@ -9429,8 +9889,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       if (status) status.textContent = "Saving\u2026";
       var companyEl = document.getElementById("title-block-company");
       if (companyEl) companyEl.textContent = window.PCC.store.get().settings.company_name || "\u2014";
-      var projectSelect = document.getElementById("title-block-project-select");
-      if (projectSelect) populateProjectContextSelect(projectSelect);
+      populateContextSelects();
     });
 
     window.PCC.store.onPersisted(function (data, ok) {
@@ -9442,8 +9901,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   function refreshTitleBlock() {
     var companyEl = document.getElementById("title-block-company");
     if (companyEl) companyEl.textContent = window.PCC.store.get().settings.company_name || "\u2014";
-    var projectSelect = document.getElementById("title-block-project-select");
-    if (projectSelect) populateProjectContextSelect(projectSelect);
+    populateContextSelects();
     applyTheme(window.PCC.store.get().settings.theme || "dark");
     applyDensity(window.PCC.store.get().settings.density || "comfortable");
   }
@@ -9454,6 +9912,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     refreshTitleBlock: refreshTitleBlock,
     refreshBackupNudge: refreshBackupNudge,
     isFocusMode: isFocusMode,
+    // Company/Client/Project Management redesign: lets dashboard.js build its own
+    // prominent copy of the same Company/Client/Project cascade (spec point 6) without
+    // duplicating the cascading-select logic.
+    buildContextSwitcher: buildContextSwitcherGroup,
   };
 })();
 
@@ -10704,6 +11166,27 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     wrap.appendChild(h1);
     wrap.appendChild(sub);
+
+    // Company/Client/Project Management redesign: the spec's own "prominent global
+    // context selector" (point 6) — a bigger, always-reachable copy of the shell header's
+    // own Company/Client/Project cascade (same underlying window.PCC.projectContext, so
+    // picking a level here IS the global context switch, kept in sync automatically via
+    // layout.js's store.onChange listener). Placed here specifically because the header's
+    // own copy is hidden on phones (an existing, deliberate space-saving rule applying to
+    // every non-growing title-block cell) — this is the one copy guaranteed reachable at
+    // every screen size, which is exactly what the spec asks for.
+    var contextPanel = document.createElement("div");
+    contextPanel.className = "panel no-print";
+    contextPanel.style.marginBottom = "16px";
+    var contextHeading = document.createElement("div");
+    contextHeading.className = "text-secondary";
+    contextHeading.style.fontSize = "11px";
+    contextHeading.style.letterSpacing = "0.4px";
+    contextHeading.style.marginBottom = "8px";
+    contextHeading.textContent = "CURRENT CONTEXT";
+    contextPanel.appendChild(contextHeading);
+    contextPanel.appendChild(window.PCC.layout.buildContextSwitcher("dashboard-context"));
+    wrap.appendChild(contextPanel);
 
     if (uiState.projectFilter) {
       var focusBanner = document.createElement("div");
@@ -12376,8 +12859,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     // in the document naming pattern — see documentNomenclatureEngine.js. Optional; a
     // project with no code just can't be validated on that segment yet.
     { key: "project_code", label: "Project Code", type: "text" },
-    { key: "client", label: "Client", type: "text" },
-    { key: "company", label: "Company", type: "text" },
+    // Company/Client/Project Management redesign: Company and Client are no longer plain
+    // text fields here — see buildCompanyClientFields() below, inserted into the form
+    // right after Project Code. company_id/client_id are the real relationship (stable
+    // ids into data.companies/data.clients); the legacy `client`/`company` text fields
+    // still exist on the project record purely as synced display labels for every other
+    // page that reads them, kept in sync by renderForm()'s onsubmit handler.
     { key: "country", label: "Country", type: "text" },
     { key: "location", label: "Location", type: "text" },
     { key: "sector", label: "Sector", type: "text" },
@@ -12625,6 +13112,195 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     return addDays(startDate, -leadTimeDays);
   }
 
+  /** Company/Client/Project Management redesign: the Company/Client picker pair inside
+   * the Add/Edit Project form. Cascading (Client options are always scoped to the chosen
+   * Company — a Client is exclusive to one Company, spec point 1) with an inline "+ Add
+   * New…" option on each select for the "Relationship-Based Creation" flow (spec point
+   * 5B) — creating the Company/Client the moment a project needs one, without leaving this
+   * form. Deliberately NOT part of the generic FIELD_CONFIG/buildField() loop: it needs
+   * two selects that talk to each other (Client's options depend on Company's current
+   * value) and inline create affordances, neither of which that generic single-field
+   * loop supports. Returns [companyField, clientField] for the caller to splice into the
+   * form grid; nothing here touches the store until an inline "Create" button is clicked. */
+  function buildCompanyClientFields(project) {
+    var data = window.PCC.store.get();
+
+    var companyField = document.createElement("div");
+    companyField.className = "field";
+    var companyLabel = document.createElement("label");
+    companyLabel.textContent = "Company";
+    companyLabel.setAttribute("for", "field-company_id");
+    companyField.appendChild(companyLabel);
+    var companySelect = document.createElement("select");
+    companySelect.id = "field-company_id";
+    companyField.appendChild(companySelect);
+    var companyNewRow = document.createElement("div");
+    companyNewRow.style.display = "none";
+    companyNewRow.style.gap = "var(--space-2)";
+    companyNewRow.style.marginTop = "var(--space-2)";
+    var companyNewInput = document.createElement("input");
+    companyNewInput.type = "text";
+    companyNewInput.placeholder = "New company name";
+    var companyNewBtn = document.createElement("button");
+    companyNewBtn.type = "button";
+    companyNewBtn.className = "btn btn--ghost";
+    companyNewBtn.textContent = "Create";
+    companyNewRow.appendChild(companyNewInput);
+    companyNewRow.appendChild(companyNewBtn);
+    companyField.appendChild(companyNewRow);
+
+    var clientField = document.createElement("div");
+    clientField.className = "field";
+    var clientLabel = document.createElement("label");
+    clientLabel.textContent = "Client";
+    clientLabel.setAttribute("for", "field-client_id");
+    clientField.appendChild(clientLabel);
+    var clientSelect = document.createElement("select");
+    clientSelect.id = "field-client_id";
+    clientField.appendChild(clientSelect);
+    var clientNewRow = document.createElement("div");
+    clientNewRow.style.display = "none";
+    clientNewRow.style.gap = "var(--space-2)";
+    clientNewRow.style.marginTop = "var(--space-2)";
+    var clientNewInput = document.createElement("input");
+    clientNewInput.type = "text";
+    clientNewInput.placeholder = "New client name";
+    var clientNewBtn = document.createElement("button");
+    clientNewBtn.type = "button";
+    clientNewBtn.className = "btn btn--ghost";
+    clientNewBtn.textContent = "Create";
+    clientNewRow.appendChild(clientNewInput);
+    clientNewRow.appendChild(clientNewBtn);
+    clientField.appendChild(clientNewRow);
+
+    // A company/client that's since been archived can still be the one already assigned
+    // to this project — kept in its select (tagged "(archived)") rather than silently
+    // dropped, so opening an existing project's Edit form never looks like the
+    // relationship vanished. New projects only ever see active companies/clients.
+    function populateCompanySelect(selectedId) {
+      companySelect.innerHTML = "";
+      var noneOpt = document.createElement("option");
+      noneOpt.value = "";
+      noneOpt.textContent = "(none)";
+      companySelect.appendChild(noneOpt);
+      var companies = data.companies
+        .filter(function (c) { return !c.archived; })
+        .slice()
+        .sort(function (a, b) { return (a.name || "").localeCompare(b.name || ""); });
+      if (selectedId && !companies.some(function (c) { return c.id === selectedId; })) {
+        var archivedCurrent = data.companies.find(function (c) { return c.id === selectedId; });
+        if (archivedCurrent) companies.push(archivedCurrent);
+      }
+      companies.forEach(function (c) {
+        var opt = document.createElement("option");
+        opt.value = c.id;
+        opt.textContent = c.name + (c.archived ? " (archived)" : "");
+        companySelect.appendChild(opt);
+      });
+      var newOpt = document.createElement("option");
+      newOpt.value = "__new__";
+      newOpt.textContent = "+ Add New Company…";
+      companySelect.appendChild(newOpt);
+      companySelect.value = selectedId || "";
+    }
+
+    function populateClientSelect(companyId, selectedId) {
+      clientSelect.innerHTML = "";
+      var noneOpt = document.createElement("option");
+      noneOpt.value = "";
+      noneOpt.textContent = "(none)";
+      clientSelect.appendChild(noneOpt);
+      clientSelect.disabled = !companyId;
+      if (companyId) {
+        var clients = data.clients
+          .filter(function (c) { return !c.archived && c.company_id === companyId; })
+          .slice()
+          .sort(function (a, b) { return (a.name || "").localeCompare(b.name || ""); });
+        if (selectedId && !clients.some(function (c) { return c.id === selectedId; })) {
+          var archivedCurrent = data.clients.find(function (c) { return c.id === selectedId && c.company_id === companyId; });
+          if (archivedCurrent) clients.push(archivedCurrent);
+        }
+        clients.forEach(function (c) {
+          var opt = document.createElement("option");
+          opt.value = c.id;
+          opt.textContent = c.name + (c.archived ? " (archived)" : "");
+          clientSelect.appendChild(opt);
+        });
+        var newOpt = document.createElement("option");
+        newOpt.value = "__new__";
+        newOpt.textContent = "+ Add New Client…";
+        clientSelect.appendChild(newOpt);
+      }
+      clientSelect.value = selectedId || "";
+    }
+
+    populateCompanySelect(project.company_id);
+    populateClientSelect(project.company_id, project.client_id);
+
+    companySelect.onchange = function () {
+      if (companySelect.value === "__new__") {
+        companyNewRow.style.display = "flex";
+        companyNewInput.focus();
+        return;
+      }
+      companyNewRow.style.display = "none";
+      populateClientSelect(companySelect.value, "");
+    };
+
+    companyNewBtn.onclick = function () {
+      var name = companyNewInput.value.trim();
+      if (!name) {
+        companyNewInput.focus();
+        return;
+      }
+      var created;
+      window.PCC.store.update(function (d) {
+        created = window.PCC.store.newCompany({ name: name });
+        d.companies.push(created);
+      });
+      data = window.PCC.store.get();
+      window.PCC.notify("Company added.", "success");
+      companyNewRow.style.display = "none";
+      companyNewInput.value = "";
+      populateCompanySelect(created.id);
+      populateClientSelect(created.id, "");
+    };
+
+    clientSelect.onchange = function () {
+      if (clientSelect.value === "__new__") {
+        clientNewRow.style.display = "flex";
+        clientNewInput.focus();
+        return;
+      }
+      clientNewRow.style.display = "none";
+    };
+
+    clientNewBtn.onclick = function () {
+      var name = clientNewInput.value.trim();
+      if (!name) {
+        clientNewInput.focus();
+        return;
+      }
+      var companyId = companySelect.value;
+      if (!companyId || companyId === "__new__") {
+        window.PCC.notify("Choose or create a Company first.", "error");
+        return;
+      }
+      var created;
+      window.PCC.store.update(function (d) {
+        created = window.PCC.store.newClient({ company_id: companyId, name: name });
+        d.clients.push(created);
+      });
+      data = window.PCC.store.get();
+      window.PCC.notify("Client added.", "success");
+      clientNewRow.style.display = "none";
+      clientNewInput.value = "";
+      populateClientSelect(companyId, created.id);
+    };
+
+    return [companyField, clientField];
+  }
+
   function renderForm(container, project, onSaved) {
     var isNew = uiState.editingId === "new";
     var panel = document.createElement("div");
@@ -12642,6 +13318,13 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     FIELD_CONFIG.forEach(function (cfg) {
       grid.appendChild(buildField(cfg, project));
+      // Company/Client/Project Management redesign: spliced in right after Project Code,
+      // where the old plain-text Client/Company fields used to sit positionally.
+      if (cfg.key === "project_code") {
+        buildCompanyClientFields(project).forEach(function (f) {
+          grid.appendChild(f);
+        });
+      }
     });
     form.appendChild(grid);
 
@@ -12686,7 +13369,24 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       }
       errorMsg.style.display = "none";
 
+      var companySelectEl = form.querySelector("#field-company_id");
+      var clientSelectEl = form.querySelector("#field-client_id");
+      // "__new__" only shows up here if a user typed into the inline create row and then
+      // submitted the form without clicking "Create" — treat it the same as leaving the
+      // picker on its previous real value (never persist the sentinel itself).
+      var pickedCompanyId = companySelectEl && companySelectEl.value !== "__new__" ? companySelectEl.value : "";
+      var pickedClientId = clientSelectEl && clientSelectEl.value !== "__new__" ? clientSelectEl.value : "";
+
       window.PCC.store.update(function (data) {
+        var companyRec = pickedCompanyId ? data.companies.find(function (c) { return c.id === pickedCompanyId; }) : null;
+        var clientRec = pickedClientId ? data.clients.find(function (c) { return c.id === pickedClientId; }) : null;
+        values.company_id = companyRec ? companyRec.id : "";
+        values.client_id = clientRec ? clientRec.id : "";
+        // Legacy display-label strings, kept in sync — see FIELD_CONFIG's own comment on
+        // why these still exist on the project record.
+        values.company = companyRec ? companyRec.name : "";
+        values.client = clientRec ? clientRec.name : "";
+
         var projectId;
         if (isNew) {
           var created = window.PCC.store.newProject(values);
@@ -12697,6 +13397,23 @@ https://github.com/nodeca/pako/blob/main/LICENSE
             return p.id === project.id;
           });
           if (existing) {
+            // Spec points 12/13 (Relationship Changes / Historical Relationship
+            // Integrity): record the PRIOR Company/Client relationship before
+            // overwriting it, but only when there WAS one and it actually changed — the
+            // initial assignment from blank isn't a "change" to preserve history for.
+            if (
+              (existing.company_id || existing.client_id) &&
+              (existing.company_id !== values.company_id || existing.client_id !== values.client_id)
+            ) {
+              if (!existing.relationship_history) existing.relationship_history = [];
+              existing.relationship_history.push({
+                company_id: existing.company_id || "",
+                client_id: existing.client_id || "",
+                company_name: existing.company || "",
+                client_name: existing.client || "",
+                changed_at: new Date().toISOString(),
+              });
+            }
             Object.assign(existing, values);
             existing.updated_at = new Date().toISOString();
           }
@@ -14663,6 +15380,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     var data = window.PCC.store.get();
 
+    // Company/Client/Project Management redesign: arriving here via the Organizations
+    // page's "+ New Project" action (spec point 5B) must open the Add Project form
+    // automatically, pre-filled — not just land on the plain Portfolio list with the
+    // prefill silently waiting for a manual "+ Add Project" click.
+    if (window.PCC.pendingProjectPrefill && !uiState.editingId) {
+      uiState.editingId = "new";
+    }
+
     var h1 = document.createElement("h2");
     h1.textContent = "Portfolio";
     h1.style.marginBottom = "var(--space-4)";
@@ -14673,10 +15398,17 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     if (uiState.editingId) {
       var projectBeingEdited =
         uiState.editingId === "new"
-          ? window.PCC.store.newProject()
+          // Company/Client/Project Management redesign: the Organizations page's own
+          // "+ New Project" action (relationship-based creation, spec point 5B) sets this
+          // transient global right before navigating here — never persisted, consumed
+          // exactly once so a later unrelated "+ Add Project" click doesn't inherit it.
+          ? window.PCC.store.newProject(window.PCC.pendingProjectPrefill || {})
           : data.projects.find(function (p) {
               return p.id === uiState.editingId;
             });
+      if (uiState.editingId === "new" && window.PCC.pendingProjectPrefill) {
+        window.PCC.pendingProjectPrefill = null;
+      }
       renderForm(outlet, projectBeingEdited, rerender);
     }
 
@@ -14900,6 +15632,693 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       uiState.expandedId = null;
     },
   };
+})();
+
+
+/* ---- js/pages/organizations.js ---- */
+/* Companies & Clients (Company/Client/Project Management redesign — CLAUDE.md spec).
+ *
+ * The management surface for the two new independent master-data entities Companies and
+ * Clients (see newCompany()/newClient() in store.js) — create/edit/archive both, and
+ * browse the Company → Client → Project hierarchy read-only from here (the projects
+ * themselves are still created/edited on the Portfolio page; this page's own "+ New
+ * Project" buttons just hand off there with the Company/Client pre-selected — spec point
+ * 5B, "Relationship-Based Creation").
+ *
+ * Same "archive, never delete" pattern every other register in this app already follows
+ * (Portfolio's own project archive, Document Types' deactivate) — there is deliberately no
+ * delete action here at all, which is also how spec point 14's "prevent deleting a company/
+ * client that has dependent records" requirement is satisfied: if the action doesn't
+ * exist, it can't be taken by accident.
+ */
+(function () {
+  "use strict";
+  window.PCC = window.PCC || {};
+  window.PCC.pages = window.PCC.pages || {};
+
+  var uiState = {
+    editingCompanyId: null, // a company id, 'new', or null
+    editingClientId: null, // { company_id } context comes from the row it was opened from
+    editingClientCompanyId: null,
+    search: "",
+    showArchived: false,
+    expandedCompanyIds: {}, // company id -> true, which company cards are expanded
+  };
+
+  function esc(s) {
+    var div = document.createElement("div");
+    div.textContent = s === null || s === undefined ? "" : String(s);
+    return div.innerHTML;
+  }
+
+  function clientsOf(data, companyId) {
+    return data.clients
+      .filter(function (c) { return c.company_id === companyId; })
+      .slice()
+      .sort(function (a, b) { return (a.name || "").localeCompare(b.name || ""); });
+  }
+
+  function projectsOf(data, companyId, clientId) {
+    return data.projects
+      .filter(function (p) { return p.company_id === companyId && p.client_id === clientId; })
+      .slice()
+      .sort(function (a, b) { return (a.name || "").localeCompare(b.name || ""); });
+  }
+
+  // ---------------------------------------------------------------------------------
+  // Company add/edit form
+  // ---------------------------------------------------------------------------------
+
+  function renderCompanyForm(container, company, rerender) {
+    var isNew = uiState.editingCompanyId === "new";
+    var panel = document.createElement("div");
+    panel.className = "panel";
+    panel.style.marginBottom = "var(--space-4)";
+
+    var heading = document.createElement("h3");
+    heading.style.marginBottom = "var(--space-4)";
+    heading.textContent = isNew ? "Add Company" : "Edit Company";
+    panel.appendChild(heading);
+
+    var form = document.createElement("form");
+    var grid = document.createElement("div");
+    grid.className = "form-grid";
+
+    var nameField = document.createElement("div");
+    nameField.className = "field";
+    nameField.innerHTML = "<label>Name *</label>";
+    var nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.id = "cofield-name";
+    nameInput.value = company.name || "";
+    nameInput.required = true;
+    nameField.appendChild(nameInput);
+    grid.appendChild(nameField);
+    form.appendChild(grid);
+
+    var notesField = document.createElement("div");
+    notesField.className = "field";
+    notesField.innerHTML = "<label>Notes</label>";
+    var notesArea = document.createElement("textarea");
+    notesArea.id = "cofield-notes";
+    notesArea.rows = 2;
+    notesArea.value = company.notes || "";
+    notesField.appendChild(notesArea);
+    form.appendChild(notesField);
+
+    var errorMsg = document.createElement("p");
+    errorMsg.style.color = "var(--status-critical)";
+    errorMsg.style.fontSize = "var(--text-sm)";
+    errorMsg.style.display = "none";
+    errorMsg.textContent = "Name is required.";
+    form.appendChild(errorMsg);
+
+    var actions = document.createElement("div");
+    actions.style.display = "flex";
+    actions.style.gap = "var(--space-3)";
+    actions.style.marginTop = "var(--space-3)";
+
+    var saveBtn = document.createElement("button");
+    saveBtn.type = "submit";
+    saveBtn.className = "btn btn--primary";
+    saveBtn.textContent = isNew ? "Add Company" : "Save Changes";
+
+    var cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.className = "btn btn--ghost";
+    cancelBtn.textContent = "Cancel";
+    cancelBtn.onclick = function () {
+      uiState.editingCompanyId = null;
+      rerender();
+    };
+
+    actions.appendChild(saveBtn);
+    actions.appendChild(cancelBtn);
+    form.appendChild(actions);
+
+    form.onsubmit = function (e) {
+      e.preventDefault();
+      var name = nameInput.value.trim();
+      if (!name) {
+        errorMsg.style.display = "block";
+        return;
+      }
+      errorMsg.style.display = "none";
+
+      var values = { name: name, notes: notesArea.value };
+      window.PCC.store.update(function (d) {
+        if (isNew) {
+          d.companies.push(window.PCC.store.newCompany(values));
+        } else {
+          var existing = d.companies.find(function (c) { return c.id === company.id; });
+          if (existing) {
+            Object.assign(existing, values);
+            existing.updated_at = new Date().toISOString();
+          }
+        }
+      });
+      window.PCC.notify(isNew ? "Company added." : "Company updated.", "success");
+      uiState.editingCompanyId = null;
+      rerender();
+    };
+
+    panel.appendChild(form);
+    container.appendChild(panel);
+  }
+
+  // ---------------------------------------------------------------------------------
+  // Client add/edit form — always scoped to one Company, per spec point 1 (a Client is
+  // exclusive to the Company it's added under; there is no company-less Client, and no
+  // "move this Client to a different Company" — reassignment happens on the PROJECT's own
+  // relationship, not by re-parenting the Client record itself).
+  // ---------------------------------------------------------------------------------
+
+  function renderClientForm(container, client, company, rerender) {
+    var isNew = uiState.editingClientId === "new";
+    var panel = document.createElement("div");
+    panel.className = "panel";
+    panel.style.marginBottom = "var(--space-4)";
+
+    var heading = document.createElement("h3");
+    heading.style.marginBottom = "var(--space-2)";
+    heading.textContent = isNew ? "Add Client" : "Edit Client";
+    panel.appendChild(heading);
+
+    var sub = document.createElement("p");
+    sub.className = "text-secondary";
+    sub.style.fontSize = "var(--text-sm)";
+    sub.style.marginBottom = "var(--space-4)";
+    sub.textContent = "Company: " + (company.name || "(unnamed company)");
+    panel.appendChild(sub);
+
+    var form = document.createElement("form");
+    var grid = document.createElement("div");
+    grid.className = "form-grid";
+
+    var nameField = document.createElement("div");
+    nameField.className = "field";
+    nameField.innerHTML = "<label>Name *</label>";
+    var nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.id = "clfield-name";
+    nameInput.value = client.name || "";
+    nameInput.required = true;
+    nameField.appendChild(nameInput);
+    grid.appendChild(nameField);
+    form.appendChild(grid);
+
+    var notesField = document.createElement("div");
+    notesField.className = "field";
+    notesField.innerHTML = "<label>Notes</label>";
+    var notesArea = document.createElement("textarea");
+    notesArea.id = "clfield-notes";
+    notesArea.rows = 2;
+    notesArea.value = client.notes || "";
+    notesField.appendChild(notesArea);
+    form.appendChild(notesField);
+
+    var errorMsg = document.createElement("p");
+    errorMsg.style.color = "var(--status-critical)";
+    errorMsg.style.fontSize = "var(--text-sm)";
+    errorMsg.style.display = "none";
+    errorMsg.textContent = "Name is required.";
+    form.appendChild(errorMsg);
+
+    var actions = document.createElement("div");
+    actions.style.display = "flex";
+    actions.style.gap = "var(--space-3)";
+    actions.style.marginTop = "var(--space-3)";
+
+    var saveBtn = document.createElement("button");
+    saveBtn.type = "submit";
+    saveBtn.className = "btn btn--primary";
+    saveBtn.textContent = isNew ? "Add Client" : "Save Changes";
+
+    var cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.className = "btn btn--ghost";
+    cancelBtn.textContent = "Cancel";
+    cancelBtn.onclick = function () {
+      uiState.editingClientId = null;
+      uiState.editingClientCompanyId = null;
+      rerender();
+    };
+
+    actions.appendChild(saveBtn);
+    actions.appendChild(cancelBtn);
+    form.appendChild(actions);
+
+    form.onsubmit = function (e) {
+      e.preventDefault();
+      var name = nameInput.value.trim();
+      if (!name) {
+        errorMsg.style.display = "block";
+        return;
+      }
+      errorMsg.style.display = "none";
+
+      var values = { name: name, notes: notesArea.value };
+      window.PCC.store.update(function (d) {
+        if (isNew) {
+          values.company_id = company.id;
+          d.clients.push(window.PCC.store.newClient(values));
+        } else {
+          var existing = d.clients.find(function (c) { return c.id === client.id; });
+          if (existing) {
+            Object.assign(existing, values);
+            existing.updated_at = new Date().toISOString();
+          }
+        }
+      });
+      window.PCC.notify(isNew ? "Client added." : "Client updated.", "success");
+      uiState.editingClientId = null;
+      uiState.editingClientCompanyId = null;
+      rerender();
+    };
+
+    panel.appendChild(form);
+    container.appendChild(panel);
+  }
+
+  // ---------------------------------------------------------------------------------
+  // Project mini-list under a Client
+  // ---------------------------------------------------------------------------------
+
+  var STATUS_LABELS = { on_track: "On Track", at_risk: "At Risk", critical: "Critical", complete: "Complete" };
+  var STATUS_BADGE_CLASS = { on_track: "on_track", at_risk: "at_risk", critical: "critical", complete: "info" };
+
+  function openProjectWorkspace(projectId) {
+    window.PCC.projectContext.set(projectId);
+    window.PCC.router.go("projectWorkspace");
+  }
+
+  function renderProjectRow(p) {
+    var row = document.createElement("div");
+    row.className = "detail-card";
+    row.style.display = "flex";
+    row.style.justifyContent = "space-between";
+    row.style.alignItems = "center";
+    row.style.gap = "var(--space-3)";
+    row.style.marginBottom = "6px";
+    if (p.archived) row.style.opacity = "0.6";
+
+    var main = document.createElement("div");
+    main.innerHTML =
+      "<strong>" + esc(p.name || "(unnamed project)") + "</strong>" +
+      (p.archived ? " <span class='text-secondary' style='font-size:12px;'>(archived)</span>" : "");
+    row.appendChild(main);
+
+    var right = document.createElement("div");
+    right.style.display = "flex";
+    right.style.alignItems = "center";
+    right.style.gap = "var(--space-3)";
+
+    var badge = document.createElement("span");
+    badge.className = "status-badge status-badge--" + (STATUS_BADGE_CLASS[p.status] || "info");
+    badge.textContent = STATUS_LABELS[p.status] || p.status;
+    right.appendChild(badge);
+
+    var openBtn = document.createElement("button");
+    openBtn.type = "button";
+    openBtn.className = "btn btn--ghost";
+    openBtn.textContent = "Open";
+    openBtn.onclick = function () {
+      openProjectWorkspace(p.id);
+    };
+    right.appendChild(openBtn);
+
+    row.appendChild(right);
+    return row;
+  }
+
+  // ---------------------------------------------------------------------------------
+  // Client card (nested inside a Company card)
+  // ---------------------------------------------------------------------------------
+
+  function renderClientCard(client, company, data, rerender) {
+    var card = document.createElement("div");
+    card.className = "detail-card";
+    card.style.marginBottom = "var(--space-3)";
+    if (client.archived) card.style.opacity = "0.6";
+
+    var header = document.createElement("div");
+    header.style.display = "flex";
+    header.style.justifyContent = "space-between";
+    header.style.alignItems = "center";
+    header.style.flexWrap = "wrap";
+    header.style.gap = "var(--space-2)";
+
+    var projects = projectsOf(data, company.id, client.id);
+    var activeProjectCount = projects.filter(function (p) { return !p.archived; }).length;
+
+    var title = document.createElement("div");
+    title.innerHTML =
+      "<strong>" + esc(client.name || "(unnamed client)") + "</strong>" +
+      (client.archived ? " <span class='text-secondary' style='font-size:12px;'>(archived)</span>" : "") +
+      " <span class='text-secondary' style='font-size:12px;'>&middot; " +
+      activeProjectCount + " active project" + (activeProjectCount === 1 ? "" : "s") +
+      (projects.length !== activeProjectCount ? ", " + (projects.length - activeProjectCount) + " archived" : "") +
+      "</span>";
+    header.appendChild(title);
+
+    var actions = document.createElement("div");
+    actions.style.display = "flex";
+    actions.style.gap = "var(--space-2)";
+
+    var newProjectBtn = document.createElement("button");
+    newProjectBtn.type = "button";
+    newProjectBtn.className = "btn btn--ghost";
+    newProjectBtn.textContent = "+ New Project";
+    newProjectBtn.title = "Create a project under " + company.name + " → " + client.name;
+    newProjectBtn.onclick = function () {
+      // Spec point 5B (Relationship-Based Creation): hand off to Portfolio's own "+ Add
+      // Project" flow with Company/Client already chosen, rather than duplicating the
+      // full project form here.
+      window.PCC.pendingProjectPrefill = { company_id: company.id, client_id: client.id };
+      window.PCC.router.go("portfolio");
+    };
+    actions.appendChild(newProjectBtn);
+
+    var editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.className = "btn btn--ghost";
+    editBtn.textContent = "Edit";
+    editBtn.onclick = function () {
+      uiState.editingClientId = client.id;
+      uiState.editingClientCompanyId = company.id;
+      rerender();
+    };
+    actions.appendChild(editBtn);
+
+    var archiveBtn = document.createElement("button");
+    archiveBtn.type = "button";
+    archiveBtn.className = "btn btn--ghost";
+    archiveBtn.textContent = client.archived ? "Unarchive" : "Archive";
+    archiveBtn.onclick = function () {
+      window.PCC.store.update(function (d) {
+        var existing = d.clients.find(function (c) { return c.id === client.id; });
+        if (existing) {
+          existing.archived = !existing.archived;
+          existing.updated_at = new Date().toISOString();
+        }
+      });
+      window.PCC.notify(client.archived ? "Client unarchived." : "Client archived. Its projects and their data remain intact.", "info");
+      rerender();
+    };
+    actions.appendChild(archiveBtn);
+
+    header.appendChild(actions);
+    card.appendChild(header);
+
+    if (projects.length > 0) {
+      var projectList = document.createElement("div");
+      projectList.style.marginTop = "var(--space-2)";
+      projects.forEach(function (p) {
+        projectList.appendChild(renderProjectRow(p));
+      });
+      card.appendChild(projectList);
+    }
+
+    return card;
+  }
+
+  // ---------------------------------------------------------------------------------
+  // Company card
+  // ---------------------------------------------------------------------------------
+
+  function renderCompanyCard(company, data, rerender) {
+    var panel = document.createElement("div");
+    panel.className = "panel";
+    panel.style.marginBottom = "var(--space-4)";
+    if (company.archived) panel.style.opacity = "0.7";
+
+    var header = document.createElement("div");
+    header.style.display = "flex";
+    header.style.justifyContent = "space-between";
+    header.style.alignItems = "center";
+    header.style.flexWrap = "wrap";
+    header.style.gap = "var(--space-2)";
+
+    var clients = clientsOf(data, company.id);
+    var activeClientCount = clients.filter(function (c) { return !c.archived; }).length;
+
+    var titleWrap = document.createElement("div");
+    var expandBtn = document.createElement("button");
+    expandBtn.type = "button";
+    expandBtn.className = "btn btn--ghost";
+    var expanded = !!uiState.expandedCompanyIds[company.id];
+    expandBtn.textContent = (expanded ? "▾ " : "▸ ") + (company.name || "(unnamed company)");
+    expandBtn.style.fontWeight = "600";
+    expandBtn.style.fontSize = "var(--text-md)";
+    expandBtn.onclick = function () {
+      uiState.expandedCompanyIds[company.id] = !expanded;
+      rerender();
+    };
+    titleWrap.appendChild(expandBtn);
+
+    var sub = document.createElement("div");
+    sub.className = "text-secondary";
+    sub.style.fontSize = "12px";
+    sub.style.marginLeft = "var(--space-2)";
+    sub.textContent =
+      activeClientCount + " active client" + (activeClientCount === 1 ? "" : "s") +
+      (clients.length !== activeClientCount ? ", " + (clients.length - activeClientCount) + " archived" : "") +
+      (company.archived ? " · ARCHIVED" : "");
+    titleWrap.appendChild(sub);
+    header.appendChild(titleWrap);
+
+    var actions = document.createElement("div");
+    actions.style.display = "flex";
+    actions.style.gap = "var(--space-2)";
+
+    var addClientBtn = document.createElement("button");
+    addClientBtn.type = "button";
+    addClientBtn.className = "btn btn--ghost";
+    addClientBtn.textContent = "+ Add Client";
+    addClientBtn.onclick = function () {
+      uiState.editingClientId = "new";
+      uiState.editingClientCompanyId = company.id;
+      uiState.expandedCompanyIds[company.id] = true;
+      rerender();
+    };
+    actions.appendChild(addClientBtn);
+
+    var editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.className = "btn btn--ghost";
+    editBtn.textContent = "Edit";
+    editBtn.onclick = function () {
+      uiState.editingCompanyId = company.id;
+      rerender();
+    };
+    actions.appendChild(editBtn);
+
+    var archiveBtn = document.createElement("button");
+    archiveBtn.type = "button";
+    archiveBtn.className = "btn btn--ghost";
+    archiveBtn.textContent = company.archived ? "Unarchive" : "Archive";
+    archiveBtn.onclick = function () {
+      window.PCC.store.update(function (d) {
+        var existing = d.companies.find(function (c) { return c.id === company.id; });
+        if (existing) {
+          existing.archived = !existing.archived;
+          existing.updated_at = new Date().toISOString();
+        }
+      });
+      window.PCC.notify(
+        company.archived ? "Company unarchived." : "Company archived. Its clients and projects remain intact and accessible.",
+        "info"
+      );
+      rerender();
+    };
+    actions.appendChild(archiveBtn);
+
+    header.appendChild(actions);
+    panel.appendChild(header);
+
+    if (uiState.editingClientId && uiState.editingClientCompanyId === company.id) {
+      var clientBeingEdited =
+        uiState.editingClientId === "new"
+          ? window.PCC.store.newClient({ company_id: company.id })
+          : clients.find(function (c) { return c.id === uiState.editingClientId; });
+      if (clientBeingEdited) {
+        var formWrap = document.createElement("div");
+        formWrap.style.marginTop = "var(--space-3)";
+        renderClientForm(formWrap, clientBeingEdited, company, rerender);
+        panel.appendChild(formWrap);
+      }
+    }
+
+    if (expanded) {
+      var body = document.createElement("div");
+      body.style.marginTop = "var(--space-3)";
+      var visibleClients = uiState.showArchived ? clients : clients.filter(function (c) { return !c.archived; });
+      if (visibleClients.length === 0) {
+        var empty = document.createElement("p");
+        empty.className = "text-secondary";
+        empty.style.fontSize = "var(--text-sm)";
+        empty.textContent = "No clients yet under this company. Click “+ Add Client” to add the first one.";
+        body.appendChild(empty);
+      } else {
+        visibleClients.forEach(function (c) {
+          body.appendChild(renderClientCard(c, company, data, rerender));
+        });
+      }
+      panel.appendChild(body);
+    }
+
+    return panel;
+  }
+
+  // ---------------------------------------------------------------------------------
+  // Unassigned projects (visibility aid for spec point 14 — spotting orphaned/unlinked
+  // projects — read-only here; assigning one happens on Portfolio's own Edit Project form)
+  // ---------------------------------------------------------------------------------
+
+  function renderUnassignedSection(data) {
+    var unassigned = data.projects.filter(function (p) { return !p.company_id && !p.archived; });
+    if (unassigned.length === 0) return null;
+
+    var panel = document.createElement("div");
+    panel.className = "panel";
+    panel.style.marginBottom = "var(--space-4)";
+    var heading = document.createElement("h3");
+    heading.style.marginBottom = "var(--space-2)";
+    heading.textContent = "Projects Without a Company Assigned (" + unassigned.length + ")";
+    panel.appendChild(heading);
+    var sub = document.createElement("p");
+    sub.className = "text-secondary";
+    sub.style.fontSize = "var(--text-sm)";
+    sub.style.marginBottom = "var(--space-3)";
+    sub.textContent = "Assign these to a Company/Client from Portfolio's Edit Project form whenever convenient — nothing requires it.";
+    panel.appendChild(sub);
+    unassigned.forEach(function (p) {
+      panel.appendChild(renderProjectRow(p));
+    });
+    return panel;
+  }
+
+  // ---------------------------------------------------------------------------------
+  // Page
+  // ---------------------------------------------------------------------------------
+
+  function render(outlet) {
+    function rerender() {
+      outlet.innerHTML = "";
+      render(outlet);
+    }
+
+    var data = window.PCC.store.get();
+
+    var h1 = document.createElement("h2");
+    h1.textContent = "Companies & Clients";
+    h1.style.marginBottom = "8px";
+    outlet.appendChild(h1);
+
+    var infoPanel = document.createElement("div");
+    infoPanel.className = "panel";
+    infoPanel.style.marginBottom = "var(--space-4)";
+    infoPanel.innerHTML =
+      "<p class='text-secondary' style='margin:0; font-size:13px;'>The Company → Client → Project hierarchy that " +
+      "powers the global context selector (Dashboard and the shell header). Companies and Clients are independent, " +
+      "permanent records — archiving one keeps its full history (clients, projects, documents, everything) intact " +
+      "and searchable, it just drops out of active pickers. A Client always belongs to exactly one Company, so the " +
+      "same client name under two different companies is deliberately two separate records here.</p>";
+    outlet.appendChild(infoPanel);
+
+    if (uiState.editingCompanyId) {
+      var companyBeingEdited =
+        uiState.editingCompanyId === "new"
+          ? window.PCC.store.newCompany({})
+          : data.companies.find(function (c) { return c.id === uiState.editingCompanyId; });
+      if (companyBeingEdited) renderCompanyForm(outlet, companyBeingEdited, rerender);
+    }
+
+    var toolbar = document.createElement("div");
+    toolbar.className = "toolbar";
+
+    var search = document.createElement("input");
+    search.type = "text";
+    search.placeholder = "Search companies or clients…";
+    search.value = uiState.search;
+    search.oninput = function () {
+      uiState.search = search.value;
+      renderList();
+    };
+    toolbar.appendChild(search);
+
+    var showArchivedLabel = document.createElement("label");
+    showArchivedLabel.style.display = "flex";
+    showArchivedLabel.style.alignItems = "center";
+    showArchivedLabel.style.gap = "6px";
+    showArchivedLabel.style.fontSize = "13px";
+    showArchivedLabel.style.whiteSpace = "nowrap";
+    var showArchivedCheckbox = document.createElement("input");
+    showArchivedCheckbox.type = "checkbox";
+    showArchivedCheckbox.checked = uiState.showArchived;
+    showArchivedCheckbox.onchange = function () {
+      uiState.showArchived = showArchivedCheckbox.checked;
+      renderList();
+    };
+    showArchivedLabel.appendChild(showArchivedCheckbox);
+    showArchivedLabel.appendChild(document.createTextNode("Show archived"));
+    toolbar.appendChild(showArchivedLabel);
+
+    var spacer = document.createElement("div");
+    spacer.className = "toolbar__spacer";
+    toolbar.appendChild(spacer);
+
+    var addBtn = document.createElement("button");
+    addBtn.className = "btn btn--primary";
+    addBtn.textContent = "+ Add Company";
+    addBtn.onclick = function () {
+      uiState.editingCompanyId = "new";
+      rerender();
+    };
+    toolbar.appendChild(addBtn);
+    outlet.appendChild(toolbar);
+
+    var listWrap = document.createElement("div");
+    outlet.appendChild(listWrap);
+
+    function renderList() {
+      listWrap.innerHTML = "";
+      var q = uiState.search.trim().toLowerCase();
+      var companies = data.companies
+        .filter(function (c) { return uiState.showArchived || !c.archived; })
+        .filter(function (c) {
+          if (!q) return true;
+          if ((c.name || "").toLowerCase().indexOf(q) !== -1) return true;
+          return clientsOf(data, c.id).some(function (cl) {
+            return (cl.name || "").toLowerCase().indexOf(q) !== -1;
+          });
+        })
+        .slice()
+        .sort(function (a, b) { return (a.name || "").localeCompare(b.name || ""); });
+
+      if (companies.length === 0) {
+        var empty = document.createElement("div");
+        empty.className = "panel empty-state";
+        empty.textContent =
+          data.companies.length === 0
+            ? "No companies yet. Click “+ Add Company” to add the first one."
+            : "No companies match this search.";
+        listWrap.appendChild(empty);
+        return;
+      }
+
+      companies.forEach(function (c) {
+        listWrap.appendChild(renderCompanyCard(c, data, rerender));
+      });
+
+      var unassignedSection = renderUnassignedSection(data);
+      if (unassignedSection) listWrap.appendChild(unassignedSection);
+    }
+
+    renderList();
+  }
+
+  window.PCC.pages.organizations = render;
 })();
 
 
@@ -43720,6 +45139,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     router.register("myWork", window.PCC.pages.myWork);
     router.register("projectLookahead", window.PCC.pages.projectLookahead);
     router.register("portfolio", window.PCC.pages.portfolio);
+    router.register("organizations", window.PCC.pages.organizations);
     router.register("projectWorkspace", window.PCC.pages.projectWorkspace);
     router.register("executiveCenter", window.PCC.pages.executiveCenter);
     router.register("vendors", window.PCC.pages.vendors);
