@@ -453,7 +453,7 @@
       var empty = document.createElement("div");
       empty.className = "panel empty-state";
       empty.textContent =
-        "Nothing to show yet. Once Meeting Actions, RFI/TQ, Document Requirements, or Change Orders have due dates or pending status, they'll surface here.";
+        "Nothing to show yet. Once Meeting Actions, RFI/TQ, Document Requirements, Recovery Actions, newly-identified Delays, or Change Orders have due dates or pending status, they'll surface here.";
       wrap.appendChild(empty);
       outlet.appendChild(wrap);
       return;
