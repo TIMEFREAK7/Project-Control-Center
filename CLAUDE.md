@@ -29,6 +29,14 @@ it documents *why* things are shaped the way they are, not just what exists.
 - Each register module (Risk/Issue/Opportunity, RFI/TQ, Change Orders) follows the same "one
   shape distinguished by a `type` field" pattern rather than near-duplicate modules — follow this
   pattern for any new register-style feature instead of copy-pasting a whole new module.
+- **`src/js/delayImpactEngine.js` is a read-only layer over `scheduleCpmEngine.js`'s persisted
+  output, never a second calculation engine.** It reads `total_float`/`early_finish`/etc. straight
+  off `data.activities` — the exact fields `calculateSchedule()` already wrote there the last time
+  "Calculate Schedule" ran — and only re-invokes the real CPM engine (read-only, via
+  `computeProjectFinishImpact()`) for a single delay's own project-finish impact, never in a
+  portfolio-wide loop (that function's own header comment warns against exactly this — see it
+  before calling it from a new list/dashboard). See the file's own header comment for the full
+  reasoning before adding anything to it.
 
 ## Commands
 
@@ -138,6 +146,19 @@ node --check src/js/whatever.js   # quick syntax check on a single file
   history — GitHub doesn't move a branch ref forward on merge, so the local/remote branch will
   otherwise silently drift behind `main`. **Commit before running any `git reset --hard`** — it
   discards uncommitted changes in tracked files with no warning.
+- **Building the Windows installer on a Linux sandbox needs `wine` + `wine32:i386` + a clean
+  `~/.wine` prefix — discovered 2026-08-27 provisioning a fresh container.** Three distinct
+  failures in sequence: (1) `wine process failed ENOENT` — no `wine` installed at all, fixed with
+  `apt-get install -y --no-install-recommends wine`; (2) a WOW64 `ntdll.dll` load failure during
+  electron-builder's own post-build self-check (it runs the freshly-built installer under wine to
+  verify it) — the installed `wine` was 64-bit-only and NSIS installers are 32-bit, fixed with
+  `dpkg --add-architecture i386 && apt-get update && apt-get install -y wine32:i386` (install
+  `libgd3:i386` first if this reports an unmet dependency via `libgphoto2`); (3) `wine:
+  '/root/.wine' is a 64-bit installation, it cannot be used with a 32-bit wineserver` — the first
+  failed attempt had already created a 64-bit-only prefix, fixed with `rm -rf /root/.wine` before
+  the next build so a fresh WOW64-capable prefix gets created. This is sandbox setup, not a
+  repo-committed fix — a genuinely fresh container needs all three steps redone before its first
+  Windows build. See `HANDOFF.md`'s 2026-08-27 section for the full write-up.
 - **After every major upgrade (a gate, a significant follow-up change), update `HANDOFF.md` at the
   repo root AND hand Aditya the complete updated file directly** (not just leave it committed silently
   — send it the same way the zip gets sent) with current session context — what shipped, current

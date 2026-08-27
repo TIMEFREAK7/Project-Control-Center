@@ -4462,3 +4462,146 @@ than trusting it blindly.
   this number blindly.
 - **No other feature work is currently committed to.** When a fresh session picks this up, don't
   assume there's a next gate/phase queued — check with Aditya first.
+
+### Current state update (2026-08-27, after Company/Client redesign + a full 8-gate Planning &
+### Scheduling-Centric Delay Management initiative + a fresh packaging round — supersedes everything above)
+
+`main` and the working branch `claude/pcc-company-client-project-fsjn10` are both at commit
+`4b1b0f4` ("Bump packaging versions for a new distribution build") — verify with `git log -1
+--oneline main` / `git log -1 --oneline claude/pcc-company-client-project-fsjn10` rather than
+trusting this prose, same standing caveat every section of this file gives. Working tree clean,
+nothing uncommitted. Three real chunks of feature work happened between the last update above
+(2026-08-25) and now, none of which this file mentioned until this section:
+
+**1. Company/Client/Project Management redesign** (schema v58) — a global Company → Client →
+Project hierarchy and context switcher (`window.PCC.projectContext`, `layout.js`'s
+`buildContextSwitcher()`), reachable from both the shell header and a prominent copy on
+Dashboard itself. Watch for the "populate-before-attach" bug class this uncovered: populating a
+context-switcher `<select>` via `document.getElementById()` before it's attached to the DOM
+silently fails for a freshly-rebuilt copy (e.g. Dashboard's own, rebuilt every render) while
+appearing to work for a persistent copy (the header's) that gets refreshed later via
+`store.onChange` — populate from element references held in closure at construction time
+instead, never via a DOM lookup done too early.
+
+**2. Schedule Excel Import — manual column mapping** — when an uploaded Excel's headers don't
+match PCC's own predefined schedule column names, the user can now manually map each uploaded
+column to the PCC field it corresponds to, rather than the import silently failing or guessing.
+
+**3. Planning & Scheduling-Centric Delay Management — the full spec, Gates A through H, ALL
+COMPLETE.** Aditya handed over a large (43-section) spec whose central mandate is: **the Schedule
+stays the single source of truth for dates/float/criticality/forecast — Delay Management is a
+management LAYER that reads it, never a second calculation engine.** Built one gate at a time,
+strictly following the spec's own mandated discipline (inspect → design → implement → build →
+test → fix → regression-test → approve gate → next gate), each gate only started after Aditya's
+own explicit "start gate X" — never chained automatically:
+
+- **Gate A (Data Foundation, schema v59)** — `delay_records` extended with a status lifecycle
+  (open/investigating/mitigation_in_progress/recovery_in_progress/recovered/closed),
+  `delay_category` (21 items), `responsibility_classification` (9 items, explicitly NOT the same
+  as contractual liability), immediate/underlying cause structure, and cross-module reference
+  fields (risk_id/issue_id/rfi_id/daily_log_id/meeting_id/vendor_id/change_order_id — plain
+  optional ids, never copies). New `delay_activity_links` join table implements "one Delay, many
+  Activities" (spec point 9) — each link freezes a HISTORICAL snapshot (original planned
+  dates/float) at creation time, separate from the activity's own live current state.
+- **Gate B (Schedule Integration)** — new `src/js/delayImpactEngine.js`, a pure, read-only module
+  that is explicitly NOT a second CPM engine: it reads `total_float`/`early_finish`/etc. straight
+  off `data.activities` (the exact fields `scheduleCpmEngine.js`'s `calculateSchedule()` already
+  wrote there), and only re-runs the real CPM engine (read-only, via `computeProjectFinishImpact()`)
+  when checking a single delay's own project-finish impact — never in a portfolio-wide loop, per
+  that function's own header-comment warning (Gate G and Gate H both had to respect this).
+- **Gate C (Float & Impact)** — the Delay form gained a milestone picker; the Impact Summary shows
+  four distinct, never-conflated levels per spec point 11 ("Delay Days != Project Delay Days"):
+  Activity Impact, Float Consumed, Milestone Impact, Project Finish Impact.
+- **Gate D (Mitigation & Recovery, schema v60)** — Recovery Actions gained `mitigation_type` (a
+  12-item list) and `comments`; `delayImpactEngine.js` gained `computeRecoveryForecast()` — the
+  Original Finish → Delay Forecast → Recovery Forecast → Latest Forecast → Actual Finish
+  progression (spec point 19), plus a collapsed Delay Timeline showing `status_history`.
+- **Gate E (Supporting PCC Integrations)** — the Delay form gained "Related Records" pickers
+  linking (never duplicating) an existing Risk/Issue/RFI/Daily Log/Meeting/Vendor/Change Order;
+  Vendor profiles gained a Delay Analysis section (explicitly NO invented performance score, per
+  the spec's own instruction); Daily Log entries gained a "+ Log Delay" quick-create action.
+- **Gate F (Planner Action Centre)** — Recovery Actions (open/in_progress) and newly-identified
+  ("open" status) Delays now surface in the existing Planner Action Centre alongside every other
+  due-date-bearing record, bucketed the same way. Deliberately only `open`-status delays, to avoid
+  double-counting a delay already represented by its own Recovery Action there.
+- **Gate G (Dashboard & Lookahead)** — a new composed `executiveCenter.getDelayImpactSummary(projectId)`
+  export rolls up open/critical delay counts for Dashboard's Portfolio Exceptions panel; Project
+  Lookahead's activity rows show their own linked-delay count without ever touching the row's
+  existing float-derived badge (the Schedule stays the sole source of criticality truth).
+- **Gate H (Delay Analytics — the spec's FINAL gate)** — `delayRecoveryDashboard.js` gained a new
+  "Delay Analytics" breakdown (by status/category/responsibility/criticality, additive alongside
+  the original Gate 23 cause/severity breakdown) and turned the existing Delay Records list into a
+  browsable Delay Register with a local Status filter.
+
+**All eight gates are DONE. There is no Gate I to jump ahead to** — any further Delay Management
+work is a fresh ask, not a continuation. One test-fixture bug worth remembering if you write
+future delay-related tests: a delay's `daily_log_id`/other reference fields, once set in an
+earlier test check, can collide with a LATER check's own `.find()` lookup by that same field if
+both checks reuse the same seeded record — give each check its own dedicated seed record rather
+than reusing one across unrelated assertions.
+
+- `schema_version` is **60** (`src/js/store.js`'s own `SCHEMA_VERSION` constant — recount rather
+  than trust this prose). v58 = Company/Client/Project fields. v59 = Gate A (delay_records
+  extensions, `delay_activity_links` table). v60 = Gate D (`mitigation_type`/`comments` on
+  recovery_actions).
+- **Test suite**: 88 files (`ls tests/*.js | wc -l`, confirmed against `tests/package.json`'s own
+  chain), **2286 individual checks, 0 failures** at the last full run. Recount rather than trust
+  this number blindly — historical per-gate counts recorded in `README.md`'s own "Verified" lines
+  for Gates C/D/F/G/H drifted from the true file count by a few (an uncaught arithmetic slip
+  during those write-ups, not a real discrepancy in the suite itself) — this file's number here
+  was obtained by actually running `npm test` and counting `PASS`/`FAIL` lines, not incrementing a
+  remembered figure.
+
+**4. A fresh packaging round** — Windows installer and Android APK rebuilt and delivered directly
+to Aditya, both reflecting every change through Gate H:
+  - Android: `versionCode 3`, `versionName "1.2"` (bumped from 2/"1.1"); `packaging/package.json`
+    bumped to match (`1.2.0`). APK: `app-release-unsigned.apk`, 9.77MB — **unsigned**, since no
+    `packaging/android/android/app/keystore.properties` exists in this environment (the gradle
+    config's own documented fallback — a real signed build happens automatically if/when a
+    keystore is ever added, no code change needed).
+  - Windows: `Project Control Center Setup 1.2.0.exe`, ~105.7MB, SHA-256
+    `9e26db09ac6d3824326a37229a9a98a6fafb5b33af2d86ebe31daf168084295f`, split into 5 parts
+    (`...exe.part00`-`part04`, 25MB each except the last ~0.8MB) per the standing split-file
+    convention, reassembly verified byte-exact before sending. Embedded `app.asar`'s
+    `electron/index.html` verified byte-for-byte identical to the repo root's fresh build.
+  - **New environment gotcha, genuinely worth knowing if a fresh sandbox session ever needs to
+    build the Windows installer again**: this sandbox had neither `wine` nor an Android SDK
+    pre-installed, and getting a working Windows build took three real failures in sequence,
+    each with a different root cause — **(1)** `wine process failed ENOENT` — no `wine` binary at
+    all; fixed with `apt-get install -y --no-install-recommends wine`. **(2)** `wine: failed to
+    load "\??\C:\windows\syswow64\ntdll.dll" error c0000135` during electron-builder's own
+    post-build self-check (it actually runs the freshly-built installer under wine to verify it) —
+    the installed `wine` was 64-bit-only and NSIS installers are 32-bit PE binaries needing WOW64;
+    fixed with `dpkg --add-architecture i386 && apt-get update && apt-get install -y
+    wine32:i386` (which itself needed `libgd3:i386` installed first to resolve a `libgphoto2`
+    dependency chain — install that explicitly first if `wine32:i386` reports an unmet-dependency
+    error rather than a straightforward missing-package one). **(3)** `wine: '/root/.wine' is a
+    64-bit installation, it cannot be used with a 32-bit wineserver` — the FIRST failed attempt
+    (before wine32 existed) had already created a 64-bit-only prefix at `~/.wine`; fixed by `rm
+    -rf /root/.wine` so a fresh WOW64-capable prefix gets created on the next build. **This is
+    sandbox/environment setup, not a repo-committed fix** — nothing in the repo itself changed for
+    this, so a genuinely fresh container will need to redo all three installs (`wine`,
+    `wine32:i386`, and a clean `~/.wine`) before its own first Windows build attempt; consider
+    checking `wine --version` and `dpkg --print-foreign-architectures | grep i386` early if a
+    future session is asked to build an EXE and hits any wine-related error, rather than
+    re-diagnosing from scratch. The Android SDK also wasn't pre-installed and was provisioned
+    fresh this session (`cmdline-tools` from `https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip`,
+    then `sdkmanager --sdk_root=/opt/android-sdk "platform-tools" "platforms;android-36"
+    "build-tools;36.0.0"` after accepting licenses) — that build went cleanly on the first
+    attempt, no gotchas there.
+
+**Branch housekeeping note**: this session also found 10 other remote branches
+(`backup/original-history-through-gate18`, `claude/doc-control-gate14` through `17`,
+`claude/gate-5-startup-1ubxfh`, `claude/tier-c-code-inspection-jysweb`,
+`claude/phase-11c-planning-executive-frty7j`, `claude/project-setup-tooling-gcwsu3`,
+`claude/scope-gate-3-portfolio-upvzqg`, `claude/excel-schedule-pcc-editing-dgyy9m`,
+`integration/gates-8-13`) that share **zero common git history** with current `main` (confirmed
+via `git merge-base` returning empty) — orphaned relics from before some earlier history
+rewrite/reset, not real pending work. Left alone per Aditya's own explicit choice when asked
+("skip them, just confirm current work is merged") — do NOT attempt to merge any of them without
+being asked again; doing so would merge two unrelated histories and likely reintroduce old,
+already-superseded code on top of the current, much-more-advanced `main`.
+
+**No other feature work is currently committed to.** All 8 Delay Management gates are complete;
+there is no next gate queued. When a fresh session picks this up, don't assume there's a next
+feature waiting — check with Aditya first.
