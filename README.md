@@ -5150,7 +5150,86 @@ page errors).
 **Not done / explicitly deferred**: opening an exported file in an actual Primavera P6 installation
 (untestable here — flagged prominently above, not silently assumed, and a materially bigger open
 question than the equivalent MSP claim); Resources/Assignments/Codes and Baselines, both
-directions; Primavera XML; SQLite (Phase 5).
+directions; Primavera XML; SQLite (Phase 5 — see below).
+
+## PCC Architecture Upgrade — Phase 5 (SQLite — Evaluation & Isolated Prototype), 2026-08-27
+
+**Deliberately NOT a live cutover.** Aditya explicitly flagged this as the phase with real risk of
+breaking PCC and asked for a merge-to-`main` + full packaging checkpoint first (done — see the
+packaging entry above) before anything here started. The master upgrade prompt's own Section 20
+already frames Phase 5 as "evaluate SQLite," and Section 36's test gate asks for a schema design and
+a migration engine tested against controlled data — not "switch the app over." This phase delivers
+exactly that: a real, tested answer to "can PCC's data move into SQLite without losing anything,"
+as an isolated module nothing in the live app calls yet. Store.js, every page module, and the app's
+actual read/write path are all completely unchanged.
+
+**The core technical question, resolved**: how does real SQLite even run inside PCC's constraints —
+one self-contained HTML file that must work identically via `file://`, inside Electron, and inside
+the Capacitor Android WebView, with no build step and no native modules? Native options
+(`better-sqlite3`, a Capacitor SQLite plugin) only run from a Node/native context and would fork the
+app's architecture per platform — exactly what Phase 0's own findings (Windows/Android are thin
+wrappers around one bundle, not separate codebases) and the master prompt's Section 29/46 warn
+against. The answer is **sql.js** — SQLite compiled to WebAssembly, runs identically everywhere with
+zero native code. Vendored the same way `xlsx`/`pdf.js`/`mammoth` already are
+(`src/js/vendor/sql-wasm.js` + `sql-wasm.wasm`), with the WASM binary embedded as base64 by a new
+`build.js` step (`inlineSqlWasm()`, mirroring `inlineFonts()`'s existing pattern) — no runtime
+fetch, verified by actually loading the built `index.html` in real Chromium and running a real
+`CREATE TABLE`/`INSERT`/`SELECT` round trip through it with zero errors.
+
+**The schema design question, resolved**: PCC's data model already spans roughly 50 distinct
+top-level collections (`store.js`). Hand-writing and maintaining a fully-normalized SQL table for
+every one, kept in sync by hand with every future `schema_version` bump, would be a large, ongoing
+burden that itself becomes a future data-loss risk (a missed column on some later bump silently
+drops a field forever). **New `src/js/sqliteMigrationEngine.js`** instead gives every collection ONE
+table with a small set of REAL indexed columns for the fields that actually drive cross-register
+queries today (`id`, `project_id`, `schedule_id`) — **detected generically by scanning the data**,
+not hand-listed per collection, so this keeps working as `store.js`'s shape evolves without this
+file needing a matching change — plus a `data` column holding the complete record as JSON. `id` is
+deliberately NOT a SQL `PRIMARY KEY`/`UNIQUE` constraint: real data that has passed through 61
+schema migrations isn't guaranteed perfectly unique, and a constraint violation on insert would
+silently drop or reject a row — exactly the "unexplained data loss" Section 21/36 both forbid.
+SQLite's own implicit `rowid` is the uniqueness/ordering handle instead, so **no row can ever be
+lost to an id collision**, and array order round-trips unchanged as a side effect of the same choice.
+
+**What the engine provides**: `buildDatabase(SQL, data)` (data → a new sql.js Database),
+`exportToJson(db)` (a Database → the same shape data was in), and `reconcile(original,
+roundTripped)` — a structured diff (`{ ok, issues[] }`), not just a boolean claim, reporting exactly
+which collection/record/field disagreed if anything did. All three are pure functions (no DOM, no
+window/store dependency beyond the one `SQL` constructor passed in), so the exact same code is
+tested under plain Node (against the real sql.js npm package) and runs in the browser (against the
+vendored, embedded WASM) — one code path, not a reimplementation for tests.
+
+**Verified**: `node build.js` clean (5765.8 KB, up from 4848 KB — the embedded WASM binary is the
+entire size increase, accounted for); full suite **2390 passed, 0 failed** across 98 files (2378
+pre-existing + 12 new in `tests/test_sqlite_migration_engine.js`). Covers: a fresh-install (all-empty)
+shape; a realistic populated dataset built from `store.js`'s own factories (multiple projects, a
+schedule with WBS/activities/relationships, a risk, special characters, tabs/newlines, unicode,
+null values) — all losslessly round-tripped; that indexed columns are created only for fields
+genuinely present in a given collection (not fabricated); that a real SQL `WHERE project_id = ?`
+query actually returns the right rows (relational power, not just JSON storage); that `reconcile()`
+genuinely detects a missing record, an extra/fabricated record, a field-level mismatch, and a
+missing collection entirely (proving the checker itself catches corruption, not just that it says
+"ok" on a matching pair); a record with no `id` at all (doesn't crash, round-trips by position); and
+a 5,000-activity dataset (build 400ms, export 29ms — no performance concern at realistic scale).
+Also verified with a real-Chromium load of the rebuilt `index.html` (zero console/page errors) and,
+separately, a direct in-browser `initSqlJs()`/`CREATE TABLE`/`INSERT`/`SELECT` smoke test against
+the actual embedded WASM (zero errors, confirming the self-contained-file requirement holds).
+
+**A real bug caught while writing the test suite, not shipped**: the first version of the realistic-
+dataset test reused `store.get()`'s shared mutable singleton across multiple checks, silently
+accumulating duplicate projects/activities on each call rather than giving each test its own
+isolated dataset — caught by inspection before it could mask a real issue, fixed by building a fresh
+store instance per call.
+
+**Not done / explicitly not decided in this increment** (deliberately — these are exactly the kind
+of "does this actually work, is it worth the complexity" calls the master prompt's own Section 47
+framework says to answer only once the prototype has proven out and been reviewed, not folded into
+the same session that built the prototype): whether or how the live app ever actually reads/writes
+through SQLite instead of (or alongside) the current localStorage JSON blob; real persistence (sql.js
+is in-memory — an actual on-disk-equivalent would mean serializing `db.export()` into IndexedDB, the
+same place `blobStore.js` already persists binary data, but that wiring doesn't exist yet);
+incremental/partial sync instead of a full rebuild; concurrent-write handling; corruption recovery;
+backup/restore integration. Every one of these is a real decision, not an oversight.
 
 ## Locked build order (unchanged)
 
@@ -5219,16 +5298,18 @@ Assistant, Lessons Learned, final polish
 ## Next phase
 
 **PCC Architecture Upgrade**: Phase 0 (Inspection & Baseline), Phase 1 (Canonical Schedule Model,
-schema v61), Phase 2 (Microsoft Project XML **import and export**), and Phase 3 (Primavera P6 XER
-**import and export**) are all done — see those sections above. Both file-interoperability phases
-now round-trip through PCC's own import/export for every field either side handles; opening an
-exported file in the *real* authoring tool itself is unverified for both (no MS Project or
-Primavera P6 installation available in this environment) — a materially bigger open question for
-the P6/XER side, which is documented as such rather than downplayed. Phase 5 (SQLite) is the
-master prompt's next major architectural step, but per its own operating instruction ("work
-through it sequentially... do not build everything immediately"), nothing further has been started
-— confirm scope/direction before beginning it, the same gate discipline every other
-roadmap on this page already follows.
+schema v61), Phase 2 (Microsoft Project XML **import and export**), Phase 3 (Primavera P6 XER
+**import and export**), and Phase 5 (SQLite **evaluation + isolated migration-engine prototype** —
+see above) are all done — see those sections above. Both file-interoperability phases round-trip
+through PCC's own import/export for every field either side handles; opening an exported file in
+the *real* authoring tool itself is unverified for both (no MS Project or Primavera P6 installation
+available in this environment) — a materially bigger open question for the P6/XER side, documented
+as such rather than downplayed. Phase 5's own SQLite work is deliberately scoped to evaluation and
+an isolated, fully-tested prototype only — the live app's actual data layer is completely
+unchanged, and whether/how to ever cut it over is an explicitly open decision, not started. Phase 4
+(Schedule Versioning & Comparison beyond what Phase 1 already covers) and the rest of the master
+prompt's later phases (6-9) remain unstarted — confirm scope/direction before beginning any of
+them, the same gate discipline every other roadmap on this page already follows.
 
 **Tier 2 is complete, and the entire 14-gate Document Control sub-spec Aditya handed over is now
 built** (Gates 14-28) — no gates from that spec remain. A new, separate roadmap started with Gate

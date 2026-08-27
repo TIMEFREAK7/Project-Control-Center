@@ -13,6 +13,9 @@ const JS_ORDER = [
   "js/vendor/pdf.min.js",
   "js/vendor/pdf.worker.min.js",
   "js/vendor/jszip.min.js",
+  "js/vendor/sql-wasm.js",
+  "js/vendor/sql-wasm-binary.js",
+  "js/sqliteMigrationEngine.js",
   "js/blobStore.js",
   "js/scheduleBaselineStore.js",
   "js/duplicateService.js",
@@ -103,14 +106,35 @@ function inlineFonts(css) {
   return out;
 }
 
+// Architecture Upgrade Phase 5 (SQLite evaluation): sql-wasm-binary.js ships as a
+// placeholder (window.PCC_SQL_WASM_BASE64 = "__SQL_WASM_BASE64__") so the real
+// sql-wasm.wasm binary stays a normal, readable file in src/js/vendor/ — this swaps in
+// its actual base64 content at build time, same "embed everything, no runtime fetch"
+// approach inlineFonts() already uses for the woff2 files, so sql.js never needs a
+// separate network/file fetch for its WASM binary either.
+function inlineSqlWasm(jsBundle) {
+  const wasmPath = path.join(SRC, "js", "vendor", "sql-wasm.wasm");
+  const b64 = fs.readFileSync(wasmPath).toString("base64");
+  const needle = "__SQL_WASM_BASE64__";
+  if (!jsBundle.includes(needle)) {
+    throw new Error(`Expected to find ${needle} in the JS bundle but didn't — sql-wasm-binary.js placeholder is out of sync.`);
+  }
+  // split/join, not replace(): Array.prototype.join() concatenates its argument
+  // literally with no $-pattern interpretation, so (unlike inlineFonts()'s use of
+  // replace() elsewhere) there's no special-character risk here to guard against —
+  // this is simply the plainer way to substitute a single known literal string.
+  return jsBundle.split(needle).join(b64);
+}
+
 function build() {
   const cssRaw = fs.readFileSync(path.join(SRC, "css", "styles.css"), "utf8");
   const cssInlined = inlineFonts(cssRaw);
 
-  const jsBundle = JS_ORDER.map((rel) => {
+  let jsBundle = JS_ORDER.map((rel) => {
     const code = fs.readFileSync(path.join(SRC, rel), "utf8");
     return `/* ---- ${rel} ---- */\n${code}`;
   }).join("\n\n");
+  jsBundle = inlineSqlWasm(jsBundle);
 
   let html = fs.readFileSync(path.join(SRC, "index.html"), "utf8");
 

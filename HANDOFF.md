@@ -4916,7 +4916,71 @@ are a major upgrade with real risk of breaking PCC, so he wanted a safe checkpoi
 same commit (`f5d00ac`) plus one more commit on `main` for the version bumps above — recount rather
 than trust this blindly (`git log --oneline -3` on both).
 
-**Next steps**: Phase 5 (SQLite) is the master prompt's next major architectural step — Aditya
-wanted this packaging checkpoint delivered specifically *because* that phase carries real risk of
-breaking the app, so treat this as a deliberate safe point to roll back to if anything in Phase 5
-goes wrong. Confirm scope/direction with Aditya before starting it.
+**Phase 5 (SQLite — Evaluation & Isolated Prototype) — done, new session, immediately after the
+packaging checkpoint above.** Aditya asked to start Phase 5 directly (skipping Phase 4, Schedule
+Versioning & Comparison, in the master prompt's own numbering — his explicit instruction, not an
+oversight). Given his own stated risk concern for this exact phase, scoped deliberately to
+evaluation + an isolated, fully-tested prototype — **nothing in the live app changed**. `store.js`,
+every page module, and the app's actual localStorage read/write path are all untouched; nothing
+calls the new engine yet.
+
+- **The core "how does SQLite even run here" question, resolved**: sql.js (SQLite compiled to
+  WebAssembly) — the only option that runs identically via `file://`, in Electron, and in the
+  Capacitor Android WebView with zero native code, unlike `better-sqlite3` or a native Capacitor
+  SQLite plugin (both would fork the app's architecture per platform). Vendored at
+  `src/js/vendor/sql-wasm.js` + `sql-wasm.wasm` (fetched via a throwaway `npm install sql.js` just
+  to obtain the dist files, same as any other vendored library here — not a runtime dependency of
+  the shipped app). The WASM binary is embedded as base64 by a new `build.js` step
+  (`inlineSqlWasm()`, modeled directly on the existing `inlineFonts()` pattern) via a placeholder
+  file (`src/js/vendor/sql-wasm-binary.js`, `window.PCC_SQL_WASM_BASE64 = "__SQL_WASM_BASE64__"`)
+  — no runtime fetch. **Verified for real**: loaded the actual built `index.html` in real Chromium
+  and ran a genuine `initSqlJs()` → `CREATE TABLE` → `INSERT` → `SELECT` round trip through it,
+  zero errors, confirming the self-contained-single-file requirement actually holds and isn't just
+  assumed.
+- **The schema design question, resolved**: PCC's data model spans ~50 top-level collections. Hand-
+  normalizing and hand-maintaining a SQL table per collection forever (kept in sync with every
+  future `schema_version` bump) was rejected as a permanent maintenance burden and its own future
+  data-loss risk. **New `src/js/sqliteMigrationEngine.js`** instead gives every collection one table
+  with a few REAL indexed columns for `id`/`project_id`/`schedule_id` — **detected generically by
+  scanning the data**, not hand-listed, so it keeps working as `store.js` evolves without this file
+  needing a matching change — plus a `data` JSON column holding the full record. `id` is
+  deliberately NOT a SQL `PRIMARY KEY`/`UNIQUE` constraint (real data through 61 migrations isn't
+  guaranteed unique; a constraint violation on insert would silently drop a row) — SQLite's own
+  `rowid` is the uniqueness/ordering handle instead, so no row can ever be lost to an id collision.
+- **What it provides**: `buildDatabase(SQL, data)`, `exportToJson(db)`, and `reconcile(original,
+  roundTripped)` — a structured diff (`{ok, issues[]}`), not just a boolean. All three are pure
+  (no DOM/window/store dependency beyond the `SQL` constructor passed in), so the exact same code
+  is tested under plain Node (real sql.js npm package) and runs in the browser (vendored, embedded
+  WASM) — one code path, not a reimplementation for tests.
+- **Real bug caught while writing tests, not shipped**: the first version of the realistic-dataset
+  test reused `store.get()`'s shared mutable singleton across multiple checks, silently
+  accumulating duplicate projects/activities on each call. Caught by inspection, fixed by building
+  a fresh store instance per call — worth remembering for any future test that calls a
+  data-building helper more than once in the same file.
+- New test file `tests/test_sqlite_migration_engine.js` (12 checks): fresh-install shape,
+  a realistic populated dataset from `store.js`'s own factories (special characters, tabs/
+  newlines, unicode, nulls) — all losslessly round-tripped; indexed columns created only when
+  genuinely present; a real `WHERE project_id = ?` SQL query returning correct rows (proving actual
+  relational power, not just JSON storage); `reconcile()` genuinely catching a missing record, an
+  extra/fabricated record, a field mismatch, and a missing collection entirely (proving the checker
+  itself works, not just that it says "ok" on a matching pair); an id-less record not crashing; and
+  a 5,000-activity performance smoke check (build 400ms, export 29ms — no concern at realistic scale).
+
+**`schema_version` remains 61** (Phase 5 this increment added no schema changes — the new SQLite
+model lives entirely in an isolated, unwired module). **Test suite: 98 files, 2390 checks, 0
+failures**. `index.html` grew from 4848 KB to 5765.8 KB — entirely the embedded WASM binary,
+accounted for, not a leak or accidental duplication.
+
+**Not done / explicitly not decided this increment** (real open decisions, not oversights — see the
+engine's own file header and the README write-up for the full reasoning): whether/how the live app
+ever actually reads or writes through SQLite instead of (or alongside) the current localStorage
+JSON blob; real persistence (sql.js is in-memory — actual persistence would mean serializing
+`db.export()` into IndexedDB, where `blobStore.js` already lives, but that wiring doesn't exist);
+incremental/partial sync; concurrent-write handling; corruption recovery; backup/restore
+integration.
+
+**Next steps**: Whether to build any of the "not decided" items above into a live-app cutover is
+Aditya's call — this prototype answers "does the model work," not "should we switch." Phase 4
+(Schedule Versioning & Comparison) was explicitly skipped so far and remains open if wanted; Phases
+6-9 (Advanced Engineering Engine, Integrated Delay, Excel/PDF/Reporting, Local AI) are all still
+unstarted. Confirm scope/direction with Aditya before starting any of them.
