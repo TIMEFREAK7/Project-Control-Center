@@ -2841,7 +2841,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
    * accepted tradeoff for a warn-and-skip pass rather than a full SCC decomposition.
    *
    * Extracted (Architecture Upgrade Phase 2) from parseRows() below so
-   * mspXmlImportService.js's Microsoft Project XML importer can reuse the identical
+   * mspXmlService.js's Microsoft Project XML importer can reuse the identical
    * graph-cycle logic on its own externally-sourced relationships, rather than every
    * new schedule-file importer reimplementing this from scratch. Pure graph algorithm,
    * no Excel-specific assumptions — takes/returns the same
@@ -3274,30 +3274,38 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 })();
 
 
-/* ---- js/mspXmlImportService.js ---- */
-/* Microsoft Project XML (MSPDI — "Microsoft Project Data Interchange") import — parsing
- * and validation only. No DOM manipulation of the app's own UI, no store writes — same
- * separation scheduleImportService.js (Excel) already keeps, and this file deliberately
- * returns the *exact same shape* parseRows() does ({ activities, wbsEntries,
- * relationships, warnings, errors, summary }, plus one MSP-specific addition,
- * `calendar`) so schedule.js's existing buildScheduleRecords() can consume either
- * importer's output without caring which file format it came from. That's the whole
- * point of the Architecture Upgrade Phase 1 canonical model this importer feeds into.
+/* ---- js/mspXmlService.js ---- */
+/* Microsoft Project XML (MSPDI — "Microsoft Project Data Interchange") import AND
+ * export. No DOM manipulation of the app's own UI, no store writes — same separation
+ * scheduleImportService.js (Excel) already keeps. parseMspXml() returns the *exact same
+ * shape* parseRows() does ({ activities, wbsEntries, relationships, warnings, errors,
+ * summary }, plus one MSP-specific addition, `calendar`) so schedule.js's existing
+ * buildScheduleRecords() can consume either importer's output without caring which file
+ * format it came from. That's the whole point of the Architecture Upgrade Phase 1
+ * canonical model this file feeds into and reads back out of.
  *
  * PCC Architecture Upgrade Phase 2 (Microsoft Project File Interoperability). Per the
  * master upgrade prompt's own instruction: MSP XML is the practical *exchange* format,
  * not the native .mpp binary format (which realistically requires Microsoft Project
  * itself, or a heavyweight third-party binary parser, to read reliably) — this reads
  * the file MS Project produces via File → Export → Project XML (or "Save As" → XML),
- * a well-documented, plain-text, DOM-parseable schema. `DOMParser` is a native browser
- * API (Electron/Chromium and the Capacitor Android WebView both have it) — no new
+ * a well-documented, plain-text, DOM-parseable schema, and produces one MS Project
+ * should be able to open the same way. `DOMParser` is a native browser API
+ * (Electron/Chromium and the Capacitor Android WebView both have it) — no new
  * dependency, consistent with this app's "no npm deps for the app itself" rule.
  *
+ * ROUND-TRIP VERIFICATION, HONESTLY STATED: exportScheduleToMspXml()'s output has been
+ * verified by re-importing it through this file's own parseMspXml() and confirming the
+ * data survives (see test_msp_xml_export_service.js's round-trip checks) — that proves
+ * PCC's own import/export are mutually consistent for every field each side handles.
+ * It does NOT prove Microsoft Project itself accepts the file, since no MS Project
+ * installation is available to test against in this environment. Per the master
+ * prompt's own "do not claim round-trip until tested" rule: treat the *shape* as
+ * verified, the *real-MS-Project-openable* claim as unverified until someone confirms
+ * it against an actual Microsoft Project installation.
+ *
  * DELIBERATE SCOPE LIMITS (read before extending this file):
- * - IMPORT only. Export back to MSP XML is a separate, not-yet-built increment — round-
- *   trip fidelity has to be verified before it's claimed, per the master prompt's own
- *   "do not claim round-trip until tested" rule, and it hasn't been built or tested yet.
- * - Resources/assignments are NOT imported here. PCC already has its own portfolio-wide
+ * - Resources/assignments are NOT imported or exported here. PCC already has its own portfolio-wide
  *   Resource Management module (Gate 11) with its own dedup/matching conventions —
  *   auto-creating Resources from an MSP file's <Resources> block risks colliding with
  *   that module's own rules and is explicitly deferred to a future, focused gate rather
@@ -3327,6 +3335,21 @@ https://github.com/nodeca/pako/blob/main/LICENSE
  *   day (the common case for day-scheduled construction programmes) WITH a per-
  *   relationship warning so it's never presented as a silent, unverified fact. Zero lag
  *   (by far the most common value) needs no conversion and gets no warning.
+ * - exportScheduleToMspXml() mints fresh sequential UIDs for every WBS/Activity on each
+ *   export rather than trying to preserve a prior file's original UIDs — PCC has no
+ *   concept of "this activity's canonical MSP UID" to preserve across edits (its own
+ *   `external_id` is reused for a re-*import* match, not guaranteed to be a clean MSP
+ *   UID to begin with, e.g. for a hand-built or Excel-sourced activity). Re-importing an
+ *   exported file therefore round-trips PCC's own data correctly but does not preserve
+ *   UID continuity with whatever file was originally imported, if any.
+ * - Export fabricates a start-of-day/end-of-day time (08:00/17:00) on every date, since
+ *   PCC's own schedule model has no time-of-day concept (`planned_start` is a plain
+ *   "YYYY-MM-DD" date) — this is a presentation convention for a valid MSPDI file, not
+ *   information recovered from anywhere.
+ * - Export does not emit Resources/Assignments, Baselines, or a project-summary Task
+ *   (UID 0) — same scope limits as import, for the same reasons above; most tools
+ *   (including real Microsoft Project) synthesize a project-summary task themselves on
+ *   open if one isn't present, so omitting it is a safe, common minimal-file convention.
  */
 (function () {
   "use strict";
@@ -3697,8 +3720,237 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     };
   }
 
-  window.PCC.mspXmlImportService = {
+  // ---------------------------------------------------------------------------------
+  // Export: PCC schedule -> Microsoft Project XML. See this file's own header for the
+  // round-trip verification caveat and the deliberate scope limits (fresh UIDs, no
+  // Resources/Baselines/project-summary-task, fabricated 08:00/17:00 times).
+  // ---------------------------------------------------------------------------------
+
+  function reverseMap(map) {
+    var out = {};
+    Object.keys(map).forEach(function (k) {
+      out[map[k]] = k;
+    });
+    return out;
+  }
+  var RELATIONSHIP_TYPE_REVERSE = reverseMap(RELATIONSHIP_TYPE_MAP); // "FS" -> "1", etc.
+  var CONSTRAINT_TYPE_REVERSE = reverseMap(CONSTRAINT_TYPE_MAP); // "ASAP" -> "0", etc.
+
+  function escapeXml(str) {
+    return String(str == null ? "" : str).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" }[c];
+    });
+  }
+
+  /** Inverse of isoDurationToDays() above — a PCC day count back into an MSPDI
+   * hour-based duration string, using the same 8-hour-day convention (documented in
+   * this file's header). Returns null (element omitted) for a missing duration, never
+   * a fabricated "PT0H0M0S" that would misrepresent an activity as zero-duration. */
+  function daysToIsoDuration(days) {
+    if (days == null) return null;
+    var hours = Math.round(days * HOURS_PER_DAY_ASSUMED * 100) / 100;
+    return "PT" + hours + "H0M0S";
+  }
+
+  /** A PCC "YYYY-MM-DD" date string into an MSPDI datetime, fabricating a start-of-day
+   * (08:00) or end-of-day (17:00) time — PCC has no time-of-day concept to recover, see
+   * this file's header. Returns null (element omitted) for a blank/missing date. */
+  function toMspDateTime(dateStr, endOfDay) {
+    if (!dateStr) return null;
+    return dateStr + (endOfDay ? "T17:00:00" : "T08:00:00");
+  }
+
+  /** Builds an MSPDI <Calendars> block from one PCC calendar record (see
+   * newCalendar() in store.js) — the reverse of parseDefaultCalendar() above. */
+  function buildCalendarXml(calendar) {
+    if (!calendar) return "";
+    var MSP_DAY_TYPES = [2, 3, 4, 5, 6, 7, 1]; // PCC index 0=Mon..6=Sun -> MSPDI DayType 1=Sun..7=Sat
+    var weekDaysXml = calendar.working_days
+      .map(function (working, i) {
+        return "      <WeekDay><DayType>" + MSP_DAY_TYPES[i] + "</DayType><DayWorking>" + (working ? 1 : 0) + "</DayWorking></WeekDay>";
+      })
+      .join("\n");
+    var exceptionsXml = (calendar.holidays || [])
+      .map(function (dateStr) {
+        return (
+          "      <Exception><DayWorking>0</DayWorking><TimePeriod><FromDate>" + dateStr +
+          "T00:00:00</FromDate><ToDate>" + dateStr + "T00:00:00</ToDate></TimePeriod></Exception>"
+        );
+      })
+      .join("\n");
+    return (
+      "  <CalendarUID>1</CalendarUID>\n" +
+      "  <Calendars>\n" +
+      "    <Calendar>\n" +
+      "      <UID>1</UID>\n" +
+      "      <Name>" + escapeXml(calendar.name || "Standard") + "</Name>\n" +
+      "      <IsBaseCalendar>1</IsBaseCalendar>\n" +
+      "      <WeekDays>\n" + weekDaysXml + "\n      </WeekDays>\n" +
+      (exceptionsXml ? "      <Exceptions>\n" + exceptionsXml + "\n      </Exceptions>\n" : "") +
+      "    </Calendar>\n" +
+      "  </Calendars>\n"
+    );
+  }
+
+  /** Turns one PCC WBS item or Activity into a <Task> element's inner field lines
+   * (everything except the UID/ID/WBS/OutlineLevel/PredecessorLink wiring the caller
+   * already handles, since those depend on the emission-order walk below). */
+  function buildTaskFields(activity) {
+    var lines = [];
+    var duration = daysToIsoDuration(activity.duration);
+    if (duration) lines.push("      <Duration>" + duration + "</Duration>");
+    var remaining = daysToIsoDuration(activity.remaining_duration);
+    if (remaining) lines.push("      <RemainingDuration>" + remaining + "</RemainingDuration>");
+    var start = toMspDateTime(activity.planned_start, false);
+    if (start) lines.push("      <Start>" + start + "</Start>");
+    var finish = toMspDateTime(activity.planned_finish, true);
+    if (finish) lines.push("      <Finish>" + finish + "</Finish>");
+    var actualStart = toMspDateTime(activity.actual_start, false);
+    if (actualStart) lines.push("      <ActualStart>" + actualStart + "</ActualStart>");
+    var actualFinish = toMspDateTime(activity.actual_finish, true);
+    if (actualFinish) lines.push("      <ActualFinish>" + actualFinish + "</ActualFinish>");
+    lines.push("      <PercentComplete>" + (activity.percent_complete || 0) + "</PercentComplete>");
+    if (activity.activity_type === "milestone") lines.push("      <Milestone>1</Milestone>");
+    if (activity.constraint_type && CONSTRAINT_TYPE_REVERSE[activity.constraint_type] !== undefined) {
+      lines.push("      <ConstraintType>" + CONSTRAINT_TYPE_REVERSE[activity.constraint_type] + "</ConstraintType>");
+      var constraintDate = toMspDateTime(activity.constraint_date, false);
+      if (constraintDate) lines.push("      <ConstraintDate>" + constraintDate + "</ConstraintDate>");
+    }
+    return lines;
+  }
+
+  /** Exports one schedule's WBS/Activities/Relationships (plus, optionally, one
+   * Project calendar) into an MSPDI XML string. Every array is expected already scoped
+   * to the one schedule being exported — this function itself doesn't filter by
+   * schedule_id, same "caller owns scoping" convention buildScheduleRecords() (the
+   * import-side equivalent, in schedule.js) already follows. */
+  function exportScheduleToMspXml(input) {
+    var schedule = input.schedule;
+    var wbsItems = input.wbsItems || [];
+    var activities = input.activities || [];
+    var relationships = input.relationships || [];
+    var calendar = input.calendar || null;
+
+    var uidCounter = 0;
+    var uidByPccId = {};
+    function nextUid(pccId) {
+      uidCounter++;
+      uidByPccId[pccId] = uidCounter;
+      return uidCounter;
+    }
+
+    var activitiesByWbsId = {};
+    activities.forEach(function (a) {
+      var key = a.wbs_id || "__unassigned__";
+      (activitiesByWbsId[key] = activitiesByWbsId[key] || []).push(a);
+    });
+    var wbsChildrenByParent = {};
+    wbsItems.forEach(function (w) {
+      var key = w.parent_wbs_id || "__root__";
+      (wbsChildrenByParent[key] = wbsChildrenByParent[key] || []).push(w);
+    });
+
+    var taskXmlBlocks = [];
+    var idCounter = 0;
+    var visitedWbsIds = {}; // guards against a malformed/cyclic parent_wbs_id chain
+
+    function emitTask(uid, id, name, outlineLevel, wbsCode, isSummary, activity) {
+      var lines = [];
+      lines.push("    <Task>");
+      lines.push("      <UID>" + uid + "</UID>");
+      lines.push("      <ID>" + id + "</ID>");
+      lines.push("      <Name>" + escapeXml(name) + "</Name>");
+      if (wbsCode) lines.push("      <WBS>" + escapeXml(wbsCode) + "</WBS>");
+      lines.push("      <OutlineLevel>" + outlineLevel + "</OutlineLevel>");
+      if (isSummary) {
+        lines.push("      <Summary>1</Summary>");
+      } else {
+        lines = lines.concat(buildTaskFields(activity));
+      }
+      lines.push("    </Task>");
+      taskXmlBlocks.push(lines.join("\n"));
+    }
+
+    function walk(parentKey, level) {
+      var children = wbsChildrenByParent[parentKey] || [];
+      children.forEach(function (w) {
+        if (visitedWbsIds[w.id]) return; // cycle guard
+        visitedWbsIds[w.id] = true;
+        idCounter++;
+        var uid = nextUid(w.id);
+        emitTask(uid, idCounter, w.name, level, w.code, true, null);
+        walk(w.id, level + 1);
+        (activitiesByWbsId[w.id] || []).forEach(function (a, idx) {
+          idCounter++;
+          var actUid = nextUid(a.id);
+          // A leaf activity's own WBS value must be a child code under its parent
+          // Summary task's code (e.g. parent "1" -> "1.1", "1.2", ...) — mirrors how
+          // parseMspXml() resolves a leaf's wbs_code by truncating its own WBS field by
+          // one segment. Emitting no WBS field here (as an earlier version of this
+          // function did) meant a re-import could never find the parent again.
+          emitTask(actUid, idCounter, a.name, level + 1, w.code + "." + (idx + 1), false, a);
+        });
+      });
+    }
+    walk("__root__", 1);
+
+    // Activities with no WBS assignment (or pointing at a WBS item not in this set) go
+    // last, top-level — same "don't invent a WBS assignment" rule the importer follows.
+    var assignedActivityIds = {};
+    Object.keys(activitiesByWbsId).forEach(function (key) {
+      if (key === "__unassigned__") return;
+      activitiesByWbsId[key].forEach(function (a) {
+        assignedActivityIds[a.id] = true;
+      });
+    });
+    activities.forEach(function (a) {
+      if (uidByPccId[a.id] !== undefined) return; // already emitted above
+      idCounter++;
+      var uid = nextUid(a.id);
+      emitTask(uid, idCounter, a.name, 1, null, false, a);
+    });
+
+    var predecessorLinksByActivityId = {};
+    relationships.forEach(function (r) {
+      var predUid = uidByPccId[r.predecessor_id];
+      var succUid = uidByPccId[r.successor_id];
+      if (!predUid || !succUid) return; // a relationship pointing outside this scoped set
+      (predecessorLinksByActivityId[r.successor_id] = predecessorLinksByActivityId[r.successor_id] || []).push(
+        "      <PredecessorLink><PredecessorUID>" + predUid + "</PredecessorUID><Type>" +
+          (RELATIONSHIP_TYPE_REVERSE[r.type] !== undefined ? RELATIONSHIP_TYPE_REVERSE[r.type] : RELATIONSHIP_TYPE_REVERSE.FS) +
+          "</Type><LinkLag>" + Math.round((r.lag || 0) * 10) + "</LinkLag><LagFormat>7</LagFormat></PredecessorLink>"
+      );
+    });
+    // Splice each activity's PredecessorLink lines in just before its closing </Task> —
+    // done as a post-pass so emitTask() above doesn't need relationship data threaded
+    // through the recursive WBS walk.
+    activities.forEach(function (a) {
+      var links = predecessorLinksByActivityId[a.id];
+      if (!links || !links.length) return;
+      var uid = uidByPccId[a.id];
+      var marker = "      <UID>" + uid + "</UID>";
+      var blockIndex = taskXmlBlocks.findIndex(function (block) {
+        return block.indexOf(marker) !== -1;
+      });
+      if (blockIndex === -1) return;
+      var block = taskXmlBlocks[blockIndex];
+      taskXmlBlocks[blockIndex] = block.replace(/\n    <\/Task>$/, "\n" + links.join("\n") + "\n    </Task>");
+    });
+
+    var xml =
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+      '<Project xmlns="http://schemas.microsoft.com/project">\n' +
+      "  <Name>" + escapeXml(schedule.name || "PCC Schedule") + "</Name>\n" +
+      buildCalendarXml(calendar) +
+      "  <Tasks>\n" + taskXmlBlocks.join("\n") + "\n  </Tasks>\n" +
+      "</Project>\n";
+
+    return xml;
+  }
+
+  window.PCC.mspXmlService = {
     parseMspXml: parseMspXml,
+    exportScheduleToMspXml: exportScheduleToMspXml,
     parseIsoDurationHours: parseIsoDurationHours,
     RELATIONSHIP_TYPE_MAP: RELATIONSHIP_TYPE_MAP,
     CONSTRAINT_TYPE_MAP: CONSTRAINT_TYPE_MAP,
@@ -29301,7 +29553,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
    * handleImportFileSelected() above. No column-mapping step — MSPDI has a fixed,
    * well-known schema, unlike an arbitrary Excel file's headers — so this always goes
    * straight to the same 'reviewing' step the Excel path uses, reusing it as-is since
-   * mspXmlImportService.parseMspXml() returns the exact shape parseRows() does. */
+   * mspXmlService.parseMspXml() returns the exact shape parseRows() does. */
   function handleMspXmlFileSelected(file, data, rerender) {
     uiState.importSourceType = "msp_xml";
     var reader = new FileReader();
@@ -29320,7 +29572,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         return;
       }
 
-      var parsed = window.PCC.mspXmlImportService.parseMspXml(xmlText);
+      var parsed = window.PCC.mspXmlService.parseMspXml(xmlText);
       var fileDataUri = "data:application/xml;base64," + arrayBufferToBase64(buffer);
 
       window.PCC.duplicateService.fingerprintFile(buffer, file.name, file.size).then(function (fp) {
@@ -29469,7 +29721,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     var records = buildScheduleRecords(parsed, uiState.projectId, newSchedule.id);
 
     // Architecture Upgrade Phase 2: an MSP XML import may carry the file's own default
-    // Calendar (see mspXmlImportService.parseDefaultCalendar) — create it as a real
+    // Calendar (see mspXmlService.parseDefaultCalendar) — create it as a real
     // Project calendar and wire every newly-imported activity onto it. Purely
     // representational, same as Phase 1's migration-minted default calendars: this does
     // NOT make scheduleCpmEngine.js calendar-aware.
@@ -29540,6 +29792,61 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         uiState.importError = "Could not store the original " + (isMspImport ? "Microsoft Project XML" : "Excel") + " file: " + e.message;
         rerender();
       });
+  }
+
+  /** Architecture Upgrade Phase 2 (export half): downloads one schedule as a Microsoft
+   * Project XML file — the round-trip counterpart to handleMspXmlFileSelected() above.
+   * Works on ANY schedule regardless of its own source_platform (a hand-built or
+   * Excel-imported schedule can be exported to MS Project just as validly as one that
+   * was originally imported from MSP), unlike "Edit Excel" which only makes sense for
+   * a schedule that actually came from Excel. */
+  function handleExportMspXml(schedule, data, rerender) {
+    var wbsItems = data.wbs_items.filter(function (w) {
+      return w.schedule_id === schedule.id;
+    });
+    var activities = data.activities.filter(function (a) {
+      return a.schedule_id === schedule.id;
+    });
+    var relationships = data.relationships.filter(function (r) {
+      return r.schedule_id === schedule.id;
+    });
+    // Prefer whichever Calendar this schedule's own activities actually reference; fall
+    // back to the project's default calendar (Phase 1 mints one per project) if none
+    // of them have one set (e.g. a schedule built entirely by hand before Phase 1).
+    var calendarId = null;
+    for (var i = 0; i < activities.length; i++) {
+      if (activities[i].calendar_id) {
+        calendarId = activities[i].calendar_id;
+        break;
+      }
+    }
+    var calendar = calendarId
+      ? data.calendars.find(function (c) {
+          return c.id === calendarId;
+        })
+      : data.calendars.find(function (c) {
+          return c.project_id === schedule.project_id && c.is_default;
+        });
+
+    var xml = window.PCC.mspXmlService.exportScheduleToMspXml({
+      schedule: schedule,
+      wbsItems: wbsItems,
+      activities: activities,
+      relationships: relationships,
+      calendar: calendar || null,
+    });
+
+    var blob = new Blob([xml], { type: "application/xml" });
+    var filename = (schedule.name || "schedule").replace(/[\\/:*?"<>|]/g, "_") + ".xml";
+    window.PCC.nativeFile
+      .save(blob, filename)
+      .then(function () {
+        window.PCC.notify('Exported "' + schedule.name + '" as Microsoft Project XML.', "success");
+      })
+      .catch(function (e) {
+        window.PCC.notify("Could not export: " + e.message, "error");
+      });
+    rerender();
   }
 
   /** Renders a collapsible list of a parseRows() result's errors/warnings, or null if
@@ -30576,6 +30883,16 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       openExcelEditor(currentScheduleForExcelEdit, data, rerender);
     };
     bar.appendChild(editExcelBtn);
+
+    var currentScheduleForMspExport = currentScheduleForExcelEdit;
+    var exportMspBtn = document.createElement("button");
+    exportMspBtn.className = "btn btn--ghost";
+    exportMspBtn.textContent = "Export to MS Project";
+    exportMspBtn.disabled = !currentScheduleForMspExport;
+    exportMspBtn.onclick = function () {
+      handleExportMspXml(currentScheduleForMspExport, data, rerender);
+    };
+    bar.appendChild(exportMspBtn);
 
     var calcBtn = document.createElement("button");
     calcBtn.className = "btn btn--ghost";

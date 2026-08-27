@@ -639,7 +639,7 @@
    * handleImportFileSelected() above. No column-mapping step — MSPDI has a fixed,
    * well-known schema, unlike an arbitrary Excel file's headers — so this always goes
    * straight to the same 'reviewing' step the Excel path uses, reusing it as-is since
-   * mspXmlImportService.parseMspXml() returns the exact shape parseRows() does. */
+   * mspXmlService.parseMspXml() returns the exact shape parseRows() does. */
   function handleMspXmlFileSelected(file, data, rerender) {
     uiState.importSourceType = "msp_xml";
     var reader = new FileReader();
@@ -658,7 +658,7 @@
         return;
       }
 
-      var parsed = window.PCC.mspXmlImportService.parseMspXml(xmlText);
+      var parsed = window.PCC.mspXmlService.parseMspXml(xmlText);
       var fileDataUri = "data:application/xml;base64," + arrayBufferToBase64(buffer);
 
       window.PCC.duplicateService.fingerprintFile(buffer, file.name, file.size).then(function (fp) {
@@ -807,7 +807,7 @@
     var records = buildScheduleRecords(parsed, uiState.projectId, newSchedule.id);
 
     // Architecture Upgrade Phase 2: an MSP XML import may carry the file's own default
-    // Calendar (see mspXmlImportService.parseDefaultCalendar) — create it as a real
+    // Calendar (see mspXmlService.parseDefaultCalendar) — create it as a real
     // Project calendar and wire every newly-imported activity onto it. Purely
     // representational, same as Phase 1's migration-minted default calendars: this does
     // NOT make scheduleCpmEngine.js calendar-aware.
@@ -878,6 +878,61 @@
         uiState.importError = "Could not store the original " + (isMspImport ? "Microsoft Project XML" : "Excel") + " file: " + e.message;
         rerender();
       });
+  }
+
+  /** Architecture Upgrade Phase 2 (export half): downloads one schedule as a Microsoft
+   * Project XML file — the round-trip counterpart to handleMspXmlFileSelected() above.
+   * Works on ANY schedule regardless of its own source_platform (a hand-built or
+   * Excel-imported schedule can be exported to MS Project just as validly as one that
+   * was originally imported from MSP), unlike "Edit Excel" which only makes sense for
+   * a schedule that actually came from Excel. */
+  function handleExportMspXml(schedule, data, rerender) {
+    var wbsItems = data.wbs_items.filter(function (w) {
+      return w.schedule_id === schedule.id;
+    });
+    var activities = data.activities.filter(function (a) {
+      return a.schedule_id === schedule.id;
+    });
+    var relationships = data.relationships.filter(function (r) {
+      return r.schedule_id === schedule.id;
+    });
+    // Prefer whichever Calendar this schedule's own activities actually reference; fall
+    // back to the project's default calendar (Phase 1 mints one per project) if none
+    // of them have one set (e.g. a schedule built entirely by hand before Phase 1).
+    var calendarId = null;
+    for (var i = 0; i < activities.length; i++) {
+      if (activities[i].calendar_id) {
+        calendarId = activities[i].calendar_id;
+        break;
+      }
+    }
+    var calendar = calendarId
+      ? data.calendars.find(function (c) {
+          return c.id === calendarId;
+        })
+      : data.calendars.find(function (c) {
+          return c.project_id === schedule.project_id && c.is_default;
+        });
+
+    var xml = window.PCC.mspXmlService.exportScheduleToMspXml({
+      schedule: schedule,
+      wbsItems: wbsItems,
+      activities: activities,
+      relationships: relationships,
+      calendar: calendar || null,
+    });
+
+    var blob = new Blob([xml], { type: "application/xml" });
+    var filename = (schedule.name || "schedule").replace(/[\\/:*?"<>|]/g, "_") + ".xml";
+    window.PCC.nativeFile
+      .save(blob, filename)
+      .then(function () {
+        window.PCC.notify('Exported "' + schedule.name + '" as Microsoft Project XML.', "success");
+      })
+      .catch(function (e) {
+        window.PCC.notify("Could not export: " + e.message, "error");
+      });
+    rerender();
   }
 
   /** Renders a collapsible list of a parseRows() result's errors/warnings, or null if
@@ -1914,6 +1969,16 @@
       openExcelEditor(currentScheduleForExcelEdit, data, rerender);
     };
     bar.appendChild(editExcelBtn);
+
+    var currentScheduleForMspExport = currentScheduleForExcelEdit;
+    var exportMspBtn = document.createElement("button");
+    exportMspBtn.className = "btn btn--ghost";
+    exportMspBtn.textContent = "Export to MS Project";
+    exportMspBtn.disabled = !currentScheduleForMspExport;
+    exportMspBtn.onclick = function () {
+      handleExportMspXml(currentScheduleForMspExport, data, rerender);
+    };
+    bar.appendChild(exportMspBtn);
 
     var calcBtn = document.createElement("button");
     calcBtn.className = "btn btn--ghost";

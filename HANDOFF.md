@@ -4730,6 +4730,46 @@ itself to read reliably); export back to MSP XML is a separate, explicitly not-y
 Phase 1's `calendars[]`/`codes`/`source_platform` fields via a new import path). **Test suite: 91
 files, 2320 checks, 0 failures** — recount rather than trust this blindly.
 
+**Phase 2 export half — done, same session, immediately after import above.** PCC → MSP XML,
+completing Microsoft Project round-trip interoperability.
+- `mspXmlImportService.js` **renamed to `mspXmlService.js`** (`window.PCC.mspXmlService`) since it
+  now covers both directions — `build.js`'s `JS_ORDER`, `schedule.js`'s references, and the import
+  test files' requires/namespace were all updated. Pure rename + one addition, import logic itself
+  untouched (its own existing tests still pass unmodified).
+- New `exportScheduleToMspXml({ schedule, wbsItems, activities, relationships, calendar })` in that
+  same file. Recursively walks the WBS tree for correct outline nesting (cycle-guarded against a
+  malformed `parent_wbs_id` chain), mints fresh sequential UIDs each export (PCC has no "canonical
+  prior MSP UID" to preserve), and emits `<LagFormat>7</LagFormat>` explicitly on every
+  `<PredecessorLink>` — exact, unlike import's necessarily-assumed lag units, since export controls
+  its own encoding.
+- **Real bug caught by the round-trip test before shipping**: the first working version emitted no
+  `<WBS>` value on leaf Activity tasks (only on WBS Summary tasks), so every leaf activity silently
+  lost its WBS assignment on re-import. Fixed by fabricating each activity's own WBS as
+  `{parentCode}.{position}` (e.g. "1.1", "1.2" under parent "1") — exactly mirrors how
+  `parseMspXml()` already resolves a leaf's parent by truncating its own WBS by one segment.
+- New "Export to MS Project" button in the Schedule toolbar (works on any schedule regardless of
+  its own `source_platform`, unlike "Edit Excel"). Downloads via the existing `nativeFile.save()`.
+- **Round-trip verified two ways**: MSPDI shape correctness via `DOMParser`, and full re-import
+  through `parseMspXml()` confirming every field survives — proving PCC's own import/export are
+  mutually consistent. **Honestly scoped**: this does NOT prove real Microsoft Project accepts the
+  file — no MS Project installation exists in this environment to test against. Tell Aditya this
+  explicitly if he asks whether the export "works" — it works against PCC's own importer, verified;
+  opening it in his own copy of MS Project is the one thing only he can actually confirm.
+- New test files: `tests/test_msp_xml_export_service.js` (11 checks — XML shape for every field, a
+  no-Calendar case, the cycle guard, and the full round-trip) and `tests/test_msp_xml_export_e2e.js`
+  (3 checks, real button click against the bundled `index.html`, intercepting `nativeFile.save()`
+  to inspect the actual Blob content — same interception pattern `test_file_viewer_gate2_e2e.js`
+  already established).
+- Same cross-realm `assert.deepStrictEqual` gotcha as the import e2e test (an array built inside
+  jsdom's `runScripts: "dangerously"` realm fails identity comparison against a plain Node-realm
+  array even when values match) — hit again on `reimported.errors` in the export e2e test; fixed
+  with `.length === 0` instead of comparing against `[]` directly. Worth remembering for any future
+  e2e test that reads array/object values back out of a real bundled-`index.html` JSDOM instance.
+
+**`schema_version` remains 61** (Phase 2 in full — import and export — added no schema changes,
+only a new file-format path in and out of Phase 1's existing model). **Test suite: 93 files, 2334
+checks, 0 failures** — recount rather than trust this blindly.
+
 **Repo/branch state**: working on `claude/pcc-architecture-upgrade-j5a1eo`, per this session's own
 explicit branch instructions (develop + push there, never push elsewhere, never merge to `main` or
 open a PR unless directly asked — a deliberate departure from this file's older standing "merge to
@@ -4739,4 +4779,6 @@ Verify current state with `git status`/`git log` rather than trusting this parag
 **Next steps**: Phase 3 (Primavera P6 file interoperability — XER/Primavera XML import) is the
 roadmap's next step, but per the master prompt's own instruction ("work through it sequentially...
 do not build everything immediately"), it has not been started — confirm scope/direction with
-Aditya before beginning it. MSP XML **export** (the other half of Phase 2) is also still open.
+Aditya before beginning it. Microsoft Project interoperability (Phase 2) is now complete on both
+import and export, modulo the one genuinely untestable claim (opening an exported file in actual
+Microsoft Project) flagged above.

@@ -17,7 +17,7 @@ const JS_ORDER = [
   "js/scheduleBaselineStore.js",
   "js/duplicateService.js",
   "js/scheduleImportService.js",
-  "js/mspXmlImportService.js",
+  "js/mspXmlService.js",
   "js/scheduleCpmEngine.js",
   "js/delayImpactEngine.js",
   "js/scheduleBaselineEngine.js",

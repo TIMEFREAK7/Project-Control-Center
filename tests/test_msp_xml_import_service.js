@@ -1,5 +1,5 @@
 // PCC Architecture Upgrade Phase 2 — standalone Node test for
-// mspXmlImportService.js's parseMspXml(). Same eval-the-real-file approach as
+// mspXmlService.js's parseMspXml(). Same eval-the-real-file approach as
 // test_schedule_import_service.js, using jsdom's DOMParser (verified to support
 // application/xml parsing, including a <parsererror> element on malformed input).
 "use strict";
@@ -99,10 +99,10 @@ function loadService() {
   const excelSrc = fs.readFileSync(path.join(__dirname, "..", "src", "js", "scheduleImportService.js"), "utf8");
   // eslint-disable-next-line no-eval
   eval(excelSrc);
-  const mspSrc = fs.readFileSync(path.join(__dirname, "..", "src", "js", "mspXmlImportService.js"), "utf8");
+  const mspSrc = fs.readFileSync(path.join(__dirname, "..", "src", "js", "mspXmlService.js"), "utf8");
   // eslint-disable-next-line no-eval
   eval(mspSrc);
-  return dom.window.PCC.mspXmlImportService;
+  return dom.window.PCC.mspXmlService;
 }
 
 const svc = loadService();

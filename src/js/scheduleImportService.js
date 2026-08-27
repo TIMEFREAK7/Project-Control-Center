@@ -18,7 +18,7 @@
    * accepted tradeoff for a warn-and-skip pass rather than a full SCC decomposition.
    *
    * Extracted (Architecture Upgrade Phase 2) from parseRows() below so
-   * mspXmlImportService.js's Microsoft Project XML importer can reuse the identical
+   * mspXmlService.js's Microsoft Project XML importer can reuse the identical
    * graph-cycle logic on its own externally-sourced relationships, rather than every
    * new schedule-file importer reimplementing this from scratch. Pure graph algorithm,
    * no Excel-specific assumptions — takes/returns the same

@@ -4977,10 +4977,59 @@ Two pre-existing tests needed updates for the renamed panel/button
 (`test_schedule_import_column_mapping_e2e.js`) — text-label bumps only, no behavior changed. Also
 verified with a real-Chromium load of the rebuilt `index.html` (zero console/page errors).
 
-**Not done / explicitly deferred**: MSP XML **export** (PCC → MS Project) — a separate, not-yet-
-built increment; Resources/Assignments import; MSP Baseline import; full `<LagFormat>` enumeration
-decoding (the tenths-of-a-day assumption covers the common case, flagged when applied); Primavera
-P6 (Phase 3, not started); SQLite (Phase 5, still gated on the model proving out further).
+**Not done / explicitly deferred, as of the import half above**: MSP XML **export** — see the
+follow-up entry immediately below, done later the same day; Resources/Assignments import; MSP
+Baseline import; full `<LagFormat>` enumeration decoding (the tenths-of-a-day assumption covers
+the common case, flagged when applied); Primavera P6 (Phase 3, not started); SQLite (Phase 5,
+still gated on the model proving out further).
+
+## PCC Architecture Upgrade — Phase 2 (Microsoft Project File Interoperability — Export), 2026-08-27
+
+Same day, immediately after the import half above: completes Microsoft Project round-trip
+interoperability with **PCC → MSP XML export**. `mspXmlImportService.js` was renamed to
+**`mspXmlService.js`** (namespace `window.PCC.mspXmlService`) since it now genuinely covers both
+directions — `build.js`'s `JS_ORDER` and every reference in `schedule.js`/the import tests were
+updated to match; this is a pure rename plus one addition, not a rewrite of the import logic.
+
+- **New `exportScheduleToMspXml({ schedule, wbsItems, activities, relationships, calendar })`** —
+  same file, same UI-independent/no-DOM-writes convention. Recursively walks the WBS tree (root
+  items first, each followed by its own children and then its own directly-assigned Activities,
+  with a cycle guard against a malformed/circular `parent_wbs_id` chain) to produce correctly
+  outline-nested `<Task>` elements, mints fresh sequential UIDs for every WBS item/Activity on each
+  export (PCC has no "canonical prior MSP UID" concept to preserve — see the file's own header),
+  and emits `<PredecessorLink>` elements with an explicit `<LagFormat>7</LagFormat>` (Days) — since
+  export controls its own encoding, this is exact, unlike import's necessarily-assumed lag units.
+  An Activity's own `<WBS>` value is fabricated as `{parentCode}.{position}` (e.g. parent "1" →
+  "1.1", "1.2", …) so a re-import can resolve it back to the right parent — the first working
+  version of this function omitted this and every leaf activity silently lost its WBS assignment on
+  round-trip; caught by the round-trip test below before it shipped, not after.
+- **UI**: a new **"Export to MS Project"** button in the Schedule toolbar, enabled whenever a
+  schedule is selected — unlike "Edit Excel," this works on *any* schedule regardless of its own
+  `source_platform` (a hand-built or Excel-imported schedule can validly export to MS Project too).
+  Downloads via the existing `nativeFile.save()` (same Blob + `<a download>`/Capacitor-share path
+  Export/Backup already use). Picks the Calendar to export from whichever the schedule's own
+  activities actually reference, falling back to the project's Phase-1 default calendar.
+- **Round-trip verification, honestly scoped**: exported output is verified two ways — (1) directly
+  against the MSPDI XML shape (correct elements/values via `DOMParser`), and (2) by re-importing it
+  through this same file's `parseMspXml()` and confirming every field survives. This proves PCC's
+  own import and export are **mutually consistent** for every field either side handles. It does
+  **not** prove Microsoft Project itself accepts the file — no MS Project installation is available
+  in this environment to test against, and per the master prompt's own "do not claim round-trip
+  until tested" rule, that claim stays explicitly open rather than assumed.
+- Still deliberately out of scope, same reasons as the import half: Resources/Assignments, MSP
+  Baselines, a project-summary Task (real MS Project synthesizes one on open if absent, a safe,
+  common minimal-file convention).
+
+**Verified**: `node build.js` clean; full suite **2334 passed, 0 failed** across 93 files (2320
+pre-existing + 14 new: 11 in `test_msp_xml_export_service.js` — XML-shape checks for every field,
+a no-Calendar case, the cycle guard, and the full round-trip — plus 3 in
+`test_msp_xml_export_e2e.js`, driving the real "Export to MS Project" button against the actual
+bundled `index.html` and round-tripping the resulting file through the app's own importer). Also
+verified with a real-Chromium load of the rebuilt `index.html` (zero console/page errors).
+
+**Not done / explicitly deferred**: opening an exported file in an actual Microsoft Project
+installation (untestable in this environment — flagged above, not silently assumed); Resources/
+Assignments and Baselines, both directions; Primavera P6 (Phase 3, not started); SQLite (Phase 5).
 
 ## Locked build order (unchanged)
 
@@ -5049,12 +5098,13 @@ Assistant, Lessons Learned, final polish
 ## Next phase
 
 **PCC Architecture Upgrade**: Phase 0 (Inspection & Baseline), Phase 1 (Canonical Schedule Model,
-schema v61), and Phase 2 (Microsoft Project XML **import**) are all done — see those sections
-above. MSP XML **export** is explicitly not built yet (a separate increment from import, per the
-master prompt's "don't claim round-trip until tested" rule). Phase 3 (Primavera P6 file
-interoperability) is the next step in that roadmap, but per the master prompt's own operating
-instruction ("work through it sequentially... do not build everything immediately"), it hasn't
-been started — confirm scope/direction before beginning it, the same gate discipline every other
+schema v61), and Phase 2 (Microsoft Project XML **import and export** — full round-trip between
+PCC's own import/export, though opening an exported file in real Microsoft Project itself is
+unverified — no MS Project installation available in this environment) are all done — see those
+sections above. Phase 3 (Primavera P6 file interoperability) is the next step in that roadmap, but
+per the master prompt's own operating instruction ("work through it sequentially... do not build
+everything immediately"), it hasn't been started — confirm scope/direction before beginning it,
+the same gate discipline every other
 roadmap on this page already follows.
 
 **Tier 2 is complete, and the entire 14-gate Document Control sub-spec Aditya handed over is now
