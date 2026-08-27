@@ -552,17 +552,27 @@
     uiState.importHeaders = [];
     uiState.importRawRows = [];
     uiState.importColumnMapping = {};
+    // Architecture Upgrade Phase 2: which parser/commit path produced importParsed \u2014
+    // "excel" (the pre-existing path above) or "msp_xml" (handleMspXmlFileSelected
+    // below). commitImport() uses this to set source_platform/source_format correctly
+    // and to decide whether a parsed default Calendar needs creating.
+    uiState.importSourceType = null;
   }
 
   function handleImportFileSelected(file, data, rerender) {
     uiState.importError = null;
     var ext = /\.([a-z0-9]+)$/i.exec(file.name || "");
     ext = ext ? ext[1].toLowerCase() : "";
+    if (ext === "xml") {
+      handleMspXmlFileSelected(file, data, rerender);
+      return;
+    }
     if (ext !== "xlsx" && ext !== "xls") {
-      uiState.importError = "Unsupported file type. Use .xlsx or .xls \u2014 MS Project XML import is a separate, later gate.";
+      uiState.importError = "Unsupported file type. Use .xlsx/.xls (Excel) or .xml (Microsoft Project XML export).";
       rerender();
       return;
     }
+    uiState.importSourceType = "excel";
 
     var reader = new FileReader();
     reader.onerror = function () {
@@ -625,6 +635,54 @@
     reader.readAsArrayBuffer(file);
   }
 
+  /** Architecture Upgrade Phase 2: the Microsoft Project XML counterpart to
+   * handleImportFileSelected() above. No column-mapping step — MSPDI has a fixed,
+   * well-known schema, unlike an arbitrary Excel file's headers — so this always goes
+   * straight to the same 'reviewing' step the Excel path uses, reusing it as-is since
+   * mspXmlImportService.parseMspXml() returns the exact shape parseRows() does. */
+  function handleMspXmlFileSelected(file, data, rerender) {
+    uiState.importSourceType = "msp_xml";
+    var reader = new FileReader();
+    reader.onerror = function () {
+      uiState.importError = "Could not read that file.";
+      rerender();
+    };
+    reader.onload = function () {
+      var buffer = reader.result;
+      var xmlText;
+      try {
+        xmlText = new TextDecoder("utf-8").decode(buffer);
+      } catch (e) {
+        uiState.importError = "Could not read this file as text: " + e.message;
+        rerender();
+        return;
+      }
+
+      var parsed = window.PCC.mspXmlImportService.parseMspXml(xmlText);
+      var fileDataUri = "data:application/xml;base64," + arrayBufferToBase64(buffer);
+
+      window.PCC.duplicateService.fingerprintFile(buffer, file.name, file.size).then(function (fp) {
+        uiState.importFile = { name: file.name, size: file.size, hash: fp.hash, hashMethod: fp.method, fileData: fileDataUri };
+        uiState.importScheduleName = file.name.replace(/\.xml$/i, "");
+        uiState.importDuplicateAcknowledged = false;
+
+        var projectSchedules = data.schedules.filter(function (s) {
+          return s.project_id === uiState.projectId;
+        });
+        uiState.importDuplicateMatches = window.PCC.duplicateService.findFileDuplicates(
+          projectSchedules,
+          { hash: fp.hash, method: fp.method, filename: file.name, size: file.size, projectId: uiState.projectId },
+          { fields: { hash: "content_hash", method: "hash_method", filename: "source_file_name", size: "source_file_size", projectId: "project_id" } }
+        );
+
+        uiState.importParsed = parsed;
+        uiState.importStep = "reviewing";
+        rerender();
+      });
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
   /** Re-runs parseRows() with the user's confirmed column mapping (Manual Column
    * Mapping step) and moves on to the same 'reviewing' step the auto-detected path
    * already uses — from here on the two paths are identical. */
@@ -673,10 +731,19 @@
         name: a.name,
         activity_type: a.activity_type,
         duration: a.duration,
-        remaining_duration: a.duration,
+        // Architecture Upgrade Phase 2: the MSP XML importer supplies a real
+        // remaining_duration (from <RemainingDuration>) and actual dates/constraint
+        // fields the Excel importer never has — falling back to `a.duration`/"" keeps
+        // Excel-imported activities byte-identical to before (those keys are simply
+        // absent on an Excel-parsed row, so `a.remaining_duration` reads as undefined).
+        remaining_duration: a.remaining_duration != null ? a.remaining_duration : a.duration,
         original_duration: a.duration,
         planned_start: a.planned_start,
         planned_finish: a.planned_finish,
+        actual_start: a.actual_start || "",
+        actual_finish: a.actual_finish || "",
+        constraint_type: a.constraint_type || "",
+        constraint_date: a.constraint_date || "",
         percent_complete: a.percent_complete,
         discipline: a.discipline,
         contractor: a.contractor,
@@ -715,10 +782,13 @@
       });
     var nextRevision = existingRevisions.length ? Math.max.apply(null, existingRevisions) + 1 : 0;
 
-    // Architecture Upgrade Phase 1: this is the one place a schedule is actually known
-    // to have come from an Excel file at creation time — set source_platform/format
-    // explicitly here rather than relying on store.js's migration-time inference (which
-    // only exists to backfill *pre-existing* data, per its own comment).
+    // Architecture Upgrade Phase 1/2: this is the one place a schedule is actually
+    // known to have come from an Excel or Microsoft Project XML file at creation time —
+    // set source_platform/format explicitly here (from importSourceType, set by
+    // whichever of handleImportFileSelected/handleMspXmlFileSelected ran) rather than
+    // relying on store.js's migration-time inference (which only exists to backfill
+    // *pre-existing* data, per its own comment).
+    var isMspImport = uiState.importSourceType === "msp_xml";
     var extMatch = /\.([a-zA-Z0-9]+)$/.exec(uiState.importFile.name || "");
     var newSchedule = window.PCC.store.newSchedule({
       project_id: uiState.projectId,
@@ -726,7 +796,7 @@
       revision_number: nextRevision,
       status: "active",
       import_date: new Date().toISOString(),
-      source_platform: "excel",
+      source_platform: isMspImport ? "msp_xml" : "excel",
       source_format: extMatch ? extMatch[1].toLowerCase() : null,
       source_file_name: uiState.importFile.name,
       source_file_size: uiState.importFile.size,
@@ -735,6 +805,25 @@
     });
 
     var records = buildScheduleRecords(parsed, uiState.projectId, newSchedule.id);
+
+    // Architecture Upgrade Phase 2: an MSP XML import may carry the file's own default
+    // Calendar (see mspXmlImportService.parseDefaultCalendar) — create it as a real
+    // Project calendar and wire every newly-imported activity onto it. Purely
+    // representational, same as Phase 1's migration-minted default calendars: this does
+    // NOT make scheduleCpmEngine.js calendar-aware.
+    var newCalendar = null;
+    if (isMspImport && parsed.calendar) {
+      newCalendar = window.PCC.store.newCalendar({
+        project_id: uiState.projectId,
+        name: parsed.calendar.name,
+        working_days: parsed.calendar.working_days,
+        holidays: parsed.calendar.holidays,
+        is_default: false,
+      });
+      records.activities.forEach(function (a) {
+        a.calendar_id = newCalendar.id;
+      });
+    }
 
     uiState.importCommitting = true;
     uiState.importError = null;
@@ -760,12 +849,15 @@
         d.wbs_items = d.wbs_items.concat(records.wbsItems);
         d.activities = d.activities.concat(records.activities);
         d.relationships = d.relationships.concat(records.relationships);
+        if (newCalendar) d.calendars.push(newCalendar);
       });
 
       window.PCC.notify(
         "Imported " + records.activities.length + " activities as a new schedule (Rev " + nextRevision +
           ")." + (supersededCount > 0 ? " " + supersededCount + " prior active revision(s) marked Superseded." : "") +
-          " The original Excel file is attached \u2014 use \u201cEdit Excel\u201d to update it in place.",
+          (isMspImport
+            ? " The original Microsoft Project XML file is attached for reference."
+            : " The original Excel file is attached \u2014 use \u201cEdit Excel\u201d to update it in place."),
         "success"
       );
 
@@ -783,7 +875,7 @@
       .then(finishImport)
       .catch(function (e) {
         uiState.importCommitting = false;
-        uiState.importError = "Could not store the original Excel file: " + e.message;
+        uiState.importError = "Could not store the original " + (isMspImport ? "Microsoft Project XML" : "Excel") + " file: " + e.message;
         rerender();
       });
   }
@@ -831,7 +923,7 @@
 
     var heading = document.createElement("h3");
     heading.style.marginBottom = "var(--space-3)";
-    heading.textContent = "Import Schedule from Excel";
+    heading.textContent = "Import Schedule";
     panel.appendChild(heading);
 
     if (uiState.importStep === "pick") {
@@ -840,16 +932,20 @@
       help.style.fontSize = "var(--text-sm)";
       help.style.marginBottom = "var(--space-3)";
       help.innerHTML =
-        "Expected columns (any order, extras ignored): <strong>Activity ID*, Activity Name*</strong>, " +
-        "WBS Code, WBS Name, Activity Type (Task/Milestone/Summary/WBS Summary), Duration, Planned Start, " +
-        "Planned Finish, Predecessors (e.g. <code>A010FS+2,A020</code>), % Complete, Discipline, Contractor, " +
-        "Responsible Person, Status, Notes. This always creates a <strong>new schedule revision</strong> \u2014 " +
-        "it never overwrites an existing one.";
+        "<strong>Excel (.xlsx/.xls)</strong> \u2014 expected columns (any order, extras ignored): " +
+        "<strong>Activity ID*, Activity Name*</strong>, WBS Code, WBS Name, Activity Type " +
+        "(Task/Milestone/Summary/WBS Summary), Duration, Planned Start, Planned Finish, Predecessors " +
+        "(e.g. <code>A010FS+2,A020</code>), % Complete, Discipline, Contractor, Responsible Person, Status, Notes." +
+        "<br/><strong>Microsoft Project (.xml)</strong> \u2014 export from MS Project via File \u2192 Export/Save As \u2192 " +
+        "Project XML. WBS Summary tasks become PCC WBS items; leaf tasks become Activities with their " +
+        "relationships, dates, progress, and constraints preserved where the format allows \u2014 see the " +
+        "warnings after parsing for anything approximated or skipped." +
+        "<br/>Either way, this always creates a <strong>new schedule revision</strong> \u2014 it never overwrites an existing one.";
       panel.appendChild(help);
 
       var fileInput = document.createElement("input");
       fileInput.type = "file";
-      fileInput.accept = ".xlsx,.xls";
+      fileInput.accept = ".xlsx,.xls,.xml";
       fileInput.onchange = function () {
         if (fileInput.files && fileInput.files[0]) {
           handleImportFileSelected(fileInput.files[0], data, rerender);
@@ -1784,7 +1880,11 @@
 
     var importBtn = document.createElement("button");
     importBtn.className = "btn btn--ghost";
-    importBtn.textContent = "Import Excel";
+    // Architecture Upgrade Phase 2: this one button now handles both formats — the
+    // "pick" step's file picker branches on the chosen file's extension (.xlsx/.xls vs
+    // .xml), same single-entry-point pattern as everywhere else in this app that
+    // accepts more than one file type (see documents.js).
+    importBtn.textContent = "Import Schedule";
     importBtn.disabled = activeProjects.length === 0;
     importBtn.onclick = function () {
       resetImportState();
@@ -1799,10 +1899,17 @@
     var editExcelBtn = document.createElement("button");
     editExcelBtn.className = "btn btn--ghost";
     editExcelBtn.textContent = "Edit Excel";
-    editExcelBtn.title = currentScheduleForExcelEdit && !currentScheduleForExcelEdit.source_file_name
+    // Architecture Upgrade Phase 1's source_platform is the precise signal here — a
+    // pre-Phase-1 schedule (migrated, source_platform inferred as "excel" whenever
+    // source_file_name was set) still opens correctly, but an MSP-XML-imported
+    // schedule (which ALSO sets source_file_name, for the same provenance/dedup
+    // reasons Excel does) must NOT open this editor — it re-runs
+    // scheduleImportService.parseRows() internally, which expects spreadsheet rows,
+    // not the XML this schedule actually came from.
+    editExcelBtn.title = currentScheduleForExcelEdit && currentScheduleForExcelEdit.source_platform !== "excel"
       ? "This schedule wasn't imported from an Excel file, so there's nothing to edit here."
       : "";
-    editExcelBtn.disabled = !currentScheduleForExcelEdit || !currentScheduleForExcelEdit.source_file_name;
+    editExcelBtn.disabled = !currentScheduleForExcelEdit || currentScheduleForExcelEdit.source_platform !== "excel";
     editExcelBtn.onclick = function () {
       openExcelEditor(currentScheduleForExcelEdit, data, rerender);
     };

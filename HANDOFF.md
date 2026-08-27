@@ -4678,12 +4678,65 @@ parsing yet (that's Phases 2-3, not started); no SQLite (Phase 5, explicitly gat
 proving out first — "do NOT make SQLite the first architectural change"); no calendar-aware CPM
 math; no managed code-type/code-value hierarchy, just the raw `codes` bag.
 
+**Phase 2 (Microsoft Project File Interoperability — Import) — done, same session.** MSP **XML**
+import only (the practical exchange format — not the native `.mpp` binary, which needs MS Project
+itself to read reliably); export back to MSP XML is a separate, explicitly not-yet-built increment.
+- New `src/js/mspXmlImportService.js` (added to `build.js`'s `JS_ORDER` right after
+  `scheduleImportService.js`) — parses MSPDI XML via `DOMParser` (native, no new dependency) into
+  the *exact same shape* `scheduleImportService.parseRows()` returns, plus a `calendar` field, so
+  `schedule.js`'s existing `buildScheduleRecords()` consumes either importer identically.
+- A `<Task><Summary>1</Summary>` becomes a PCC WBS item, never a schedule-network Activity. UID is
+  used as `external_id` (same re-import-matching role Excel's Activity ID plays). Preserves name,
+  WBS hierarchy, duration (hour-based PT-durations ÷ 8 = calendar days, one documented file-wide
+  assumption, not per-row), dates, milestone flag, % complete, remaining duration, all four
+  relationship types with lag (non-zero lag ÷10 = days, **with a per-relationship warning** since
+  `<LagFormat>`'s full enumeration isn't confidently decoded), and constraints (mapped to short
+  codes onto the existing free-text `constraint_type` field — informational only, matches how CPM
+  already treats that field). The file's default Calendar imports into a new Phase-1 `calendars[]`
+  record, wired onto every imported activity — still purely representational, CPM engine untouched.
+- **Deliberately deferred, not silently dropped**: Resources/Assignments import (would collide with
+  the existing Resource Management module's own dedup rules — separate future gate); MSP Baseline
+  import (PCC has its own baseline capture already); MSP XML export.
+- Refactored (behavior-preserving): `scheduleImportService.js`'s circular-dependency DFS check was
+  extracted into an exported `detectAndSkipCircularRelationships()` so the MSP importer reuses it
+  instead of duplicating the algorithm — same logic, just relocated, verified via the pre-existing
+  Excel import tests (unchanged, still pass).
+- UI: "Import Excel"/"Edit Excel" buttons became **"Import Schedule"** — one file picker
+  (`.xlsx,.xls,.xml`) branching on extension, reusing the entire existing review/commit UI for both
+  formats. **"Edit Excel" now gates on `source_platform === "excel"`**, not just `source_file_name`
+  — an MSP-imported schedule also sets that filename for provenance, so the old check would have
+  wrongly let the Excel grid editor open against a schedule that was never a spreadsheet.
+  `newSchedule()` itself also gained the same "infer excel from source_file_name" fallback the v61
+  migration already had, fixing a real gap the Excel-editor/column-mapping tests caught: any call
+  site (including two pre-existing test fixtures) that sets `source_file_name` without an explicit
+  `source_platform` now still gets "excel" instead of silently landing on the "pcc" default.
+- New test files: `tests/test_msp_xml_import_service.js` (21 checks — full field mapping, both
+  duration/lag assumption warnings, the Calendar import, and every error/warning path: malformed
+  XML, non-Project XML, no-tasks file, unrecognized relationship code, a relationship into a WBS
+  Summary task, self-reference, circular chain) and `tests/test_msp_xml_import_e2e.js` (4 checks,
+  full upload→review→commit flow against the real bundled `index.html`). Two pre-existing tests
+  (`test_schedule_import_column_mapping_e2e.js`) needed label-only updates for the renamed
+  panel/button — no behavior assertions changed.
+- **Real test-writing gotcha worth remembering**: jsdom's `FileReader.readAsArrayBuffer()` on this
+  upload path needed real elapsed time to settle, not just extra microtask ticks — the existing
+  `flush()` helper (10× `setTimeout(0)`) other schedule-import e2e tests use wasn't enough here and
+  produced a false "stuck on the pick step" read; fixed by polling with real `setTimeout` delays
+  (`waitFor()`) instead of guessing a tick count. Also: `assert.deepStrictEqual` on an array built
+  inside the jsdom vm realm against a plain Node-realm array literal fails on cross-realm prototype
+  identity even when every value matches ("same structure but not reference-equal") — wrap the
+  jsdom-side value in `Array.from()` first.
+
+**`schema_version` is still 61** (Phase 2 added no new schema fields — it only populates
+Phase 1's `calendars[]`/`codes`/`source_platform` fields via a new import path). **Test suite: 91
+files, 2320 checks, 0 failures** — recount rather than trust this blindly.
+
 **Repo/branch state**: working on `claude/pcc-architecture-upgrade-j5a1eo`, per this session's own
 explicit branch instructions (develop + push there, never push elsewhere, never merge to `main` or
 open a PR unless directly asked — a deliberate departure from this file's older standing "merge to
 main immediately" convention, which assumes a different session type than this remote-branch one).
 Verify current state with `git status`/`git log` rather than trusting this paragraph blindly.
 
-**Next steps**: Phase 2 (Microsoft Project file import/export) is the roadmap's next step, but per
-the master prompt's own instruction ("work through it sequentially... do not build everything
-immediately"), it has not been started — confirm scope/direction with Aditya before beginning it.
+**Next steps**: Phase 3 (Primavera P6 file interoperability — XER/Primavera XML import) is the
+roadmap's next step, but per the master prompt's own instruction ("work through it sequentially...
+do not build everything immediately"), it has not been started — confirm scope/direction with
+Aditya before beginning it. MSP XML **export** (the other half of Phase 2) is also still open.

@@ -42,8 +42,10 @@ function findButtonByText(win, text) {
  * which has its own <select>s (project, schedule) — scoping to the panel itself avoids
  * off-by-N index mistakes when picking out the mapping step's own <select>s. */
 function importPanel(win) {
+  // Architecture Upgrade Phase 2: the panel heading became "Import Schedule" (was
+  // "Import Schedule from Excel") once it started also accepting Microsoft Project XML.
   const heading = Array.from(win.document.querySelectorAll(".panel h3")).find(
-    (h) => h.textContent === "Import Schedule from Excel"
+    (h) => h.textContent === "Import Schedule"
   );
   return heading ? heading.closest(".panel") : null;
 }
@@ -104,10 +106,10 @@ function uploadWorkbook(win, fileInput, headers, dataRows, filename) {
     win.PCC.router.go("schedule");
     win.PCC.router.render();
 
-    var importBtn = findButtonByText(win, "Import Excel");
+    var importBtn = findButtonByText(win, "Import Schedule");
     assert.ok(importBtn, "'Import Excel' button not found");
     importBtn.click();
-    assert.ok(outlet().textContent.indexOf("Import Schedule from Excel") !== -1);
+    assert.ok(outlet().textContent.indexOf("Import Schedule") !== -1);
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
@@ -128,7 +130,7 @@ function uploadWorkbook(win, fileInput, headers, dataRows, filename) {
     // Cancel back to a clean 'pick' step for the next check.
     var cancelBtn = findButtonByText(win, "Cancel");
     cancelBtn.click();
-    var reopenBtn = findButtonByText(win, "Import Excel");
+    var reopenBtn = findButtonByText(win, "Import Schedule");
     reopenBtn.click();
   });
 
@@ -189,7 +191,7 @@ function uploadWorkbook(win, fileInput, headers, dataRows, filename) {
   await check("choosing the same PCC field for two different columns is blocked with a clear error, not silently accepted", async () => {
     win.PCC.router.go("schedule");
     win.PCC.router.render();
-    var importBtn = findButtonByText(win, "Import Excel");
+    var importBtn = findButtonByText(win, "Import Schedule");
     importBtn.click();
     var fileInput = outlet().querySelector('input[type="file"]');
     uploadWorkbook(

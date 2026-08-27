@@ -10,6 +10,65 @@
   "use strict";
   window.PCC = window.PCC || {};
 
+  /** Batch-local circular-dependency check — not cross-checked against relationships
+   * already in the target schedule; that full-graph check belongs to the CPM engine
+   * (Gate 3), which actually needs to walk the whole graph to compute float anyway.
+   * Conservative: any relationship whose *both* endpoints are on a detected cycle gets
+   * skipped, which can over-flag adjacent-but-acyclic edges through a cyclic node —
+   * accepted tradeoff for a warn-and-skip pass rather than a full SCC decomposition.
+   *
+   * Extracted (Architecture Upgrade Phase 2) from parseRows() below so
+   * mspXmlImportService.js's Microsoft Project XML importer can reuse the identical
+   * graph-cycle logic on its own externally-sourced relationships, rather than every
+   * new schedule-file importer reimplementing this from scratch. Pure graph algorithm,
+   * no Excel-specific assumptions — takes/returns the same
+   * { predecessor_external_id, successor_external_id, type, lag } shape either
+   * importer already produces. */
+  function detectAndSkipCircularRelationships(relationshipsRaw) {
+    var warnings = [];
+    var adjacency = {};
+    relationshipsRaw.forEach(function (r) {
+      (adjacency[r.predecessor_external_id] = adjacency[r.predecessor_external_id] || []).push(r.successor_external_id);
+    });
+    var visiting = {};
+    var visited = {};
+    var circularSet = {};
+    function dfs(node, stack) {
+      if (visiting[node]) {
+        var idx = stack.indexOf(node);
+        for (var i = idx; i < stack.length; i++) circularSet[stack[i]] = true;
+        return;
+      }
+      if (visited[node]) return;
+      visiting[node] = true;
+      stack.push(node);
+      (adjacency[node] || []).forEach(function (next) {
+        dfs(next, stack);
+      });
+      stack.pop();
+      visiting[node] = false;
+      visited[node] = true;
+    }
+    Object.keys(adjacency).forEach(function (node) {
+      dfs(node, []);
+    });
+
+    var circularPairs = 0;
+    var relationships = relationshipsRaw.filter(function (r) {
+      var circular = circularSet[r.predecessor_external_id] && circularSet[r.successor_external_id];
+      if (circular) {
+        circularPairs++;
+        warnings.push({
+          row: null,
+          message: 'Circular dependency involving "' + r.predecessor_external_id + '" → "' + r.successor_external_id + '" — relationship skipped.',
+        });
+      }
+      return !circular;
+    });
+
+    return { relationships: relationships, warnings: warnings, circularPairs: circularPairs };
+  }
+
   var ACTIVITY_TYPE_ALIASES = {
     task: "task",
     activity: "task",
@@ -358,52 +417,13 @@
       });
     });
 
-    // Circular-dependency check, batch-local only (this file's relationships against
-    // each other \u2014 not cross-checked against relationships already in the target
-    // schedule; that full-graph check belongs to the CPM engine in Gate 3, which
-    // actually needs to walk the whole graph to compute float anyway). Conservative:
-    // any relationship whose *both* endpoints are on a detected cycle gets skipped,
-    // which can over-flag adjacent-but-acyclic edges through a cyclic node \u2014 accepted
-    // tradeoff for a warn-and-skip pass rather than a full SCC decomposition.
-    var adjacency = {};
-    relationshipsRaw.forEach(function (r) {
-      (adjacency[r.predecessor_external_id] = adjacency[r.predecessor_external_id] || []).push(r.successor_external_id);
-    });
-    var visiting = {};
-    var visited = {};
-    var circularSet = {};
-    function dfs(node, stack) {
-      if (visiting[node]) {
-        var idx = stack.indexOf(node);
-        for (var i = idx; i < stack.length; i++) circularSet[stack[i]] = true;
-        return;
-      }
-      if (visited[node]) return;
-      visiting[node] = true;
-      stack.push(node);
-      (adjacency[node] || []).forEach(function (next) {
-        dfs(next, stack);
-      });
-      stack.pop();
-      visiting[node] = false;
-      visited[node] = true;
-    }
-    Object.keys(adjacency).forEach(function (node) {
-      dfs(node, []);
-    });
-
-    var circularPairs = 0;
-    var relationships = relationshipsRaw.filter(function (r) {
-      var circular = circularSet[r.predecessor_external_id] && circularSet[r.successor_external_id];
-      if (circular) {
-        circularPairs++;
-        warnings.push({
-          row: null,
-          message: 'Circular dependency involving "' + r.predecessor_external_id + '" \u2192 "' + r.successor_external_id + '" \u2014 relationship skipped.',
-        });
-      }
-      return !circular;
-    });
+    // Circular-dependency check \u2014 see detectAndSkipCircularRelationships() below,
+    // extracted (Architecture Upgrade Phase 2) so the new Microsoft Project XML
+    // importer can reuse the exact same graph-cycle logic instead of duplicating it.
+    var circResult = detectAndSkipCircularRelationships(relationshipsRaw);
+    warnings = warnings.concat(circResult.warnings);
+    var relationships = circResult.relationships;
+    var circularPairs = circResult.circularPairs;
 
     return {
       activities: activities,
@@ -426,5 +446,6 @@
     parseRows: parseRows,
     CANONICAL_HEADERS: CANONICAL_HEADERS,
     autoDetectColumnMapping: autoDetectColumnMapping,
+    detectAndSkipCircularRelationships: detectAndSkipCircularRelationships,
   };
 })();

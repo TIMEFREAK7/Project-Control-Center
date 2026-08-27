@@ -1253,7 +1253,23 @@
       created_at: now,
       updated_at: now,
     };
-    return Object.assign(base, overrides || {});
+    var ov = overrides || {};
+    var merged = Object.assign(base, ov);
+    // Architecture Upgrade Phase 2: a caller that sets source_file_name without an
+    // explicit source_platform (any pre-Phase-2 call site, and any test fixture built
+    // before this field existed) gets the same "excel" inference the v60->v61 migration
+    // already applies to pre-existing data — so a bare newSchedule({source_file_name})
+    // never silently lands on the "pcc" default just because this call site predates
+    // source_platform. An explicit source_platform (e.g. the MSP XML importer passing
+    // "msp_xml") always wins — this only fills in what wasn't said.
+    if (ov.source_platform === undefined && merged.source_file_name) {
+      merged.source_platform = "excel";
+      if (ov.source_format === undefined) {
+        var m = /\.([a-zA-Z0-9]+)$/.exec(merged.source_file_name);
+        merged.source_format = m ? m[1].toLowerCase() : null;
+      }
+    }
+    return merged;
   }
 
   function newWbsId() {

@@ -4891,6 +4891,97 @@ coexist per project (they did before this phase too — importing has always cre
 rather than overwriting), but there's no UI yet to freely compare any two arbitrary schedules the
 way baseline-vs-current comparison already works.
 
+## PCC Architecture Upgrade — Phase 2 (Microsoft Project File Interoperability — Import), 2026-08-27
+
+Same initiative as Phase 0/1 above, continuing to the master prompt's next step: file-based
+Microsoft Project interoperability. Per the master prompt's own explicit instruction, this means
+**file import/export, never live software integration or a dependency on MS Project being
+installed** — and per its "prioritize the practical exchange format" guidance, this reads **MSP
+XML** (MSPDI — Microsoft Project's own File → Export/Save As → Project XML format), not the native
+`.mpp` binary, which realistically needs Microsoft Project itself (or a heavyweight third-party
+binary parser) to read reliably. `DOMParser` is a native browser API (Electron/Chromium and the
+Capacitor Android WebView both have it) — no new dependency, same "no npm deps for the app itself"
+rule Excel import already follows via the bundled SheetJS.
+
+**IMPORT only, this gate.** Export back to MSP XML is explicitly deferred — per the master prompt's
+own "do not claim round-trip until tested" rule, that has to be built and verified separately, not
+assumed to fall out of the import work for free.
+
+- **New `src/js/mspXmlImportService.js`** — parsing/validation only, no DOM writes, same UI-independent
+  convention `scheduleImportService.js` (Excel) already follows. Returns the **exact same shape**
+  `parseRows()` does (`{ activities, wbsEntries, relationships, warnings, errors, summary }`), plus
+  one addition (`calendar`) — so `schedule.js`'s existing `buildScheduleRecords()` consumes either
+  importer's output identically. That reuse is the whole payoff of Phase 1's canonical model: the
+  rest of the app doesn't care which file format a schedule came from.
+  - A `<Task><Summary>1</Summary></Task>` becomes a PCC WBS item, never a schedule-network Activity
+    (mirrors how a WBS row is already distinct from a leaf activity in the Excel path). A summary
+    task's own predecessor links (unusual, but MSP allows it) are reported as skipped with a
+    message naming that specifically, not silently dropped.
+  - Preserved: task ID (MSP's own `<UID>`, used as `external_id` — same re-import-matching role
+    Excel's Activity ID already plays), name, WBS hierarchy, duration, planned/actual start/finish,
+    milestone flag, `%` complete, remaining duration, relationships (all four FS/SS/FF/SF types)
+    with lag, and constraints (mapped to short codes — ASAP/ALAP/MSO/MFO/SNET/SNLT/FNET/FNLT — onto
+    the same free-text `constraint_type` field hand-entered/Excel-imported activities already use;
+    informational only, `scheduleCpmEngine.js` doesn't consult it for date math either way).
+  - The file's **default Calendar** (`<Project><CalendarUID>`, or the first `<Calendar>` if absent)
+    is imported into one new Phase-1 `calendars[]` record — working days + holiday exceptions — and
+    wired onto every imported activity. Purely representational, exactly like Phase 1's own
+    migration-minted calendars: this does **not** make the CPM engine calendar-aware.
+  - **Explicitly deferred, not silently dropped**: Resources/Assignments (PCC's own Resource
+    Management module, Gate 11, has its own dedup/matching conventions — auto-creating resources
+    from an MSP file risks colliding with those, so this is a separate, focused future gate); MSP
+    Baselines (PCC already has its own baseline capture, `scheduleBaselineEngine.js` — importing a
+    *second*, MSP-native baseline concept on top of it is future work, not this gate's job).
+  - **Two deliberate, documented unit-conversion assumptions** (per the master prompt's "identify
+    transformed/potentially-lost information" rule — never silently guess and present as fact):
+    task durations are hour-based in MSPDI (unambiguous) but converted to PCC's calendar-day unit
+    assuming an 8-hour working day (one file-wide summary warning, not per-row noise); relationship
+    `<LinkLag>` genuinely can't be decoded with full confidence without the complete `<LagFormat>`
+    enumeration, so a non-zero lag is converted assuming tenths-of-a-day (the common case for
+    day-scheduled construction programmes) **with a per-relationship warning** — a zero lag (the
+    overwhelmingly common case) needs no conversion and gets no warning.
+- **Refactor (behavior-preserving)**: the circular-dependency graph check inside
+  `scheduleImportService.js`'s `parseRows()` was extracted into a standalone, exported
+  `detectAndSkipCircularRelationships()` — identical algorithm, just relocated — so the new MSP
+  importer reuses it instead of reimplementing graph-cycle detection. Verified via the pre-existing
+  `test_schedule_import_service.js` (unchanged, still passes) plus new circular-relationship checks
+  in the MSP test file.
+- **`schedule.js` UI**: the "Import Excel"/"Edit Excel" buttons became **"Import Schedule"** — one
+  entry point whose file picker (`.xlsx,.xls,.xml`) branches on the chosen file's extension,
+  reusing the *entire* existing review/warnings/commit UI for both formats (no MSP-specific column
+  mapping needed — MSPDI has a fixed schema, unlike an arbitrary Excel file's headers). **"Edit
+  Excel" now gates on `source_platform === "excel"`** (Phase 1's own field), not merely
+  `source_file_name` being set — an MSP-XML-imported schedule also carries a `source_file_name` for
+  the same provenance/dedup reasons Excel does, so the old filename-only check would have
+  incorrectly let a user open the Excel grid editor against a schedule that never came from a
+  spreadsheet. `newSchedule()` itself also gained the same "excel" inference from `source_file_name`
+  that the v61 migration already applied to pre-existing data, so any call site (test fixtures
+  included) that predates `source_platform` still gets a sensible default instead of silently
+  landing on "pcc".
+- **`buildScheduleRecords()`** (shared by both importers) now also carries `remaining_duration`,
+  `actual_start`, `actual_finish`, `constraint_type`, `constraint_date` through when a parsed
+  activity provides them — fields the Excel path has never set (so its activities are byte-for-byte
+  unaffected, verified via the pre-existing Excel-editor/column-mapping tests) but the MSP path
+  needs to avoid losing information the source file actually had.
+
+**Verified**: `node build.js` clean; full suite **2320 passed, 0 failed** across 91 files (2295
+pre-existing + 25 new: 21 in `test_msp_xml_import_service.js`, 4 in `test_msp_xml_import_e2e.js`).
+The parser unit tests cover the full mapping (WBS hierarchy, duration/date/progress/constraint
+preservation, all four relationship types, the lag/duration warnings, the Calendar import) plus
+error paths (malformed XML, a non-Project file, a Project file with no tasks, an unrecognized
+relationship-type code, a relationship into a WBS Summary task, self-referencing and circular
+relationships). The e2e test drives the real upload → review → commit flow against the actual
+bundled `index.html`, confirming the created schedule's `source_platform`/`source_format`, the
+resulting activities/WBS/relationships/calendar, and that "Edit Excel" correctly stays disabled.
+Two pre-existing tests needed updates for the renamed panel/button
+(`test_schedule_import_column_mapping_e2e.js`) — text-label bumps only, no behavior changed. Also
+verified with a real-Chromium load of the rebuilt `index.html` (zero console/page errors).
+
+**Not done / explicitly deferred**: MSP XML **export** (PCC → MS Project) — a separate, not-yet-
+built increment; Resources/Assignments import; MSP Baseline import; full `<LagFormat>` enumeration
+decoding (the tenths-of-a-day assumption covers the common case, flagged when applied); Primavera
+P6 (Phase 3, not started); SQLite (Phase 5, still gated on the model proving out further).
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
@@ -4957,9 +5048,11 @@ Assistant, Lessons Learned, final polish
 
 ## Next phase
 
-**PCC Architecture Upgrade**: Phase 0 (Inspection & Baseline) and Phase 1 (Canonical Schedule
-Model, schema v61) are both done — see that section above. Phase 2 (Microsoft Project file
-import/export) is the next step in that roadmap, but per the master prompt's own operating
+**PCC Architecture Upgrade**: Phase 0 (Inspection & Baseline), Phase 1 (Canonical Schedule Model,
+schema v61), and Phase 2 (Microsoft Project XML **import**) are all done — see those sections
+above. MSP XML **export** is explicitly not built yet (a separate increment from import, per the
+master prompt's "don't claim round-trip until tested" rule). Phase 3 (Primavera P6 file
+interoperability) is the next step in that roadmap, but per the master prompt's own operating
 instruction ("work through it sequentially... do not build everything immediately"), it hasn't
 been started — confirm scope/direction before beginning it, the same gate discipline every other
 roadmap on this page already follows.
