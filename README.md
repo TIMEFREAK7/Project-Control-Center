@@ -5221,15 +5221,55 @@ accumulating duplicate projects/activities on each call rather than giving each 
 isolated dataset — caught by inspection before it could mask a real issue, fixed by building a fresh
 store instance per call.
 
-**Not done / explicitly not decided in this increment** (deliberately — these are exactly the kind
-of "does this actually work, is it worth the complexity" calls the master prompt's own Section 47
-framework says to answer only once the prototype has proven out and been reviewed, not folded into
-the same session that built the prototype): whether or how the live app ever actually reads/writes
-through SQLite instead of (or alongside) the current localStorage JSON blob; real persistence (sql.js
-is in-memory — an actual on-disk-equivalent would mean serializing `db.export()` into IndexedDB, the
-same place `blobStore.js` already persists binary data, but that wiring doesn't exist yet);
-incremental/partial sync instead of a full rebuild; concurrent-write handling; corruption recovery;
-backup/restore integration. Every one of these is a real decision, not an oversight.
+**Not done / explicitly not decided as of this first increment**: whether or how the live app ever
+actually reads/writes through SQLite instead of (or alongside) the current localStorage JSON blob;
+incremental/partial sync instead of a full rebuild; concurrent-write handling. Real persistence and
+backup/restore are done — see the follow-up entry immediately below, same day.
+
+## PCC Architecture Upgrade — Phase 5 continued (SQLite Persistence, Backup/Restore, Corruption
+## Handling), 2026-08-27
+
+Same day, immediately after the round-trip prototype above: closes out the remaining items on the
+master upgrade prompt's own Phase 5 test gate (Section 36 — "test backup, test restore, test
+corruption handling"), still without touching the live app. sql.js's `Database` is in-memory only,
+so answering "does backup/restore actually work" needed somewhere durable to put `db.export()`'s
+bytes and read them back.
+
+- **New `src/js/sqlitePersistence.js`** — a dedicated IndexedDB database (`pcc_sqlite_prototype_v1`,
+  separate from `blobStore.js`'s own database, same "one database per concern" reasoning
+  `scheduleBaselineStore.js` already established), storing gzip-compressed snapshot bytes via
+  `CompressionStream`/`DecompressionStream` — the same proven approach `blobStore.js` already uses,
+  not a new one invented for this. `saveSnapshot(id, bytes)` / `loadSnapshot(id)` /
+  `deleteSnapshot(id)` / `listSnapshotIds()`.
+- **A real, tested discovery worth documenting rather than assuming**: `new SQL.Database(bytes)`
+  **never throws**, no matter how corrupt, truncated, or random `bytes` is — SQLite/sql.js validates
+  a file's format lazily, only on the first actual read (a query, `db.exec()`), not at construction.
+  A naive "wrap `new Database()` in try/catch and treat no-throw as valid" check would be silently
+  wrong. **New `validateDatabase(db)`** in `sqliteMigrationEngine.js` is the correct check instead —
+  a cheap real read (`SELECT name FROM sqlite_master`, present in every valid SQLite file) that
+  forces the lazy validation to actually happen, returning `{ valid, error }` rather than throwing
+  itself so a caller decides what "corrupt backup" should mean for them.
+- **Verified**: the full backup/restore lifecycle end-to-end — build a realistic dataset (from
+  `store.js`'s own factories) → migrate into SQLite → `db.export()` → `saveSnapshot()` → simulate a
+  genuine app restart (a fresh in-memory JS session reusing the same underlying IndexedDB storage,
+  not just re-reading a cached variable) → `loadSnapshot()` → reconstruct a `Database` from the
+  loaded bytes → export back to JSON → reconcile against the original — **zero issues**. Corruption
+  handling verified for both truncated real export bytes and pure garbage bytes: the persistence
+  layer itself faithfully stores/returns whatever it's given (that's its only job), and
+  `validateDatabase()` correctly flags both as invalid once reconstructed. A 5,000-activity dataset
+  survives the full compress/store/reload/decompress/reconstruct round trip. Also verified against
+  **real browser IndexedDB** (not just `fake-indexeddb` in Node tests) by loading the actual built
+  `index.html` in real Chromium and running the complete save → load → reconstruct → validate →
+  reconcile flow through it — zero errors.
+- Full suite **2399 passed, 0 failed** across 99 files (2390 pre-existing + 9 new in
+  `tests/test_sqlite_persistence.js`).
+
+**Still not done / explicitly not decided**: whether or how the live app ever actually reads/writes
+through SQLite instead of (or alongside) the current localStorage JSON blob (this increment proves
+backup/restore *can* work, not that PCC should adopt it as the live layer); incremental/partial sync
+instead of a full rebuild-and-reload; concurrent-write handling; any UI for triggering a
+save/restore (nothing calls this from a button yet — still a pure module). Every one of these is a
+real decision for Aditya to make, not an oversight to fix quietly.
 
 ## Locked build order (unchanged)
 
@@ -5299,14 +5339,16 @@ Assistant, Lessons Learned, final polish
 
 **PCC Architecture Upgrade**: Phase 0 (Inspection & Baseline), Phase 1 (Canonical Schedule Model,
 schema v61), Phase 2 (Microsoft Project XML **import and export**), Phase 3 (Primavera P6 XER
-**import and export**), and Phase 5 (SQLite **evaluation + isolated migration-engine prototype** —
-see above) are all done — see those sections above. Both file-interoperability phases round-trip
-through PCC's own import/export for every field either side handles; opening an exported file in
-the *real* authoring tool itself is unverified for both (no MS Project or Primavera P6 installation
-available in this environment) — a materially bigger open question for the P6/XER side, documented
-as such rather than downplayed. Phase 5's own SQLite work is deliberately scoped to evaluation and
-an isolated, fully-tested prototype only — the live app's actual data layer is completely
-unchanged, and whether/how to ever cut it over is an explicitly open decision, not started. Phase 4
+**import and export**), and Phase 5 (SQLite **evaluation, migration engine, and full backup/
+restore/corruption-handling prototype** — see above) are all done — see those sections above. Both
+file-interoperability phases round-trip through PCC's own import/export for every field either side
+handles; opening an exported file in the *real* authoring tool itself is unverified for both (no MS
+Project or Primavera P6 installation available in this environment) — a materially bigger open
+question for the P6/XER side, documented as such rather than downplayed. Phase 5's own SQLite work
+has proven the full model works — schema, migration, reconciliation, real persistence, backup/
+restore, corruption detection, all tested against realistic data and a real browser — but the live
+app's actual data layer is still completely unchanged, and whether/how to ever cut it over remains
+an explicitly open decision for Aditya, not something decided unilaterally mid-prototype. Phase 4
 (Schedule Versioning & Comparison beyond what Phase 1 already covers) and the rest of the master
 prompt's later phases (6-9) remain unstarted — confirm scope/direction before beginning any of
 them, the same gate discipline every other roadmap on this page already follows.

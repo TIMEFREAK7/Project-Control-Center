@@ -4979,8 +4979,37 @@ JSON blob; real persistence (sql.js is in-memory — actual persistence would me
 incremental/partial sync; concurrent-write handling; corruption recovery; backup/restore
 integration.
 
-**Next steps**: Whether to build any of the "not decided" items above into a live-app cutover is
-Aditya's call — this prototype answers "does the model work," not "should we switch." Phase 4
-(Schedule Versioning & Comparison) was explicitly skipped so far and remains open if wanted; Phases
-6-9 (Advanced Engineering Engine, Integrated Delay, Excel/PDF/Reporting, Local AI) are all still
-unstarted. Confirm scope/direction with Aditya before starting any of them.
+**Phase 5 continued (Persistence, Backup/Restore, Corruption Handling) — done, same session,
+immediately after the round-trip prototype above.** Aditya said "if the model works, move to next
+step" — interpreted as continuing Phase 5's own remaining test-gate items (Section 36: "test
+backup, test restore, test corruption handling"), still without touching the live app.
+- New `src/js/sqlitePersistence.js` — dedicated IndexedDB database (`pcc_sqlite_prototype_v1`,
+  separate from `blobStore.js`'s, same reasoning `scheduleBaselineStore.js` already established),
+  gzip-compressed via `CompressionStream`/`DecompressionStream` (blobStore.js's own proven approach,
+  reused not reinvented). `saveSnapshot`/`loadSnapshot`/`deleteSnapshot`/`listSnapshotIds`.
+- **Real, tested discovery**: `new SQL.Database(bytes)` NEVER throws regardless of how corrupt the
+  bytes are — SQLite validates lazily, only on first real read. Found by writing a test that
+  assumed construction-time validation and watching it fail, not by reading docs. Fixed by adding
+  `validateDatabase(db)` to `sqliteMigrationEngine.js` — a real `SELECT name FROM sqlite_master`
+  read that forces the lazy check to happen, returning `{valid, error}`. Worth remembering for
+  anyone extending this: don't trust "no throw" from `new Database()` as proof of anything.
+- Verified end-to-end: build data → SQLite → export → save → simulate a genuine app restart (fresh
+  JS session, same underlying IndexedDB) → load → reconstruct → export back → reconcile — zero
+  issues. Corruption handling verified for both truncated real bytes and pure garbage. A 5,000-
+  activity dataset survives the full round trip. Also verified against **real browser IndexedDB**
+  (not just `fake-indexeddb`) by running the whole flow through the actual built `index.html` in
+  real Chromium — zero errors.
+- New test file `tests/test_sqlite_persistence.js` (9 checks). Full suite: **99 files, 2399 checks,
+  0 failures**.
+
+**`schema_version` remains 61.** Still nothing wired into the live app — `sqliteMigrationEngine.js`
+and `sqlitePersistence.js` are both pure, isolated modules with zero callers in any page/store code.
+
+**Next steps**: Whether to build any of this into a live-app cutover — reading/writing through
+SQLite instead of (or alongside) localStorage, incremental sync, concurrent-write handling, any
+actual UI button that calls save/restore — is entirely Aditya's call. This work proves the model
+(schema, migration, reconciliation, persistence, backup/restore, corruption detection) genuinely
+works end-to-end, including in a real browser; it does not decide whether PCC should adopt it.
+Phase 4 (Schedule Versioning & Comparison) was explicitly skipped so far and remains open if
+wanted; Phases 6-9 (Advanced Engineering Engine, Integrated Delay, Excel/PDF/Reporting, Local AI)
+are all still unstarted. Confirm scope/direction with Aditya before starting any of them.

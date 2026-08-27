@@ -273,6 +273,26 @@
     return { ok: issues.length === 0, issues: issues };
   }
 
+  /** Real, tested finding worth documenting here rather than only in a test file:
+   * `new SQL.Database(bytes)` NEVER throws, no matter how corrupt/truncated/random
+   * `bytes` is — sql.js/SQLite validates a file's format lazily, only on the first
+   * actual read (a query, `db.exec()`, even `PRAGMA` checks), not at construction. A
+   * caller that only wraps `new SQL.Database(...)` in a try/catch and treats "no throw"
+   * as "valid" would be wrong. This function is the correct check: a cheap, real read
+   * (`sqlite_master`, which exists in every valid SQLite file, empty or not) that
+   * forces the lazy validation to actually happen. Returns `{ valid, error }` rather
+   * than throwing itself, so a caller can decide what "corrupt backup" should mean for
+   * them (this module doesn't have an opinion — see this file's own header on what's
+   * still an open decision). */
+  function validateDatabase(db) {
+    try {
+      db.exec("SELECT name FROM sqlite_master");
+      return { valid: true, error: null };
+    } catch (e) {
+      return { valid: false, error: e.message || String(e) };
+    }
+  }
+
   /** Browser-only convenience: decodes the base64 WASM build.js embedded (see this
    * file's own header) and initializes sql.js from it — no network/file fetch. Node
    * tests skip this and call the real sql.js npm package's own initSqlJs() instead,
@@ -291,6 +311,7 @@
     buildDatabase: buildDatabase,
     exportToJson: exportToJson,
     reconcile: reconcile,
+    validateDatabase: validateDatabase,
     initSqlJsBrowser: initSqlJsBrowser,
   };
 })();
