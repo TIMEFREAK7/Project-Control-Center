@@ -25,6 +25,24 @@
  * lives on its own page, dashboard only rolls up decided numbers" split as everything
  * else on this page. A what-if run is never persisted, so there's nothing to roll up
  * even if this page wanted to.
+ *
+ * Planning & Scheduling-Centric Delay Management, Gate H (Delay Analytics — the spec's
+ * final gate): the Gate 23 "Delay Analysis — by Cause and Severity" breakdown above
+ * (delay_cause/is_excusable, the ORIGINAL fields, kept byte-for-byte per store.js's own
+ * comment) never got extended to the richer Gate A-G model (status lifecycle,
+ * delay_category, responsibility_classification, delayImpactEngine's own float-derived
+ * criticality) — this gate adds that as a SECOND, additive breakdown ("Delay Analytics —
+ * Status, Category, Responsibility & Criticality") rather than replacing or reinterpreting
+ * the first, plus turns the existing "Delay Records (worst first)" list into a genuinely
+ * browsable Delay Register: each row now also shows its Status/Category/Responsibility/
+ * Criticality, and a Status filter narrows which rows the list shows (the KPIs and both
+ * breakdown panels above stay computed over the full active-portfolio set, unfiltered —
+ * only the row list itself narrows, same "local filter on one browsable list" scope as
+ * every other filter this gate could have touched but didn't). Criticality is read via
+ * delayImpactEngine.computeDelayImpact() only (cheap — already-cached activity fields),
+ * never computeProjectFinishImpact() in this loop, per that function's own "single
+ * delay's own detail view, not a register/list" warning (same rule Gate G's
+ * getDelayImpactSummary() already established).
  */
 (function () {
   "use strict";
@@ -49,6 +67,80 @@
     if (days < 5) return "Minor (<5d)";
     if (days <= 15) return "Moderate (5-15d)";
     return "Severe (>15d)";
+  }
+
+  // Gate H: duplicated from pages/schedule.js verbatim — same established per-module-
+  // helpers convention as DELAY_CAUSE_LABELS above (this file already duplicates one
+  // label map from schedule.js; these are the newer Gate A-D ones it never picked up).
+  var DELAY_STATUS_LABELS = {
+    open: "Open",
+    investigating: "Under Investigation",
+    mitigation_in_progress: "Mitigation in Progress",
+    recovery_in_progress: "Recovery in Progress",
+    recovered: "Recovered",
+    closed: "Closed",
+  };
+  var DELAY_STATUS_BADGE_CLASS = {
+    open: "at_risk",
+    investigating: "at_risk",
+    mitigation_in_progress: "info",
+    recovery_in_progress: "info",
+    recovered: "complete",
+    closed: "complete",
+  };
+  var DELAY_CATEGORY_LABELS = {
+    late_material: "Late Material",
+    late_vendor_submission: "Late Vendor Submission",
+    late_drawing: "Late Drawing",
+    design_change: "Design Change",
+    client_delay: "Client Delay",
+    consultant_delay: "Consultant Delay",
+    vendor_delay: "Vendor Delay",
+    contractor_delay: "Contractor Delay",
+    approval_delay: "Approval Delay",
+    rfi_delay: "RFI Delay",
+    resource_shortage: "Resource Shortage",
+    equipment_shortage: "Equipment Shortage",
+    site_access: "Site Access",
+    site_constraint: "Site Constraint",
+    interface_issue: "Interface Issue",
+    weather: "Weather",
+    procurement: "Procurement",
+    quality_issue: "Quality Issue",
+    rework: "Rework",
+    change_variation: "Change / Variation",
+    other: "Other",
+  };
+  var DELAY_RESPONSIBILITY_LABELS = {
+    client: "Client",
+    consultant: "Consultant",
+    main_contractor: "Main Contractor",
+    subcontractor: "Subcontractor",
+    vendor: "Vendor",
+    internal: "Internal",
+    external: "External",
+    shared: "Shared",
+    unconfirmed: "Unconfirmed",
+  };
+  var DELAY_CRITICALITY_LABELS = {
+    critical: "Critical",
+    near_critical: "Near Critical",
+    non_critical: "Non-Critical",
+  };
+  var DELAY_CRITICALITY_BADGE_CLASS = {
+    critical: "critical",
+    near_critical: "at_risk",
+    non_critical: "complete",
+  };
+
+  // Gate H: read-only, cheap (no CPM recompute — see this file's own header comment for
+  // why computeProjectFinishImpact() must never be looped like this). Returns null when
+  // the schedule has never been calculated for every linked activity, same "genuinely
+  // unknown, not a fourth value" convention delayImpactEngine.js's own
+  // classifyCriticality() already establishes.
+  function delayCriticality(delayRecord, data) {
+    var links = data.delay_activity_links.filter(function (l) { return l.delay_id === delayRecord.id; });
+    return window.PCC.delayImpactEngine.computeDelayImpact(delayRecord, links, data).overall_criticality;
   }
 
   function todayIso() {
@@ -135,7 +227,19 @@
     return row;
   }
 
+  // Gate H: this page was fully stateless before (nothing to filter) — a local-only
+  // filter for the new Delay Register list below (see this file's own header comment for
+  // why it's scoped to just that one list rather than the whole page).
+  var uiState = {
+    registerStatusFilter: "",
+  };
+
   function render(outlet) {
+    function rerender() {
+      outlet.innerHTML = "";
+      render(outlet);
+    }
+
     var data = window.PCC.store.get();
     var activeProjectIds = {};
     data.projects.forEach(function (p) {
@@ -229,6 +333,67 @@
       breakdownPanel.appendChild(severityLine);
       wrap.appendChild(breakdownPanel);
 
+      // ---- Delay Analytics (Gate H): a second, additive breakdown of the same
+      // delayRecords set, over the newer Gate A-G model this file never picked up before
+      // this gate — Status lifecycle, Category, Responsibility Classification, and
+      // delayImpactEngine's own float-derived Criticality. Kept as its own panel rather
+      // than merged into "Delay Analysis — by Cause and Severity" above: that panel is
+      // the original Gate 23 fields verbatim, this is the newer, richer model, and the
+      // two shouldn't be presented as one blended taxonomy. ----
+      var analyticsPanel = document.createElement("div");
+      analyticsPanel.className = "panel";
+      analyticsPanel.style.marginTop = "var(--space-4)";
+      var analyticsHeading = document.createElement("h3");
+      analyticsHeading.style.marginBottom = "var(--space-2)";
+      analyticsHeading.textContent = "Delay Analytics — Status, Category, Responsibility & Criticality";
+      analyticsPanel.appendChild(analyticsHeading);
+
+      var byStatus = {};
+      var byCategory = {};
+      var byResponsibility = {};
+      var byCriticality = {};
+      delayRecords.forEach(function (r) {
+        var status = r.status || "open";
+        byStatus[status] = (byStatus[status] || 0) + 1;
+        var category = r.delay_category || "other";
+        byCategory[category] = (byCategory[category] || 0) + 1;
+        var responsibility = r.responsibility_classification || "unconfirmed";
+        byResponsibility[responsibility] = (byResponsibility[responsibility] || 0) + 1;
+        var criticality = delayCriticality(r, data) || "not_calculated";
+        byCriticality[criticality] = (byCriticality[criticality] || 0) + 1;
+      });
+
+      function analyticsLine(label, orderedKeys, counts, labelMap) {
+        var line = document.createElement("p");
+        line.style.fontSize = "var(--text-sm)";
+        line.style.marginBottom = "var(--space-2)";
+        line.innerHTML =
+          "<strong>" + label + ":</strong> " +
+          orderedKeys
+            .filter(function (k) { return counts[k]; })
+            .map(function (k) { return (labelMap[k] || k) + " (" + counts[k] + ")"; })
+            .join(" · ");
+        return line;
+      }
+
+      analyticsPanel.appendChild(analyticsLine("By status", window.PCC.store.DELAY_RECORD_STATUSES, byStatus, DELAY_STATUS_LABELS));
+      analyticsPanel.appendChild(analyticsLine("By category", window.PCC.store.DELAY_CATEGORIES, byCategory, DELAY_CATEGORY_LABELS));
+      analyticsPanel.appendChild(analyticsLine("By responsibility", window.PCC.store.DELAY_RESPONSIBILITY_CLASSIFICATIONS, byResponsibility, DELAY_RESPONSIBILITY_LABELS));
+      var criticalityLine = analyticsLine(
+        "By criticality",
+        ["critical", "near_critical", "non_critical", "not_calculated"],
+        byCriticality,
+        { critical: "Critical", near_critical: "Near Critical", non_critical: "Non-Critical", not_calculated: "Not Yet Calculated" }
+      );
+      criticalityLine.style.marginBottom = "0";
+      analyticsPanel.appendChild(criticalityLine);
+      wrap.appendChild(analyticsPanel);
+
+      // ---- Delay Register (Gate H): the same delayRecords rows, now browsable by
+      // Status (a local filter — see this file's own header comment for why only the
+      // list narrows, not the KPIs/breakdown panels above), and each row now also shows
+      // its Status/Category/Responsibility/Criticality alongside the original Gate 23
+      // cause/severity line (kept unchanged, not replaced). ----
       var delayListPanel = document.createElement("div");
       delayListPanel.className = "panel";
       delayListPanel.style.marginTop = "var(--space-4)";
@@ -237,11 +402,45 @@
       delayListHeading.textContent = "Delay Records (worst first)";
       delayListPanel.appendChild(delayListHeading);
 
-      delayRecords
+      var registerToolbar = document.createElement("div");
+      registerToolbar.className = "toolbar no-print";
+      registerToolbar.style.marginBottom = "var(--space-2)";
+      var statusFilterSelect = document.createElement("select");
+      var allStatusesOpt = document.createElement("option");
+      allStatusesOpt.value = "";
+      allStatusesOpt.textContent = "All Statuses";
+      statusFilterSelect.appendChild(allStatusesOpt);
+      window.PCC.store.DELAY_RECORD_STATUSES.forEach(function (s) {
+        var opt = document.createElement("option");
+        opt.value = s;
+        opt.textContent = DELAY_STATUS_LABELS[s];
+        statusFilterSelect.appendChild(opt);
+      });
+      statusFilterSelect.value = uiState.registerStatusFilter;
+      statusFilterSelect.onchange = function () {
+        uiState.registerStatusFilter = statusFilterSelect.value;
+        rerender();
+      };
+      registerToolbar.appendChild(statusFilterSelect);
+      delayListPanel.appendChild(registerToolbar);
+
+      var registerRecords = uiState.registerStatusFilter
+        ? delayRecords.filter(function (r) { return r.status === uiState.registerStatusFilter; })
+        : delayRecords;
+
+      if (registerRecords.length === 0) {
+        var noMatch = document.createElement("p");
+        noMatch.className = "text-secondary";
+        noMatch.style.fontSize = "var(--text-sm)";
+        noMatch.textContent = "No delay records match this status filter.";
+        delayListPanel.appendChild(noMatch);
+      }
+
+      registerRecords
         .slice()
         .sort(function (a, b) { return (b.delay_days || 0) - (a.delay_days || 0); })
         .forEach(function (r) {
-          var activity = activitiesById[r.activity_id];
+          var activity = r.activity_id ? activitiesById[r.activity_id] : null;
           var project = projectsById[r.project_id];
           var row = document.createElement("div");
           row.style.display = "flex";
@@ -252,15 +451,26 @@
           row.style.borderBottom = "1px solid var(--divider)";
           row.style.fontSize = "var(--text-sm)";
 
+          var activityLine = !r.activity_id
+            ? "Schedule Impact Not Yet Assessed"
+            : (activity ? activity.name : "(deleted activity)");
+          var criticality = delayCriticality(r, data);
+
           var left = document.createElement("div");
           left.innerHTML =
             "<strong>" + r.description + "</strong>" +
             "<p class='text-secondary' style='font-size:12px;margin:4px 0 0'>" +
-            (activity ? activity.name : "(deleted activity)") + " — " + (project ? project.name || "(unnamed project)" : "(deleted project)") +
+            activityLine + " — " + (project ? project.name || "(unnamed project)" : "(deleted project)") +
             "</p>" +
             "<p class='text-secondary' style='font-size:12px;margin:4px 0 0'>" +
             DELAY_CAUSE_LABELS[r.delay_cause] +
             (r.delay_days != null ? " · " + r.delay_days + "d (" + delaySeverityBucket(r.delay_days) + ")" : "") +
+            "</p>" +
+            "<p class='text-secondary' style='font-size:12px;margin:4px 0 0'>" +
+            (DELAY_STATUS_LABELS[r.status] || r.status) + " · " +
+            (DELAY_CATEGORY_LABELS[r.delay_category] || r.delay_category || "Other") + " · " +
+            (DELAY_RESPONSIBILITY_LABELS[r.responsibility_classification] || "Unconfirmed") +
+            (criticality ? " · " + DELAY_CRITICALITY_LABELS[criticality] : "") +
             "</p>";
           row.appendChild(left);
 
@@ -276,7 +486,31 @@
           badge.textContent = r.is_excusable ? "Excusable" : "Non-Excusable";
           right.appendChild(badge);
 
+          var statusBadge = document.createElement("span");
+          statusBadge.className = "status-badge status-badge--" + (DELAY_STATUS_BADGE_CLASS[r.status] || "info");
+          statusBadge.style.fontSize = "var(--text-xs)";
+          statusBadge.textContent = DELAY_STATUS_LABELS[r.status] || r.status;
+          right.appendChild(statusBadge);
+
+          if (criticality) {
+            var criticalityBadge = document.createElement("span");
+            criticalityBadge.className = "status-badge status-badge--" + DELAY_CRITICALITY_BADGE_CLASS[criticality];
+            criticalityBadge.style.fontSize = "var(--text-xs)";
+            criticalityBadge.textContent = DELAY_CRITICALITY_LABELS[criticality];
+            right.appendChild(criticalityBadge);
+          }
+
           if (activity) right.appendChild(viewInScheduleBtn(activity));
+          else if (project) {
+            var viewProjectBtn = document.createElement("button");
+            viewProjectBtn.className = "btn btn--ghost";
+            viewProjectBtn.textContent = "View Project";
+            viewProjectBtn.onclick = function () {
+              window.PCC.portfolio.viewProject(project.id);
+              window.PCC.router.go("portfolio");
+            };
+            right.appendChild(viewProjectBtn);
+          }
 
           row.appendChild(right);
           delayListPanel.appendChild(row);

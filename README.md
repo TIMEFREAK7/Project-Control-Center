@@ -4784,6 +4784,47 @@ new, separate rollup rather than reshaping an existing scoring engine) and any E
 delay panel (that page's own per-project Diagnostics/Recovery Gap sections already exist; a portfolio-wide
 summary was this gate's actual gap, not a third per-project view).
 
+## Planning & Scheduling-Centric Delay Management — Gate H (Delay Analytics), 2026-08-27
+
+**This is the spec's final gate** — all eight (A through H) are now complete. `delayRecoveryDashboard.js`
+already had a "Delay Analysis — by Cause and Severity" breakdown (Gate 23) and a worst-first Delay Records
+list, but both were still built entirely on the ORIGINAL `delay_cause`/`is_excusable` fields — neither had
+ever picked up the richer Gate A-G model (status lifecycle, `delay_category`, `responsibility_classification`,
+delayImpactEngine's own float-derived criticality). Gate H closes that gap, additively:
+
+- **Delay Analytics panel** (new, sits right below the existing Cause/Severity breakdown, which is
+  untouched): four more lines — **By status** (the six-stage lifecycle), **By category** (the newer
+  21-item list), **By responsibility** (the 9-item classification), and **By criticality** — over the same
+  active-portfolio `delayRecords` set the KPIs above already use. Criticality per delay is read via
+  `delayImpactEngine.computeDelayImpact()` only (a cheap read of already-cached activity fields) — never
+  `computeProjectFinishImpact()` in this loop, the same rule Gate G's `getDelayImpactSummary()` already
+  established, since that function's own header comment warns it against exactly this kind of portfolio-wide
+  loop. A delay with no linked activity correctly counts as "Not Yet Calculated" rather than being silently
+  dropped or guessed into a bucket.
+- **Delay Register**: the existing "Delay Records (worst first)" list (heading text kept byte-for-byte —
+  `test_advanced_delay_analysis_e2e.js` asserts it verbatim) is now genuinely browsable — a **Status filter**
+  (a plain `<select>`, local to this one list) narrows which rows show, while the KPIs and both breakdown
+  panels above stay computed over the full unfiltered set, same "local filter on one list, not the whole
+  page" scope Gate F/G's own filters already used. Each row's original cause/severity line stays exactly as
+  it was; a new line underneath adds Status/Category/Responsibility/Criticality, and two new badges (Status,
+  Criticality) join the existing Excusable/Non-Excusable badge. A delay with no linked activity now correctly
+  reads **"Schedule Impact Not Yet Assessed"** in place of the old blanket "(deleted activity)" text (which
+  never actually distinguished "never linked" from "linked activity since deleted") and gets a **"View
+  Project"** fallback button instead of no button at all.
+- No schema changes, no engine changes — `delayImpactEngine.js` and `store.js` were both untouched.
+
+**Verified**: full jsdom suite (91 files, 0 failures). New `test_delay_gate_h_analytics_register_e2e.js`
+(15 checks plus a 20-route smoke test) seeds one delay on a genuinely critical activity, one closed delay
+on an activity with real float, and one delay with no activity linked at all — confirming the new Analytics
+breakdown counts all four dimensions correctly (including "Not Yet Calculated" for the unlinked one),
+confirming the pre-existing Cause/Severity breakdown and KPIs are byte-for-byte unaffected, confirming each
+Register row shows its own new-model line, and confirming the Status filter narrows only the list while the
+panels above it stay put. The pre-existing `test_advanced_delay_analysis_e2e.js` needed no changes.
+
+**Not done**: nothing further is planned under this spec — Delay Register export/print (the app's own
+`window.print()` convention, via `reports.js`) and Mobile/Android-specific delay UI were both explicitly
+out of scope for the Gate A-H build order and would be separate, future asks if ever raised.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
