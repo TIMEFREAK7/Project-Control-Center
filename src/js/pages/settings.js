@@ -246,7 +246,9 @@
       "Before switching machines, export your data — it produces one file you carry with the app folder. " +
       "\u201cExport Document Archive\u201d separately downloads a .zip with a real folder per project, containing " +
       "the actual attached files \u2014 useful for browsing your documents outside the app, or as a growing " +
-      "portfolio archive.</p>";
+      "portfolio archive. \u201cExport as SQLite (Experimental)\u201d downloads a real, standalone .sqlite " +
+      "file \u2014 openable in any SQLite tool \u2014 as a one-time snapshot; it is not a live-synced copy, so " +
+      "editing it elsewhere never updates PCC.</p>";
 
     var btnRow = document.createElement("div");
     btnRow.style.display = "flex";
@@ -283,6 +285,47 @@
       window.PCC.archive.exportAll(d.projects, d.documents);
     };
 
+    // Architecture Upgrade Phase 5 (SQLite): a real, openable .sqlite file — a
+    // one-way snapshot for inspecting your data with any SQLite tool (DB Browser for
+    // SQLite, etc.) or as an additional portable backup format. Deliberately NOT part
+    // of the app's actual data layer — editing this file elsewhere never flows back
+    // into PCC, since there's no live cutover yet (see sqliteMigrationEngine.js's own
+    // header). "Experimental" in the label and the title tooltip on purpose — this is
+    // the isolated prototype from the Architecture Upgrade, not a supported backup
+    // format PCC's own restore path understands.
+    var exportSqliteBtn = document.createElement("button");
+    exportSqliteBtn.className = "btn btn--ghost";
+    exportSqliteBtn.textContent = "Export as SQLite (Experimental)";
+    exportSqliteBtn.title = "A one-time snapshot for use with external SQLite tools. Editing it elsewhere does not update PCC.";
+    exportSqliteBtn.onclick = function () {
+      exportSqliteBtn.disabled = true;
+      var originalLabel = exportSqliteBtn.textContent;
+      exportSqliteBtn.textContent = "Preparing…";
+      window.PCC.sqliteMigrationEngine
+        .initSqlJsBrowser()
+        .then(function (SQL) {
+          var db = window.PCC.sqliteMigrationEngine.buildDatabase(SQL, store.get());
+          var bytes = db.export();
+          db.close();
+          var blob = new Blob([bytes], { type: "application/x-sqlite3" });
+          var filename = "PCC-Export-" + new Date().toISOString().slice(0, 10) + ".sqlite";
+          return window.PCC.nativeFile.save(blob, filename);
+        })
+        .then(function () {
+          window.PCC.notify(
+            "Exported as a SQLite file — a one-time snapshot for external tools. Editing it elsewhere will not update PCC.",
+            "success"
+          );
+        })
+        .catch(function (e) {
+          window.PCC.notify("SQLite export failed: " + e.message, "error");
+        })
+        .then(function () {
+          exportSqliteBtn.disabled = false;
+          exportSqliteBtn.textContent = originalLabel;
+        });
+    };
+
     var resetBtn = document.createElement("button");
     resetBtn.className = "btn btn--ghost";
     resetBtn.textContent = "Reset all data";
@@ -300,6 +343,7 @@
 
     btnRow.appendChild(exportBtn);
     btnRow.appendChild(exportArchiveBtn);
+    btnRow.appendChild(exportSqliteBtn);
     btnRow.appendChild(resetBtn);
     dataPanel.appendChild(btnRow);
 

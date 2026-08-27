@@ -5002,14 +5002,58 @@ backup, test restore, test corruption handling"), still without touching the liv
 - New test file `tests/test_sqlite_persistence.js` (9 checks). Full suite: **99 files, 2399 checks,
   0 failures**.
 
-**`schema_version` remains 61.** Still nothing wired into the live app — `sqliteMigrationEngine.js`
-and `sqlitePersistence.js` are both pure, isolated modules with zero callers in any page/store code.
+**`schema_version` remains 61.** `sqliteMigrationEngine.js` and `sqlitePersistence.js` remain pure,
+isolated modules with zero callers in any page/store *read/write* code — see the next section for
+the one place they're now reachable from the UI (a one-way export button only, not a live data-path
+change).
 
-**Next steps**: Whether to build any of this into a live-app cutover — reading/writing through
-SQLite instead of (or alongside) localStorage, incremental sync, concurrent-write handling, any
-actual UI button that calls save/restore — is entirely Aditya's call. This work proves the model
-(schema, migration, reconciliation, persistence, backup/restore, corruption detection) genuinely
-works end-to-end, including in a real browser; it does not decide whether PCC should adopt it.
+**Phase 5 continued ("Export as SQLite" button + real third-party interop) — done, same session,
+directly in response to Aditya's "let's test the export feature before live cutover" and "will the
+real SQLite database file help or will it be an issue?"**
+- Answered the conceptual question first: a real `.sqlite` file helps (interop with standard
+  tooling, external backup, letting Aditya poke at the data independent of this app's code); the
+  only real caveat is that it's a **one-way, point-in-time snapshot** — editing it externally does
+  not flow back into PCC. Flagged explicitly in the UI copy so this isn't discovered the hard way.
+- New button, Settings → Data: **"Export as SQLite (Experimental)"** in `src/js/pages/settings.js`,
+  next to the existing JSON/archive export buttons. Tooltip states plainly it does not update PCC;
+  panel copy calls it a one-time snapshot. Implementation:
+  `sqliteMigrationEngine.initSqlJsBrowser()` → `buildDatabase(SQL, store.get())` → `db.export()` →
+  `Blob` (`application/x-sqlite3`) → `nativeFile.save(blob, "PCC-Export-YYYY-MM-DD.sqlite")` — reuses
+  the existing save path, so it already works correctly on desktop/Electron (`<a download>`) and
+  inside the Android Capacitor build (native share sheet) with zero new platform code.
+- Installed the standalone `sqlite3` CLI (v3.45.1, `apt-get install sqlite3`) specifically to verify
+  the export with a genuinely independent SQLite implementation, not just this app's own `sql.js`
+  reader.
+- New `tests/test_sqlite_export_settings_e2e.js` (5 checks): button existence + one-way-snapshot
+  copy verification, intercepted `nativeFile.save()` → filename (`PCC-Export-YYYY-MM-DD.sqlite`)
+  and MIME (`application/x-sqlite3`) assertions, round-trip through the app's own reader with seeded
+  data intact, and — the meaningful one — real `sqlite3` CLI checks against the actual exported
+  bytes written to a temp file: `PRAGMA integrity_check;` → `ok`, `.tables` shows real table names,
+  a plain `SELECT` returns the seeded row, and `json_extract()` correctly reads structured data out
+  of the JSON payload column (proving it's a real queryable database, not opaque blob storage).
+  Found and fixed one wrong assumption while writing this: `projects` rows don't carry a
+  `project_id` column (that FK only exists on collections that reference a project, not on the
+  project record itself) — fixed the CLI query to target `activities` instead.
+- **Went one step further than the jsdom test**: wrote a dedicated real-Chromium Playwright smoke
+  test (`smoke_sqlite_export_button.js`, scratchpad) that loads the actual built `index.html`, seeds
+  data, clicks the real button, catches the **real browser download event** (not an intercepted
+  function call), saves it to disk, and re-runs the same `sqlite3` CLI checks against that real file
+  — `integrity_check` → `ok`, tables present, `json_extract()` reads back the seeded project name
+  correctly, zero page errors. This is the strongest verification done yet for any Phase 5 output —
+  a real download, from a real browser, opened by a real independent tool.
+- Full suite: **100 files, 2404 checks, 0 failures** (2399 pre-existing + 5 new).
+
+**Next steps**: Live SQLite cutover remains explicitly un-authorized — Aditya has repeatedly framed
+Phase 5 and beyond as carrying real risk of breaking PCC, and every increment so far (evaluation,
+persistence, and now this export button) has stayed strictly additive and non-destructive to the
+live localStorage data path. No re-import of an edited `.sqlite` file exists or is planned. Whether
+to eventually build any live read/write cutover, incremental sync, or concurrent-write handling
+remains entirely Aditya's call to make explicitly, not something to infer from "the export works."
 Phase 4 (Schedule Versioning & Comparison) was explicitly skipped so far and remains open if
 wanted; Phases 6-9 (Advanced Engineering Engine, Integrated Delay, Excel/PDF/Reporting, Local AI)
 are all still unstarted. Confirm scope/direction with Aditya before starting any of them.
+
+**Repo/branch state as of this write-up**: working branch `claude/pcc-architecture-upgrade-j5a1eo`,
+commits for the SQLite export button feature about to be pushed to that branch (not `main` — no
+merge requested this round). `main` last received the full Phase 0-3 + packaging round (signed APK,
+Windows EXE, distribution zip) delivered earlier in this engagement.

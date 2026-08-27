@@ -5271,6 +5271,53 @@ instead of a full rebuild-and-reload; concurrent-write handling; any UI for trig
 save/restore (nothing calls this from a button yet — still a pure module). Every one of these is a
 real decision for Aditya to make, not an oversight to fix quietly.
 
+## PCC Architecture Upgrade — Phase 5 continued ("Export as SQLite" button, real third-party
+## interop verification), 2026-08-27
+
+Same day, in direct response to "let's test the export feature before live cutover" and "will the
+real SQLite database file help or will it be an issue?" This is the **first place any Phase 5
+SQLite code becomes reachable from the actual live UI** — still purely a one-way export/snapshot,
+not a change to PCC's real read/write path (`sqliteMigrationEngine.js`/`sqlitePersistence.js`'s own
+header comments still apply: nothing else in the app reads or writes through SQLite yet).
+
+- **Answer to "does a real `.sqlite` file help or hurt"**: it helps — for interop with real SQLite
+  tooling, external backups, and letting Aditya (or anyone) poke at PCC's data with a standard tool
+  independent of this app's own code. The risk is purely conceptual, not technical: it's a
+  **one-way, point-in-time snapshot**. Editing the exported file externally and expecting those
+  edits to flow back into PCC would be wrong — nothing re-imports it. The UI makes this explicit
+  rather than leaving it to be discovered the hard way.
+- **New button in Settings → Data: "Export as SQLite (Experimental)"** (`src/js/pages/settings.js`),
+  sitting alongside the existing JSON/archive exports. Its own tooltip states plainly that it does
+  **not** update PCC, and the panel's descriptive copy calls it a one-time snapshot. Wired as:
+  `sqliteMigrationEngine.initSqlJsBrowser()` → `buildDatabase(SQL, store.get())` → `db.export()` →
+  `Blob` (`application/x-sqlite3`) → `nativeFile.save(blob, "PCC-Export-YYYY-MM-DD.sqlite")` — the
+  same save path every other export button already uses, so it behaves correctly on desktop
+  browser/Electron (`<a download>`) and inside the Android app (Capacitor share sheet) with no new
+  platform-specific code.
+- **New `tests/test_sqlite_export_settings_e2e.js`** (5 checks) — loads the real bundled
+  `index.html` in jsdom, seeds a realistic project/schedule/activity/risk, clicks the real button,
+  intercepts `nativeFile.save()` to capture the produced blob, and checks: filename matches
+  `PCC-Export-YYYY-MM-DD.sqlite`, MIME type is `application/x-sqlite3`, the bytes round-trip
+  correctly through the app's own `sqliteMigrationEngine` reader with the seeded data intact — and,
+  conditionally, **a genuine third-party interop check**: writes the exported bytes to a real temp
+  file and runs the actual standalone `sqlite3` CLI (v3.45.1, installed specifically for this)
+  against it — `PRAGMA integrity_check;`, `.tables`, a plain `SELECT`, and a `json_extract()` query
+  against the JSON payload column — proving the file isn't just something this app's own code can
+  parse, but a real SQLite database any independent tool can open, query, and read structured data
+  out of (not opaque blob storage).
+- **Verified beyond the jsdom test**: a dedicated **real-Chromium Playwright smoke test** loaded the
+  actual built `index.html`, seeded data, clicked the button, caught the **real browser download**
+  (not an intercepted function call), saved it to disk, and ran the same `sqlite3` CLI checks against
+  that real downloaded file — `PRAGMA integrity_check` → `ok`, tables present, data readable via
+  `json_extract()`. Zero page errors during the whole flow.
+- Full suite **2404 passed, 0 failed** across 100 files (2399 pre-existing + 5 new in
+  `tests/test_sqlite_export_settings_e2e.js`).
+
+**Still not decided / not done**: live SQLite cutover remains explicitly un-authorized — Aditya has
+been clear Phase 5 and beyond carry real risk of breaking PCC, and this increment is scoped exactly
+to "test the export feature," nothing further. No re-import of an edited `.sqlite` file exists or is
+planned as part of this feature.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
@@ -5340,15 +5387,18 @@ Assistant, Lessons Learned, final polish
 **PCC Architecture Upgrade**: Phase 0 (Inspection & Baseline), Phase 1 (Canonical Schedule Model,
 schema v61), Phase 2 (Microsoft Project XML **import and export**), Phase 3 (Primavera P6 XER
 **import and export**), and Phase 5 (SQLite **evaluation, migration engine, and full backup/
-restore/corruption-handling prototype** — see above) are all done — see those sections above. Both
-file-interoperability phases round-trip through PCC's own import/export for every field either side
-handles; opening an exported file in the *real* authoring tool itself is unverified for both (no MS
-Project or Primavera P6 installation available in this environment) — a materially bigger open
-question for the P6/XER side, documented as such rather than downplayed. Phase 5's own SQLite work
-has proven the full model works — schema, migration, reconciliation, real persistence, backup/
-restore, corruption detection, all tested against realistic data and a real browser — but the live
-app's actual data layer is still completely unchanged, and whether/how to ever cut it over remains
-an explicitly open decision for Aditya, not something decided unilaterally mid-prototype. Phase 4
+restore/corruption-handling prototype, plus a live "Export as SQLite (Experimental)" button in
+Settings with real third-party `sqlite3` CLI interop verification** — see above) are all done — see
+those sections above. Both file-interoperability phases round-trip through PCC's own import/export
+for every field either side handles; opening an exported file in the *real* authoring tool itself is
+unverified for both (no MS Project or Primavera P6 installation available in this environment) — a
+materially bigger open question for the P6/XER side, documented as such rather than downplayed.
+Phase 5's own SQLite work has proven the full model works — schema, migration, reconciliation, real
+persistence, backup/restore, corruption detection, a real one-way export button reachable from the
+live UI, all tested against realistic data, a real browser, and a real independent SQLite tool — but
+the live app's actual data layer is still completely unchanged, and whether/how to ever cut it over
+remains an explicitly open decision for Aditya, not something decided unilaterally mid-prototype.
+Phase 4
 (Schedule Versioning & Comparison beyond what Phase 1 already covers) and the rest of the master
 prompt's later phases (6-9) remain unstarted — confirm scope/direction before beginning any of
 them, the same gate discipline every other roadmap on this page already follows.
