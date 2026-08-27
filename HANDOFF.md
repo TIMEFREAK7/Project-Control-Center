@@ -4555,10 +4555,34 @@ than reusing one across unrelated assertions.
 **4. A fresh packaging round** — Windows installer and Android APK rebuilt and delivered directly
 to Aditya, both reflecting every change through Gate H:
   - Android: `versionCode 3`, `versionName "1.2"` (bumped from 2/"1.1"); `packaging/package.json`
-    bumped to match (`1.2.0`). APK: `app-release-unsigned.apk`, 9.77MB — **unsigned**, since no
-    `packaging/android/android/app/keystore.properties` exists in this environment (the gradle
-    config's own documented fallback — a real signed build happens automatically if/when a
-    keystore is ever added, no code change needed).
+    bumped to match (`1.2.0`). First APK built (`app-release-unsigned.apk`, 9.77MB) was
+    **unsigned**, since no `packaging/android/android/app/keystore.properties` existed in this
+    fresh environment. **This turned out to be a real, install-blocking bug, not a benign
+    fallback**: Aditya tried installing it and hit Android's "App not installed as package
+    appears to be invalid" — Android outright refuses to install ANY unsigned APK (unlike the
+    Windows EXE situation, where "unsigned" just means an OS warning the user can click through;
+    on Android it's a hard install failure). Fixed same-session: generated a new self-signed
+    release keystore (`keytool -genkeypair`, RSA 2048, 30-year validity, `CN=Project Control
+    Center`) at `packaging/android/android/app/pcc-release.jks` with a matching
+    `keystore.properties`, added BOTH to `packaging/android/.gitignore` (they weren't actually
+    excluded before this — the build.gradle comment claimed "gitignored" but nothing enforced it;
+    fixed the gap so a real signing key can never get accidentally committed), then rebuilt.
+    Final APK: `app-release.apk` (gradle drops the `-unsigned` suffix once a signing config
+    exists), 9.78MB, SHA-256 `0737ed80ccd8b37aba3195fcbd694d1e80ce6ad175bcff6f8ee09df35ef6aedd`,
+    verified with `apksigner verify --verbose` (APK Signature Scheme v2, verified) and `zipalign
+    -c -v 4` (aligned, verification successful) before sending. **Important consequence Aditya
+    was told directly**: this is a NEWLY GENERATED signing certificate, unrelated to any
+    certificate used in earlier sessions' builds (a real signing keystore is a secret, never
+    committed to git per the `.gitignore` fix above, so it doesn't survive between sandbox
+    containers) — if Aditya has any earlier PCC APK already installed on a device, Android will
+    refuse to install this one over it ("app not installed, conflicts with an existing package")
+    since the certificates don't match; he needs to fully uninstall the old app once, then install
+    this one, and future updates should keep coming from this same keystore. **This keystore
+    lives only in this container's filesystem, not in git** — a fresh session in a different
+    container starts with no keystore again and will hit this same unsigned-APK failure unless it
+    either generates its own new one (same one-time-reset consequence for Aditya) or Aditya
+    supplies the actual `.jks` file to keep continuity. Don't assume a keystore exists; check
+    `packaging/android/android/app/keystore.properties` first.
   - Windows: `Project Control Center Setup 1.2.0.exe`, ~105.7MB, SHA-256
     `9e26db09ac6d3824326a37229a9a98a6fafb5b33af2d86ebe31daf168084295f`, split into 5 parts
     (`...exe.part00`-`part04`, 25MB each except the last ~0.8MB) per the standing split-file

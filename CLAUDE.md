@@ -130,6 +130,24 @@ node --check src/js/whatever.js   # quick syntax check on a single file
   `packaging/package.json`'s `"version"` field to match before an `electron:build` — Windows/NSIS
   isn't as strict about this as Android, but keeping both packages' version numbers in sync and moving
   forward is still correct practice, not optional.
+- **An Android APK MUST be signed before delivering it — an unsigned APK cannot be installed at
+  all, unlike an unsigned Windows EXE (which just triggers an OS warning the user can click
+  through).** Discovered as a real bug 2026-08-27: `packaging/android/android/app/build.gradle`
+  silently falls back to an unsigned build when no `app/keystore.properties` exists (a real
+  keystore is a secret and never committed to git, so a fresh sandbox container starts with none)
+  — the resulting `app-release-unsigned.apk` fails on-device with "App not installed as package
+  appears to be invalid," not a warning. If no keystore exists when a release build is needed,
+  generate one (`keytool -genkeypair -keystore app/pcc-release.jks -alias pcc-release -keyalg RSA
+  -keysize 2048 -validity 10950 -dname "CN=Project Control Center, ..."`), write a matching
+  `app/keystore.properties` (`storeFile`/`storePassword`/`keyAlias`/`keyPassword`), confirm both
+  are actually excluded by `.gitignore` (add `android/app/keystore.properties` and
+  `android/app/*.jks` there if they aren't — the build.gradle comment claims they're gitignored,
+  but nothing enforced that until this fix), then rebuild. Verify with `apksigner verify
+  --verbose` and `zipalign -c -v 4` before sending. **Tell the user explicitly** that a
+  newly-generated keystore is a NEW signing identity — if they have any earlier build of the app
+  installed, Android will refuse to install over it ("conflicts with an existing package") until
+  they uninstall the old one first; this is a one-time reset, not a recurring issue, as long as
+  future builds keep reusing the same keystore file.
 - **Always build the Windows/macOS/Linux installer via `npm run electron:build`, never `npx
   electron-builder` directly** — real mistake made 2026-08-24: calling `electron-builder` directly
   skips `scripts/copy-app.js`, the step that copies the repo root's freshly-built `index.html` into
