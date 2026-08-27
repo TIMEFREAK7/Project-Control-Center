@@ -11,6 +11,23 @@
  * one exists. Nothing here is invented or fabricated; every item traces to a real record,
  * same as every other dashboard in this app. Purely computed at render time ("never
  * denormalized" convention) — writes nothing back.
+ *
+ * Planning & Scheduling-Centric Delay Management, Gate F ("Planner Action Centre"):
+ * Recovery Actions (`target_recovery_date` is a real due date this page's own charter —
+ * "every existing record type that actually carries a due date" — already calls for) and
+ * newly-identified Delay Records now surface here too, alongside every other outstanding
+ * item, rather than only in the separate portfolio-wide Delay & Recovery Dashboard rollup
+ * (delayRecoveryDashboard.js, which stays the read-only analysis view — this page is the
+ * "go DO something" view, same split as every other kind already here). Only Recovery
+ * Actions with status open/in_progress are shown (completed/cancelled are historical, same
+ * cutoff the Dashboard already uses); only Delay Records still in "open" status are shown
+ * — once a delay moves to investigating/mitigation/recovery, the concrete next step is
+ * tracked as its own Recovery Action(s), which already appear here with a real due date, so
+ * showing the parent Delay too would just be the same outstanding work counted twice. A
+ * Delay's own click target is its linked Schedule Activity (the record's own home per the
+ * spec's "Schedule Activity -> Create Delay" primary path) when it has one, falling back to
+ * the Project when it doesn't — never guessing at a schedule impact the delay doesn't have
+ * (see schedule.js's own "Schedule Impact Not Yet Assessed" treatment of the same case).
  */
 (function () {
   "use strict";
@@ -27,6 +44,34 @@
   var uiState = {
     projectFilter: "",
     lastSyncedContextId: undefined,
+  };
+
+  // Gate F: duplicated from pages/schedule.js's own DELAY_CATEGORY_LABELS verbatim — same
+  // established per-module-helpers convention every other label map in this app already
+  // follows (vendors.js's VENDOR_DELAY_CATEGORY_LABELS, dailyLog.js's
+  // DAILY_LOG_DELAY_CATEGORY_LABELS).
+  var ACTION_CENTRE_DELAY_CATEGORY_LABELS = {
+    late_material: "Late Material",
+    late_vendor_submission: "Late Vendor Submission",
+    late_drawing: "Late Drawing",
+    design_change: "Design Change",
+    client_delay: "Client Delay",
+    consultant_delay: "Consultant Delay",
+    vendor_delay: "Vendor Delay",
+    contractor_delay: "Contractor Delay",
+    approval_delay: "Approval Delay",
+    rfi_delay: "RFI Delay",
+    resource_shortage: "Resource Shortage",
+    equipment_shortage: "Equipment Shortage",
+    site_access: "Site Access",
+    site_constraint: "Site Constraint",
+    interface_issue: "Interface Issue",
+    weather: "Weather",
+    procurement: "Procurement",
+    quality_issue: "Quality Issue",
+    rework: "Rework",
+    change_variation: "Change / Variation",
+    other: "Other",
   };
 
   function upcomingWindowDays(data) {
@@ -155,6 +200,66 @@
       });
     });
 
+    // Gate F: Recovery Actions — the only pre-existing register with a real due date
+    // (target_recovery_date) that this page didn't already surface. Same open/in_progress
+    // cutoff delayRecoveryDashboard.js's own "Open Recovery Actions" section uses.
+    data.recovery_actions.forEach(function (r) {
+      if (!activeProjectIds[r.project_id]) return;
+      if (r.status !== "open" && r.status !== "in_progress") return;
+      var bucket = bucketFor(r.target_recovery_date || "", windowDays);
+      if (!bucket) return;
+      var activity = data.activities.find(function (a) { return a.id === r.activity_id; });
+      items.push({
+        kind: "Recovery Action",
+        title: r.description || "(no description)",
+        projectId: r.project_id,
+        owner: r.responsible_person || "—",
+        dueDate: r.target_recovery_date || "",
+        bucket: bucket,
+        // No fallback destination: a Recovery Action's only home is the Schedule Activity
+        // it was entered against (renderRecoveryActionsSection() in pages/schedule.js) —
+        // if that activity is gone there's nowhere real to send the planner, so the row
+        // still shows (real outstanding data) but isn't clickable, same "(deleted
+        // project)" treatment itemRow() already gives every other kind.
+        view: activity
+          ? function () {
+              window.PCC.schedule.viewActivity(activity.project_id, activity.schedule_id, activity.id);
+              window.PCC.router.go("schedule");
+            }
+          : null,
+      });
+    });
+
+    // Gate F: newly-identified Delay Records — see header comment for why only "open"
+    // status ones are shown (later statuses are tracked via their own Recovery Actions,
+    // already covered by the block above).
+    data.delay_records.forEach(function (r) {
+      if (!activeProjectIds[r.project_id]) return;
+      if (r.status !== "open") return;
+      var activity = r.activity_id ? data.activities.find(function (a) { return a.id === r.activity_id; }) : null;
+      var categoryLabel = ACTION_CENTRE_DELAY_CATEGORY_LABELS[r.delay_category] || r.delay_category || "Other";
+      items.push({
+        kind: "Delay",
+        title:
+          categoryLabel +
+          (r.description ? " — " + r.description : "") +
+          (!r.activity_id ? " (Schedule Impact Not Yet Assessed)" : ""),
+        projectId: r.project_id,
+        owner: r.responsible_party || "—",
+        dueDate: "",
+        bucket: "waiting",
+        view: activity
+          ? function () {
+              window.PCC.schedule.viewActivity(activity.project_id, activity.schedule_id, activity.id);
+              window.PCC.router.go("schedule");
+            }
+          : function () {
+              window.PCC.portfolio.viewProject(r.project_id);
+              window.PCC.router.go("portfolio");
+            },
+      });
+    });
+
     data.change_orders.forEach(function (co) {
       if (!activeProjectIds[co.project_id]) return;
       if (co.status !== "pending") return;
@@ -209,10 +314,11 @@
   // project's items stay listed but non-clickable, same as before this gate).
   function itemRow(item, badgeClass, projectsById) {
     var project = projectsById[item.projectId];
+    var clickable = !!(project && item.view);
 
     var row = document.createElement("div");
-    row.className = "attention-item" + (project ? " attention-item--clickable" : "");
-    if (project) row.onclick = item.view;
+    row.className = "attention-item" + (clickable ? " attention-item--clickable" : "");
+    if (clickable) row.onclick = item.view;
 
     var icon = document.createElement("span");
     icon.className = "attention-item__icon attention-item__icon--" + badgeClass;
@@ -310,7 +416,7 @@
     sub.textContent =
       items.length === 0
         ? (uiState.projectFilter ? "Nothing outstanding for this project right now." : "Nothing outstanding across the active portfolio right now.")
-        : "Meeting actions, RFI/TQ responses, document submissions, and pending Change Orders across " +
+        : "Meeting actions, RFI/TQ responses, document submissions, recovery actions, newly-identified delays, and pending Change Orders across " +
           activeProjects.length + " active project" + (activeProjects.length === 1 ? "" : "s") + ".";
     wrap.appendChild(sub);
 

@@ -4687,6 +4687,54 @@ sections 21-25 describe the Delay form doing the linking, not every other module
 picker; that stays a plain reference relationship, symmetric enough to revisit later if actually asked
 for, matching this gate's own "hardcoded first, editable later if needed" convention elsewhere in the app.
 
+## Planning & Scheduling-Centric Delay Management — Gate F (Planner Action Centre), 2026-08-27
+
+**What Gate F added**: the Planner Action Centre (`actionCentre.js`, PCC Evolution Roadmap Gate 1) already
+had its own charter — "aggregate every existing record type that actually carries a due date" — and
+Recovery Actions have carried a real `target_recovery_date` since Gate 24, but nothing had ever wired them
+in. This gate is that wiring, plus surfacing newly-identified Delays, using the page's existing bucket
+machinery untouched:
+
+- **Recovery Actions** with status `open`/`in_progress` now bucket by their own `target_recovery_date` —
+  Overdue/Due Today/Due This Week/Upcoming/No Due Date, identical to every other kind already on this page.
+  `completed`/`cancelled` actions stay excluded (historical, not outstanding), matching the cutoff
+  `delayRecoveryDashboard.js`'s own "Open Recovery Actions" section already uses. Clicking a row opens the
+  action's own Schedule Activity (`renderRecoveryActionsSection()` in `pages/schedule.js` — the record's
+  real home). If that activity has since been deleted, the row still lists (it's real outstanding data) but
+  isn't clickable — the same "(deleted project)" non-clickable treatment `itemRow()` already gives every
+  other kind, extended by making `itemRow()`'s clickability check `project && item.view` rather than just
+  `project`.
+- **Delay Records still in `status: "open"`** — freshly identified, nobody's started working them yet —
+  land in the dateless "No Due Date" bucket (a delay itself has no due-date field to bucket by, same
+  reasoning Change Orders already established here). Deliberately **only** `"open"` ones: once a delay
+  moves to investigating/mitigation/recovery, the concrete next step is tracked as its own Recovery
+  Action(s) — already covered by the block above — so showing the parent Delay too would double-count the
+  same outstanding work rather than "reference, not duplicate." A delay linked to a real Schedule Activity
+  opens that activity on click (its primary path, per spec point 4); one with no activity linked yet reads
+  **"Schedule Impact Not Yet Assessed"** inline (never guessing) and falls back to opening its Project
+  instead — always clickable, since a delay's `project_id` is mandatory and can't itself go missing.
+- No schema changes and no new engine — every number is either read straight off a Recovery Action's own
+  stored fields or a Delay Record's own `status`/`delay_category`/`description`; `delayImpactEngine.js` was
+  not touched.
+
+**Verified**: full jsdom suite (89 files, 0 failures). New `test_delay_gate_f_action_centre_e2e.js` (16
+checks plus a 19-route smoke test) seeds an overdue open Recovery Action, a completed one (must be
+excluded), one whose activity is deleted after creation (must list but not be clickable), an open Delay
+linked to an activity, an open Delay with no activity (must read "Schedule Impact Not Yet Assessed" and
+fall back to the Project on click), and an "investigating"-status Delay (must NOT appear, since its own
+Recovery Action is the actionable item) — confirming every bucket placement, every click destination, and
+that nothing is written back by rendering the page. The pre-existing `test_action_centre_e2e.js` (35
+checks) needed no changes — its own fixtures never seed recovery actions or delay records, so the new
+blocks are additive and silent until that data actually exists.
+
+**Not done — Gates G and H remain deliberately unstarted**: PCC Dashboard/Lookahead/Executive Center
+integration (surfacing delay/recovery signal on the portfolio-level dashboards, not just this planner-
+focused list) and portfolio-wide Delay Analytics/Delay Register (the spec's own dedicated reporting/export
+views). Also out of scope for this gate specifically: an "Upcoming" bucket concept for Delays themselves
+(a delay has no forward-looking due date of its own to bucket by — only its Recovery Actions do, and those
+are already covered) and any change to how/when a Delay's own status actually transitions out of "open"
+(that stays a planner's manual decision, unchanged from Gate A).
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
