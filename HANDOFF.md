@@ -4770,15 +4770,54 @@ completing Microsoft Project round-trip interoperability.
 only a new file-format path in and out of Phase 1's existing model). **Test suite: 93 files, 2334
 checks, 0 failures** — recount rather than trust this blindly.
 
+**Phase 3 (Primavera P6 File Interoperability — Import) — done, new session, 2026-08-27.**
+Primavera P6 **XER import** (P6's own native tab-delimited export format — `File → Export →
+Project Export (XER)`), following the same pattern Phase 2 established.
+- New `src/js/p6XerService.js` — parses XER's generic `%T`/`%F`/`%R` table structure, then
+  `PROJECT`/`PROJWBS`/`TASK`/`TASKPRED`/`CALENDAR`. Returns the identical shape
+  `parseRows()`/`parseMspXml()` already do, so `buildScheduleRecords()` handles all three importers
+  uniformly.
+- **P6 turned out LESS ambiguous than MSP in three places**: `CALENDAR.day_hr_cnt` gives this
+  file's *real* hours-per-day, so duration/remaining-duration conversion is exact (no assumed-8-
+  hours warning needed, unlike MSP); `TASKPRED.lag_hr_cnt` converts to days exactly the same way (no
+  "assumed tenths-of-a-day" hedge); `PROJWBS.parent_wbs_id` gives real WBS parent references, so
+  hierarchy is built directly, not guessed from dotted-code truncation. A genuine
+  `wbs_short_name` collision across branches gets disambiguated with a warning, not silently merged.
+- Constraint types (`CS_ALAP`/`CS_MSO`/`CS_MSOA`/`CS_MSOB`/`CS_MEO`/`CS_MEOA`/`CS_MEOB`) and
+  relationship types (`PR_FS`/`PR_SS`/`PR_FF`/`PR_SF`) map onto the SAME short-code vocabulary
+  `mspXmlService.js` already established — deliberate cross-importer consistency.
+- A `TT_WBS` task ("WBS Summary" pseudo-activity) maps to PCC's existing `activity_type:
+  "wbs_summary"` and stays a normal network Activity — deliberately different from MSP's "Summary"
+  task (which becomes a WBS item, not an Activity), since P6's real WBS hierarchy is the separate
+  `PROJWBS` table, always imported regardless of task type.
+- **Deferred, not silently dropped**: Resources/Assignments, Activity/Project/Resource Codes (same
+  reasoning as Phase 2); `CALENDAR.clndr_data` (P6's proprietary nested work-week/holiday format)
+  is NOT decoded — only `clndr_name`/`day_hr_cnt` are used, imported Calendar gets a placeholder
+  Mon-Fri pattern with an explicit warning; percent complete uses P6's own duration-percent-complete
+  formula, `phys_complete_pct` intentionally not read (matches `physical_progress`'s existing
+  manual-only rule in `store.js`).
+- UI: "Import Schedule" now also accepts `.xer`. `commitImport()`'s Excel-vs-MSP boolean branching
+  was generalized into a three-way `sourceType` string rather than adding a third parallel boolean.
+- New test files: `tests/test_p6_xer_import_service.js` (22 checks) and
+  `tests/test_p6_xer_import_e2e.js` (4 checks) — same structure as the MSP test pair. All 26 passed
+  on the first real run against the actual implementation (no fix-up round needed this gate).
+- **Same honesty standard as Phase 2**: constraint/relationship-type mappings are based on
+  Primavera's own documented XER schema constants, NOT verified against a real P6-produced file or
+  a real P6 installation (none available in this environment) — tell Aditya this explicitly if he
+  asks whether it "works," same as the MSP export caveat.
+
+**`schema_version` remains 61** (Phase 3 added no schema changes — a new file-format path into
+Phase 1's existing model, same as Phase 2). **Test suite: 95 files, 2360 checks, 0 failures** —
+recount rather than trust this blindly.
+
 **Repo/branch state**: working on `claude/pcc-architecture-upgrade-j5a1eo`, per this session's own
 explicit branch instructions (develop + push there, never push elsewhere, never merge to `main` or
 open a PR unless directly asked — a deliberate departure from this file's older standing "merge to
 main immediately" convention, which assumes a different session type than this remote-branch one).
 Verify current state with `git status`/`git log` rather than trusting this paragraph blindly.
 
-**Next steps**: Phase 3 (Primavera P6 file interoperability — XER/Primavera XML import) is the
-roadmap's next step, but per the master prompt's own instruction ("work through it sequentially...
-do not build everything immediately"), it has not been started — confirm scope/direction with
-Aditya before beginning it. Microsoft Project interoperability (Phase 2) is now complete on both
-import and export, modulo the one genuinely untestable claim (opening an exported file in actual
-Microsoft Project) flagged above.
+**Next steps**: XER **export** (PCC → P6) has not been started — a separate decision point from
+import, same as Phase 2's MSP export was, given XER's stricter real-P6-acceptance bar. Beyond that,
+Phase 5 (SQLite) is the master prompt's next major architectural step, gated on the schedule model
+having proven out across three file formats now — confirm scope/direction with Aditya before
+starting either.

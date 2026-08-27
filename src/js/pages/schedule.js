@@ -567,8 +567,12 @@
       handleMspXmlFileSelected(file, data, rerender);
       return;
     }
+    if (ext === "xer") {
+      handleP6XerFileSelected(file, data, rerender);
+      return;
+    }
     if (ext !== "xlsx" && ext !== "xls") {
-      uiState.importError = "Unsupported file type. Use .xlsx/.xls (Excel) or .xml (Microsoft Project XML export).";
+      uiState.importError = "Unsupported file type. Use .xlsx/.xls (Excel), .xml (Microsoft Project XML export), or .xer (Primavera P6 export).";
       rerender();
       return;
     }
@@ -664,6 +668,54 @@
       window.PCC.duplicateService.fingerprintFile(buffer, file.name, file.size).then(function (fp) {
         uiState.importFile = { name: file.name, size: file.size, hash: fp.hash, hashMethod: fp.method, fileData: fileDataUri };
         uiState.importScheduleName = file.name.replace(/\.xml$/i, "");
+        uiState.importDuplicateAcknowledged = false;
+
+        var projectSchedules = data.schedules.filter(function (s) {
+          return s.project_id === uiState.projectId;
+        });
+        uiState.importDuplicateMatches = window.PCC.duplicateService.findFileDuplicates(
+          projectSchedules,
+          { hash: fp.hash, method: fp.method, filename: file.name, size: file.size, projectId: uiState.projectId },
+          { fields: { hash: "content_hash", method: "hash_method", filename: "source_file_name", size: "source_file_size", projectId: "project_id" } }
+        );
+
+        uiState.importParsed = parsed;
+        uiState.importStep = "reviewing";
+        rerender();
+      });
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  /** Architecture Upgrade Phase 3: the Primavera P6 XER counterpart to
+   * handleMspXmlFileSelected() above. XER is plain tab-delimited text (not XML), but
+   * otherwise follows the identical pattern — no column-mapping step (XER's table
+   * schema is fixed, same reasoning as MSP XML), straight to the shared 'reviewing'
+   * step since p6XerService.parseXer() returns the same shape parseRows() does. */
+  function handleP6XerFileSelected(file, data, rerender) {
+    uiState.importSourceType = "p6_xer";
+    var reader = new FileReader();
+    reader.onerror = function () {
+      uiState.importError = "Could not read that file.";
+      rerender();
+    };
+    reader.onload = function () {
+      var buffer = reader.result;
+      var xerText;
+      try {
+        xerText = new TextDecoder("utf-8").decode(buffer);
+      } catch (e) {
+        uiState.importError = "Could not read this file as text: " + e.message;
+        rerender();
+        return;
+      }
+
+      var parsed = window.PCC.p6XerService.parseXer(xerText);
+      var fileDataUri = "data:application/octet-stream;base64," + arrayBufferToBase64(buffer);
+
+      window.PCC.duplicateService.fingerprintFile(buffer, file.name, file.size).then(function (fp) {
+        uiState.importFile = { name: file.name, size: file.size, hash: fp.hash, hashMethod: fp.method, fileData: fileDataUri };
+        uiState.importScheduleName = file.name.replace(/\.xer$/i, "");
         uiState.importDuplicateAcknowledged = false;
 
         var projectSchedules = data.schedules.filter(function (s) {
@@ -782,13 +834,15 @@
       });
     var nextRevision = existingRevisions.length ? Math.max.apply(null, existingRevisions) + 1 : 0;
 
-    // Architecture Upgrade Phase 1/2: this is the one place a schedule is actually
-    // known to have come from an Excel or Microsoft Project XML file at creation time —
-    // set source_platform/format explicitly here (from importSourceType, set by
-    // whichever of handleImportFileSelected/handleMspXmlFileSelected ran) rather than
-    // relying on store.js's migration-time inference (which only exists to backfill
-    // *pre-existing* data, per its own comment).
-    var isMspImport = uiState.importSourceType === "msp_xml";
+    // Architecture Upgrade Phase 1/2/3: this is the one place a schedule is actually
+    // known to have come from a particular file format at creation time — set
+    // source_platform/format explicitly here (from importSourceType, set by whichever
+    // of handleImportFileSelected/handleMspXmlFileSelected/handleP6XerFileSelected ran)
+    // rather than relying on store.js's migration-time inference (which only exists to
+    // backfill *pre-existing* data, per its own comment).
+    var sourceType = uiState.importSourceType || "excel"; // "excel" | "msp_xml" | "p6_xer"
+    var SOURCE_TYPE_FILE_LABELS = { excel: "Excel", msp_xml: "Microsoft Project XML", p6_xer: "Primavera P6 (XER)" };
+    var sourceFileLabel = SOURCE_TYPE_FILE_LABELS[sourceType];
     var extMatch = /\.([a-zA-Z0-9]+)$/.exec(uiState.importFile.name || "");
     var newSchedule = window.PCC.store.newSchedule({
       project_id: uiState.projectId,
@@ -796,7 +850,7 @@
       revision_number: nextRevision,
       status: "active",
       import_date: new Date().toISOString(),
-      source_platform: isMspImport ? "msp_xml" : "excel",
+      source_platform: sourceType,
       source_format: extMatch ? extMatch[1].toLowerCase() : null,
       source_file_name: uiState.importFile.name,
       source_file_size: uiState.importFile.size,
@@ -806,13 +860,13 @@
 
     var records = buildScheduleRecords(parsed, uiState.projectId, newSchedule.id);
 
-    // Architecture Upgrade Phase 2: an MSP XML import may carry the file's own default
-    // Calendar (see mspXmlService.parseDefaultCalendar) — create it as a real
-    // Project calendar and wire every newly-imported activity onto it. Purely
-    // representational, same as Phase 1's migration-minted default calendars: this does
-    // NOT make scheduleCpmEngine.js calendar-aware.
+    // Architecture Upgrade Phase 2/3: an MSP XML or P6 XER import may carry the file's
+    // own default Calendar (see mspXmlService.parseDefaultCalendar/p6XerService's
+    // equivalent) — create it as a real Project calendar and wire every newly-imported
+    // activity onto it. Purely representational, same as Phase 1's migration-minted
+    // default calendars: this does NOT make scheduleCpmEngine.js calendar-aware.
     var newCalendar = null;
-    if (isMspImport && parsed.calendar) {
+    if (sourceType !== "excel" && parsed.calendar) {
       newCalendar = window.PCC.store.newCalendar({
         project_id: uiState.projectId,
         name: parsed.calendar.name,
@@ -855,9 +909,9 @@
       window.PCC.notify(
         "Imported " + records.activities.length + " activities as a new schedule (Rev " + nextRevision +
           ")." + (supersededCount > 0 ? " " + supersededCount + " prior active revision(s) marked Superseded." : "") +
-          (isMspImport
-            ? " The original Microsoft Project XML file is attached for reference."
-            : " The original Excel file is attached \u2014 use \u201cEdit Excel\u201d to update it in place."),
+          (sourceType === "excel"
+            ? " The original Excel file is attached \u2014 use \u201cEdit Excel\u201d to update it in place."
+            : " The original " + sourceFileLabel + " file is attached for reference."),
         "success"
       );
 
@@ -875,7 +929,7 @@
       .then(finishImport)
       .catch(function (e) {
         uiState.importCommitting = false;
-        uiState.importError = "Could not store the original " + (isMspImport ? "Microsoft Project XML" : "Excel") + " file: " + e.message;
+        uiState.importError = "Could not store the original " + sourceFileLabel + " file: " + e.message;
         rerender();
       });
   }
@@ -995,12 +1049,17 @@
         "Project XML. WBS Summary tasks become PCC WBS items; leaf tasks become Activities with their " +
         "relationships, dates, progress, and constraints preserved where the format allows \u2014 see the " +
         "warnings after parsing for anything approximated or skipped." +
+        "<br/><strong>Primavera P6 (.xer)</strong> \u2014 export from P6 via File \u2192 Export \u2192 " +
+        "Project Export (XER). WBS nodes, Activities, relationships, dates, progress, constraints, and " +
+        "the calendar actually used for duration/lag conversion are read directly from the file's own " +
+        "tables \u2014 see the warnings after parsing for anything not imported (Resources, activity codes, " +
+        "and P6's own calendar work-pattern/holiday data aren't decoded yet)." +
         "<br/>Either way, this always creates a <strong>new schedule revision</strong> \u2014 it never overwrites an existing one.";
       panel.appendChild(help);
 
       var fileInput = document.createElement("input");
       fileInput.type = "file";
-      fileInput.accept = ".xlsx,.xls,.xml";
+      fileInput.accept = ".xlsx,.xls,.xml,.xer";
       fileInput.onchange = function () {
         if (fileInput.files && fileInput.files[0]) {
           handleImportFileSelected(fileInput.files[0], data, rerender);

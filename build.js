@@ -18,6 +18,7 @@ const JS_ORDER = [
   "js/duplicateService.js",
   "js/scheduleImportService.js",
   "js/mspXmlService.js",
+  "js/p6XerService.js",
   "js/scheduleCpmEngine.js",
   "js/delayImpactEngine.js",
   "js/scheduleBaselineEngine.js",

@@ -5029,7 +5029,73 @@ verified with a real-Chromium load of the rebuilt `index.html` (zero console/pag
 
 **Not done / explicitly deferred**: opening an exported file in an actual Microsoft Project
 installation (untestable in this environment — flagged above, not silently assumed); Resources/
-Assignments and Baselines, both directions; Primavera P6 (Phase 3, not started); SQLite (Phase 5).
+Assignments and Baselines, both directions; Primavera P6 (Phase 3, see below); SQLite (Phase 5).
+
+## PCC Architecture Upgrade — Phase 3 (Primavera P6 File Interoperability — Import), 2026-08-27
+
+Continues the roadmap into a second scheduling platform: **Primavera P6 XER import**. Per the
+master prompt's own instruction, XER — P6's own native, plain-text, tab-delimited export format
+(`File → Export → Project Export (XER)` in P6) — is the practical exchange format here, not a
+database file requiring P6 itself. No new dependency: XER is simple line-based text, parsed with
+plain string splitting.
+
+- **New `src/js/p6XerService.js`** — same UI-independent, no-DOM-writes convention as
+  `scheduleImportService.js`/`mspXmlService.js`. `parseXer()` returns the identical shape those two
+  already do, so `schedule.js`'s `buildScheduleRecords()` now consumes any of the three importers
+  without caring which platform a schedule came from. Reads XER's generic `%T`/`%F`/`%R`
+  table/field/row structure, then the tables that actually matter: `PROJECT` (picks the first
+  project if the file has more than one, with a warning naming which), `PROJWBS` (the WBS
+  hierarchy), `TASK` (activities), `TASKPRED` (relationships), `CALENDAR` (referenced by
+  `TASK.clndr_id`).
+- **P6 turned out to have LESS ambiguity than MSP XML in three places worth calling out**: (1) P6's
+  `CALENDAR.day_hr_cnt` gives this file's *actual* hours-per-working-day, so duration/remaining-
+  duration conversion is **exact**, not an assumed-8-hours guess — no per-file assumption warning
+  needed unless a calendar is genuinely missing that field. (2) `TASKPRED.lag_hr_cnt` converts to
+  days using that same real `day_hr_cnt`, again exact — no "assumed tenths-of-a-day" hedge MSP's
+  `<LinkLag>` needed. (3) `PROJWBS` gives real `parent_wbs_id` references, so WBS hierarchy is built
+  directly from real IDs — no dotted-code-truncation guessing the way a leaf MSP task's own WBS
+  field required. A genuine WBS `wbs_short_name` collision across different branches (not
+  guaranteed unique the way a dotted MSP code is) is disambiguated with a warning rather than
+  silently merging two unrelated nodes.
+- **P6 constraint types and relationship types map onto the SAME short-code vocabulary
+  `mspXmlService.js` already uses** (`FS`/`SS`/`FF`/`SF`; `ASAP`/`ALAP`/`MSO`/`MFO`/`SNET`/`SNLT`/
+  `FNET`/`FNLT`) — deliberately, so `constraint_type`/relationship `type` read consistently
+  regardless of which platform a schedule was imported from, rather than each importer inventing
+  its own vocabulary for the same underlying concepts.
+- A P6 Activity's `TT_WBS` ("WBS Summary" pseudo-activity) task type maps onto PCC's existing
+  `activity_type: "wbs_summary"` and **stays a normal network Activity** — deliberately different
+  from how `mspXmlService.js` treats an MSP "Summary" task (which becomes a PCC WBS item, not an
+  Activity). This isn't an inconsistency: P6's real WBS hierarchy is the separate `PROJWBS` table,
+  always imported regardless of task type; `TT_WBS` is a distinct, optional rollup-bar convention
+  within the Task list, matching how the Excel importer already lets a "WBS Summary" activity type
+  coexist in the flat activities network (see `scheduleCpmEngine.js`'s own header on why summary
+  activities are ordinary network nodes here).
+- **Explicitly deferred, not silently dropped**: Resources/Assignments (`RSRC`/`TASKRSRC`) and
+  Activity/Project/Resource Codes (`ACTVCODE`/`TASKACTV`) — same reasoning as MSP's Phase 2.
+  `CALENDAR.clndr_data` (P6's own proprietary nested work-week/holiday pattern) is **not decoded** —
+  only the flat `clndr_name`/`day_hr_cnt` fields are used; the imported Calendar gets a placeholder
+  Mon-Fri, no-holidays pattern, with an explicit warning that the source file's real pattern wasn't
+  preserved. Percent complete uses P6's own duration-percent-complete formula
+  (`(target-remaining)/target*100`) — `phys_complete_pct` is intentionally not read, matching
+  `store.js`'s existing rule that `physical_progress` is manually-entered only, never imported.
+- **UI**: the "Import Schedule" file picker now also accepts `.xer`; `commitImport()`'s
+  Excel-vs-MSP branching generalized into a three-way `sourceType` ("excel"/"msp_xml"/"p6_xer")
+  rather than accumulating parallel boolean flags.
+
+**Verified**: `node build.js` clean; full suite **2360 passed, 0 failed** across 95 files (2334
+pre-existing + 26 new: 22 in `test_p6_xer_import_service.js` — full field mapping, the exact
+duration/lag conversion, WBS collision disambiguation, a cyclic-parent-chain guard, and every
+error/warning path — plus 4 in `test_p6_xer_import_e2e.js`, the real upload→review→commit flow
+against the actual bundled `index.html`). Also verified with a real-Chromium load of the rebuilt
+`index.html` (zero console/page errors). **Honestly scoped, same as Phase 2**: this has not been
+tested against a real P6-produced XER file or a real Primavera P6 installation — no P6 exists in
+this environment — the constraint/relationship-type mappings are based on Primavera's own
+documented XER schema constants, not verified against an actual export.
+
+**Not done / explicitly deferred**: XER **export** (PCC → P6) — not started, a separate decision
+point given XER's stricter format-fidelity bar for real P6 acceptance; Primavera XML (an
+alternative P6 exchange format, not investigated this gate — XER covered the "at minimum" list
+fully); Resources/Assignments/Codes; real calendar work-pattern/holiday decoding; SQLite (Phase 5).
 
 ## Locked build order (unchanged)
 
@@ -5098,13 +5164,15 @@ Assistant, Lessons Learned, final polish
 ## Next phase
 
 **PCC Architecture Upgrade**: Phase 0 (Inspection & Baseline), Phase 1 (Canonical Schedule Model,
-schema v61), and Phase 2 (Microsoft Project XML **import and export** — full round-trip between
-PCC's own import/export, though opening an exported file in real Microsoft Project itself is
-unverified — no MS Project installation available in this environment) are all done — see those
-sections above. Phase 3 (Primavera P6 file interoperability) is the next step in that roadmap, but
-per the master prompt's own operating instruction ("work through it sequentially... do not build
-everything immediately"), it hasn't been started — confirm scope/direction before beginning it,
-the same gate discipline every other
+schema v61), Phase 2 (Microsoft Project XML **import and export** — full round-trip between PCC's
+own import/export, though opening an exported file in real Microsoft Project itself is unverified —
+no MS Project installation available in this environment), and Phase 3 (Primavera P6 XER
+**import**, same real-Microsoft-Project-style verification caveat) are all done — see those
+sections above. XER **export** is explicitly not built yet — a separate decision point given XER's
+stricter real-P6-acceptance bar. Phase 5 (SQLite) remains the master prompt's next major
+architectural step after file interoperability, but per its own operating instruction ("work
+through it sequentially... do not build everything immediately"), nothing further has been started
+— confirm scope/direction before beginning it, the same gate discipline every other
 roadmap on this page already follows.
 
 **Tier 2 is complete, and the entire 14-gate Document Control sub-spec Aditya handed over is now

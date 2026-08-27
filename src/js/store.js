@@ -1180,11 +1180,10 @@
   var RELATIONSHIP_TYPES = ["FS", "SS", "FF", "SF"]; // Finish-to-Start, Start-to-Start, Finish-to-Finish, Start-to-Finish
   // Architecture Upgrade Phase 1 (Canonical Schedule Model, schema v61): where a
   // schedule's activity/relationship/WBS data actually came from. "pcc" = built by hand
-  // in this app (the only origin before this gate). "excel" = the existing Schedule
-  // Excel importer (Gate 2). "msp_xml"/"p6_xer"/"p6_xml" are reserved for future file
-  // importers (see scheduleImportService.js's own header) — not implemented yet, but a
-  // schedule needs a place to record its origin from the day it's created, not bolted
-  // on retroactively once those importers exist.
+  // in this app. "excel" = the Schedule Excel importer (Gate 2). "msp_xml" = Phase 2's
+  // Microsoft Project XML importer/exporter (mspXmlService.js). "p6_xer" = Phase 3's
+  // Primavera P6 XER importer (p6XerService.js). "p6_xml" (Primavera XML) remains
+  // reserved for a future gate — not implemented yet.
   var SCHEDULE_PLATFORMS = ["pcc", "excel", "msp_xml", "p6_xer", "p6_xml"];
   // Purpose classification, distinct from `status` above (which is lifecycle: is this
   // revision the one currently driving the project). A schedule can be "the baseline"
