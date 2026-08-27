@@ -88,7 +88,8 @@ function hasSqlite3Cli() {
   const outlet = () => win.document.getElementById("page-outlet");
 
   let projectId;
-  await check("seed a realistic project (schedule, activities, a risk) and navigate to Settings", () => {
+  let documentId;
+  await check("seed a realistic project (schedule, activities, a risk, a document with a real blob) and navigate to Settings", () => {
     win.PCC.store.update(function (data) {
       var project = { id: "proj_sqlite_export_1", name: "SQLite Export Test Project", archived: false, status: "on_track", progress: 0, attachments: [] };
       data.projects.push(project);
@@ -99,18 +100,28 @@ function hasSqlite3Cli() {
       var act = win.PCC.store.newActivity({ project_id: projectId, schedule_id: sched.id, name: "Design Review", duration: 5 });
       data.activities.push(act);
       data.risks.push(win.PCC.store.newRisk({ project_id: projectId, type: "risk", title: "Permit delay" }));
+
+      var doc = win.PCC.store.newDocument({ project_id: projectId, filename: "site-photo.jpg", mime_type: "image/jpeg", file_size: 12 });
+      doc.file_data = null; // real bytes live in blobStore.js's IndexedDB, not in the JSON store, since Gate 4
+      documentId = doc.id;
+      data.documents.push(doc);
     });
 
-    win.PCC.router.go("settings");
-    win.PCC.router.render();
-    assert.ok(outlet().textContent.indexOf("Data") !== -1, "expected the Data panel to render");
+    return win.PCC.blobStore.putBlob(documentId, "data:image/jpeg;base64,ZmFrZS1qcGVnLWJ5dGVz").then(() => {
+      win.PCC.router.go("settings");
+      win.PCC.router.render();
+      assert.ok(outlet().textContent.indexOf("Data") !== -1, "expected the Data panel to render");
+    });
   });
 
-  await check("the 'Export as SQLite (Experimental)' button exists, is clearly labeled one-way, and is not the same as the JSON/archive exports", () => {
+  await check("the 'Export as SQLite (Experimental)' button exists, is clearly labeled one-way, and honestly discloses it excludes document/photo file content", () => {
     const btn = findButtonByText(win, "Export as SQLite (Experimental)");
     assert.ok(btn, "'Export as SQLite (Experimental)' button not found");
     assert.ok(btn.title.toLowerCase().indexOf("not update pcc") !== -1, "the button's own tooltip must warn this is a one-way snapshot");
-    assert.ok(outlet().textContent.toLowerCase().indexOf("one-time snapshot") !== -1, "the panel copy must explain this is a one-time snapshot, not a live-synced copy");
+    assert.ok(btn.title.toLowerCase().indexOf("does not include") !== -1 || btn.title.toLowerCase().indexOf("not include") !== -1, "the tooltip must disclose that document/photo file content is excluded");
+    const panelText = outlet().textContent.toLowerCase();
+    assert.ok(panelText.indexOf("one-time snapshot") !== -1, "the panel copy must explain this is a one-time snapshot, not a live-synced copy");
+    assert.ok(panelText.indexOf("does not include the actual document") !== -1, "the panel copy must explicitly disclose that document/photo file contents are excluded from the SQLite export");
   });
 
   let savedBlob = null;
@@ -145,6 +156,22 @@ function hasSqlite3Cli() {
     assert.strictEqual(project.name, "SQLite Export Test Project");
     assert.ok(exported.activities.some((a) => a.name === "Design Review"));
     assert.ok(exported.risks.some((r) => r.title === "Permit delay"));
+  });
+
+  await check("the seeded document's metadata is present but its real file bytes are NOT — proving the button's own disclosure is actually true, not just claimed", async () => {
+    const bytes = new Uint8Array(await savedBlob.arrayBuffer());
+    const SQL = await win.PCC.sqliteMigrationEngine.initSqlJsBrowser();
+    const db = new SQL.Database(bytes);
+    const exported = win.PCC.sqliteMigrationEngine.exportToJson(db);
+
+    const doc = exported.documents.find((d) => d.id === documentId);
+    assert.ok(doc, "the seeded document's metadata must be present in the exported SQLite file");
+    assert.strictEqual(doc.filename, "site-photo.jpg");
+    assert.strictEqual(doc.file_data, null, "the document's real file bytes live in blobStore.js's IndexedDB, not store.js — the SQLite export must NOT claim to have them");
+
+    // Confirm the real bytes are genuinely still only in blobStore.js, untouched by this export.
+    const stillInBlobStore = await win.PCC.blobStore.getBlob(documentId);
+    assert.ok(stillInBlobStore, "the real photo bytes should still be retrievable from blobStore.js after a SQLite export (this export must not move or delete them)");
   });
 
   // The real, meaningful check for "is this a real, openable .sqlite file": open it

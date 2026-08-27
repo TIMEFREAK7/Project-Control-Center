@@ -247,8 +247,10 @@
       "\u201cExport Document Archive\u201d separately downloads a .zip with a real folder per project, containing " +
       "the actual attached files \u2014 useful for browsing your documents outside the app, or as a growing " +
       "portfolio archive. \u201cExport as SQLite (Experimental)\u201d downloads a real, standalone .sqlite " +
-      "file \u2014 openable in any SQLite tool \u2014 as a one-time snapshot; it is not a live-synced copy, so " +
-      "editing it elsewhere never updates PCC.</p>";
+      "file \u2014 openable in any SQLite tool \u2014 as a one-time snapshot of your structured records only " +
+      "(projects, schedules, risks, document/photo details, etc.); it does NOT include the actual document " +
+      "or photo file contents \u2014 use \u201cExport Document Archive\u201d for those \u2014 and it is not a " +
+      "live-synced copy, so editing it elsewhere never updates PCC.</p>";
 
     var btnRow = document.createElement("div");
     btnRow.style.display = "flex";
@@ -293,10 +295,21 @@
     // header). "Experimental" in the label and the title tooltip on purpose — this is
     // the isolated prototype from the Architecture Upgrade, not a supported backup
     // format PCC's own restore path understands.
+    //
+    // Master Engineering & Architecture Upgrade prompt inspection (2026-08-27) found a
+    // real disclosure gap here: buildDatabase() only ever sees store.get() — it never
+    // reads blobStore.js's IndexedDB, so a document/photo's actual file bytes (moved out
+    // of the JSON store back in Gate 4) are NEVER in this export, only their metadata
+    // (filename, hash, dates, etc.). The original copy below didn't say so. Per the
+    // master prompt's own Section 66 ("a database-only backup is insufficient") and
+    // Section 95 ("never silently discard evidence"), the button/copy must say this
+    // plainly rather than let someone discover it only when a restore is needed.
     var exportSqliteBtn = document.createElement("button");
     exportSqliteBtn.className = "btn btn--ghost";
     exportSqliteBtn.textContent = "Export as SQLite (Experimental)";
-    exportSqliteBtn.title = "A one-time snapshot for use with external SQLite tools. Editing it elsewhere does not update PCC.";
+    exportSqliteBtn.title =
+      "A one-time snapshot of structured records only — does NOT include document/photo file contents " +
+      "(use Export Document Archive for those). Editing it elsewhere does not update PCC.";
     exportSqliteBtn.onclick = function () {
       exportSqliteBtn.disabled = true;
       var originalLabel = exportSqliteBtn.textContent;
@@ -313,7 +326,9 @@
         })
         .then(function () {
           window.PCC.notify(
-            "Exported as a SQLite file — a one-time snapshot for external tools. Editing it elsewhere will not update PCC.",
+            "Exported as a SQLite file — structured records only, a one-time snapshot for external tools. " +
+              "Document/photo file contents are not included (use Export Document Archive for those). " +
+              "Editing it elsewhere will not update PCC.",
             "success"
           );
         })

@@ -5318,6 +5318,40 @@ been clear Phase 5 and beyond carry real risk of breaking PCC, and this incremen
 to "test the export feature," nothing further. No re-import of an edited `.sqlite` file exists or is
 planned as part of this feature.
 
+## PCC Architecture Upgrade — Phase 5 correction (SQLite export disclosure gap), 2026-08-27
+
+Same day, found during the inspection Aditya's Master Engineering & Architecture Upgrade prompt
+required before any further Phase 5 work — a genuine defect in what shipped in the write-up above,
+not a new feature. Fixed immediately per the prompt's own carve-out (Section 0: fix a real defect
+found on inspection, don't just proceed past it) and its "no silent failure" rule (Section 95).
+
+- **The defect**: `sqliteMigrationEngine.js`'s `buildDatabase()` only ever reads `store.get()` — it
+  has never read `blobStore.js`'s IndexedDB, where a document/photo's actual file bytes have lived
+  since Gate 4 (2026-08-07). So every "Export as SQLite" download contains full document/photo
+  *metadata* (filename, hash, dates, classification, etc.) but **never the actual file content** —
+  `file_data` is always `null` in the export. The button/panel copy shipped in the write-up above
+  never said so; it read as if the `.sqlite` file were a complete snapshot.
+- **The fix**: rewrote the panel copy and the button's own tooltip/success toast (`src/js/pages/
+  settings.js`) to state plainly that the SQLite export covers structured records only and does NOT
+  include document/photo file contents, pointing to the existing "Export Document Archive" button
+  (which already bundles real files via `archive.js`) for that need. No behavior changed — this is
+  a disclosure fix, not a scope change; embedding binary blobs into the `.sqlite` file itself would
+  also cut against the master prompt's own hybrid-storage principle (Section 14: don't store every
+  binary file inside SQLite).
+- **Verified the claim is actually true, not just stated**: extended `tests/
+  test_sqlite_export_settings_e2e.js` to seed a real document with a real blob in `blobStore.js`,
+  assert both the tooltip and panel copy state the exclusion, and assert the exported row's
+  `file_data` is `null` while the real bytes remain retrievable from `blobStore.js` afterward
+  (proving this export doesn't move or delete anything either) — 1 new check (6 total in this file).
+  Re-verified in real Chromium via the existing Playwright smoke test, extended to assert the same
+  disclosure text renders in the live DOM.
+- Full suite **2405 passed, 0 failed** across 100 files.
+
+This correction also surfaced the fuller Phase 5 status against the master prompt's own completion
+gate (Section 83): still not met — no versioned SQL schema (Section 11), no restore-into-app path,
+no live localStorage/IndexedDB migration. That remains accurately reflected as "not done" in the
+Phase 5 sections above; this correction only fixes what the export honestly claims about itself.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →

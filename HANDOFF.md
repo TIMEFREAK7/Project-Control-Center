@@ -5053,7 +5053,39 @@ Phase 4 (Schedule Versioning & Comparison) was explicitly skipped so far and rem
 wanted; Phases 6-9 (Advanced Engineering Engine, Integrated Delay, Excel/PDF/Reporting, Local AI)
 are all still unstarted. Confirm scope/direction with Aditya before starting any of them.
 
+**Phase 5 correction (SQLite export disclosure gap) — done, same session, found during the
+inspection Aditya's Master Engineering & Architecture Upgrade prompt required before any further
+Phase 5 work.** Not a new feature — a real defect in what shipped in the section above.
+- **Found**: `buildDatabase()` only ever reads `store.get()`. Since Gate 4 (2026-08-07) a
+  document/photo's real bytes live in `blobStore.js`'s IndexedDB, never in the JSON store —
+  `buildDatabase()` was never touching that database at all, so every "Export as SQLite" download
+  has always contained document/photo *metadata* only, `file_data` always `null`, the real bytes
+  never included. The button/panel copy shipped last session didn't disclose this — it read as if
+  the file were a complete snapshot. Worth remembering: a masters-prompt-style forced re-inspection
+  is exactly how this kind of gap gets caught — it wasn't found by accident.
+- **Fixed**: `src/js/pages/settings.js`'s panel copy, the button's tooltip, and its success toast
+  now all state plainly that the SQLite export is structured-records-only and does not include
+  document/photo file contents, pointing at "Export Document Archive" (which already bundles real
+  files via `archive.js`) for that need. Pure disclosure fix, zero behavior change — and embedding
+  blobs into the `.sqlite` file itself would cut against the master prompt's own hybrid-storage
+  principle (SQLite = structured data, File Store = binaries, never merge the two) even if this
+  were being built as a real backup format rather than an experimental interop export.
+- **Verified the claim is actually true, not just newly stated**: extended
+  `tests/test_sqlite_export_settings_e2e.js` to seed a document with a real blob in `blobStore.js`,
+  assert the new disclosure text in both the tooltip and panel copy, and assert the exported row's
+  `file_data` is `null` while the real bytes are still retrievable from `blobStore.js` afterward
+  (proving the export doesn't move or delete anything) — 1 new check, 6 total in this file. Also
+  re-ran the real-Chromium Playwright smoke test, extended to confirm the disclosure text renders
+  in the actual live DOM, not just in the jsdom test's simulated one.
+- Full suite: **100 files, 2405 checks, 0 failures**.
+
+**What this correction does NOT change**: Phase 5's own completion gate (the master prompt's own
+Section 83 — versioned SQL schema, a real restore-into-app path, live localStorage/IndexedDB
+migration) is still not met, and was never claimed to be. This fix only makes what already shipped
+honest about its own scope; it doesn't move Phase 5 any closer to a live cutover, which remains
+entirely un-authorized.
+
 **Repo/branch state as of this write-up**: working branch `claude/pcc-architecture-upgrade-j5a1eo`,
-commits for the SQLite export button feature about to be pushed to that branch (not `main` — no
-merge requested this round). `main` last received the full Phase 0-3 + packaging round (signed APK,
-Windows EXE, distribution zip) delivered earlier in this engagement.
+commits for the SQLite export button feature and this disclosure correction about to be pushed to
+that branch (not `main` — no merge requested this round). `main` last received the full Phase 0-3 +
+packaging round (signed APK, Windows EXE, distribution zip) delivered earlier in this engagement.
