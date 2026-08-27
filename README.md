@@ -5416,6 +5416,62 @@ done, by design, not oversight**: no live continuous SQLite read/write path — 
 remains `store.js`/localStorage precisely as Aditya's own repeated caution throughout this
 engagement asked for. That is a wholly separate future decision, not something this gate implies.
 
+## PCC Architecture Upgrade — Phase 4 (Schedule Versioning & Comparison), 2026-08-27
+
+Same day, per Aditya's "Complete phase 5. And then come back to phase 4." Per the master upgrade
+prompt's own Section 0/100 discipline ("inspect before deciding, don't redo a completed phase"),
+this started with an inspection rather than a rewrite — and the inspection found Phase 4 was
+already **mostly done**: **Gate 22 ("Baseline & Schedule Revision Control")**, a pre-existing feature
+built well before this Architecture Upgrade began, already provides multiple named baselines per
+schedule (never overwritten, one markable "official") and a real comparison engine
+(`scheduleBaselineEngine.js`) covering added/removed/matched activities, date/duration variance,
+per-activity criticality flips, relationship (logic) changes, and project-level finish variance —
+already exactly what Section 51/52 ask for in substance, just built under a different name.
+
+**What inspection found genuinely missing** against Section 52's own checklist: calendar changes,
+constraint changes, and critical path movement as a holistic metric (only a per-activity
+"criticality flipped" flag existed, not "did the critical path itself shift"). Closed all three,
+scoped narrowly to exactly that gap — no rewrite of the working comparison engine:
+
+- **`buildSnapshot()`** now also captures each activity's `calendar_id`/`constraint_type`/
+  `constraint_date`, and a new `calendars` array trimmed to each calendar's comparison-relevant
+  shape (`id`, `name`, `working_days`, `holidays` — not `created_at`/`updated_at`/`project_id`,
+  which have no comparison value).
+- **`compareBaselineToCurrent()`** now reports three new signals, additive to the existing result
+  shape (fully backward-compatible — a pre-Phase-4 snapshot with no `calendars` field, or a caller
+  that omits the new `currentCalendars` argument entirely, simply reports no calendar changes rather
+  than erroring):
+  - **Calendar changes** — matched by calendar id (calendars aren't re-imported with fresh ids the
+    way activities are): added/removed calendars, and *modified* ones (working days or holidays
+    edited, by shape not by name — a rename alone doesn't count). Per-matched-activity
+    `calendar_changed` flags both a reassignment to a different calendar *and* an edit to the same
+    calendar's own definition.
+  - **Constraint changes** — per-matched-activity `constraint_changed` whenever `constraint_type` or
+    `constraint_date` differs from the baseline.
+  - **Critical path movement** — a genuinely new, holistic metric distinct from the pre-existing
+    per-activity `criticality_changed` flag: which activities *entered* the critical path, which
+    *left* it, and how many stayed critical throughout, computed from the same `total_float`
+    crossing-zero logic the engine already used per-activity, just aggregated into entered/left/
+    stable sets instead of a flat count.
+- **Settings→Schedule's "Baseline vs Current" panel** (`schedule.js`) surfaces all three: a
+  "Calendar changes"/"Constraint changes" summary line naming the modified calendars, per-row
+  "calendar changed"/"constraint changed" badges alongside the existing "criticality changed" badge,
+  and a new "Critical Path Movement" section (styled like the existing "Float Erosion" section)
+  listing which activities entered/left.
+- **Tests**: 10 new checks in `tests/test_schedule_baseline_engine.js` (calendar modification,
+  calendar reassignment, no-change, backward-compatibility with a calendar-less snapshot, constraint
+  change/no-change, critical-path entry/exit/no-crossing/unknown-float-excluded) and 2 new e2e checks
+  in `tests/test_schedule_baseline_e2e.js` exercising the real UI end-to-end. Verified again in real
+  Chromium via a dedicated Playwright smoke test — zero page errors, all three signals render
+  correctly against the live app.
+- Full suite: **102 files, 2422 checks, 0 failures**.
+
+**What this increment deliberately did NOT do**: rewrite or replace the pre-existing Gate 22 baseline
+system, which already worked and already covered most of Section 51/52 — per the master prompt's own
+Section 2 ("preserve what works... don't rewrite simply because... don't redo completed phases
+unless inspection identifies a genuine defect"), only the three specific, real gaps found were
+closed.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
@@ -5484,8 +5540,8 @@ Assistant, Lessons Learned, final polish
 
 **PCC Architecture Upgrade**: Phase 0 (Inspection & Baseline), Phase 1 (Canonical Schedule Model,
 schema v61), Phase 2 (Microsoft Project XML **import and export**), Phase 3 (Primavera P6 XER
-**import and export**), and **Phase 5 (SQLite) is now complete** against the master prompt's own
-Section 83 completion gate — see the "Phase 5 complete" section above for the full checklist. Both
+**import and export**), **Phase 5 (SQLite)**, and **Phase 4 (Schedule Versioning & Comparison) are
+all now complete** — see their own sections above for the full detail on each. Both
 file-interoperability phases round-trip through PCC's own import/export for every field either side
 handles; opening an exported file in the *real* authoring tool itself is unverified for both (no MS
 Project or Primavera P6 installation available in this environment) — a materially bigger open
@@ -5494,11 +5550,12 @@ two-way "Full Backup (SQLite)" — create and restore, byte-for-byte, including 
 proven with real blobs, a real browser, and a real independent SQLite tool — but **by explicit,
 deliberate design, not an oversight**, the live app's actual data layer remains `store.js`/
 localStorage; there is no live continuous SQLite read/write path, and whether to ever build one
-remains entirely Aditya's future call. Phase 4 (Schedule Versioning & Comparison beyond what Phase 1
-already covers) is next, per Aditya's own instruction ("complete phase 5, then come back to phase
-4"); the rest of the master prompt's later phases (6-9) remain unstarted — confirm scope/direction
-before beginning any of them, the same gate discipline every other roadmap on this page already
-follows.
+remains entirely Aditya's future call. Phase 4's own inspection found the pre-existing Gate 22
+("Baseline & Schedule Revision Control") already covered most of what Sections 51/52 ask for; the
+increment closed the three genuine gaps found (calendar changes, constraint changes, and a holistic
+critical-path-movement metric) rather than rebuilding what already worked. The rest of the master
+prompt's later phases (6-9) remain unstarted — confirm scope/direction before beginning any of them,
+the same gate discipline every other roadmap on this page already follows.
 
 **Tier 2 is complete, and the entire 14-gate Document Control sub-spec Aditya handed over is now
 built** (Gates 14-28) — no gates from that spec remain. A new, separate roadmap started with Gate

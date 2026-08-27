@@ -2146,8 +2146,11 @@
     var relationships = data.relationships.filter(function (r) {
       return r.schedule_id === schedule.id;
     });
+    var calendars = data.calendars.filter(function (cal) {
+      return cal.project_id === schedule.project_id;
+    });
 
-    var snapshot = window.PCC.scheduleBaselineEngine.buildSnapshot(schedule, wbsItems, activities, relationships);
+    var snapshot = window.PCC.scheduleBaselineEngine.buildSnapshot(schedule, wbsItems, activities, relationships, calendars);
     var baselineRecord = window.PCC.store.newScheduleBaseline({
       schedule_id: schedule.id,
       project_id: schedule.project_id,
@@ -6936,11 +6939,20 @@
         var currentRelationships = data.relationships.filter(function (r) {
           return r.schedule_id === uiState.scheduleId;
         });
+        var currentSchedule = data.schedules.find(function (s) {
+          return s.id === uiState.scheduleId;
+        });
+        var currentCalendars = currentSchedule
+          ? data.calendars.filter(function (cal) {
+              return cal.project_id === currentSchedule.project_id;
+            })
+          : [];
         uiState.baselineCompareResult = window.PCC.scheduleBaselineEngine.compareBaselineToCurrent(
           snapshot,
           currentWbsItems,
           currentActivities,
-          currentRelationships
+          currentRelationships,
+          currentCalendars
         );
         uiState.baselineComparePending = false;
         rerender();
@@ -6986,12 +6998,29 @@
       "<br/>" + finishBit +
       (result.relationship_changes.added || result.relationship_changes.removed
         ? "<br/>Logic changes: " + result.relationship_changes.added + " added, " + result.relationship_changes.removed + " removed"
-        : "");
+        : "") +
+      // Phase 4 (Schedule Versioning & Comparison), master upgrade prompt Section 52:
+      // calendar changes, constraint changes, and critical path movement as their own
+      // reported signals, distinct from the plain finish-date/criticality changes above.
+      (result.calendar_changes.modified_count || result.calendar_changes.added.length || result.calendar_changes.removed.length
+        ? "<br/>Calendar changes: " +
+          (result.calendar_changes.modified_count ? result.calendar_changes.modified_count + " modified (" + result.calendar_changes.modified_names.join(", ") + ")" : "") +
+          (result.calendar_changes.added.length ? (result.calendar_changes.modified_count ? " · " : "") + result.calendar_changes.added.length + " added" : "") +
+          (result.calendar_changes.removed.length ? " · " + result.calendar_changes.removed.length + " removed" : "") +
+          (s.calendar_changed_count ? " · " + s.calendar_changed_count + " activities affected" : "")
+        : "") +
+      (s.constraint_changed_count
+        ? "<br/>Constraint changes: " + s.constraint_changed_count + " activit" + (s.constraint_changed_count === 1 ? "y" : "ies")
+        : "") +
+      (result.critical_path_changes.changed
+        ? "<br/>Critical path movement: " + result.critical_path_changes.entered.length + " entered, " +
+          result.critical_path_changes.left.length + " left (" + result.critical_path_changes.stable_count + " unchanged)"
+        : "<br/>Critical path: unchanged (" + result.critical_path_changes.stable_count + " activities)");
     panel.appendChild(summaryLine);
 
     var changed = result.activities.matched
       .filter(function (m) {
-        return m.comparable && (m.finish_variance_days !== 0 || m.criticality_changed);
+        return m.comparable && (m.finish_variance_days !== 0 || m.criticality_changed || m.calendar_changed || m.constraint_changed);
       })
       .sort(function (a, b) {
         return Math.abs(b.finish_variance_days) - Math.abs(a.finish_variance_days);
@@ -7018,6 +7047,8 @@
           "Baseline finish: " + (m.baseline.finish || "\u2014") + " \u2192 Current finish: " + (m.current.finish || "\u2014") +
           " (" + varianceLabel + ")" +
           (m.criticality_changed ? " \u00b7 criticality changed" : "") +
+          (m.calendar_changed ? " \u00b7 calendar changed" : "") +
+          (m.constraint_changed ? " \u00b7 constraint changed" : "") +
           "</span>";
         row.appendChild(main);
         table.appendChild(row);
@@ -7078,6 +7109,47 @@
         erosionMore.style.fontSize = "var(--text-sm)";
         erosionMore.textContent = "+" + (floatErosion.length - 20) + " more not shown.";
         panel.appendChild(erosionMore);
+      }
+    }
+
+    // Phase 4 (Schedule Versioning & Comparison): critical path movement as its own
+    // section — distinct from Float Erosion above (an activity can erode float steadily
+    // without ever crossing onto/off the critical path yet) and from the per-row
+    // "criticality changed" badge (this groups entries/exits together with names, the
+    // way the master upgrade prompt's Section 52 describes "critical path movement").
+    if (result.critical_path_changes.changed) {
+      var cpHeading = document.createElement("h4");
+      cpHeading.style.marginTop = "var(--space-4)";
+      cpHeading.style.marginBottom = "var(--space-2)";
+      cpHeading.textContent = "Critical Path Movement";
+      panel.appendChild(cpHeading);
+
+      var cpList = document.createElement("div");
+      cpList.className = "project-list";
+      result.critical_path_changes.entered.slice(0, 20).forEach(function (m) {
+        var row = document.createElement("div");
+        row.className = "detail-card";
+        row.style.marginBottom = "var(--space-2)";
+        row.style.fontSize = "var(--text-sm)";
+        row.innerHTML = "<strong>" + m.name + "</strong> — entered the critical path";
+        cpList.appendChild(row);
+      });
+      result.critical_path_changes.left.slice(0, 20).forEach(function (m) {
+        var row = document.createElement("div");
+        row.className = "detail-card";
+        row.style.marginBottom = "var(--space-2)";
+        row.style.fontSize = "var(--text-sm)";
+        row.innerHTML = "<strong>" + m.name + "</strong> — left the critical path";
+        cpList.appendChild(row);
+      });
+      panel.appendChild(cpList);
+      var cpTotal = result.critical_path_changes.entered.length + result.critical_path_changes.left.length;
+      if (cpTotal > 40) {
+        var cpMore = document.createElement("p");
+        cpMore.className = "text-secondary";
+        cpMore.style.fontSize = "var(--text-sm)";
+        cpMore.textContent = "+" + (cpTotal - 40) + " more not shown.";
+        panel.appendChild(cpMore);
       }
     }
 

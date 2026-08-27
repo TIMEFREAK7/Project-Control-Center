@@ -68,13 +68,14 @@ check("buildSnapshot keeps only comparison-relevant activity fields", () => {
 // ---------------------------------------------------------------------------
 // compareBaselineToCurrent: basic matched-by-id variance
 // ---------------------------------------------------------------------------
-function makeSnapshot(activities, relationships) {
+function makeSnapshot(activities, relationships, calendars) {
   return {
     schedule_id: "sch_1",
     captured_at: "2026-01-01T00:00:00.000Z",
     wbs: [],
     activities: activities,
     relationships: relationships || [],
+    calendars: calendars || [],
   };
 }
 
@@ -306,6 +307,138 @@ check("project_finish_variance_days uses the overall (max) finish across all act
   assert.strictEqual(result.summary.baseline_overall_finish, "2026-02-10");
   assert.strictEqual(result.summary.current_overall_finish, "2026-02-15");
   assert.strictEqual(result.summary.project_finish_variance_days, 5);
+});
+
+// ---------------------------------------------------------------------------
+// Phase 4 (Schedule Versioning & Comparison), master upgrade prompt Section 52:
+// calendar changes, constraint changes, and critical path movement as their own
+// reported signals.
+// ---------------------------------------------------------------------------
+
+function makeActivity(overrides) {
+  return Object.assign(
+    {
+      id: "act_1", external_id: null, name: "A", duration: 5,
+      planned_start: "2026-02-01", planned_finish: "2026-02-05",
+      early_start: null, early_finish: null, late_start: null, late_finish: null,
+      total_float: null, calendar_id: null, constraint_type: "", constraint_date: "",
+    },
+    overrides
+  );
+}
+
+check("buildSnapshot carries calendar_id/constraint_type/constraint_date onto each activity, and trims calendars to their comparison-relevant fields", () => {
+  const schedule = { id: "sch_1", name: "Rev 1", revision_number: 1, data_date: "2026-01-01" };
+  const activities = [makeActivity({ calendar_id: "cal_1", constraint_type: "SNET", constraint_date: "2026-02-01" })];
+  const calendars = [{ id: "cal_1", project_id: "proj_1", name: "5-Day", is_default: true, working_days: [true, true, true, true, true, false, false], holidays: ["2026-01-01"], created_at: "x", updated_at: "x" }];
+  const snap = engine.buildSnapshot(schedule, [], activities, [], calendars);
+  assert.strictEqual(snap.activities[0].calendar_id, "cal_1");
+  assert.strictEqual(snap.activities[0].constraint_type, "SNET");
+  assert.strictEqual(snap.calendars.length, 1);
+  assert.strictEqual(snap.calendars[0].name, "5-Day");
+  assert.strictEqual(snap.calendars[0].created_at, undefined, "created_at has no comparison value and must not be carried into the snapshot");
+});
+
+check("a calendar's working_days/holidays being edited (same id) flags every activity assigned to it as calendar_changed", () => {
+  const cal5Day = { id: "cal_1", name: "5-Day", working_days: [true, true, true, true, true, false, false], holidays: [] };
+  const cal6Day = { id: "cal_1", name: "5-Day", working_days: [true, true, true, true, true, true, false], holidays: [] };
+  const snapshot = makeSnapshot([makeActivity({ calendar_id: "cal_1" })], [], [cal5Day]);
+  const current = [makeActivity({ calendar_id: "cal_1" })];
+  const result = engine.compareBaselineToCurrent(snapshot, [], current, [], [cal6Day]);
+  assert.strictEqual(result.activities.matched[0].calendar_changed, true);
+  assert.strictEqual(result.calendar_changes.modified_count, 1);
+  assert.deepStrictEqual(result.calendar_changes.modified_names, ["5-Day"]);
+  assert.strictEqual(result.summary.calendar_changed_count, 1);
+});
+
+check("reassigning an activity to a different calendar_id flags calendar_changed even if neither calendar's own definition changed", () => {
+  const calA = { id: "cal_a", name: "A", working_days: [true, true, true, true, true, false, false], holidays: [] };
+  const calB = { id: "cal_b", name: "B", working_days: [true, true, true, true, true, false, false], holidays: [] };
+  const snapshot = makeSnapshot([makeActivity({ calendar_id: "cal_a" })], [], [calA, calB]);
+  const current = [makeActivity({ calendar_id: "cal_b" })];
+  const result = engine.compareBaselineToCurrent(snapshot, [], current, [], [calA, calB]);
+  assert.strictEqual(result.activities.matched[0].calendar_changed, true);
+  assert.strictEqual(result.calendar_changes.modified_count, 0, "neither calendar's own definition changed");
+});
+
+check("no calendar change reports calendar_changed: false and an empty calendar_changes summary", () => {
+  const cal = { id: "cal_1", name: "5-Day", working_days: [true, true, true, true, true, false, false], holidays: [] };
+  const snapshot = makeSnapshot([makeActivity({ calendar_id: "cal_1" })], [], [cal]);
+  const current = [makeActivity({ calendar_id: "cal_1" })];
+  const result = engine.compareBaselineToCurrent(snapshot, [], current, [], [cal]);
+  assert.strictEqual(result.activities.matched[0].calendar_changed, false);
+  assert.strictEqual(result.calendar_changes.modified_count, 0);
+  assert.strictEqual(result.summary.calendar_changed_count, 0);
+});
+
+check("backward compatibility: comparing against a pre-Phase-4 snapshot with no calendars field at all doesn't crash and reports no calendar changes", () => {
+  const oldSnapshot = { schedule_id: "sch_1", captured_at: "x", wbs: [], activities: [makeActivity({})], relationships: [] };
+  delete oldSnapshot.calendars;
+  const current = [makeActivity({})];
+  const result = engine.compareBaselineToCurrent(oldSnapshot, [], current, []); // currentCalendars omitted entirely too
+  assert.strictEqual(result.calendar_changes.modified_count, 0);
+  assert.strictEqual(result.activities.matched[0].calendar_changed, false);
+});
+
+check("a constraint_type or constraint_date change flags constraint_changed and counts it in the summary", () => {
+  const snapshot = makeSnapshot([makeActivity({ constraint_type: "", constraint_date: "" })]);
+  const current = [makeActivity({ constraint_type: "SNET", constraint_date: "2026-03-01" })];
+  const result = engine.compareBaselineToCurrent(snapshot, [], current, []);
+  assert.strictEqual(result.activities.matched[0].constraint_changed, true);
+  assert.strictEqual(result.summary.constraint_changed_count, 1);
+});
+
+check("no constraint change (both unset) does not flag constraint_changed", () => {
+  const snapshot = makeSnapshot([makeActivity({})]);
+  const current = [makeActivity({})];
+  const result = engine.compareBaselineToCurrent(snapshot, [], current, []);
+  assert.strictEqual(result.activities.matched[0].constraint_changed, false);
+  assert.strictEqual(result.summary.constraint_changed_count, 0);
+});
+
+check("CRITICAL PATH MOVEMENT: an activity crossing from non-critical (float > 0) to critical (float 0) is reported as 'entered'; the reverse as 'left'", () => {
+  const snapshot = makeSnapshot([
+    makeActivity({ id: "act_1", name: "Was slack, now critical", total_float: 5 }),
+    makeActivity({ id: "act_2", name: "Was critical, now has slack", total_float: 0 }),
+    makeActivity({ id: "act_3", name: "Stayed critical", total_float: 0 }),
+  ]);
+  const current = [
+    makeActivity({ id: "act_1", name: "Was slack, now critical", total_float: 0 }),
+    makeActivity({ id: "act_2", name: "Was critical, now has slack", total_float: 4 }),
+    makeActivity({ id: "act_3", name: "Stayed critical", total_float: 0 }),
+  ];
+  const result = engine.compareBaselineToCurrent(snapshot, [], current, []);
+  assert.strictEqual(result.critical_path_changes.changed, true);
+  assert.strictEqual(result.critical_path_changes.entered.length, 1);
+  assert.strictEqual(result.critical_path_changes.entered[0].name, "Was slack, now critical");
+  assert.strictEqual(result.critical_path_changes.left.length, 1);
+  assert.strictEqual(result.critical_path_changes.left[0].name, "Was critical, now has slack");
+  assert.strictEqual(result.critical_path_changes.stable_count, 1, "the activity that was and remains critical counts as stable, not entered/left");
+});
+
+check("CRITICAL PATH MOVEMENT: no crossings reports changed: false, with every still-critical activity counted as stable", () => {
+  const snapshot = makeSnapshot([
+    makeActivity({ id: "act_1", total_float: 0 }),
+    makeActivity({ id: "act_2", total_float: 3 }),
+  ]);
+  const current = [
+    makeActivity({ id: "act_1", total_float: 0 }),
+    makeActivity({ id: "act_2", total_float: 2 }),
+  ];
+  const result = engine.compareBaselineToCurrent(snapshot, [], current, []);
+  assert.strictEqual(result.critical_path_changes.changed, false);
+  assert.strictEqual(result.critical_path_changes.entered.length, 0);
+  assert.strictEqual(result.critical_path_changes.left.length, 0);
+  assert.strictEqual(result.critical_path_changes.stable_count, 1);
+});
+
+check("CRITICAL PATH MOVEMENT: unknown total_float on either side is excluded from entered/left/stable, not guessed", () => {
+  const snapshot = makeSnapshot([makeActivity({ id: "act_1", total_float: null })]);
+  const current = [makeActivity({ id: "act_1", total_float: 0 })];
+  const result = engine.compareBaselineToCurrent(snapshot, [], current, []);
+  assert.strictEqual(result.critical_path_changes.entered.length, 0);
+  assert.strictEqual(result.critical_path_changes.left.length, 0);
+  assert.strictEqual(result.critical_path_changes.stable_count, 0);
 });
 
 console.log("\n" + passed + " passed, " + failed + " failed");

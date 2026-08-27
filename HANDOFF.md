@@ -5128,5 +5128,45 @@ a gate/phase — don't ask first"), this gate was merged into `main` directly af
 passed, `main` was pushed, and the working branch was restarted from the new `main` before Phase 4
 began. See the repo/branch state line below for the exact result of that.
 
-**Repo/branch state as of this write-up**: see the line below for the current exact state — updated
-after the Phase 5 merge and before Phase 4 work began.
+**PHASE 4 (Schedule Versioning & Comparison) — done, same session, directly continuing Aditya's
+"Complete phase 5. And then come back to phase 4."**
+
+Inspected before writing anything, per the master prompt's own Section 0/100 discipline. Found Phase
+4 was already **mostly done**: a pre-existing feature, **Gate 22 ("Baseline & Schedule Revision
+Control")** — built well before this Architecture Upgrade ever started — already provides multiple
+named baselines per schedule (never overwritten, one markable "official") plus a real comparison
+engine (`scheduleBaselineEngine.js`) covering added/removed/matched activities, date/duration
+variance, per-activity criticality flips, relationship (logic) changes, and project finish variance.
+That's already the substance of Sections 51/52, just under a different name — worth knowing so a
+future session doesn't assume Phase 4 means starting from zero.
+
+**Genuine gaps found and closed** (Aditya confirmed this exact scope via AskUserQuestion before
+implementing): calendar changes, constraint changes, and critical path movement as a holistic
+metric — none of which the existing comparison engine tracked.
+- `buildSnapshot()` now captures each activity's `calendar_id`/`constraint_type`/`constraint_date`,
+  plus a new `calendars` array (trimmed to `id`/`name`/`working_days`/`holidays`).
+- `compareBaselineToCurrent()` gained three new, additive, backward-compatible signals: calendar
+  changes (added/removed/modified, matched by calendar id, modification detected by working-days/
+  holidays shape not by name), constraint changes (per-activity `constraint_type`/`constraint_date`
+  diff), and critical path movement (which activities entered/left the critical path, distinct from
+  the pre-existing per-activity `criticality_changed` flag — this is "did the path itself shift,"
+  not "did one activity flip"). A pre-Phase-4 snapshot with no `calendars` field, or a caller that
+  omits the new `currentCalendars` argument, simply reports no calendar changes rather than
+  crashing — verified with a dedicated backward-compatibility test.
+- `schedule.js`'s "Baseline vs Current" panel surfaces all three: a summary line naming modified
+  calendars, per-row badges, and a new "Critical Path Movement" section styled like the existing
+  "Float Erosion" section.
+- Tests: 10 new checks in `test_schedule_baseline_engine.js`, 2 new e2e checks in
+  `test_schedule_baseline_e2e.js`, plus a real-Chromium Playwright smoke test confirming all three
+  signals render correctly in the live app with zero page errors.
+- Full suite: **102 files, 2422 checks, 0 failures**.
+
+**Deliberately not done**: did not rewrite or replace Gate 22's existing baseline system, which
+already worked — only the three specific, real gaps were closed, per the master prompt's own "don't
+redo a completed phase, don't rewrite what already works" rule.
+
+Per the standing CLAUDE.md instruction ("always merge the working branch into main after completing
+a gate/phase — don't ask first"), this gate too will be merged into `main` after the full suite
+passes, `main` pushed, and the working branch restarted from the new `main`.
+
+**Repo/branch state as of this write-up**: see the line below for the current exact state.

@@ -47,7 +47,7 @@
    * the caller (schedule.js already does this filtering for every other schedule
    * operation, so this stays consistent with that convention rather than re-filtering
    * against a `data` object this module has no business knowing the shape of). */
-  function buildSnapshot(schedule, wbsItems, activities, relationships) {
+  function buildSnapshot(schedule, wbsItems, activities, relationships, calendars) {
     return {
       schedule_id: schedule.id,
       schedule_name: schedule.name,
@@ -78,6 +78,13 @@
           late_start: a.late_start,
           late_finish: a.late_finish,
           total_float: a.total_float,
+          // Phase 4 (Schedule Versioning & Comparison), master upgrade prompt Section 52
+          // ("changed relationships... changed calendars"): calendar_id/constraint_*
+          // weren't captured before this — a baseline couldn't tell you a re-assigned
+          // calendar or a newly-added constraint even happened.
+          calendar_id: a.calendar_id,
+          constraint_type: a.constraint_type,
+          constraint_date: a.constraint_date,
         };
       }),
       relationships: relationships.map(function (r) {
@@ -86,6 +93,17 @@
           successor_id: r.successor_id,
           type: r.type,
           lag: r.lag,
+        };
+      }),
+      // Phase 4: trimmed to the fields that actually define a calendar's working-time
+      // shape — enough to detect "this calendar's definition changed" without carrying
+      // created_at/updated_at/project_id, which have no comparison value here.
+      calendars: (calendars || []).map(function (c) {
+        return {
+          id: c.id,
+          name: c.name,
+          working_days: c.working_days,
+          holidays: c.holidays,
         };
       }),
     };
@@ -137,11 +155,56 @@
     return finishes.reduce(function (max, f) { return f > max ? f : max; });
   }
 
+  /** A calendar's comparison-relevant "shape" as one string \u2014 two calendars with the
+   * same id are considered unchanged only if this matches, so a rename alone doesn't
+   * count as a working-time change (name is reported separately) but a working-day or
+   * holiday-list edit does. */
+  function calendarShapeKey(cal) {
+    return JSON.stringify({ working_days: cal.working_days, holidays: cal.holidays });
+  }
+
+  /** Calendars, matched by id (calendars aren't re-imported with fresh ids the way
+   * activities are \u2014 Section 52's "changed calendars"). Returns counts plus the names of
+   * any modified calendars, and a lookup a caller can use to tell whether one specific
+   * calendar id changed. */
+  function compareCalendars(baselineCalendars, currentCalendars) {
+    var baselineById = {};
+    (baselineCalendars || []).forEach(function (c) { baselineById[c.id] = c; });
+    var currentById = {};
+    (currentCalendars || []).forEach(function (c) { currentById[c.id] = c; });
+
+    var added = [];
+    var removed = [];
+    var modifiedIds = {};
+    var modifiedNames = [];
+
+    Object.keys(currentById).forEach(function (id) {
+      if (!baselineById[id]) added.push({ id: id, name: currentById[id].name });
+    });
+    Object.keys(baselineById).forEach(function (id) {
+      var b = baselineById[id];
+      var c = currentById[id];
+      if (!c) {
+        removed.push({ id: id, name: b.name });
+        return;
+      }
+      if (calendarShapeKey(b) !== calendarShapeKey(c)) {
+        modifiedIds[id] = true;
+        modifiedNames.push(c.name);
+      }
+    });
+
+    return { added: added, removed: removed, modifiedIds: modifiedIds, modifiedNames: modifiedNames };
+  }
+
   /** Compare a stored baseline snapshot against a current WBS/Activity/Relationship set.
    * `currentActivities`/`currentRelationships`/`currentWbsItems` need not belong to the
    * same schedule_id the snapshot was captured from \u2014 comparing a baseline against a
-   * later re-imported revision is the common case, not the exception (see header). */
-  function compareBaselineToCurrent(snapshot, currentWbsItems, currentActivities, currentRelationships) {
+   * later re-imported revision is the common case, not the exception (see header).
+   * `currentCalendars` is optional (defaults to none) so existing callers/snapshots
+   * captured before Phase 4 keep working \u2014 calendar/constraint comparison then simply
+   * reports nothing changed rather than erroring on missing data. */
+  function compareBaselineToCurrent(snapshot, currentWbsItems, currentActivities, currentRelationships, currentCalendars) {
     var baselineByKey = {};
     snapshot.activities.forEach(function (a) {
       baselineByKey[matchKey(a)] = a;
@@ -151,8 +214,13 @@
       currentByKey[matchKey(a)] = a;
     });
 
+    var calendarDiff = compareCalendars(snapshot.calendars, currentCalendars);
+
     var matched = [];
     var removed = [];
+    var criticalPathEntered = [];
+    var criticalPathLeft = [];
+    var criticalPathStableCount = 0;
     Object.keys(baselineByKey).forEach(function (key) {
       var b = baselineByKey[key];
       var c = currentByKey[key];
@@ -173,6 +241,21 @@
       var baselineCritical = isCriticalFromFloat(b.total_float);
       var currentCritical = isCriticalFromFloat(c.total_float);
 
+      if (baselineCritical !== null && currentCritical !== null) {
+        if (!baselineCritical && currentCritical) criticalPathEntered.push({ id: c.id, name: c.name });
+        else if (baselineCritical && !currentCritical) criticalPathLeft.push({ id: c.id, name: c.name });
+        else if (baselineCritical && currentCritical) criticalPathStableCount++;
+      }
+
+      // Section 52: "changed relationships... changed calendars" \u2014 a reassignment to a
+      // different calendar counts as changed even if that calendar's own definition
+      // didn't, and vice versa: the same calendar_id counts as changed if that
+      // calendar's working days/holidays were edited since the baseline was captured.
+      var calendarChanged =
+        (b.calendar_id || null) !== (c.calendar_id || null) ||
+        (!!c.calendar_id && !!calendarDiff.modifiedIds[c.calendar_id]);
+      var constraintChanged = (b.constraint_type || "") !== (c.constraint_type || "") || (b.constraint_date || "") !== (c.constraint_date || "");
+
       matched.push({
         id: c.id,
         external_id: c.external_id,
@@ -185,6 +268,8 @@
         finish_variance_days: finishVarianceDays,
         duration_variance_days: durationVarianceDays,
         criticality_changed: baselineCritical !== null && currentCritical !== null && baselineCritical !== currentCritical,
+        calendar_changed: calendarChanged,
+        constraint_changed: constraintChanged,
       });
     });
     var added = [];
@@ -238,11 +323,29 @@
       return m.finish_variance_days > max ? m.finish_variance_days : max;
     }, 0);
 
+    var calendarChangedCount = matched.filter(function (m) { return m.calendar_changed; }).length;
+    var constraintChangedCount = matched.filter(function (m) { return m.constraint_changed; }).length;
+
     return {
       schedule_id: snapshot.schedule_id,
       baseline_captured_at: snapshot.captured_at,
       activities: { matched: matched, added: added, removed: removed },
       relationship_changes: { added: logicAdded, removed: logicRemoved },
+      calendar_changes: {
+        added: calendarDiff.added,
+        removed: calendarDiff.removed,
+        modified_count: calendarDiff.modifiedNames.length,
+        modified_names: calendarDiff.modifiedNames,
+      },
+      // Section 52's "critical path movement" as its own holistic metric, distinct from
+      // the per-activity criticality_changed flag already on each matched entry above —
+      // this is "did THE critical path shift," not just "did this one activity flip."
+      critical_path_changes: {
+        entered: criticalPathEntered,
+        left: criticalPathLeft,
+        stable_count: criticalPathStableCount,
+        changed: criticalPathEntered.length > 0 || criticalPathLeft.length > 0,
+      },
       summary: {
         activity_count_baseline: snapshot.activities.length,
         activity_count_current: currentActivities.length,
@@ -257,6 +360,8 @@
         baseline_overall_finish: baselineOverallFinish,
         current_overall_finish: currentOverallFinish,
         project_finish_variance_days: projectFinishVarianceDays,
+        calendar_changed_count: calendarChangedCount,
+        constraint_changed_count: constraintChangedCount,
       },
     };
   }

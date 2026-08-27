@@ -173,6 +173,53 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
+  // ---- Phase 4 (Schedule Versioning & Comparison), master upgrade prompt Section 52:
+  // calendar changes, constraint changes, and critical path movement, exercised through
+  // the real UI (not just the engine's own unit tests). ----
+  let calendarId;
+  await check("assign a calendar and a constraint to the activity, then re-baseline so this becomes the new comparison point", async () => {
+    win.PCC.store.update(function (data) {
+      var cal = win.PCC.store.newCalendar({ project_id: projectId, name: "5-Day Calendar" });
+      data.calendars.push(cal);
+      calendarId = cal.id;
+      var act = data.activities.find(function (a) { return a.id === activityId; });
+      act.calendar_id = calendarId;
+      act.constraint_type = "";
+      act.constraint_date = "";
+      act.total_float = 5; // not on the critical path yet
+    });
+    var hideBtn = findButtonByText(dom, "Hide Comparison");
+    if (hideBtn) hideBtn.click();
+    var saveBtn = findButtonByText(dom, "Save Baseline");
+    saveBtn.click();
+    await flush();
+    assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
+  });
+
+  await check("editing the calendar's working days, adding a constraint, and pushing the activity onto the critical path all show up in the next comparison", async () => {
+    win.PCC.store.update(function (data) {
+      var cal = data.calendars.find(function (c) { return c.id === calendarId; });
+      cal.working_days = [true, true, true, true, true, true, false]; // now a 6-day week
+      var act = data.activities.find(function (a) { return a.id === activityId; });
+      act.constraint_type = "SNET";
+      act.constraint_date = "2026-02-01";
+      act.total_float = 0; // now critical
+    });
+    var compareBtn = findButtonByText(dom, "Compare to Current");
+    compareBtn.click();
+    await flush();
+    var outlet = win.document.getElementById("page-outlet");
+    var text = outlet.textContent;
+    assert.ok(text.indexOf("Calendar changes") !== -1, "expected a Calendar changes line, got: " + text.slice(0, 800));
+    assert.ok(text.indexOf("5-Day Calendar") !== -1, "the modified calendar's name should be named in the summary");
+    assert.ok(text.indexOf("Constraint changes: 1 activity") !== -1, "expected a Constraint changes line, got: " + text.slice(0, 800));
+    assert.ok(text.indexOf("Critical Path Movement") !== -1, "expected a Critical Path Movement section, got: " + text.slice(0, 800));
+    assert.ok(text.indexOf("entered the critical path") !== -1, "expected the activity to be listed as having entered the critical path");
+    assert.ok(text.indexOf("calendar changed") !== -1, "expected the per-activity row badge for calendar changed");
+    assert.ok(text.indexOf("constraint changed") !== -1, "expected the per-activity row badge for constraint changed");
+    assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
+  });
+
   // ---- Route smoke test across every other page, matching the README's stated
   // convention, since store.js's schema bump (v17->v18) is a change every page's
   // window.PCC.store.get() call runs through. ----
