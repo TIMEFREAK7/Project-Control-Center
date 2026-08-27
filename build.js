@@ -43,6 +43,7 @@ const JS_ORDER = [
   "js/fileViewer.js",
   "js/nativePrint.js",
   "js/archive.js",
+  "js/sqliteBackupService.js",
   "js/pages/dashboard.js",
   "js/pages/actionCentre.js",
   "js/pages/myWork.js",

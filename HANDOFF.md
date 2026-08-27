@@ -5085,7 +5085,48 @@ migration) is still not met, and was never claimed to be. This fix only makes wh
 honest about its own scope; it doesn't move Phase 5 any closer to a live cutover, which remains
 entirely un-authorized.
 
-**Repo/branch state as of this write-up**: working branch `claude/pcc-architecture-upgrade-j5a1eo`,
-commits for the SQLite export button feature and this disclosure correction about to be pushed to
-that branch (not `main` — no merge requested this round). `main` last received the full Phase 0-3 +
-packaging round (signed APK, Windows EXE, distribution zip) delivered earlier in this engagement.
+**PHASE 5 COMPLETE — "Full Backup (SQLite)" — done, same session, directly in response to Aditya's
+"Complete phase 5. And then come back to phase 4."** Closes every remaining item on the master
+prompt's own Phase 5 completion gate (Section 83) that doesn't require a live continuous SQLite
+cutover — which stays exactly what it's been all engagement: Aditya's own explicit, separate future
+decision, never inferred from "backup/restore now works."
+
+- **What changed**: "Export as SQLite (Experimental)" (metadata-only, one-way) is now "Full Backup
+  (SQLite)" — genuinely two-way. New `src/js/sqliteBackupService.js` builds a `.zip` with
+  `database/pcc.sqlite` (structured records, via the unchanged `sqliteMigrationEngine` — still never
+  carries binary content, hybrid-storage principle intact), `files/<id>` (every document/daily-log-
+  photo's real bytes from `blobStore.js`), and `manifest.json` (schema version, per-file mime,
+  counts). New `store.js` function `importFromSqliteBackup()` restores through the exact same
+  `migrate()`-then-write-blobs path `importFromFile()` already used — refactored the shared tail
+  into `writeInlineBlobsAndCommit()` rather than writing a second commit path. Settings → Data now
+  has "Create Full Backup (SQLite)" / "Restore from Full Backup," with the same confirm-before-
+  overwrite pattern the JSON import already established.
+- **Real, worth-remembering environment discovery**: JSZip's async pipeline — `generateAsync()` AND
+  `entry.async()` — never resolves under jsdom, any output type, confirmed by testing the vendored
+  build directly in isolation (not this app's bug). This retroactively means `archive.js`'s existing
+  "Export Document Archive" zip feature has *also* never been genuinely e2e-tested for real zip
+  generation in this suite — a pre-existing gap, noted here rather than silently left for the next
+  session to rediscover, but not fixed in this pass (out of scope for "complete Phase 5"). Handled
+  for the new feature by testing `sqliteBackupService.js`'s actual logic with a real Node `jszip`
+  package (**tests-only** devDependency — the app itself still only vendors its own browser copy,
+  zero new runtime dependency) in `tests/test_sqlite_backup_service.js` (7 checks, no jsdom involved
+  at all), trimming the jsdom e2e test to what it can actually verify (button wiring, confirm-dialog
+  gating), and proving the real click-through end-to-end in a real-Chromium Playwright smoke test
+  (scratchpad) — real browser download, real `sqlite3` CLI check on the embedded database, a real
+  Reset, then a real file-input restore, with both blobs' exact byte content verified afterward.
+- Full suite: **102 files, 2410 checks, 0 failures**.
+
+**Phase 5 completion gate (Section 83), honestly checked off**: schema validated ✓ · migrations
+work ✓ (restore runs the real chain) · existing data preserved ✓ (byte-for-byte, real blobs) · file
+references intact ✓ · backup works ✓ · restore works ✓ (new) · performance acceptable ✓ (500 docs,
+~500ms round trip) · regression tests pass ✓ (2410/2410). **Still explicitly not done, by design**:
+no live continuous SQLite read/write path — `store.js`/localStorage remains PCC's real data layer,
+exactly as Aditya's repeated caution asked for throughout this engagement.
+
+Per the standing CLAUDE.md instruction ("always merge the working branch into main after completing
+a gate/phase — don't ask first"), this gate was merged into `main` directly after the full suite
+passed, `main` was pushed, and the working branch was restarted from the new `main` before Phase 4
+began. See the repo/branch state line below for the exact result of that.
+
+**Repo/branch state as of this write-up**: see the line below for the current exact state — updated
+after the Phase 5 merge and before Phase 4 work began.

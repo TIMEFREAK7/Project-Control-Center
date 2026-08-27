@@ -3406,11 +3406,39 @@
     }
   }
 
-  /** Callback-based, same public shape as before. Internally: an imported file still
-   * carries blobs inline (exportToFile() always embeds them for portability), so each
-   * one gets written to IndexedDB and nulled out of the record before it's committed to
-   * `data` \u2014 otherwise import would re-inflate localStorage right back to the size
+  /** Shared commit tail for both importFromFile() and importFromSqliteBackup(): `migrated`
+   * still carries any resolved blobs inline (as JSON import always has, and as the SQLite
+   * Full Backup restore path re-inlines from its files/ folder before calling this), so
+   * each one gets written to IndexedDB and nulled out of the record before it's committed
+   * to `data` \u2014 otherwise import would re-inflate localStorage right back to the size
    * problem this whole migration exists to fix. */
+  function writeInlineBlobsAndCommit(migrated, callback) {
+    var refs = collectBlobRefs(migrated).filter(function (r) {
+      return !!r.get();
+    });
+    var writes = refs.map(function (r) {
+      var val = r.get();
+      return window.PCC.blobStore.putBlob(r.id, val).then(function () {
+        r.set(null);
+      });
+    });
+
+    Promise.all(writes)
+      .then(function () {
+        data = migrated;
+        persistToLocalStorage();
+        notifyListeners();
+        callback(null);
+      })
+      .catch(function (e) {
+        callback(new Error("Import partially failed while saving attached files: " + e.message));
+      });
+  }
+
+  /** Callback-based, same public shape as before. Internally: an imported file still
+   * carries blobs inline (exportToFile() always embeds them for portability), so
+   * writeInlineBlobsAndCommit() writes each one to IndexedDB and nulls it out of the
+   * record before committing to `data`. */
   function importFromFile(file, callback) {
     var reader = new FileReader();
     reader.onload = function () {
@@ -3433,31 +3461,50 @@
         return;
       }
 
-      var refs = collectBlobRefs(migrated).filter(function (r) {
-        return !!r.get();
-      });
-      var writes = refs.map(function (r) {
-        var val = r.get();
-        return window.PCC.blobStore.putBlob(r.id, val).then(function () {
-          r.set(null);
-        });
-      });
-
-      Promise.all(writes)
-        .then(function () {
-          data = migrated;
-          persistToLocalStorage();
-          notifyListeners();
-          callback(null);
-        })
-        .catch(function (e) {
-          callback(new Error("Import partially failed while saving attached files: " + e.message));
-        });
+      writeInlineBlobsAndCommit(migrated, callback);
     };
     reader.onerror = function () {
       callback(new Error("Could not read that file."));
     };
     reader.readAsText(file);
+  }
+
+  /** Restore path for the PCC Architecture Upgrade's "Full Backup (SQLite)" feature
+   * (src/js/sqliteBackupService.js): `parsedData` is sqliteMigrationEngine.exportToJson()'s
+   * output \u2014 the full store.js shape, but with every document/daily-log-photo's
+   * `file_data` still null (buildDatabase() never puts binary content in the SQLite
+   * database itself \u2014 see that file's own header on why). `filesById` is
+   * `{id: data URI string}` for every blob the backup's own files/ folder actually
+   * contained (a blob unresolvable at backup time is simply absent here, same tolerance
+   * archive.js's own export already has for a missing file). This re-inlines each
+   * available file onto its record, then commits through the exact same
+   * migrate()-then-write-blobs path importFromFile() uses \u2014 a SQLite Full Backup restore
+   * is not a second, less-proven code path, it rejoins the existing one. */
+  function importFromSqliteBackup(parsedData, filesById, callback) {
+    if (!parsedData || typeof parsedData !== "object" || !("schema_version" in parsedData)) {
+      callback(new Error("This doesn't look like a Project Control Center SQLite backup."));
+      return;
+    }
+
+    var migrated;
+    try {
+      migrated = migrate(parsedData);
+    } catch (e) {
+      callback(e);
+      return;
+    }
+
+    var restoredFileCount = 0;
+    collectBlobRefs(migrated).forEach(function (r) {
+      if (!r.get() && filesById[r.id]) {
+        r.set(filesById[r.id]);
+        restoredFileCount++;
+      }
+    });
+
+    writeInlineBlobsAndCommit(migrated, function (err) {
+      callback(err, err ? null : { restoredFileCount: restoredFileCount });
+    });
   }
 
   function resetAll() {
@@ -3482,6 +3529,7 @@
     downloadRecoveryBackup: downloadRecoveryBackup,
     deleteRecoveryBackup: deleteRecoveryBackup,
     importFromFile: importFromFile,
+    importFromSqliteBackup: importFromSqliteBackup,
     resetAll: resetAll,
     newProject: newProject,
     PROJECT_STATUSES: PROJECT_STATUSES,

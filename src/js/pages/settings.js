@@ -246,11 +246,10 @@
       "Before switching machines, export your data — it produces one file you carry with the app folder. " +
       "\u201cExport Document Archive\u201d separately downloads a .zip with a real folder per project, containing " +
       "the actual attached files \u2014 useful for browsing your documents outside the app, or as a growing " +
-      "portfolio archive. \u201cExport as SQLite (Experimental)\u201d downloads a real, standalone .sqlite " +
-      "file \u2014 openable in any SQLite tool \u2014 as a one-time snapshot of your structured records only " +
-      "(projects, schedules, risks, document/photo details, etc.); it does NOT include the actual document " +
-      "or photo file contents \u2014 use \u201cExport Document Archive\u201d for those \u2014 and it is not a " +
-      "live-synced copy, so editing it elsewhere never updates PCC.</p>";
+      "portfolio archive. \u201cFull Backup (SQLite)\u201d downloads a complete, restorable backup \u2014 every " +
+      "record AND your document/photo files \u2014 as one .zip containing a real, standalone .sqlite " +
+      "database (openable in any SQLite tool) plus your files; restore it anytime with " +
+      "\u201cRestore from Full Backup,\u201d which replaces all current data.</p>";
 
     var btnRow = document.createElement("div");
     btnRow.style.display = "flex";
@@ -287,58 +286,99 @@
       window.PCC.archive.exportAll(d.projects, d.documents);
     };
 
-    // Architecture Upgrade Phase 5 (SQLite): a real, openable .sqlite file — a
-    // one-way snapshot for inspecting your data with any SQLite tool (DB Browser for
-    // SQLite, etc.) or as an additional portable backup format. Deliberately NOT part
-    // of the app's actual data layer — editing this file elsewhere never flows back
-    // into PCC, since there's no live cutover yet (see sqliteMigrationEngine.js's own
-    // header). "Experimental" in the label and the title tooltip on purpose — this is
-    // the isolated prototype from the Architecture Upgrade, not a supported backup
-    // format PCC's own restore path understands.
-    //
-    // Master Engineering & Architecture Upgrade prompt inspection (2026-08-27) found a
-    // real disclosure gap here: buildDatabase() only ever sees store.get() — it never
-    // reads blobStore.js's IndexedDB, so a document/photo's actual file bytes (moved out
-    // of the JSON store back in Gate 4) are NEVER in this export, only their metadata
-    // (filename, hash, dates, etc.). The original copy below didn't say so. Per the
-    // master prompt's own Section 66 ("a database-only backup is insufficient") and
-    // Section 95 ("never silently discard evidence"), the button/copy must say this
-    // plainly rather than let someone discover it only when a restore is needed.
-    var exportSqliteBtn = document.createElement("button");
-    exportSqliteBtn.className = "btn btn--ghost";
-    exportSqliteBtn.textContent = "Export as SQLite (Experimental)";
-    exportSqliteBtn.title =
-      "A one-time snapshot of structured records only — does NOT include document/photo file contents " +
-      "(use Export Document Archive for those). Editing it elsewhere does not update PCC.";
-    exportSqliteBtn.onclick = function () {
-      exportSqliteBtn.disabled = true;
-      var originalLabel = exportSqliteBtn.textContent;
-      exportSqliteBtn.textContent = "Preparing…";
+    // PCC Architecture Upgrade Phase 5 (SQLite) — completion increment, 2026-08-27.
+    // Supersedes the earlier "Export as SQLite (Experimental)" button (metadata-only,
+    // one-way — see git history / README for that write-up). This is the real, complete
+    // backup format: sqliteBackupService.js packages a real, standalone .sqlite database
+    // (structured records — via sqliteMigrationEngine, hybrid-storage-compliant, no
+    // binary content in the database itself) together with every document/photo's real
+    // file bytes and a manifest, as one restorable .zip. Restore commits through
+    // store.js's importFromSqliteBackup(), the exact same migrate()-then-write-blobs path
+    // the plain JSON import already uses.
+    var fullBackupBtn = document.createElement("button");
+    fullBackupBtn.className = "btn btn--ghost";
+    fullBackupBtn.textContent = "Create Full Backup (SQLite)";
+    fullBackupBtn.title =
+      "A complete, restorable backup — every record and your document/photo files — as one .zip " +
+      "containing a real, standalone .sqlite database (openable in any SQLite tool) plus your files.";
+    fullBackupBtn.onclick = function () {
+      fullBackupBtn.disabled = true;
+      var originalLabel = fullBackupBtn.textContent;
+      fullBackupBtn.textContent = "Preparing…";
       window.PCC.sqliteMigrationEngine
         .initSqlJsBrowser()
         .then(function (SQL) {
-          var db = window.PCC.sqliteMigrationEngine.buildDatabase(SQL, store.get());
-          var bytes = db.export();
-          db.close();
-          var blob = new Blob([bytes], { type: "application/x-sqlite3" });
-          var filename = "PCC-Export-" + new Date().toISOString().slice(0, 10) + ".sqlite";
-          return window.PCC.nativeFile.save(blob, filename);
+          return window.PCC.sqliteBackupService.createFullBackup(SQL, store.get());
         })
-        .then(function () {
-          window.PCC.notify(
-            "Exported as a SQLite file — structured records only, a one-time snapshot for external tools. " +
-              "Document/photo file contents are not included (use Export Document Archive for those). " +
-              "Editing it elsewhere will not update PCC.",
-            "success"
-          );
+        .then(function (result) {
+          var filename = "PCC-Full-Backup-" + new Date().toISOString().slice(0, 10) + ".zip";
+          return window.PCC.nativeFile.save(result.blob, filename).then(function () {
+            var msg = "Full backup downloaded (" + result.fileCount + " file" + (result.fileCount === 1 ? "" : "s") + " included).";
+            if (result.skipped > 0) {
+              msg += " " + result.skipped + " file" + (result.skipped === 1 ? "" : "s") + " had no stored content and " + (result.skipped === 1 ? "was" : "were") + " skipped.";
+            }
+            window.PCC.notify(msg, "success");
+            if (window.PCC.layout.refreshBackupNudge) window.PCC.layout.refreshBackupNudge();
+          });
         })
         .catch(function (e) {
-          window.PCC.notify("SQLite export failed: " + e.message, "error");
+          window.PCC.notify("Full backup failed: " + e.message, "error");
         })
         .then(function () {
-          exportSqliteBtn.disabled = false;
-          exportSqliteBtn.textContent = originalLabel;
+          fullBackupBtn.disabled = false;
+          fullBackupBtn.textContent = originalLabel;
         });
+    };
+
+    var restoreBackupInput = document.createElement("input");
+    restoreBackupInput.type = "file";
+    restoreBackupInput.accept = ".zip";
+    restoreBackupInput.style.display = "none";
+    restoreBackupInput.onchange = function (e) {
+      var file = e.target.files && e.target.files[0];
+      if (!file) return;
+      var confirmed = window.confirm(
+        "Restoring replaces ALL current data in this browser with the contents of “" +
+          file.name +
+          "”. This can't be undone. Make sure you've backed up your current data first if you want to keep it. Continue?"
+      );
+      if (!confirmed) {
+        restoreBackupInput.value = "";
+        return;
+      }
+      restoreBackupBtn.disabled = true;
+      var originalLabel = restoreBackupBtn.textContent;
+      restoreBackupBtn.textContent = "Restoring…";
+      window.PCC.sqliteMigrationEngine
+        .initSqlJsBrowser()
+        .then(function (SQL) {
+          return window.PCC.sqliteBackupService.restoreFullBackup(SQL, file);
+        })
+        .then(function (info) {
+          window.PCC.notify(
+            "Full backup restored (" + info.restoredFileCount + " file" + (info.restoredFileCount === 1 ? "" : "s") + ").",
+            "success"
+          );
+          window.PCC.layout.refreshTitleBlock();
+          if (window.PCC.layout.refreshBackupNudge) window.PCC.layout.refreshBackupNudge();
+          window.PCC.router.render();
+        })
+        .catch(function (e) {
+          window.PCC.notify("Restore failed: " + e.message, "error");
+        })
+        .then(function () {
+          restoreBackupBtn.disabled = false;
+          restoreBackupBtn.textContent = originalLabel;
+          restoreBackupInput.value = "";
+        });
+    };
+
+    var restoreBackupBtn = document.createElement("button");
+    restoreBackupBtn.className = "btn btn--ghost";
+    restoreBackupBtn.textContent = "Restore from Full Backup";
+    restoreBackupBtn.title = "Restore a Full Backup .zip created by this app, replacing all current data.";
+    restoreBackupBtn.onclick = function () {
+      restoreBackupInput.click();
     };
 
     var resetBtn = document.createElement("button");
@@ -358,7 +398,9 @@
 
     btnRow.appendChild(exportBtn);
     btnRow.appendChild(exportArchiveBtn);
-    btnRow.appendChild(exportSqliteBtn);
+    btnRow.appendChild(fullBackupBtn);
+    btnRow.appendChild(restoreBackupBtn);
+    btnRow.appendChild(restoreBackupInput);
     btnRow.appendChild(resetBtn);
     dataPanel.appendChild(btnRow);
 
