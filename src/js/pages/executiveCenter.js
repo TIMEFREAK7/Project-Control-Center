@@ -959,6 +959,36 @@
         unaddressedDelayDays: ctx.totalUnaddressedDelayDays,
       };
     },
+    /** Planning & Scheduling-Centric Delay Management, Gate G (Dashboard & Lookahead
+     * integration). Same "export one composed function" reasoning as getDiagnostics()/
+     * getHealthSummary()/getSchedulePerformanceSummary() above, but deliberately NOT
+     * routed through buildProjectContext() — that context's own `totalUnaddressedDelayDays`
+     * (Gate 26, PCC Evolution Roadmap) is a different, pre-existing "delay days minus
+     * recovery days" gap metric, kept exactly as-is. This is the new Gate A-F delay MODEL
+     * (status lifecycle + delayImpactEngine's own float-derived criticality) instead —
+     * "active" here means status isn't recovered/closed yet, i.e. still being tracked,
+     * a broader set than Gate F's Action Centre "just identified" (open-only) filter,
+     * which exists to avoid double-surfacing a delay already covered by its own Recovery
+     * Action there. Only calls delayImpactEngine's cheap computeDelayImpact() (a read of
+     * already-cached activity fields) — NEVER computeProjectFinishImpact() in a loop like
+     * this, per that function's own explicit "single delay's own detail view only, not a
+     * register/list" warning; a portfolio-wide re-run of the CPM engine per delay would be
+     * exactly the loop it warns against. */
+    getDelayImpactSummary: function (projectId) {
+      var data = window.PCC.store.get();
+      var projectDelayRecords = data.delay_records.filter(function (r) { return r.project_id === projectId; });
+      var activeDelays = projectDelayRecords.filter(function (r) { return r.status !== "recovered" && r.status !== "closed"; });
+      var criticalCount = 0;
+      activeDelays.forEach(function (r) {
+        var links = data.delay_activity_links.filter(function (l) { return l.delay_id === r.id; });
+        var impact = window.PCC.delayImpactEngine.computeDelayImpact(r, links, data);
+        if (impact.overall_criticality === "critical") criticalCount++;
+      });
+      return {
+        openDelayCount: activeDelays.length,
+        criticalDelayCount: criticalCount,
+      };
+    },
   };
 
   function renderPage(outlet) {

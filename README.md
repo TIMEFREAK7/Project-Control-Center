@@ -4735,6 +4735,55 @@ views). Also out of scope for this gate specifically: an "Upcoming" bucket conce
 are already covered) and any change to how/when a Delay's own status actually transitions out of "open"
 (that stays a planner's manual decision, unchanged from Gate A).
 
+## Planning & Scheduling-Centric Delay Management — Gate G (PCC Dashboard & Lookahead), 2026-08-27
+
+**What Gate G added**: Dashboard and Project Lookahead already had their own established portfolio-wide
+rollups (Portfolio Exceptions' "Delayed Projects" chip, Gate 26's delay-days-minus-recovery-days gap
+metric) — but neither one reflected the new Gate A-F delay model (status lifecycle + delayImpactEngine's
+own float-derived criticality) at all. This gate wires that model into both, via one new composed export
+rather than a new calculation:
+
+- **`executiveCenter.js`**: new `getDelayImpactSummary(projectId)` export, following the same "compose
+  one function, never duplicate `buildProjectContext()`" convention `getDiagnostics()`/`getHealthSummary()`/
+  `getSchedulePerformanceSummary()` already established. Counts Delay Records still being tracked (status
+  not `recovered`/`closed` — a broader "still active" set than Gate F's Action Centre `open`-only filter,
+  which exists purely to avoid double-listing a delay already covered by its own Recovery Action there) and
+  how many of those are currently critical, via `delayImpactEngine.computeDelayImpact()`. Deliberately never
+  calls `computeProjectFinishImpact()` in this loop — that function's own header comment warns it's "the
+  heaviest call in this file... only for a single Delay's own detail view, not a register/list"; looping a
+  full CPM re-run across every delay in the portfolio on every Dashboard render would be exactly the misuse
+  it warns against.
+- **`dashboard.js`**: Portfolio Exceptions gained two clickable chips — "Open Delays" and "Critical Delays"
+  — summed across active projects via the export above, routing to the existing Delay & Recovery Dashboard
+  (same "route to wherever the count actually lives" convention every other chip on this panel already
+  follows). Kept explicitly separate from the pre-existing "Delayed Projects" chip, which stays exactly as
+  it was (a different, complementary question: "how many projects have unaddressed delay-vs-recovery gap
+  days" vs. "how many delays are still open, and how many are critical").
+- **`projectLookahead.js`**: every upcoming Activity/Milestone row now shows how many still-tracked Delay
+  Records are linked to it (via `delay_activity_links`), appended to the row's own meta line as a plain
+  count. Deliberately does NOT touch the row's existing badge, which stays driven only by the Schedule's own
+  persisted float/criticality (spec point 2 — never a second calculation) — a delay fully absorbed by float
+  shows its own open-delay count without ever reading as a critical row, and a delay on a genuinely critical
+  activity shows the same count without needing its own separate criticality logic.
+- No schema changes, no engine changes — `delayImpactEngine.js` itself wasn't touched.
+
+**Verified**: full jsdom suite (90 files, 0 failures). New `test_delay_gate_g_dashboard_lookahead_e2e.js`
+(15 checks plus a 20-route smoke test) seeds a real critical A→B→Milestone chain plus a second activity
+with genuine float, calculates the schedule, then logs delays against both plus a third, closed delay —
+confirming `getDelayImpactSummary()` excludes the closed delay and correctly counts only the
+critical-activity delay as critical, the Dashboard chips show the same numbers and route to the Delay &
+Recovery Dashboard on click, and Project Lookahead shows each activity's own delay count while the
+critical/non-critical badges stay exactly as the Schedule's own float already determined — the absorbed
+delay never reads as a critical row.
+
+**Not done — Gate H remains deliberately unstarted**: portfolio-wide Delay Analytics and a dedicated Delay
+Register (the spec's own reporting/export views). Also out of scope for this gate specifically: folding
+delay/criticality signal into Management Attention's own rule-based diagnostics or the Health/Schedule
+Performance scores (both stay exactly as `projectHealthEngine.js` already computes them — this gate adds a
+new, separate rollup rather than reshaping an existing scoring engine) and any Executive Center per-project
+delay panel (that page's own per-project Diagnostics/Recovery Gap sections already exist; a portfolio-wide
+summary was this gate's actual gap, not a third per-project view).
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →

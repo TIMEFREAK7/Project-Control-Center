@@ -27,6 +27,14 @@
  *
  * Deliberately excluded, same reasoning as Gate 29: Change Orders and Risks/Issues have no
  * due-date field in the schema at all, so they can never sit on a date-driven timeline.
+ *
+ * Planning & Scheduling-Centric Delay Management, Gate G: every upcoming Activity/
+ * Milestone item now also shows how many Delay Records still being tracked (status not
+ * recovered/closed) are linked to it, via delay_activity_links — a plain count appended
+ * to the item's own meta line (see activeDelayCountsByActivity()). Deliberately doesn't
+ * touch the item's existing badgeClass, which stays driven only by the Schedule's own
+ * persisted float/criticality — an open delay doesn't change what the CPM engine itself
+ * already says about an activity (spec point 2, never a second calculation).
  */
 (function () {
   "use strict";
@@ -82,10 +90,32 @@
     })[0];
   }
 
+  // Gate G (Planning & Scheduling-Centric Delay Management: Dashboard & Lookahead
+  // integration): activityId -> count of Delay Records still being tracked (status not
+  // recovered/closed — same "active" definition dashboard.js's getDelayImpactSummary()
+  // uses) linked via delay_activity_links. Purely a count for the item's own meta line —
+  // never touches the item's existing badgeClass, which stays driven only by the
+  // Schedule's own persisted float/criticality (single source of truth, spec point 2);
+  // an open delay doesn't change what the Schedule itself already says about an activity.
+  function activeDelayCountsByActivity(data) {
+    var delayRecordsById = {};
+    data.delay_records.forEach(function (r) {
+      if (r.status === "recovered" || r.status === "closed") return;
+      delayRecordsById[r.id] = r;
+    });
+    var counts = {};
+    data.delay_activity_links.forEach(function (link) {
+      if (!delayRecordsById[link.delay_id]) return;
+      counts[link.activity_id] = (counts[link.activity_id] || 0) + 1;
+    });
+    return counts;
+  }
+
   function collectItems(data, activeProjectIds, windowDays) {
     var today = todayIso();
     var windowEnd = addDaysIso(today, windowDays);
     var items = [];
+    var delayCounts = activeDelayCountsByActivity(data);
 
     var schedulesByProject = {};
     data.schedules.forEach(function (s) {
@@ -105,6 +135,7 @@
         var floatVal = a.total_float;
         var critical = floatVal != null && floatVal <= 0;
         var nearCritical = floatVal != null && floatVal > 0 && floatVal <= thresholdDays;
+        var openDelayCount = delayCounts[a.id] || 0;
         items.push({
           kind: a.activity_type === "milestone" ? "Milestone" : "Activity",
           title: a.name || "(unnamed activity)",
@@ -112,6 +143,7 @@
           owner: a.responsible_person || a.contractor || "—",
           date: date,
           badgeClass: critical ? "critical" : nearCritical ? "at_risk" : "on_track",
+          openDelayCount: openDelayCount,
           view: (function (pId, schedId, actId) {
             return function () {
               window.PCC.schedule.viewActivity(pId, schedId, actId);
@@ -263,7 +295,8 @@
     meta.textContent =
       item.date + " · " +
       (project ? project.name || "(unnamed project)" : "(deleted project)") +
-      " · " + item.owner;
+      " · " + item.owner +
+      (item.openDelayCount ? " · " + item.openDelayCount + " open delay" + (item.openDelayCount === 1 ? "" : "s") : "");
     body.appendChild(meta);
     row.appendChild(body);
 

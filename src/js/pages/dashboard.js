@@ -182,6 +182,23 @@
       });
     }
 
+    // Gate G (Planning & Scheduling-Centric Delay Management: Dashboard & Lookahead
+    // integration) — portfolio-wide rollup of the new Delay Management model (status
+    // lifecycle + delayImpactEngine's float-derived criticality), via the same "export
+    // one composed function" convention delayedProjects above already uses. Deliberately
+    // separate from delayedProjects: that's the pre-existing delay-days-minus-recovery-
+    // days gap metric (Gate 26), this is "how many delays are still being tracked, and
+    // how many of those are currently critical" — a different, complementary question.
+    var openDelays = 0;
+    var criticalDelays = 0;
+    if (window.PCC.executiveCenter && window.PCC.executiveCenter.getDelayImpactSummary) {
+      activeProjects.forEach(function (p) {
+        var summary = window.PCC.executiveCenter.getDelayImpactSummary(p.id);
+        openDelays += summary.openDelayCount;
+        criticalDelays += summary.criticalDelayCount;
+      });
+    }
+
     return {
       openRisks: openRisks,
       openIssues: openIssues,
@@ -189,6 +206,8 @@
       pendingDecisions: pendingDecisions,
       upcomingMilestones: upcomingMilestones,
       delayedProjects: delayedProjects,
+      openDelays: openDelays,
+      criticalDelays: criticalDelays,
     };
   }
 
@@ -212,6 +231,8 @@
       { label: "Pending Decisions", value: exceptions.pendingDecisions, route: "decisionRegister" },
       { label: "Milestones Due (7d)", value: exceptions.upcomingMilestones, route: "projectLookahead" },
       { label: "Delayed Projects", value: exceptions.delayedProjects, route: "delayRecoveryDashboard" },
+      { label: "Open Delays", value: exceptions.openDelays, route: "delayRecoveryDashboard" },
+      { label: "Critical Delays", value: exceptions.criticalDelays, route: "delayRecoveryDashboard" },
     ].forEach(function (stat) {
       var chip = document.createElement("button");
       chip.type = "button";

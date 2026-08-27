@@ -11404,6 +11404,23 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       });
     }
 
+    // Gate G (Planning & Scheduling-Centric Delay Management: Dashboard & Lookahead
+    // integration) — portfolio-wide rollup of the new Delay Management model (status
+    // lifecycle + delayImpactEngine's float-derived criticality), via the same "export
+    // one composed function" convention delayedProjects above already uses. Deliberately
+    // separate from delayedProjects: that's the pre-existing delay-days-minus-recovery-
+    // days gap metric (Gate 26), this is "how many delays are still being tracked, and
+    // how many of those are currently critical" — a different, complementary question.
+    var openDelays = 0;
+    var criticalDelays = 0;
+    if (window.PCC.executiveCenter && window.PCC.executiveCenter.getDelayImpactSummary) {
+      activeProjects.forEach(function (p) {
+        var summary = window.PCC.executiveCenter.getDelayImpactSummary(p.id);
+        openDelays += summary.openDelayCount;
+        criticalDelays += summary.criticalDelayCount;
+      });
+    }
+
     return {
       openRisks: openRisks,
       openIssues: openIssues,
@@ -11411,6 +11428,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       pendingDecisions: pendingDecisions,
       upcomingMilestones: upcomingMilestones,
       delayedProjects: delayedProjects,
+      openDelays: openDelays,
+      criticalDelays: criticalDelays,
     };
   }
 
@@ -11434,6 +11453,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       { label: "Pending Decisions", value: exceptions.pendingDecisions, route: "decisionRegister" },
       { label: "Milestones Due (7d)", value: exceptions.upcomingMilestones, route: "projectLookahead" },
       { label: "Delayed Projects", value: exceptions.delayedProjects, route: "delayRecoveryDashboard" },
+      { label: "Open Delays", value: exceptions.openDelays, route: "delayRecoveryDashboard" },
+      { label: "Critical Delays", value: exceptions.criticalDelays, route: "delayRecoveryDashboard" },
     ].forEach(function (stat) {
       var chip = document.createElement("button");
       chip.type = "button";
@@ -13125,6 +13146,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
  *
  * Deliberately excluded, same reasoning as Gate 29: Change Orders and Risks/Issues have no
  * due-date field in the schema at all, so they can never sit on a date-driven timeline.
+ *
+ * Planning & Scheduling-Centric Delay Management, Gate G: every upcoming Activity/
+ * Milestone item now also shows how many Delay Records still being tracked (status not
+ * recovered/closed) are linked to it, via delay_activity_links — a plain count appended
+ * to the item's own meta line (see activeDelayCountsByActivity()). Deliberately doesn't
+ * touch the item's existing badgeClass, which stays driven only by the Schedule's own
+ * persisted float/criticality — an open delay doesn't change what the CPM engine itself
+ * already says about an activity (spec point 2, never a second calculation).
  */
 (function () {
   "use strict";
@@ -13180,10 +13209,32 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     })[0];
   }
 
+  // Gate G (Planning & Scheduling-Centric Delay Management: Dashboard & Lookahead
+  // integration): activityId -> count of Delay Records still being tracked (status not
+  // recovered/closed — same "active" definition dashboard.js's getDelayImpactSummary()
+  // uses) linked via delay_activity_links. Purely a count for the item's own meta line —
+  // never touches the item's existing badgeClass, which stays driven only by the
+  // Schedule's own persisted float/criticality (single source of truth, spec point 2);
+  // an open delay doesn't change what the Schedule itself already says about an activity.
+  function activeDelayCountsByActivity(data) {
+    var delayRecordsById = {};
+    data.delay_records.forEach(function (r) {
+      if (r.status === "recovered" || r.status === "closed") return;
+      delayRecordsById[r.id] = r;
+    });
+    var counts = {};
+    data.delay_activity_links.forEach(function (link) {
+      if (!delayRecordsById[link.delay_id]) return;
+      counts[link.activity_id] = (counts[link.activity_id] || 0) + 1;
+    });
+    return counts;
+  }
+
   function collectItems(data, activeProjectIds, windowDays) {
     var today = todayIso();
     var windowEnd = addDaysIso(today, windowDays);
     var items = [];
+    var delayCounts = activeDelayCountsByActivity(data);
 
     var schedulesByProject = {};
     data.schedules.forEach(function (s) {
@@ -13203,6 +13254,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         var floatVal = a.total_float;
         var critical = floatVal != null && floatVal <= 0;
         var nearCritical = floatVal != null && floatVal > 0 && floatVal <= thresholdDays;
+        var openDelayCount = delayCounts[a.id] || 0;
         items.push({
           kind: a.activity_type === "milestone" ? "Milestone" : "Activity",
           title: a.name || "(unnamed activity)",
@@ -13210,6 +13262,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           owner: a.responsible_person || a.contractor || "—",
           date: date,
           badgeClass: critical ? "critical" : nearCritical ? "at_risk" : "on_track",
+          openDelayCount: openDelayCount,
           view: (function (pId, schedId, actId) {
             return function () {
               window.PCC.schedule.viewActivity(pId, schedId, actId);
@@ -13361,7 +13414,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     meta.textContent =
       item.date + " · " +
       (project ? project.name || "(unnamed project)" : "(deleted project)") +
-      " · " + item.owner;
+      " · " + item.owner +
+      (item.openDelayCount ? " · " + item.openDelayCount + " open delay" + (item.openDelayCount === 1 ? "" : "s") : "");
     body.appendChild(meta);
     row.appendChild(body);
 
@@ -18680,6 +18734,36 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         spi: ctx.evm ? ctx.evm.spi : null,
         spiT: ctx.earnedSchedule && !ctx.earnedSchedule.insufficientData ? ctx.earnedSchedule.spiT : null,
         unaddressedDelayDays: ctx.totalUnaddressedDelayDays,
+      };
+    },
+    /** Planning & Scheduling-Centric Delay Management, Gate G (Dashboard & Lookahead
+     * integration). Same "export one composed function" reasoning as getDiagnostics()/
+     * getHealthSummary()/getSchedulePerformanceSummary() above, but deliberately NOT
+     * routed through buildProjectContext() — that context's own `totalUnaddressedDelayDays`
+     * (Gate 26, PCC Evolution Roadmap) is a different, pre-existing "delay days minus
+     * recovery days" gap metric, kept exactly as-is. This is the new Gate A-F delay MODEL
+     * (status lifecycle + delayImpactEngine's own float-derived criticality) instead —
+     * "active" here means status isn't recovered/closed yet, i.e. still being tracked,
+     * a broader set than Gate F's Action Centre "just identified" (open-only) filter,
+     * which exists to avoid double-surfacing a delay already covered by its own Recovery
+     * Action there. Only calls delayImpactEngine's cheap computeDelayImpact() (a read of
+     * already-cached activity fields) — NEVER computeProjectFinishImpact() in a loop like
+     * this, per that function's own explicit "single delay's own detail view only, not a
+     * register/list" warning; a portfolio-wide re-run of the CPM engine per delay would be
+     * exactly the loop it warns against. */
+    getDelayImpactSummary: function (projectId) {
+      var data = window.PCC.store.get();
+      var projectDelayRecords = data.delay_records.filter(function (r) { return r.project_id === projectId; });
+      var activeDelays = projectDelayRecords.filter(function (r) { return r.status !== "recovered" && r.status !== "closed"; });
+      var criticalCount = 0;
+      activeDelays.forEach(function (r) {
+        var links = data.delay_activity_links.filter(function (l) { return l.delay_id === r.id; });
+        var impact = window.PCC.delayImpactEngine.computeDelayImpact(r, links, data);
+        if (impact.overall_criticality === "critical") criticalCount++;
+      });
+      return {
+        openDelayCount: activeDelays.length,
+        criticalDelayCount: criticalCount,
       };
     },
   };
