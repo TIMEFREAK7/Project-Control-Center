@@ -1,7 +1,7 @@
 {
   "name": "project-control-center",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Offline-first project and portfolio management, packaged as a native desktop app.",
   "author": "Aditya Abhyankar",
   "main": "electron/main.js",

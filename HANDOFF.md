@@ -4852,6 +4852,71 @@ Verify current state with `git status`/`git log` rather than trusting this parag
 
 **Next steps**: Microsoft Project and Primavera P6 file interoperability (Phases 2-3) are both now
 complete on import and export, modulo the two genuinely untestable claims (opening an exported file
-in the real authoring tool) flagged above — the P6 one materially riskier than the MSP one. Phase 5
-(SQLite) is the master prompt's next major architectural step, gated on the schedule model having
-proven out across three file formats now — confirm scope/direction with Aditya before starting it.
+in the real authoring tool) flagged above — the P6 one materially riskier than the MSP one.
+
+**Merge to `main` + a full packaging round, same session, immediately after Phase 3 export above.**
+Aditya explicitly asked to merge before Phase 5 (SQLite) — his own words: SQLite and further phases
+are a major upgrade with real risk of breaking PCC, so he wanted a safe checkpoint delivered first.
+- `claude/pcc-architecture-upgrade-j5a1eo` fast-forward-merged into `main` (`8cb17d7..f5d00ac`,
+  clean, no conflicts — the branch was linear on top of `main`'s own tip the whole time) and pushed.
+  `main` now carries Phases 0-3 in full.
+- **Android**: Aditya supplied the actual `pcc-release.jks` keystore this time (uploaded as a zip
+  backup with `keystore.properties` and a README) — the SAME keystore that signed the last delivered
+  APK (fingerprint confirmed byte-for-byte against HANDOFF's own prior record:
+  SHA-256 `3B:48:02:E2:8A:96:E6:E4:70:3B:13:6E:05:56:1F:A1:54:FE:6A:29:E0:12:1A:FF:41:70:C5:12:F5:85:9C:E9`).
+  This means this build installs as a normal UPDATE over anything already on Aditya's device — no
+  uninstall needed, unlike the very first signed build. Installed to
+  `packaging/android/android/app/{pcc-release.jks,keystore.properties}` — confirmed still gitignored
+  (`git status` showed nothing). `versionCode` bumped **3 → 4**, `versionName` **"1.2" → "1.3"** per
+  the standing instruction (checked the current values first, didn't assume). Provisioning this
+  fresh container needed the Android SDK from scratch again (same commandline-tools zip URL and
+  `sdkmanager` package list as last time: `platform-tools`, `platforms;android-36`,
+  `build-tools;36.0.0` — went cleanly). Built via `npm run android:build:release` (never bypassed to
+  a raw `gradlew` call), **succeeded on the first attempt**. Result: `app-release.apk`, 9.80MB,
+  SHA-256 `102972ae17765b1e6c4a55f957c4c023d6d0a48820976b3c03a67af525e17d96` — verified
+  `apksigner verify --verbose` (APK Signature Scheme v2, verified, signer cert SHA-256 matches the
+  keystore exactly), `zipalign -c -v 4` (aligned, verification successful), and embedded
+  `assets/public/index.html` byte-for-byte identical to the repo root's fresh build.
+- **Windows**: `packaging/package.json` version bumped **1.2.0 → 1.3.0** to match. This fresh
+  container had neither `wine` nor `wine32:i386` installed — **new gotcha not in the prior
+  write-up**: the plain `wine` metapackage got silently removed as a side effect of the
+  `dpkg --add-architecture i386 && apt-get install wine32:i386` sequence (installing the 32-bit
+  variant apparently triggered autoremoval of the `wine` metapackage, even though nothing explicitly
+  asked to remove it) — `wine --version` came back "command not found" right after the install
+  appeared to succeed; fixed by simply re-running `apt-get install -y --no-install-recommends wine`
+  a second time, which then stuck. Worth checking `wine --version` explicitly right before the
+  Windows build rather than trusting the install log alone, on any future fresh-container Windows
+  build. No `~/.wine` prefix existed yet this time, so the "stale 64-bit-only prefix" failure mode
+  from the prior session's write-up didn't recur — removed it preemptively anyway (`rm -rf
+  /root/.wine`) since it's a one-line, zero-cost precaution. Built via `npm run electron:build --
+  --win` (never raw `electron-builder`), **succeeded on the first attempt**, no wine-related errors
+  during electron-builder's own post-build self-check this time. Result: `Project Control Center
+  Setup 1.3.0.exe`, 105.7MB, SHA-256
+  `f416f7710198f02591f7808c771d2bf5111ad07eaa0e2ea554363434a3091ef5` — verified by extracting
+  `app.asar` (via `npx asar extract`) and confirming both `electron/index.html` and `electron/
+  main.js` byte-for-byte identical to their source files. Split into 5 parts
+  (`PCC-Setup-1.3.0.exe.part00`-`part04`, 25MB each except the last ~0.86MB) per the standing
+  split-file convention; reassembly verified byte-exact (`cat` the 5 parts back together, SHA-256
+  matches the original) before sending.
+- **End-user zip**: `Project-Control-Center-v1.3.0.zip` (1.48MB) — `index.html`, `README.md`,
+  `manifest.json`, `icons/` (the three PNGs, not regenerated since `favicon.svg` hasn't changed),
+  and empty `data/`/`files/` placeholders with their own `README.txt`. Verified by extracting to a
+  **fresh** location (not the working copy) and confirming `index.html` inside matches the repo
+  root's build byte-for-byte, then actually opening that extracted copy in real Chromium — loaded
+  cleanly, correct title, nav rendered, zero console/page errors.
+- Full suite re-run on `main` after the merge, before packaging: **2378 passed, 0 failed** — no
+  drift from the pre-merge number, confirming the fast-forward carried everything correctly.
+- **Neither the APK nor the EXE was installed/opened on a real Android device or Windows machine
+  from this sandbox** — same limitation every prior packaging round has had. Verification here is
+  structural (signing, alignment, embedded-file byte-identity) — genuinely strong evidence, not the
+  same thing as "Aditya confirmed it installs and runs."
+
+**`schema_version` is still 61.** **Test suite: 97 files, 2378 checks, 0 failures**, confirmed on
+`main` post-merge. **Repo state**: `main` and `claude/pcc-architecture-upgrade-j5a1eo` point at the
+same commit (`f5d00ac`) plus one more commit on `main` for the version bumps above — recount rather
+than trust this blindly (`git log --oneline -3` on both).
+
+**Next steps**: Phase 5 (SQLite) is the master prompt's next major architectural step — Aditya
+wanted this packaging checkpoint delivered specifically *because* that phase carries real risk of
+breaking the app, so treat this as a deliberate safe point to roll back to if anything in Phase 5
+goes wrong. Confirm scope/direction with Aditya before starting it.
