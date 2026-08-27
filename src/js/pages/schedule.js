@@ -9,6 +9,23 @@
   window.PCC.pages = window.PCC.pages || {};
 
   var SCHEDULE_STATUS_LABELS = { draft: "Draft", active: "Active", superseded: "Superseded", archived: "Archived" };
+  // Architecture Upgrade Phase 1 (Canonical Schedule Model).
+  var SCHEDULE_TYPE_LABELS = {
+    current: "Current",
+    baseline: "Baseline",
+    lookahead: "Lookahead",
+    client: "Client Schedule",
+    contractor: "Contractor Schedule",
+    recovery: "Recovery Schedule",
+    forecast: "Forecast",
+  };
+  var SCHEDULE_PLATFORM_LABELS = {
+    pcc: "Built in PCC",
+    excel: "Imported from Excel",
+    msp_xml: "Imported from Microsoft Project (XML)",
+    p6_xer: "Imported from Primavera P6 (XER)",
+    p6_xml: "Imported from Primavera P6 (XML)",
+  };
   function escHtml(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
@@ -371,6 +388,41 @@
     statusField.appendChild(statusSelect);
     grid.appendChild(statusField);
 
+    // Architecture Upgrade Phase 1: purpose classification, separate from Status above
+    // (see SCHEDULE_TYPES's own comment in store.js for why these aren't the same
+    // field) — e.g. a schedule can be "Baseline" and "Superseded" at the same time.
+    var typeField = document.createElement("div");
+    typeField.className = "field";
+    typeField.innerHTML = "<label>Schedule Type</label>";
+    var typeSelect = document.createElement("select");
+    typeSelect.id = "schedfield-schedule_type";
+    window.PCC.store.SCHEDULE_TYPES.forEach(function (t) {
+      var opt = document.createElement("option");
+      opt.value = t;
+      opt.textContent = SCHEDULE_TYPE_LABELS[t] || t;
+      typeSelect.appendChild(opt);
+    });
+    typeSelect.value = schedule.schedule_type || "current";
+    typeField.appendChild(typeSelect);
+    grid.appendChild(typeField);
+
+    grid.appendChild(textField("Schedule Owner", "schedule_owner", schedule.schedule_owner));
+
+    if (!isNew && schedule.source_platform) {
+      var sourceField = document.createElement("div");
+      sourceField.className = "field";
+      sourceField.innerHTML = "<label>Source</label>";
+      var sourceText = document.createElement("p");
+      sourceText.style.fontSize = "var(--text-sm)";
+      sourceText.style.color = "var(--text-secondary)";
+      sourceText.textContent =
+        (SCHEDULE_PLATFORM_LABELS[schedule.source_platform] || schedule.source_platform) +
+        (schedule.source_format ? " (." + schedule.source_format + ")" : "") +
+        " — where this schedule's data came from; not editable.";
+      sourceField.appendChild(sourceText);
+      grid.appendChild(sourceField);
+    }
+
     var descField = document.createElement("div");
     descField.className = "field";
     descField.style.gridColumn = "1 / -1";
@@ -431,6 +483,8 @@
         near_critical_threshold_days: Number(form.querySelector("#schedfield-near_critical_threshold_days").value) || 0,
         calculation_mode: form.querySelector("#schedfield-calculation_mode").value,
         status: form.querySelector("#schedfield-status").value,
+        schedule_type: form.querySelector("#schedfield-schedule_type").value,
+        schedule_owner: form.querySelector("#schedfield-schedule_owner").value,
         description: form.querySelector("#schedfield-description").value,
       };
 
@@ -661,12 +715,19 @@
       });
     var nextRevision = existingRevisions.length ? Math.max.apply(null, existingRevisions) + 1 : 0;
 
+    // Architecture Upgrade Phase 1: this is the one place a schedule is actually known
+    // to have come from an Excel file at creation time — set source_platform/format
+    // explicitly here rather than relying on store.js's migration-time inference (which
+    // only exists to backfill *pre-existing* data, per its own comment).
+    var extMatch = /\.([a-zA-Z0-9]+)$/.exec(uiState.importFile.name || "");
     var newSchedule = window.PCC.store.newSchedule({
       project_id: uiState.projectId,
       name: scheduleName,
       revision_number: nextRevision,
       status: "active",
       import_date: new Date().toISOString(),
+      source_platform: "excel",
+      source_format: extMatch ? extMatch[1].toLowerCase() : null,
       source_file_name: uiState.importFile.name,
       source_file_size: uiState.importFile.size,
       content_hash: uiState.importFile.hash,
@@ -1682,7 +1743,8 @@
       projectSchedules.forEach(function (s) {
         var opt = document.createElement("option");
         opt.value = s.id;
-        opt.textContent = s.name + " (Rev " + s.revision_number + ")";
+        var typeSuffix = s.schedule_type && s.schedule_type !== "current" ? ", " + (SCHEDULE_TYPE_LABELS[s.schedule_type] || s.schedule_type) : "";
+        opt.textContent = s.name + " (Rev " + s.revision_number + typeSuffix + ")";
         schedSelect.appendChild(opt);
       });
       if (!uiState.scheduleId || !projectSchedules.some(function (s) { return s.id === uiState.scheduleId; })) {

@@ -4629,3 +4629,61 @@ already-superseded code on top of the current, much-more-advanced `main`.
 **No other feature work is currently committed to.** All 8 Delay Management gates are complete;
 there is no next gate queued. When a fresh session picks this up, don't assume there's a next
 feature waiting — check with Aditya first.
+
+## NEW INITIATIVE: PCC Architecture Upgrade (started 2026-08-27) — an EIGHTH, separate initiative
+## from Delay Management above, and different in kind: a master multi-phase roadmap, not a gate spec
+
+Aditya handed over a long master prompt asking PCC to grow toward file-based Microsoft Project and
+Primavera P6 schedule interoperability, SQLite as the eventual structured data layer, and a
+deterministic engineering/analytics engine — over roughly a dozen future phases. The prompt is
+explicit that this is a roadmap to work through one phase at a time with a test gate after each,
+not an instruction to build everything now, and explicit that MSP/P6 mean **file import/export**,
+never live software integration or a dependency on either program being installed.
+
+**Phase 0 (Inspection & Baseline) — done, no code changed.** Confirmed rather than assumed:
+Windows (Electron) and Android (Capacitor) are both still thin wrappers around one `index.html`,
+not forked codebases; `schema_version` was 60 going in; zero existing MSP/P6/XER references
+anywhere in `src/`; the schedule engines (`scheduleImportService.js`/`scheduleCpmEngine.js`/
+`delayImpactEngine.js`/`scheduleBaselineEngine.js`) are already cleanly separated, so a future file
+importer can feed the same `newActivity`/`newRelationship`/`newWbsItem` shapes without the CPM/
+baseline engines needing to change. Verified via `node build.js`, the then-full 88-file/2286-check
+suite, and a real-Chromium load of the built `index.html` (zero console/page errors) — the one
+thing jsdom can't check, per this file's own Testing conventions.
+
+**Phase 1 (Canonical Schedule Model, schema v60 → v61) — done.** See `README.md`'s own write-up
+(same section heading) for the full field-by-field detail; summary for a fresh session:
+- `schedules[]` gained `source_platform`, `source_format`, `schedule_type`, `schedule_owner`.
+  `schedule_type` (current/baseline/lookahead/client/contractor/recovery/forecast) is separate from
+  the pre-existing `status` (draft/active/superseded/archived) on purpose — lifecycle vs. purpose.
+- `activities[]`/`wbs_items[]` gained a free-form `codes: {}` bag for source-system fields with no
+  PCC equivalent (P6 activity codes, MSP custom fields) — not a managed code-hierarchy UI.
+- New `calendars[]` entity (`newCalendar()`) — Project-scoped, `working_days`/`holidays`/
+  `is_default`. **Purely representational** — `scheduleCpmEngine.js` was NOT touched and stays
+  calendar-naive; teaching CPM to respect working days is separate future engineering work.
+- Migration backfills all of the above onto every pre-existing schedule/activity/WBS item, and
+  mints one default 5-day calendar per existing project, wiring it onto every activity that didn't
+  already have a real `calendar_id`.
+- New test file `tests/test_canonical_schedule_model_v61.js` (9 checks: factory defaults, the Excel
+  importer's explicit override, migration inference for both an Excel-sourced and hand-built
+  pre-existing schedule, codes/calendar backfill, and migration idempotency). Two pre-existing
+  tests that hardcoded the final `schema_version` as `60` were bumped to `61`
+  (`test_store_schema_v54_migration.js`, `test_company_client_project_management.js`) — mechanical,
+  no behavior assertions changed.
+
+**`schema_version` is now 61.** **Test suite: 89 files, 2295 checks, 0 failures** — recount rather
+than trust this blindly, same standing caveat every prior version of this section has given.
+
+**Not done / explicitly deferred, per the master prompt's own phase sequencing**: no MSP/P6 file
+parsing yet (that's Phases 2-3, not started); no SQLite (Phase 5, explicitly gated on this model
+proving out first — "do NOT make SQLite the first architectural change"); no calendar-aware CPM
+math; no managed code-type/code-value hierarchy, just the raw `codes` bag.
+
+**Repo/branch state**: working on `claude/pcc-architecture-upgrade-j5a1eo`, per this session's own
+explicit branch instructions (develop + push there, never push elsewhere, never merge to `main` or
+open a PR unless directly asked — a deliberate departure from this file's older standing "merge to
+main immediately" convention, which assumes a different session type than this remote-branch one).
+Verify current state with `git status`/`git log` rather than trusting this paragraph blindly.
+
+**Next steps**: Phase 2 (Microsoft Project file import/export) is the roadmap's next step, but per
+the master prompt's own instruction ("work through it sequentially... do not build everything
+immediately"), it has not been started — confirm scope/direction with Aditya before beginning it.

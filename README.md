@@ -4825,6 +4825,72 @@ panels above it stay put. The pre-existing `test_advanced_delay_analysis_e2e.js`
 `window.print()` convention, via `reports.js`) and Mobile/Android-specific delay UI were both explicitly
 out of scope for the Gate A-H build order and would be separate, future asks if ever raised.
 
+## PCC Architecture Upgrade — Phase 0 (Inspection & Baseline) + Phase 1 (Canonical Schedule Model), 2026-08-27
+
+A new, separate initiative from every gate above: a master architecture prompt asking PCC to grow
+toward file-based Microsoft Project and Primavera P6 interoperability, SQLite, and a deterministic
+engineering engine, over many future phases — but starting, explicitly, with inspection before any
+code changes, then the smallest possible additive data-model step.
+
+**Phase 0 (inspection only, no code changed)**: confirmed the current architecture matches
+`CLAUDE.md`/this README rather than having quietly diverged — Windows (Electron) and Android
+(Capacitor) are both still thin wrappers around the one built `index.html`, not forked codebases;
+`schema_version` is 60; there is no existing Microsoft Project/Primavera P6 support anywhere in
+`src/`; and the existing schedule engines (`scheduleImportService.js`, `scheduleCpmEngine.js`,
+`delayImpactEngine.js`, `scheduleBaselineEngine.js`) are already cleanly separated calculation
+layers a future file importer can feed without touching CPM/baseline logic. Verified via a clean
+`node build.js`, a clean full test-suite run, and — since jsdom can't catch this — an actual load of
+the built `index.html` in real Chromium with zero console/page errors.
+
+**Phase 1 (Canonical Schedule Model, schema v60 → v61)**: closes the gaps Phase 0 found between
+PCC's existing schedule data model and what a future P6/MSP importer will need to represent,
+without yet building any importer or touching the CPM engine's math:
+
+- **Schedule provenance and purpose**: `schedules[]` gains `source_platform` ("pcc" | "excel" |
+  reserved `"msp_xml"`/`"p6_xer"`/`"p6_xml"` for future importers), `source_format` (the file
+  extension actually imported, e.g. "xlsx"), `schedule_type` (current/baseline/lookahead/client/
+  contractor/recovery/forecast), and `schedule_owner` (free text). `schedule_type` is deliberately a
+  separate field from the pre-existing `status` (draft/active/superseded/archived) — one is
+  lifecycle, the other is purpose, and a schedule can be "the baseline" for its entire life
+  regardless of whether it's since been superseded. The Excel importer (`schedule.js`'s
+  `commitImport()`) now sets `source_platform`/`source_format` explicitly at creation; the New/Edit
+  Schedule form gained Schedule Type and Schedule Owner fields, plus a read-only Source line.
+- **Source-system codes**: `activities[]` and `wbs_items[]` each gain a free-form `codes: {}` bag —
+  not a managed code-hierarchy with its own CRUD UI (nobody's asked for that yet), just a place to
+  keep a P6 activity code or MSP custom field PCC has no other home for, per the master prompt's
+  "don't silently discard imported information" rule.
+- **Calendars**: a new `calendars[]` entity (`newCalendar()`) — `project_id`, `working_days` (Mon-Sun
+  booleans), `holidays`, `is_default`. Purely representational: `scheduleCpmEngine.js` stays exactly
+  as calendar-naive (plain calendar-day math) as its own header already documented — teaching the
+  CPM engine to actually respect a calendar is real engineering work for a later phase, not this
+  one. `newActivity()`'s `calendar_id` placeholder (there since Gate 1, explicitly "for a later
+  gate") now has something real to point at.
+- **Migration (v60 → v61)**: backfills every existing schedule's `source_platform` (inferred from
+  whether `source_file_name` was ever set — "excel" if so, "pcc" if not) and `source_format`
+  (parsed from that filename's extension), defaults `schedule_type` to "current" and
+  `schedule_owner` to "", defaults `codes` to `{}` on every existing activity/WBS item, mints one
+  default 5-day calendar per existing project, and wires it onto every activity that didn't already
+  have a `calendar_id` (an activity that already had one is left untouched).
+
+**Verified**: `node build.js` clean; full suite **2295 passed, 0 failed** across 89 files (2286
+pre-existing checks + 9 new ones), reaching the actual last file in `tests/package.json`'s chain.
+New `tests/test_canonical_schedule_model_v61.js` covers: factory defaults, the Excel-import
+override path, migration inference for both an Excel-sourced and a hand-built pre-existing
+schedule, `codes` backfill on activities/WBS items, one default calendar minted per project and
+correctly wired onto un-calendared activities while leaving an already-calendared one alone, and
+migration idempotency (loading already-migrated v61 data doesn't mint a second calendar). Two
+pre-existing tests that hardcoded the final `schema_version` (`test_store_schema_v54_migration.js`,
+`test_company_client_project_management.js`) were updated from 60 to 61 — a mechanical bump, no
+behavior assertions changed.
+
+**Not done / explicitly deferred**: no Microsoft Project or Primavera P6 file parsing yet (Phases
+2-3 of the master prompt); no SQLite (Phase 5, gated on this model proving out first); the CPM
+engine does not yet consult `calendars[]` for working-day-aware date math; no managed code-type/
+code-value hierarchy UI, just the raw `codes` bag; multiple named schedule versions can already
+coexist per project (they did before this phase too — importing has always created a new revision
+rather than overwriting), but there's no UI yet to freely compare any two arbitrary schedules the
+way baseline-vs-current comparison already works.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
@@ -4890,6 +4956,13 @@ own write-ups above for the full detail on each.
 Assistant, Lessons Learned, final polish
 
 ## Next phase
+
+**PCC Architecture Upgrade**: Phase 0 (Inspection & Baseline) and Phase 1 (Canonical Schedule
+Model, schema v61) are both done — see that section above. Phase 2 (Microsoft Project file
+import/export) is the next step in that roadmap, but per the master prompt's own operating
+instruction ("work through it sequentially... do not build everything immediately"), it hasn't
+been started — confirm scope/direction before beginning it, the same gate discipline every other
+roadmap on this page already follows.
 
 **Tier 2 is complete, and the entire 14-gate Document Control sub-spec Aditya handed over is now
 built** (Gates 14-28) — no gates from that spec remain. A new, separate roadmap started with Gate

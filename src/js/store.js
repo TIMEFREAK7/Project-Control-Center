@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 60;
+  var SCHEMA_VERSION = 61;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -137,6 +137,10 @@
       wbs_items: [],
       activities: [],
       relationships: [],
+      // Architecture Upgrade Phase 1 (Canonical Schedule Model, schema v61): one row
+      // per Project calendar — see newCalendar() below for the field design and why
+      // this is data-only (the CPM engine doesn't consume it yet).
+      calendars: [],
       // Gate 4: thin index only \u2014 see scheduleBaselineStore.js for the actual
       // frozen snapshot payload, which lives in IndexedDB, not here.
       schedule_baselines: [],
@@ -1174,6 +1178,20 @@
   var ACTIVITY_TYPES = ["task", "milestone", "summary", "wbs_summary"];
   var ACTIVITY_STATUSES = ["not_started", "in_progress", "complete", "on_hold"];
   var RELATIONSHIP_TYPES = ["FS", "SS", "FF", "SF"]; // Finish-to-Start, Start-to-Start, Finish-to-Finish, Start-to-Finish
+  // Architecture Upgrade Phase 1 (Canonical Schedule Model, schema v61): where a
+  // schedule's activity/relationship/WBS data actually came from. "pcc" = built by hand
+  // in this app (the only origin before this gate). "excel" = the existing Schedule
+  // Excel importer (Gate 2). "msp_xml"/"p6_xer"/"p6_xml" are reserved for future file
+  // importers (see scheduleImportService.js's own header) — not implemented yet, but a
+  // schedule needs a place to record its origin from the day it's created, not bolted
+  // on retroactively once those importers exist.
+  var SCHEDULE_PLATFORMS = ["pcc", "excel", "msp_xml", "p6_xer", "p6_xml"];
+  // Purpose classification, distinct from `status` above (which is lifecycle: is this
+  // revision the one currently driving the project). A schedule can be "the baseline"
+  // or "the client's copy" for its entire life regardless of whether it's since been
+  // superseded — status and type answer different questions and shouldn't be conflated
+  // into one field.
+  var SCHEDULE_TYPES = ["current", "baseline", "lookahead", "client", "contractor", "recovery", "forecast"];
   // Gate 21 (Status-Date Reforecasting): how the CPM engine resolves out-of-sequence
   // progress (an activity with actual progress whose predecessor logic wasn't actually
   // satisfied when it started). "progress_override" (default, and the only behavior
@@ -1204,6 +1222,16 @@
       status: "draft",
       import_date: null, // set by the importer in Gate 2; null for schedules built by hand
       data_date: now.slice(0, 10),
+      // Architecture Upgrade Phase 1 (schema v61): provenance + purpose. See
+      // SCHEDULE_PLATFORMS/SCHEDULE_TYPES above for what these mean and why they're
+      // separate from `status`. Defaults assume the common case (hand-built, current) —
+      // an importer overrides source_platform/source_format at the point it calls this
+      // factory (see scheduleImportService.js's callers), same as it already does for
+      // source_file_name/content_hash below.
+      source_platform: "pcc",
+      source_format: null,
+      schedule_type: "current",
+      schedule_owner: "",
       source_file_name: null,
       // Gate 2: lets checkForDuplicateImport() detect "this exact file was already
       // imported" using the same duplicateService fingerprinting Documents uses \u2014
@@ -1247,6 +1275,10 @@
       parent_wbs_id: null,
       level: 0,
       description: "",
+      // Architecture Upgrade Phase 1 (schema v61): same free-form source-code bag as
+      // newActivity()'s `codes` above, for a P6 WBS code or MSP outline field with no
+      // direct PCC equivalent. See that comment for the full reasoning.
+      codes: {},
       created_at: now,
       updated_at: now,
     };
@@ -1319,6 +1351,15 @@
       // and so a future re-import of a revised file can be matched against what's
       // already here. Null for activities created by hand in Gate 1's CRUD form.
       external_id: null,
+      // Architecture Upgrade Phase 1 (schema v61): free-form key/value bag for
+      // source-system fields that don't map onto anything PCC already models —
+      // Primavera P6 activity codes, Microsoft Project custom fields/flags, etc.
+      // Deliberately NOT a managed code-hierarchy (code type -> allowed values) with
+      // its own CRUD UI; that's real feature work nobody's asked for yet. This exists
+      // so an importer can preserve a source field it can't otherwise place, per the
+      // master upgrade prompt's "don't silently discard imported information" rule,
+      // without PCC's own UI needing to understand every possible code scheme.
+      codes: {},
       created_at: now,
       updated_at: now,
     };
@@ -1343,6 +1384,39 @@
       type: "FS",
       lag: 0,
       created_at: now,
+    };
+    return Object.assign(base, overrides || {});
+  }
+
+  function newCalendarId() {
+    return "cal_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  /** Architecture Upgrade Phase 1 (Canonical Schedule Model, schema v61): a calendar
+   * belongs to a Project (not a Schedule) since the same working pattern typically
+   * applies across a project's schedule revisions. `working_days` is Mon-first
+   * (index 0 = Monday ... 6 = Sunday), matching how every "Mon-Fri" default reads.
+   * `holidays` is a flat array of "YYYY-MM-DD" strings — no recurrence rule, just
+   * explicit dates, same simplicity tradeoff the rest of this store makes elsewhere.
+   *
+   * Deliberately data-only for now: scheduleCpmEngine.js stays calendar-naive (plain
+   * calendar-day math) exactly as its own header documents — teaching the CPM engine
+   * to actually respect working days/holidays is real engineering work belonging to a
+   * later gate, not this one. This factory exists so a calendar is *representable*
+   * (imported from P6/MSP, or just recorded) without silently discarding it, per the
+   * master upgrade prompt's Phase 1 scope ("establish how PCC represents... calendars"
+   * — not "make the engine calendar-aware"). */
+  function newCalendar(overrides) {
+    var now = new Date().toISOString();
+    var base = {
+      id: newCalendarId(),
+      project_id: "",
+      name: "Default 5-Day Calendar",
+      is_default: false,
+      working_days: [true, true, true, true, true, false, false],
+      holidays: [],
+      created_at: now,
+      updated_at: now,
     };
     return Object.assign(base, overrides || {});
   }
@@ -3012,6 +3086,53 @@
       loaded.schema_version = 60;
     }
 
+    if (loaded.schema_version < 61) {
+      // Architecture Upgrade Phase 1 (Canonical Schedule Model). Every schedule created
+      // before this gate was either hand-built or came through the Excel importer —
+      // there's no ambiguity to preserve, so infer source_platform/source_format from
+      // whether source_file_name was ever set, rather than defaulting everything to
+      // "pcc" and silently mislabeling every already-imported Excel schedule.
+      (loaded.schedules || []).forEach(function (s) {
+        if (s.source_platform === undefined) {
+          s.source_platform = s.source_file_name ? "excel" : "pcc";
+        }
+        if (s.source_format === undefined) {
+          var m = s.source_file_name ? /\.([a-zA-Z0-9]+)$/.exec(s.source_file_name) : null;
+          s.source_format = m ? m[1].toLowerCase() : null;
+        }
+        if (s.schedule_type === undefined) s.schedule_type = "current";
+        if (s.schedule_owner === undefined) s.schedule_owner = "";
+      });
+      (loaded.activities || []).forEach(function (a) {
+        if (a.codes === undefined) a.codes = {};
+      });
+      (loaded.wbs_items || []).forEach(function (w) {
+        if (w.codes === undefined) w.codes = {};
+      });
+      // One default 5-day calendar per existing Project, so every already-imported
+      // Activity has a real calendar to point at instead of the old `null` placeholder
+      // (see newActivity()'s own comment on calendar_id). Purely representational —
+      // this does NOT change scheduleCpmEngine.js's calendar-naive date math, so no
+      // existing CPM/float/critical-path result changes as a result of this migration.
+      if (!loaded.calendars) loaded.calendars = [];
+      var defaultCalendarIdByProject = {};
+      (loaded.projects || []).forEach(function (p) {
+        var cal = newCalendar({
+          project_id: p.id,
+          name: "Default 5-Day Calendar",
+          is_default: true,
+        });
+        loaded.calendars.push(cal);
+        defaultCalendarIdByProject[p.id] = cal.id;
+      });
+      (loaded.activities || []).forEach(function (a) {
+        if (!a.calendar_id && defaultCalendarIdByProject[a.project_id]) {
+          a.calendar_id = defaultCalendarIdByProject[a.project_id];
+        }
+      });
+      loaded.schema_version = 61;
+    }
+
     return loaded;
   }
 
@@ -3380,6 +3501,7 @@
     newWbsItem: newWbsItem,
     newActivity: newActivity,
     newRelationship: newRelationship,
+    newCalendar: newCalendar,
     newScheduleBaseline: newScheduleBaseline,
     newRecoveryAction: newRecoveryAction,
     RECOVERY_ACTION_STATUSES: RECOVERY_ACTION_STATUSES,
@@ -3403,6 +3525,8 @@
     ACTIVITY_STATUSES: ACTIVITY_STATUSES,
     RELATIONSHIP_TYPES: RELATIONSHIP_TYPES,
     CALCULATION_MODES: CALCULATION_MODES,
+    SCHEDULE_PLATFORMS: SCHEDULE_PLATFORMS,
+    SCHEDULE_TYPES: SCHEDULE_TYPES,
     newCostBudgetItem: newCostBudgetItem,
     newCostActual: newCostActual,
     COST_CATEGORIES: COST_CATEGORIES,
