@@ -5092,10 +5092,65 @@ tested against a real P6-produced XER file or a real Primavera P6 installation �
 this environment — the constraint/relationship-type mappings are based on Primavera's own
 documented XER schema constants, not verified against an actual export.
 
-**Not done / explicitly deferred**: XER **export** (PCC → P6) — not started, a separate decision
-point given XER's stricter format-fidelity bar for real P6 acceptance; Primavera XML (an
-alternative P6 exchange format, not investigated this gate — XER covered the "at minimum" list
-fully); Resources/Assignments/Codes; real calendar work-pattern/holiday decoding; SQLite (Phase 5).
+**Not done / explicitly deferred, as of the import half above**: XER **export** — see the
+follow-up entry immediately below, done later the same day; Primavera XML (an alternative P6
+exchange format, not investigated — XER covered the "at minimum" list fully); Resources/
+Assignments/Codes; real calendar work-pattern/holiday decoding; SQLite (Phase 5).
+
+## PCC Architecture Upgrade — Phase 3 (Primavera P6 File Interoperability — Export), 2026-08-27
+
+Same day, immediately after the import half above: **PCC → P6 XER export**, completing round-trip
+interoperability for a second scheduling platform. Added directly to `p6XerService.js` alongside
+`parseXer()` (same file now covers both directions, matching `mspXmlService.js`'s own precedent).
+
+- **New `exportScheduleToXer({ schedule, wbsItems, activities, relationships, calendar })`**.
+  Simpler than MSP export in one real way: P6's `PROJWBS`/`TASK` tables are independent, joined only
+  by ID — no MSPDI-style outline-position interleaving is needed, since every Task row just carries
+  its own real `wbs_id` foreign key. WBS rows are still emitted parent-before-child (via the same
+  cycle-guarded recursive walk MSP export uses) purely for a readable file, not because P6 requires
+  it. Mints fresh sequential IDs every export (`proj_id`/`wbs_id`/`task_id`/`task_pred_id`/
+  `clndr_id`) — same reasoning as MSP export: PCC has no "canonical prior XER task_id" to preserve.
+  `task_code` prefers PCC's own `external_id` (so a schedule that was originally imported *from*
+  XER keeps its original activity codes on export) and synthesizes one when blank, disambiguating
+  a same-code collision rather than emitting two rows with an identical `task_code`.
+- **A real bug caught before shipping, by writing the reverse-map the naive way first**: P6's
+  `task_type` codes are many-to-one onto PCC's `activity_type` (`TT_Task`/`TT_Rsrc`/`TT_LOE` all
+  mean "task" on import) — naively reverse-mapping that import table for export would have resolved
+  "task" to whichever key iterated last (`TT_LOE`), silently mislabeling every ordinary task as a
+  Level-of-Effort activity in the exported file. Fixed with an explicit, intentional export-only
+  map (`task` → `TT_Task`, `milestone` → `TT_Mile`, `wbs_summary` → `TT_WBS`) instead of deriving it
+  from the import direction.
+- **Round-trip verified two ways**, same standard as MSP export: XER table/field shape correctness
+  (parsed independently of `parseXer()` itself, so the shape checks don't depend on the same code
+  being tested), and full re-import through `parseXer()` confirming every field survives.
+- **A materially higher-risk unverified claim than MSP export carried**, stated plainly rather than
+  softened: MSPDI is a well-documented, widely-tolerant Microsoft interchange format; real
+  Primavera P6 is known in the field to validate XER imports considerably more strictly, and a
+  genuine P6-produced export typically carries several dozen columns per table where this function
+  emits only the ones its own importer reads back. If a real P6 installation rejects or only
+  partially accepts a file this function produces, that is the documented, expected risk here — not
+  evidence of a bug to quietly patch around, but a signal to widen the field set deliberately, based
+  on what a real P6 actually asked for. No P6 installation exists in this environment to test that.
+  The exported `CALENDAR` row carries no `clndr_data` (P6's proprietary work-week/holiday format,
+  same as import doesn't decode it) — whether real P6 accepts a calendar row with none is itself an
+  open, unverified question, not assumed to work.
+- **UI**: a new **"Export to Primavera P6"** button in the Schedule toolbar, alongside "Export to MS
+  Project" — both share a new small `gatherScheduleExportData()` helper (WBS/Activities/
+  Relationships scoped to the schedule, plus whichever Calendar its activities actually reference)
+  extracted from what was previously duplicated inline in the MSP export handler.
+
+**Verified**: `node build.js` clean; full suite **2378 passed, 0 failed** across 97 files (2360
+pre-existing + 18 new: 15 in `test_p6_xer_export_service.js` — table/field shape for every field,
+the `task_type` collision-fix regression check, a tab/newline-sanitization case, the cycle guard,
+a duplicate-`external_id` collision case, and the full round-trip — plus 3 in
+`test_p6_xer_export_e2e.js`, the real "Export to Primavera P6" button against the actual bundled
+`index.html`). Also verified with a real-Chromium load of the rebuilt `index.html` (zero console/
+page errors).
+
+**Not done / explicitly deferred**: opening an exported file in an actual Primavera P6 installation
+(untestable here — flagged prominently above, not silently assumed, and a materially bigger open
+question than the equivalent MSP claim); Resources/Assignments/Codes and Baselines, both
+directions; Primavera XML; SQLite (Phase 5).
 
 ## Locked build order (unchanged)
 
@@ -5164,13 +5219,13 @@ Assistant, Lessons Learned, final polish
 ## Next phase
 
 **PCC Architecture Upgrade**: Phase 0 (Inspection & Baseline), Phase 1 (Canonical Schedule Model,
-schema v61), Phase 2 (Microsoft Project XML **import and export** — full round-trip between PCC's
-own import/export, though opening an exported file in real Microsoft Project itself is unverified —
-no MS Project installation available in this environment), and Phase 3 (Primavera P6 XER
-**import**, same real-Microsoft-Project-style verification caveat) are all done — see those
-sections above. XER **export** is explicitly not built yet — a separate decision point given XER's
-stricter real-P6-acceptance bar. Phase 5 (SQLite) remains the master prompt's next major
-architectural step after file interoperability, but per its own operating instruction ("work
+schema v61), Phase 2 (Microsoft Project XML **import and export**), and Phase 3 (Primavera P6 XER
+**import and export**) are all done — see those sections above. Both file-interoperability phases
+now round-trip through PCC's own import/export for every field either side handles; opening an
+exported file in the *real* authoring tool itself is unverified for both (no MS Project or
+Primavera P6 installation available in this environment) — a materially bigger open question for
+the P6/XER side, which is documented as such rather than downplayed. Phase 5 (SQLite) is the
+master prompt's next major architectural step, but per its own operating instruction ("work
 through it sequentially... do not build everything immediately"), nothing further has been started
 — confirm scope/direction before beginning it, the same gate discipline every other
 roadmap on this page already follows.

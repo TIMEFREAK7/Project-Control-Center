@@ -4810,14 +4810,48 @@ Project Export (XER)`), following the same pattern Phase 2 established.
 Phase 1's existing model, same as Phase 2). **Test suite: 95 files, 2360 checks, 0 failures** —
 recount rather than trust this blindly.
 
+**Phase 3 export half — done, same session, immediately after import above.** PCC → P6 XER,
+completing round-trip interoperability for a second scheduling platform. Added directly to
+`p6XerService.js` (no rename needed this time — the file was already named for both directions).
+- New `exportScheduleToXer({ schedule, wbsItems, activities, relationships, calendar })`. Simpler
+  than MSP export in one real way: P6's `PROJWBS`/`TASK` tables are independent, joined only by ID
+  — no MSPDI-style outline-position interleaving needed. WBS rows still emitted parent-before-child
+  (cycle-guarded recursive walk, same pattern as MSP export) purely for readability. Mints fresh
+  sequential IDs every export; `task_code` prefers PCC's own `external_id`, synthesizing and
+  disambiguating one when blank/colliding.
+- **Real bug caught before shipping**: P6's `task_type` codes are many-to-one onto PCC's
+  `activity_type` (`TT_Task`/`TT_Rsrc`/`TT_LOE` all mean "task" on import) — a naive
+  `reverseMap()` of the import table would have resolved "task" to whichever key iterated last
+  (`TT_LOE`), silently mislabeling every ordinary task as Level-of-Effort in the exported file.
+  Fixed with an explicit, intentional export-only map instead of deriving the reverse from import.
+- Round-trip verified two ways (table/field shape independently parsed, plus full re-import through
+  `parseXer()`), same standard as MSP export.
+- **Stated plainly, not softened**: this carries a materially HIGHER-risk unverified claim than MSP
+  export did. MSPDI is a well-documented, widely-tolerant Microsoft format; real Primavera P6 is
+  known in the field to validate XER far more strictly, and a genuine P6 export typically carries
+  several dozen columns per table where this emits only what its own importer reads back. If real
+  P6 rejects or partially accepts this, that's the documented, expected risk — not a bug to quietly
+  patch around. Tell Aditya this explicitly and more emphatically than the MSP caveat if he asks
+  whether P6 export "works": verified against PCC's own importer, NOT verified against real P6.
+- New "Export to Primavera P6" button in the Schedule toolbar. Extracted a small
+  `gatherScheduleExportData()` helper (WBS/Activities/Relationships/Calendar for one schedule),
+  shared by both the MSP and P6 export handlers — previously duplicated inline in the MSP one.
+- New test files: `tests/test_p6_xer_export_service.js` (15 checks, including a regression check
+  for the `task_type` collision fix) and `tests/test_p6_xer_export_e2e.js` (3 checks). All 18 passed
+  on the first real run except the `task_type` bug, which was caught and fixed before any test run
+  even needed to fail on it (found by re-reading the reverse-map logic while writing the export).
+
+**`schema_version` remains 61** (Phase 3 in full — import and export — added no schema changes).
+**Test suite: 97 files, 2378 checks, 0 failures** — recount rather than trust this blindly.
+
 **Repo/branch state**: working on `claude/pcc-architecture-upgrade-j5a1eo`, per this session's own
 explicit branch instructions (develop + push there, never push elsewhere, never merge to `main` or
 open a PR unless directly asked — a deliberate departure from this file's older standing "merge to
 main immediately" convention, which assumes a different session type than this remote-branch one).
 Verify current state with `git status`/`git log` rather than trusting this paragraph blindly.
 
-**Next steps**: XER **export** (PCC → P6) has not been started — a separate decision point from
-import, same as Phase 2's MSP export was, given XER's stricter real-P6-acceptance bar. Beyond that,
-Phase 5 (SQLite) is the master prompt's next major architectural step, gated on the schedule model
-having proven out across three file formats now — confirm scope/direction with Aditya before
-starting either.
+**Next steps**: Microsoft Project and Primavera P6 file interoperability (Phases 2-3) are both now
+complete on import and export, modulo the two genuinely untestable claims (opening an exported file
+in the real authoring tool) flagged above — the P6 one materially riskier than the MSP one. Phase 5
+(SQLite) is the master prompt's next major architectural step, gated on the schedule model having
+proven out across three file formats now — confirm scope/direction with Aditya before starting it.

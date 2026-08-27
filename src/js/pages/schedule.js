@@ -940,7 +940,11 @@
    * Excel-imported schedule can be exported to MS Project just as validly as one that
    * was originally imported from MSP), unlike "Edit Excel" which only makes sense for
    * a schedule that actually came from Excel. */
-  function handleExportMspXml(schedule, data, rerender) {
+  /** Shared by both file-format export handlers below: one schedule's WBS/Activities/
+   * Relationships, plus whichever Calendar its own activities actually reference
+   * (falling back to the project's Phase-1 default calendar if none of them have one
+   * set — e.g. a schedule built entirely by hand before Phase 1). */
+  function gatherScheduleExportData(schedule, data) {
     var wbsItems = data.wbs_items.filter(function (w) {
       return w.schedule_id === schedule.id;
     });
@@ -950,9 +954,6 @@
     var relationships = data.relationships.filter(function (r) {
       return r.schedule_id === schedule.id;
     });
-    // Prefer whichever Calendar this schedule's own activities actually reference; fall
-    // back to the project's default calendar (Phase 1 mints one per project) if none
-    // of them have one set (e.g. a schedule built entirely by hand before Phase 1).
     var calendarId = null;
     for (var i = 0; i < activities.length; i++) {
       if (activities[i].calendar_id) {
@@ -967,13 +968,17 @@
       : data.calendars.find(function (c) {
           return c.project_id === schedule.project_id && c.is_default;
         });
+    return { wbsItems: wbsItems, activities: activities, relationships: relationships, calendar: calendar || null };
+  }
 
+  function handleExportMspXml(schedule, data, rerender) {
+    var exportData = gatherScheduleExportData(schedule, data);
     var xml = window.PCC.mspXmlService.exportScheduleToMspXml({
       schedule: schedule,
-      wbsItems: wbsItems,
-      activities: activities,
-      relationships: relationships,
-      calendar: calendar || null,
+      wbsItems: exportData.wbsItems,
+      activities: exportData.activities,
+      relationships: exportData.relationships,
+      calendar: exportData.calendar,
     });
 
     var blob = new Blob([xml], { type: "application/xml" });
@@ -982,6 +987,33 @@
       .save(blob, filename)
       .then(function () {
         window.PCC.notify('Exported "' + schedule.name + '" as Microsoft Project XML.', "success");
+      })
+      .catch(function (e) {
+        window.PCC.notify("Could not export: " + e.message, "error");
+      });
+    rerender();
+  }
+
+  /** Architecture Upgrade Phase 3 (export half): downloads one schedule as a Primavera
+   * P6 XER file — the round-trip counterpart to handleP6XerFileSelected() above. See
+   * p6XerService.js's own header for why this carries a real, higher-risk "unverified
+   * against actual P6" caveat than the MSP export does. */
+  function handleExportP6Xer(schedule, data, rerender) {
+    var exportData = gatherScheduleExportData(schedule, data);
+    var xer = window.PCC.p6XerService.exportScheduleToXer({
+      schedule: schedule,
+      wbsItems: exportData.wbsItems,
+      activities: exportData.activities,
+      relationships: exportData.relationships,
+      calendar: exportData.calendar,
+    });
+
+    var blob = new Blob([xer], { type: "application/octet-stream" });
+    var filename = (schedule.name || "schedule").replace(/[\\/:*?"<>|]/g, "_") + ".xer";
+    window.PCC.nativeFile
+      .save(blob, filename)
+      .then(function () {
+        window.PCC.notify('Exported "' + schedule.name + '" as a Primavera P6 XER file.', "success");
       })
       .catch(function (e) {
         window.PCC.notify("Could not export: " + e.message, "error");
@@ -2038,6 +2070,15 @@
       handleExportMspXml(currentScheduleForMspExport, data, rerender);
     };
     bar.appendChild(exportMspBtn);
+
+    var exportXerBtn = document.createElement("button");
+    exportXerBtn.className = "btn btn--ghost";
+    exportXerBtn.textContent = "Export to Primavera P6";
+    exportXerBtn.disabled = !currentScheduleForMspExport;
+    exportXerBtn.onclick = function () {
+      handleExportP6Xer(currentScheduleForMspExport, data, rerender);
+    };
+    bar.appendChild(exportXerBtn);
 
     var calcBtn = document.createElement("button");
     calcBtn.className = "btn btn--ghost";

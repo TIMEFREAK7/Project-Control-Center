@@ -1,17 +1,17 @@
-/* Primavera P6 XER — parsing (and, if this gate extends to it, export) of P6's native
- * tabular export format. No DOM manipulation of the app's own UI, no store writes —
- * same separation scheduleImportService.js (Excel) and mspXmlService.js (MS Project)
- * already keep. parseXer() returns the *exact same shape* parseRows() does
- * ({ activities, wbsEntries, relationships, warnings, errors, summary }, plus one
- * addition, `calendar`) so schedule.js's existing buildScheduleRecords() consumes any
- * of the three importers identically — the whole point of the Architecture Upgrade
- * Phase 1 canonical model this file feeds into.
+/* Primavera P6 XER — parsing AND export of P6's native tabular export format. No DOM
+ * manipulation of the app's own UI, no store writes — same separation
+ * scheduleImportService.js (Excel) and mspXmlService.js (MS Project) already keep.
+ * parseXer() returns the *exact same shape* parseRows() does ({ activities, wbsEntries,
+ * relationships, warnings, errors, summary }, plus one addition, `calendar`) so
+ * schedule.js's existing buildScheduleRecords() consumes any of the three importers
+ * identically — the whole point of the Architecture Upgrade Phase 1 canonical model
+ * this file feeds into.
  *
  * PCC Architecture Upgrade Phase 3 (Primavera P6 File Interoperability). Per the
  * master upgrade prompt's own instruction: XER is P6's own practical *exchange*
  * format — a plain tab-delimited text file (File → Export → Project Export (XER) in
  * P6), not a database file requiring P6 itself to read. No new dependency: this is a
- * simple line-based text format, parsed with plain string splitting.
+ * simple line-based text format, built and parsed with plain string splitting.
  *
  * XER FILE STRUCTURE (for anyone maintaining this without prior XER exposure):
  *   ERMHDR\t<version>\t<date>\t...                 one header line, first in the file
@@ -24,6 +24,21 @@
  * TASK (activities), TASKPRED (relationships), CALENDAR (referenced by TASK.clndr_id;
  * `day_hr_cnt` gives this file's *actual* hours-per-working-day, so duration/lag
  * conversion here is exact, not an assumed-8-hours guess like the MSP importer needs).
+ *
+ * EXPORT: A REAL, HIGHER-RISK CAVEAT THAN MSP EXPORT HAD. exportScheduleToXer()'s
+ * output is verified by re-importing it through this same file's parseXer() and
+ * confirming the data survives — proving PCC's own import/export are mutually
+ * consistent, same standard mspXmlService.js's export holds itself to. It has NOT been
+ * opened in a real Primavera P6 installation (none is available in this environment).
+ * Unlike MSPDI (a well-documented, widely-tolerant Microsoft interchange format), real
+ * P6 is known in the field to validate XER imports considerably more strictly, and a
+ * genuine, real-world P6 export typically carries far more columns per table (often
+ * several dozen) than this file emits — only the fields this file's own importer reads
+ * back are written, on the principle that a minimal-but-honest file beats a padded one
+ * built from guessed values with no real data behind them. If a file this function
+ * produces is ever rejected or only partially accepted by a real P6 installation, that
+ * is the expected, documented risk here, not a bug to silently work around — widen the
+ * emitted field set deliberately, informed by what a real P6 actually asked for.
  *
  * DELIBERATE SCOPE LIMITS (read before extending this file):
  * - Only the FIRST project in the file (first PROJECT row's proj_id) is imported. A
@@ -65,6 +80,19 @@
  *   this has not been tested against a real P6-produced export (no P6 installation is
  *   available in this environment) — see the round-trip note in mspXmlService.js for
  *   the same honesty standard applied here.
+ * - exportScheduleToXer() mints fresh sequential IDs (proj_id/wbs_id/task_id/
+ *   task_pred_id/clndr_id) on every export, same reasoning as mspXmlService.js's
+ *   export — PCC has no concept of "this activity's canonical prior XER task_id" to
+ *   preserve. `task_code` is taken from PCC's own `external_id` when present (so a
+ *   schedule that was originally imported FROM an XER file keeps its original activity
+ *   codes on export) or synthesized from the activity's name otherwise.
+ * - The exported CALENDAR row carries only `clndr_name`/`day_hr_cnt`/`week_hr_cnt` — no
+ *   `clndr_data` (P6's proprietary nested work-week/holiday format) is fabricated,
+ *   mirroring import's own refusal to decode it. A real P6 installation may or may not
+ *   accept a calendar row with no `clndr_data` at all; this is a known, unverified risk
+ *   specific to the calendar table, not silently assumed to work.
+ * - Export does not emit Resources/Assignments/Codes, matching import's own scope
+ *   limits above.
  */
 (function () {
   "use strict";
@@ -400,8 +428,186 @@
     };
   }
 
+  // ---------------------------------------------------------------------------------
+  // Export: PCC schedule -> Primavera P6 XER. See this file's own header for the
+  // round-trip verification caveat (a real one, more so than MSP export's) and the
+  // deliberate scope limits (fresh IDs, no clndr_data, no Resources/Codes).
+  // ---------------------------------------------------------------------------------
+
+  function reverseMap(map) {
+    var out = {};
+    Object.keys(map).forEach(function (k) {
+      out[map[k]] = k;
+    });
+    return out;
+  }
+  // NOT reverseMap(TASK_TYPE_MAP): that map is many-to-one (TT_Task/TT_Rsrc/TT_LOE all
+  // -> "task"), so a naive reverse would have "task" resolve to whichever key iterated
+  // last (TT_LOE) rather than the one actually wanted — a real bug caught before
+  // shipping, not a hypothetical. Explicit here instead.
+  var TASK_TYPE_EXPORT_MAP = { task: "TT_Task", milestone: "TT_Mile", wbs_summary: "TT_WBS" };
+  var STATUS_CODE_REVERSE = reverseMap(STATUS_CODE_MAP);
+  var PRED_TYPE_REVERSE = reverseMap(PRED_TYPE_MAP);
+  var CONSTRAINT_TYPE_REVERSE = reverseMap(CONSTRAINT_TYPE_MAP);
+  var EXPORT_DAY_HR_CNT = 8;
+
+  function xerField(v) {
+    // XER is tab/newline-delimited with no escaping mechanism at all — a tab or
+    // newline inside a value would corrupt the file structure. Strip rather than
+    // silently truncate; real activity names/codes containing a literal tab are not a
+    // realistic case worth a warnings-array plumbing exercise for this format.
+    return String(v == null ? "" : v).replace(/[\t\r\n]/g, " ");
+  }
+
+  function daysToHours(days) {
+    return days == null ? "" : String(Math.round(days * EXPORT_DAY_HR_CNT * 100) / 100);
+  }
+
+  function toXerDateTime(dateStr, endOfDay) {
+    if (!dateStr) return "";
+    return dateStr + " " + (endOfDay ? "17:00" : "08:00");
+  }
+
+  function tableBlock(tableName, fields, rows) {
+    var lines = ["%T\t" + tableName, "%F\t" + fields.join("\t")];
+    rows.forEach(function (row) {
+      lines.push("%R\t" + fields.map(function (f) { return xerField(row[f]); }).join("\t"));
+    });
+    return lines.join("\n");
+  }
+
+  /** Exports one schedule's WBS/Activities/Relationships (plus, optionally, one
+   * Project calendar) into an XER string. Every array is expected already scoped to
+   * the one schedule being exported, same "caller owns scoping" convention
+   * mspXmlService.js's export and buildScheduleRecords() (schedule.js) already use. */
+  function exportScheduleToXer(input) {
+    var schedule = input.schedule;
+    var wbsItems = input.wbsItems || [];
+    var activities = input.activities || [];
+    var relationships = input.relationships || [];
+    var calendar = input.calendar || null;
+
+    var PROJ_ID = "PROJ1";
+    var CLNDR_ID = "1";
+
+    var idCounter = 0;
+    function nextId() {
+      idCounter++;
+      return String(idCounter);
+    }
+
+    // WBS: parent-before-child order purely for a readable file — P6 doesn't require
+    // any particular row order in PROJWBS since every row carries its own real
+    // parent_wbs_id FK (no outline-position dependency the way MSPDI's Task order has).
+    var wbsIdByPccId = {};
+    var visitedWbsIds = {};
+    var wbsRowsOrdered = [];
+    var childrenByParent = {};
+    wbsItems.forEach(function (w) {
+      var key = w.parent_wbs_id || "__root__";
+      (childrenByParent[key] = childrenByParent[key] || []).push(w);
+    });
+    function walkWbs(parentKey) {
+      (childrenByParent[parentKey] || []).forEach(function (w) {
+        if (visitedWbsIds[w.id]) return; // cycle guard
+        visitedWbsIds[w.id] = true;
+        wbsIdByPccId[w.id] = nextId();
+        wbsRowsOrdered.push(w);
+        walkWbs(w.id);
+      });
+    }
+    walkWbs("__root__");
+
+    var wbsRows = wbsRowsOrdered.map(function (w) {
+      return {
+        wbs_id: wbsIdByPccId[w.id],
+        proj_id: PROJ_ID,
+        wbs_short_name: w.code || w.name,
+        wbs_name: w.name,
+        parent_wbs_id: w.parent_wbs_id ? wbsIdByPccId[w.parent_wbs_id] || "" : "",
+        seq_num: String(wbsRowsOrdered.indexOf(w) + 1),
+      };
+    });
+
+    var taskIdByPccId = {};
+    var seenTaskCodes = {};
+    var taskRows = activities.map(function (a, idx) {
+      taskIdByPccId[a.id] = nextId();
+      var taskType = TASK_TYPE_EXPORT_MAP[a.activity_type] || "TT_Task";
+      var statusCode = STATUS_CODE_REVERSE[a.status] || "TK_NotStart";
+      var taskCode = a.external_id || "A" + (idx + 1).toString().padStart(4, "0");
+      if (seenTaskCodes[taskCode]) taskCode = taskCode + "-" + (idx + 1); // keep codes unique on export even if two PCC activities happened to share one
+      seenTaskCodes[taskCode] = true;
+
+      var row = {
+        task_id: taskIdByPccId[a.id],
+        proj_id: PROJ_ID,
+        wbs_id: a.wbs_id ? wbsIdByPccId[a.wbs_id] || "" : "",
+        clndr_id: CLNDR_ID,
+        task_code: taskCode,
+        task_name: a.name,
+        task_type: taskType,
+        status_code: statusCode,
+        target_drtn_hr_cnt: daysToHours(a.duration),
+        remain_drtn_hr_cnt: daysToHours(a.remaining_duration != null ? a.remaining_duration : a.duration),
+        target_start_date: toXerDateTime(a.planned_start, false),
+        target_end_date: toXerDateTime(a.planned_finish, true),
+        act_start_date: toXerDateTime(a.actual_start, false),
+        act_end_date: toXerDateTime(a.actual_finish, true),
+        cstr_type: a.constraint_type && CONSTRAINT_TYPE_REVERSE[a.constraint_type] !== undefined ? CONSTRAINT_TYPE_REVERSE[a.constraint_type] : "",
+        cstr_date: "",
+      };
+      if (row.cstr_type) row.cstr_date = toXerDateTime(a.constraint_date, false);
+      return row;
+    });
+
+    var taskPredRows = [];
+    relationships.forEach(function (r) {
+      var predId = taskIdByPccId[r.predecessor_id];
+      var succId = taskIdByPccId[r.successor_id];
+      if (!predId || !succId) return; // a relationship pointing outside this scoped set
+      taskPredRows.push({
+        task_pred_id: nextId(),
+        proj_id: PROJ_ID,
+        task_id: succId,
+        pred_task_id: predId,
+        pred_type: PRED_TYPE_REVERSE[r.type] || "PR_FS",
+        lag_hr_cnt: daysToHours(r.lag || 0),
+      });
+    });
+
+    var calendarRows = [
+      {
+        clndr_id: CLNDR_ID,
+        default_flag: "Y",
+        clndr_name: (calendar && calendar.name) || "Standard",
+        proj_id: "", // a project-specific (non-global) calendar would set this; kept global/blank, same as a typical "Standard" calendar
+        day_hr_cnt: String(EXPORT_DAY_HR_CNT),
+        week_hr_cnt: String(EXPORT_DAY_HR_CNT * 5),
+      },
+    ];
+
+    var today = new Date().toISOString().slice(0, 10);
+    var lines = [
+      "ERMHDR\t21.12\t" + today + "\tProject\tpcc\tpcc\tProject Control Center\tUSD\t",
+      tableBlock("PROJECT", ["proj_id", "proj_short_name"], [{ proj_id: PROJ_ID, proj_short_name: xerField(schedule.name || "PCC Schedule").slice(0, 100) }]),
+      tableBlock("CALENDAR", ["clndr_id", "default_flag", "clndr_name", "proj_id", "day_hr_cnt", "week_hr_cnt"], calendarRows),
+      tableBlock("PROJWBS", ["wbs_id", "proj_id", "wbs_short_name", "wbs_name", "parent_wbs_id", "seq_num"], wbsRows),
+      tableBlock(
+        "TASK",
+        ["task_id", "proj_id", "wbs_id", "clndr_id", "task_code", "task_name", "task_type", "status_code", "target_drtn_hr_cnt", "remain_drtn_hr_cnt", "target_start_date", "target_end_date", "act_start_date", "act_end_date", "cstr_type", "cstr_date"],
+        taskRows
+      ),
+      tableBlock("TASKPRED", ["task_pred_id", "proj_id", "task_id", "pred_task_id", "pred_type", "lag_hr_cnt"], taskPredRows),
+      "%E",
+    ];
+
+    return lines.join("\n") + "\n";
+  }
+
   window.PCC.p6XerService = {
     parseXer: parseXer,
+    exportScheduleToXer: exportScheduleToXer,
     TASK_TYPE_MAP: TASK_TYPE_MAP,
     STATUS_CODE_MAP: STATUS_CODE_MAP,
     PRED_TYPE_MAP: PRED_TYPE_MAP,
