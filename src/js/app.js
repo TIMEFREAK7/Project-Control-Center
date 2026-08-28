@@ -17,6 +17,7 @@
     router.register("documents", window.PCC.pages.documents);
     router.register("documentTypes", window.PCC.pages.documentTypes);
     router.register("documentControlDashboard", window.PCC.pages.documentControlDashboard);
+    router.register("storageManagement", window.PCC.pages.storageManagement);
     router.register("dailylog", window.PCC.pages.dailylog);
     router.register("schedule", window.PCC.pages.schedule);
     router.register("delayRecoveryDashboard", window.PCC.pages.delayRecoveryDashboard);

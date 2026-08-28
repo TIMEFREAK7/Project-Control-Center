@@ -5567,6 +5567,52 @@ permanently delete important evidence unless the user explicitly requests perman
   trash semantics instead of the old hard-delete it was written against.
 - Full suite: **104 files, 2470 checks, 0 failures**.
 
+## PCC Architecture Upgrade — Phase 6 (Document/File Storage Engine): Storage Analytics & Orphan Detection, 2026-08-28
+
+Started per Aditya's "Start storage analytics and orphan detection." Master upgrade prompt Section
+28 (Storage Analytics: total storage, breakdown by type/project, largest files, duplicates) and
+Section 29 (Orphan File Detection: a database record with no matching physical file, and a
+physical file with no matching database record — "do NOT automatically delete orphan files, show
+them first").
+
+- **New pure calculation module, `src/js/storageAnalyticsEngine.js`** — no DOM, no store writes, no
+  IndexedDB calls, same separation `scheduleBaselineEngine.js`/`duplicateService.js` already keep.
+  `collectFileRecords(data)` is the single place that knows about every blob-bearing collection —
+  `documents`, `daily_logs[].photos[]`, `vendor_documents`, `knowledge_base_articles` (only if a
+  filename is set), `schedules` (only if a source file was imported), and the settings company
+  logo — flattened into one unified `{id, source, sourceLabel, filename, fileSize, projectId,
+  isDuplicate, trashed}` shape. A future new blob-bearing collection only needs one line added
+  here, not scattered changes across the analytics/orphan logic. `summarizeStorage(records)` totals
+  active storage (excluding trashed, which is reported separately — it's already hidden from normal
+  use, so its space isn't "storage you're actively using"), duplicate bytes (active only — a trashed
+  duplicate doesn't count twice), breakdowns by type and by project (an `__unassigned__` bucket
+  catches records with no project), and the top 20 largest files. `findOrphans(records, blobIds)`
+  compares the flattened record list against whatever `blobStore.listBlobIds()` resolves to.
+  Deliberately uses each record's own declared `file_size` for the size breakdown rather than
+  reading every blob's actual bytes from IndexedDB — opening every stored file just to add up sizes
+  would be exactly the "load everything into memory" mistake the master prompt's Section 33 warns
+  against. The one place actual blob bytes get read is a handful of orphan blobs' sizes for display,
+  never the whole library.
+- **New page, "Storage Management"** (`src/js/pages/storageManagement.js`, added under the existing
+  Documents nav group) — summary cards (Total Storage Used, In Trash, Possible Duplicates), By Type
+  and By Project breakdown tables, a Largest Files list, and a "Storage Integrity" panel with a
+  **Scan Storage** button. Scanning only ever surfaces findings — deleting an orphan blob is a
+  deliberate, per-item, confirmed action, never automatic, matching Section 29's explicit rule.
+  Records with a missing file get no delete action at all: there's no file left to recover, so the
+  only correct move is telling the person to review and decide whether to remove the record or
+  re-upload it from its own page, not attempting an automatic "repair" that would have to invent
+  bytes that don't exist.
+- **Tests**: `tests/test_storage_analytics_engine.js` (13 checks) — pure-logic coverage of
+  `collectFileRecords`/`summarizeStorage`/`findOrphans` across every collection type, trash/duplicate
+  exclusion, the unassigned-project bucket, the largest-files cap, and orphan/missing-blob edge
+  cases. `tests/test_storage_management_e2e.js` (27 checks) — jsdom end-to-end against the real
+  bundled `index.html`: page rendering, breakdown tables, Scan Storage finding a real orphan blob
+  and a real missing-blob record via `fake-indexeddb`, deleting an orphan (and actually removing it
+  from IndexedDB, not just the UI), confirmation-decline safety, and a trashed document correctly
+  excluded from the active total. Plus a real-Chromium Playwright smoke test exercising the same
+  flow against the genuine `blobStore.js` IndexedDB path, confirming zero page errors end to end.
+- Full suite: **106 files, 2510 checks, 0 failures**.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
@@ -5650,16 +5696,19 @@ Control") already covered most of what Sections 51/52 ask for; the increment clo
 genuine gaps found (calendar changes, constraint changes, and a holistic critical-path-movement
 metric) rather than rebuilding what already worked.
 
-**Phase 6 (Document/File Storage Engine) is started, not complete** — Bulk Import and Trash/Recycle
-Bin are both done (see their own sections above); storage analytics, orphan-file detection, and
-content-addressable storage remain, each a deliberately separate future increment rather than
-in-scope for either one so far. Trash's own build surfaced a real cross-cutting defect worth
+**Phase 6 (Document/File Storage Engine) is started, not complete** — Bulk Import, Trash/Recycle
+Bin, Storage Analytics, and Orphan File Detection are all done (see their own sections above);
+content-addressable storage (deduplicating identical files at the blob-storage layer itself, not
+just detecting them) is the one remaining deferred item, a deliberately separate future increment
+rather than in-scope so far. Trash's own build surfaced a real cross-cutting defect worth
 remembering: 17 call sites across 11 other page modules read `data.documents` with no concept of
 "hidden," so a trashed document would have kept counting everywhere (compliance requirements,
 reports, Executive Center, Portfolio attachments, duplicate detection) — all fixed as part of this
-increment, not left as a known gap. The rest of the master prompt's later phases (7-9) remain
-unstarted — confirm scope/direction before beginning any of them, the same gate discipline every
-other roadmap on this page already follows.
+increment, not left as a known gap; worth remembering for any *future* field that needs to hide a
+record from view — grep the collection app-wide, don't assume the one page you're working in is the
+only consumer. The rest of the master prompt's later phases (7-9) remain unstarted — confirm
+scope/direction before beginning any of them, the same gate discipline every other roadmap on this
+page already follows.
 
 **Tier 2 is complete, and the entire 14-gate Document Control sub-spec Aditya handed over is now
 built** (Gates 14-28) — no gates from that spec remain. A new, separate roadmap started with Gate

@@ -77,6 +77,7 @@
         { key: "documents", label: "Documents", code: "DC" },
         { key: "documentTypes", label: "Document Types", code: "DT" },
         { key: "documentControlDashboard", label: "Document Control Dashboard", code: "DD" },
+        { key: "storageManagement", label: "Storage Management", code: "SM" },
       ],
     },
     {
@@ -111,6 +112,7 @@
     documents: "Documents",
     documentTypes: "Document Types",
     documentControlDashboard: "Document Control Dashboard",
+    storageManagement: "Storage Management",
     dailylog: "Daily Log",
     risks: "Risk Register",
     meetings: "Meetings",

@@ -3497,6 +3497,204 @@ window.PCC_SQL_WASM_BASE64 = "AGFzbQEAAAABnwRFYAJ/fwF/YAF/AX9gA39/fwBgA39/fwF/YA
 })();
 
 
+/* ---- js/storageAnalyticsEngine.js ---- */
+/* PCC Architecture Upgrade Phase 6 (Document/File Storage Engine): Storage Analytics &
+ * Orphan Detection. Master upgrade prompt Section 28 (Storage Analytics: total storage,
+ * breakdown by project/type, largest files, duplicates) and Section 29 (Orphan File
+ * Detection: a database record with no matching physical file, and a physical file with
+ * no matching database record — "do NOT automatically delete orphan files, show them
+ * first").
+ *
+ * Calculation only: no DOM, no store writes, no IndexedDB calls — same separation
+ * scheduleBaselineEngine.js/duplicateService.js already keep. storageManagement.js (the
+ * page) owns rendering and the one IndexedDB call (blobStore.listBlobIds()) orphan
+ * detection genuinely needs.
+ *
+ * WHAT COUNTS AS A "FILE" HERE:
+ * Every place a binary blob is stored via blobStore.js, unified into one flat record
+ * shape — collectFileRecords() is the single place that knows about all of them, so a
+ * future new blob-bearing collection only needs one line added here, not a change
+ * scattered across the analytics/orphan logic below. Deliberately uses each record's own
+ * declared `file_size` (already captured at upload time from the real File object) for
+ * the size breakdown, rather than reading every blob's actual bytes from IndexedDB — a
+ * blob-shaped analytics report that had to open every stored file just to add up sizes
+ * would be exactly the "load everything into memory" mistake the master prompt's Section
+ * 33 warns against. The one place actual blob bytes get read is findOrphans() -> the
+ * caller resolving a handful of orphan blobs' sizes for display, not this file.
+ */
+(function () {
+  "use strict";
+  window.PCC = window.PCC || {};
+
+  /** Flattens every blob-bearing collection in `data` into one array of
+   * `{id, source, sourceLabel, filename, fileSize, projectId, isDuplicate, trashed}`.
+   * `id` is always the same id used as blobStore.js's key for that record. */
+  function collectFileRecords(data) {
+    var records = [];
+
+    (data.documents || []).forEach(function (d) {
+      records.push({
+        id: d.id,
+        source: "document",
+        sourceLabel: "Documents",
+        filename: d.filename || "(untitled)",
+        fileSize: d.file_size || 0,
+        projectId: d.project_id || "",
+        isDuplicate: !!d.is_duplicate,
+        trashed: !!d.trashed_at,
+      });
+    });
+
+    (data.daily_logs || []).forEach(function (log) {
+      (log.photos || []).forEach(function (p) {
+        records.push({
+          id: p.id,
+          source: "daily_log_photo",
+          sourceLabel: "Daily Log Photos",
+          filename: p.filename || "(photo)",
+          fileSize: p.file_size || 0,
+          projectId: log.project_id || "",
+          isDuplicate: false,
+          trashed: false,
+        });
+      });
+    });
+
+    (data.vendor_documents || []).forEach(function (d) {
+      records.push({
+        id: d.id,
+        source: "vendor_document",
+        sourceLabel: "Vendor Documents",
+        filename: d.filename || "(untitled)",
+        fileSize: d.file_size || 0,
+        projectId: d.project_id || "",
+        isDuplicate: !!d.is_duplicate,
+        trashed: false,
+      });
+    });
+
+    (data.knowledge_base_articles || []).forEach(function (a) {
+      if (a.filename) {
+        records.push({
+          id: a.id,
+          source: "knowledge_base_article",
+          sourceLabel: "Knowledge Base",
+          filename: a.filename,
+          fileSize: a.file_size || 0,
+          projectId: "",
+          isDuplicate: false,
+          trashed: false,
+        });
+      }
+    });
+
+    // A schedule's imported source file (Excel/MSP XML) — one blob per schedule, keyed
+    // by the schedule's own id, always overwritten (not versioned) on re-import/re-save.
+    (data.schedules || []).forEach(function (s) {
+      if (s.source_file_name) {
+        records.push({
+          id: s.id,
+          source: "schedule_import",
+          sourceLabel: "Schedule Imports",
+          filename: s.source_file_name,
+          fileSize: s.source_file_size || 0,
+          projectId: s.project_id || "",
+          isDuplicate: false,
+          trashed: false,
+        });
+      }
+    });
+
+    // Fixed single key, no per-record file_size tracked (see settings.js's logo upload)
+    // — included so orphan detection knows this id is legitimately claimed, not so it
+    // meaningfully contributes to the size totals (one small icon file either way).
+    if (data.settings && data.settings.company_logo_filename) {
+      records.push({
+        id: "company_logo",
+        source: "company_logo",
+        sourceLabel: "Company Logo",
+        filename: data.settings.company_logo_filename,
+        fileSize: 0,
+        projectId: "",
+        isDuplicate: false,
+        trashed: false,
+      });
+    }
+
+    return records;
+  }
+
+  /** Section 28 (Storage Analytics): total storage, breakdown by type/project, largest
+   * files, duplicates. Trashed records are counted separately (`trashedBytes`/
+   * `trashedCount`), not included in the active totals — they're already hidden from
+   * normal use, so their space isn't "storage you're actively using." */
+  function summarizeStorage(records) {
+    var active = records.filter(function (r) { return !r.trashed; });
+    var trashed = records.filter(function (r) { return r.trashed; });
+    var duplicates = active.filter(function (r) { return r.isDuplicate; });
+
+    var bySource = {};
+    active.forEach(function (r) {
+      if (!bySource[r.source]) bySource[r.source] = { label: r.sourceLabel, count: 0, bytes: 0 };
+      bySource[r.source].count++;
+      bySource[r.source].bytes += r.fileSize;
+    });
+
+    var byProject = {};
+    active.forEach(function (r) {
+      var key = r.projectId || "__unassigned__";
+      if (!byProject[key]) byProject[key] = { count: 0, bytes: 0 };
+      byProject[key].count++;
+      byProject[key].bytes += r.fileSize;
+    });
+
+    var largestFiles = active
+      .slice()
+      .sort(function (a, b) { return b.fileSize - a.fileSize; })
+      .slice(0, 20);
+
+    return {
+      totalBytes: active.reduce(function (sum, r) { return sum + r.fileSize; }, 0),
+      totalCount: active.length,
+      trashedBytes: trashed.reduce(function (sum, r) { return sum + r.fileSize; }, 0),
+      trashedCount: trashed.length,
+      duplicateBytes: duplicates.reduce(function (sum, r) { return sum + r.fileSize; }, 0),
+      duplicateCount: duplicates.length,
+      bySource: bySource,
+      byProject: byProject,
+      largestFiles: largestFiles,
+    };
+  }
+
+  /** Section 29 (Orphan File Detection). `blobIds` is whatever blobStore.listBlobIds()
+   * resolved to — the caller's job, not this pure function's. Returns:
+   *   - orphanBlobIds: ids present in blobStore with NO matching record at all (safe to
+   *     delete — nothing references them — but never done automatically, per the master
+   *     prompt's own "show them first" rule; the caller decides).
+   *   - missingBlobRecords: records that claim a real file (fileSize > 0) but have no
+   *     matching blob in storage — informational only. There is no file to recover, so
+   *     the only correct action is telling the person, not attempting an automatic
+   *     "repair" that would have to invent bytes that don't exist. */
+  function findOrphans(records, blobIds) {
+    var recordIds = {};
+    records.forEach(function (r) { recordIds[r.id] = true; });
+    var blobIdSet = {};
+    (blobIds || []).forEach(function (id) { blobIdSet[id] = true; });
+
+    var orphanBlobIds = (blobIds || []).filter(function (id) { return !recordIds[id]; });
+    var missingBlobRecords = records.filter(function (r) { return r.fileSize > 0 && !blobIdSet[r.id]; });
+
+    return { orphanBlobIds: orphanBlobIds, missingBlobRecords: missingBlobRecords };
+  }
+
+  window.PCC.storageAnalyticsEngine = {
+    collectFileRecords: collectFileRecords,
+    summarizeStorage: summarizeStorage,
+    findOrphans: findOrphans,
+  };
+})();
+
+
 /* ---- js/scheduleImportService.js ---- */
 /* Schedule Excel import \u2014 parsing and validation only. No DOM, no store writes, no
  * SheetJS calls here (that stays in schedule.js, same as documents.js's convention).
@@ -11710,6 +11908,7 @@ window.PCC_SQL_WASM_BASE64 = "AGFzbQEAAAABnwRFYAJ/fwF/YAF/AX9gA39/fwBgA39/fwF/YA
         { key: "documents", label: "Documents", code: "DC" },
         { key: "documentTypes", label: "Document Types", code: "DT" },
         { key: "documentControlDashboard", label: "Document Control Dashboard", code: "DD" },
+        { key: "storageManagement", label: "Storage Management", code: "SM" },
       ],
     },
     {
@@ -11744,6 +11943,7 @@ window.PCC_SQL_WASM_BASE64 = "AGFzbQEAAAABnwRFYAJ/fwF/YAF/AX9gA39/fwBgA39/fwF/YA
     documents: "Documents",
     documentTypes: "Document Types",
     documentControlDashboard: "Document Control Dashboard",
+    storageManagement: "Storage Management",
     dailylog: "Daily Log",
     risks: "Risk Register",
     meetings: "Meetings",
@@ -30073,6 +30273,323 @@ window.PCC_SQL_WASM_BASE64 = "AGFzbQEAAAABnwRFYAJ/fwF/YAF/AX9gA39/fwBgA39/fwF/YA
       });
     },
   };
+})();
+
+
+/* ---- js/pages/storageManagement.js ---- */
+/* PCC Architecture Upgrade Phase 6 (Document/File Storage Engine): Storage Management.
+ * Master upgrade prompt Section 98: a dedicated "how much space is PCC using, which
+ * projects/files are largest, are there duplicates, are there orphan files" view.
+ * Read-only analytics (storageAnalyticsEngine.js) plus one real action: Scan Storage for
+ * orphans (Section 29), which only ever surfaces findings — deleting an orphan blob is
+ * a deliberate, per-item, confirmed action, never automatic.
+ */
+(function () {
+  "use strict";
+  window.PCC = window.PCC || {};
+  window.PCC.pages = window.PCC.pages || {};
+
+  var uiState = {
+    scanning: false,
+    scanResult: null, // { orphanBlobIds: [{id, size}], missingBlobRecords: [...] } once scanned
+    scanError: null,
+  };
+
+  function formatBytes(bytes) {
+    if (!bytes) return "0 KB";
+    var kb = bytes / 1024;
+    if (kb < 1024) return kb.toFixed(1) + " KB";
+    return (kb / 1024).toFixed(2) + " MB";
+  }
+
+  function projectName(data, projectId) {
+    if (!projectId) return "Unassigned";
+    var p = data.projects.find(function (proj) { return proj.id === projectId; });
+    return p ? p.name || "(unnamed project)" : "Unassigned";
+  }
+
+  function runScan(data, rerender) {
+    uiState.scanning = true;
+    uiState.scanError = null;
+    rerender();
+
+    var records = window.PCC.storageAnalyticsEngine.collectFileRecords(data);
+    window.PCC.blobStore
+      .listBlobIds()
+      .then(function (blobIds) {
+        var result = window.PCC.storageAnalyticsEngine.findOrphans(records, blobIds);
+        // Orphan blobs' sizes aren't known from the (nonexistent) record — this is the
+        // one place actual blob bytes get read, and only for the handful of orphans
+        // found, never the whole library (see the engine's own header on why).
+        return Promise.all(
+          result.orphanBlobIds.map(function (id) {
+            return window.PCC.blobStore
+              .getBlob(id)
+              .then(function (dataUri) {
+                var size = dataUri ? Math.round((dataUri.length - dataUri.indexOf(",") - 1) * 0.75) : 0;
+                return { id: id, size: size };
+              })
+              .catch(function () {
+                return { id: id, size: 0 };
+              });
+          })
+        ).then(function (orphanBlobsWithSize) {
+          uiState.scanResult = {
+            orphanBlobs: orphanBlobsWithSize,
+            missingBlobRecords: result.missingBlobRecords,
+          };
+          uiState.scanning = false;
+          rerender();
+        });
+      })
+      .catch(function (e) {
+        uiState.scanError = "Could not scan storage: " + e.message;
+        uiState.scanning = false;
+        rerender();
+      });
+  }
+
+  function deleteOrphanBlob(id, rerender) {
+    if (!window.confirm("Permanently delete this orphan file? It has no matching record in PCC, so nothing else references it. This can't be undone.")) return;
+    window.PCC.blobStore.deleteBlob(id).then(function () {
+      if (uiState.scanResult) {
+        uiState.scanResult.orphanBlobs = uiState.scanResult.orphanBlobs.filter(function (o) { return o.id !== id; });
+      }
+      window.PCC.notify("Orphan file deleted.", "info");
+      rerender();
+    }).catch(function (e) {
+      window.PCC.notify("Could not delete: " + e.message, "error");
+    });
+  }
+
+  function renderSummaryCards(summary) {
+    var grid = document.createElement("div");
+    grid.className = "kpi-grid";
+
+    function card(label, value, sub) {
+      var el = document.createElement("div");
+      el.className = "panel kpi-card";
+      el.innerHTML =
+        "<div class='kpi-card__label'>" + label + "</div>" +
+        "<div class='kpi-card__value'>" + value + "</div>" +
+        (sub ? "<div class='text-secondary' style='font-size:12px;margin-top:4px;'>" + sub + "</div>" : "");
+      return el;
+    }
+
+    grid.appendChild(card("Total Storage Used", formatBytes(summary.totalBytes), summary.totalCount + " file" + (summary.totalCount === 1 ? "" : "s")));
+    grid.appendChild(card("In Trash", formatBytes(summary.trashedBytes), summary.trashedCount + " file" + (summary.trashedCount === 1 ? "" : "s")));
+    grid.appendChild(card("Possible Duplicates", formatBytes(summary.duplicateBytes), summary.duplicateCount + " file" + (summary.duplicateCount === 1 ? "" : "s")));
+    return grid;
+  }
+
+  function renderBreakdownTable(heading, rows, labelFn) {
+    var panel = document.createElement("div");
+    panel.className = "panel";
+    panel.style.marginTop = "var(--space-4)";
+    var h = document.createElement("h3");
+    h.style.marginBottom = "var(--space-3)";
+    h.textContent = heading;
+    panel.appendChild(h);
+
+    if (rows.length === 0) {
+      var empty = document.createElement("p");
+      empty.className = "text-secondary";
+      empty.style.fontSize = "var(--text-sm)";
+      empty.textContent = "Nothing to show yet.";
+      panel.appendChild(empty);
+      return panel;
+    }
+
+    var list = document.createElement("div");
+    list.className = "project-list";
+    rows.forEach(function (row) {
+      var item = document.createElement("div");
+      item.className = "detail-card";
+      item.style.display = "flex";
+      item.style.justifyContent = "space-between";
+      item.style.marginBottom = "var(--space-2)";
+      item.innerHTML =
+        "<span>" + labelFn(row) + "</span>" +
+        "<span class='text-secondary' style='font-size:13px;'>" + row.count + " file" + (row.count === 1 ? "" : "s") + " · " + formatBytes(row.bytes) + "</span>";
+      list.appendChild(item);
+    });
+    panel.appendChild(list);
+    return panel;
+  }
+
+  function render(outlet) {
+    function rerender() {
+      outlet.innerHTML = "";
+      render(outlet);
+    }
+
+    var data = window.PCC.store.get();
+
+    var h1 = document.createElement("h2");
+    h1.className = "focus-mode-hide";
+    h1.textContent = "Storage Management";
+    h1.style.marginBottom = "var(--space-4)";
+    outlet.appendChild(h1);
+
+    var infoPanel = document.createElement("div");
+    infoPanel.className = "panel focus-mode-hide";
+    infoPanel.style.marginBottom = "var(--space-4)";
+    infoPanel.innerHTML =
+      "<p class='text-secondary' style='margin:0; font-size:13px;'>How much space PCC is using across every document, " +
+      "photo, vendor file, knowledge base attachment, and schedule import — plus a Scan Storage tool that finds files " +
+      "with no matching record, or records with no matching file. Scanning never deletes anything automatically; " +
+      "you decide what to do with each finding.</p>";
+    outlet.appendChild(infoPanel);
+
+    var records = window.PCC.storageAnalyticsEngine.collectFileRecords(data);
+    var summary = window.PCC.storageAnalyticsEngine.summarizeStorage(records);
+
+    outlet.appendChild(renderSummaryCards(summary));
+
+    var bySourceRows = Object.keys(summary.bySource)
+      .map(function (key) { return summary.bySource[key]; })
+      .sort(function (a, b) { return b.bytes - a.bytes; });
+    outlet.appendChild(renderBreakdownTable("By Type", bySourceRows, function (row) { return row.label; }));
+
+    var byProjectRows = Object.keys(summary.byProject)
+      .map(function (key) { return Object.assign({ projectId: key }, summary.byProject[key]); })
+      .sort(function (a, b) { return b.bytes - a.bytes; });
+    outlet.appendChild(renderBreakdownTable("By Project", byProjectRows, function (row) {
+      return row.projectId === "__unassigned__" ? "Unassigned" : projectName(data, row.projectId);
+    }));
+
+    if (summary.largestFiles.length > 0) {
+      var largestPanel = document.createElement("div");
+      largestPanel.className = "panel";
+      largestPanel.style.marginTop = "var(--space-4)";
+      var largestHeading = document.createElement("h3");
+      largestHeading.style.marginBottom = "var(--space-3)";
+      largestHeading.textContent = "Largest Files";
+      largestPanel.appendChild(largestHeading);
+      var largestList = document.createElement("div");
+      largestList.className = "project-list";
+      summary.largestFiles.forEach(function (r) {
+        var row = document.createElement("div");
+        row.className = "detail-card";
+        row.style.marginBottom = "var(--space-2)";
+        row.innerHTML =
+          "<strong>" + r.filename + "</strong><br/>" +
+          "<span class='text-secondary' style='font-size:12px;'>" +
+          r.sourceLabel + " · " + projectName(data, r.projectId) + " · " + formatBytes(r.fileSize) +
+          "</span>";
+        largestList.appendChild(row);
+      });
+      largestPanel.appendChild(largestList);
+      outlet.appendChild(largestPanel);
+    }
+
+    // ---- Scan Storage (Section 29: Orphan File Detection) ----
+    var scanPanel = document.createElement("div");
+    scanPanel.className = "panel";
+    scanPanel.style.marginTop = "var(--space-4)";
+    var scanHeading = document.createElement("h3");
+    scanHeading.style.marginBottom = "var(--space-3)";
+    scanHeading.textContent = "Storage Integrity";
+    scanPanel.appendChild(scanHeading);
+
+    var scanBtn = document.createElement("button");
+    scanBtn.className = "btn btn--primary";
+    scanBtn.textContent = uiState.scanning ? "Scanning…" : "Scan Storage";
+    scanBtn.disabled = uiState.scanning;
+    scanBtn.onclick = function () {
+      runScan(data, rerender);
+    };
+    scanPanel.appendChild(scanBtn);
+
+    if (uiState.scanError) {
+      var errEl = document.createElement("p");
+      errEl.style.color = "var(--status-critical)";
+      errEl.style.fontSize = "var(--text-sm)";
+      errEl.style.marginTop = "var(--space-2)";
+      errEl.textContent = uiState.scanError;
+      scanPanel.appendChild(errEl);
+    }
+
+    if (uiState.scanResult) {
+      var result = uiState.scanResult;
+
+      var orphanHeading = document.createElement("h4");
+      orphanHeading.style.marginTop = "var(--space-4)";
+      orphanHeading.style.marginBottom = "var(--space-2)";
+      orphanHeading.textContent = "Orphan Files (" + result.orphanBlobs.length + ") — stored but no record references them";
+      scanPanel.appendChild(orphanHeading);
+
+      if (result.orphanBlobs.length === 0) {
+        var noOrphans = document.createElement("p");
+        noOrphans.className = "text-secondary";
+        noOrphans.style.fontSize = "var(--text-sm)";
+        noOrphans.textContent = "None found — every stored file has a matching record.";
+        scanPanel.appendChild(noOrphans);
+      } else {
+        var orphanList = document.createElement("div");
+        orphanList.className = "project-list";
+        result.orphanBlobs.forEach(function (o) {
+          var row = document.createElement("div");
+          row.className = "detail-card";
+          row.style.display = "flex";
+          row.style.justifyContent = "space-between";
+          row.style.alignItems = "center";
+          row.style.marginBottom = "var(--space-2)";
+          var info = document.createElement("span");
+          info.className = "mono";
+          info.style.fontSize = "12px";
+          info.textContent = o.id + " · ~" + formatBytes(o.size);
+          row.appendChild(info);
+          var delBtn = document.createElement("button");
+          delBtn.className = "btn btn--ghost";
+          delBtn.textContent = "Delete Orphan File";
+          delBtn.onclick = function () {
+            deleteOrphanBlob(o.id, rerender);
+          };
+          row.appendChild(delBtn);
+          orphanList.appendChild(row);
+        });
+        scanPanel.appendChild(orphanList);
+      }
+
+      var missingHeading = document.createElement("h4");
+      missingHeading.style.marginTop = "var(--space-4)";
+      missingHeading.style.marginBottom = "var(--space-2)";
+      missingHeading.textContent = "Records With a Missing File (" + result.missingBlobRecords.length + ")";
+      scanPanel.appendChild(missingHeading);
+
+      if (result.missingBlobRecords.length === 0) {
+        var noMissing = document.createElement("p");
+        noMissing.className = "text-secondary";
+        noMissing.style.fontSize = "var(--text-sm)";
+        noMissing.textContent = "None found — every record's file is actually there.";
+        scanPanel.appendChild(noMissing);
+      } else {
+        var missingNote = document.createElement("p");
+        missingNote.className = "text-secondary";
+        missingNote.style.fontSize = "var(--text-sm)";
+        missingNote.style.marginBottom = "var(--space-2)";
+        missingNote.textContent = "There is no file left to recover for these — review and decide whether to remove the record or re-upload it from its own page.";
+        scanPanel.appendChild(missingNote);
+        var missingList = document.createElement("div");
+        missingList.className = "project-list";
+        result.missingBlobRecords.forEach(function (r) {
+          var row = document.createElement("div");
+          row.className = "detail-card";
+          row.style.marginBottom = "var(--space-2)";
+          row.innerHTML =
+            "<strong>" + r.filename + "</strong><br/>" +
+            "<span class='text-secondary' style='font-size:12px;'>" + r.sourceLabel + " · " + projectName(data, r.projectId) + "</span>";
+          missingList.appendChild(row);
+        });
+        scanPanel.appendChild(missingList);
+      }
+    }
+
+    outlet.appendChild(scanPanel);
+  }
+
+  window.PCC.pages.storageManagement = render;
 })();
 
 
@@ -51390,6 +51907,7 @@ window.PCC_SQL_WASM_BASE64 = "AGFzbQEAAAABnwRFYAJ/fwF/YAF/AX9gA39/fwBgA39/fwF/YA
     router.register("documents", window.PCC.pages.documents);
     router.register("documentTypes", window.PCC.pages.documentTypes);
     router.register("documentControlDashboard", window.PCC.pages.documentControlDashboard);
+    router.register("storageManagement", window.PCC.pages.storageManagement);
     router.register("dailylog", window.PCC.pages.dailylog);
     router.register("schedule", window.PCC.pages.schedule);
     router.register("delayRecoveryDashboard", window.PCC.pages.delayRecoveryDashboard);

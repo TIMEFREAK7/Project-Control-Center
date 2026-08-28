@@ -5256,3 +5256,52 @@ Per the standing CLAUDE.md instruction, this gate will also be merged into `main
 suite passes, `main` pushed, and the working branch restarted from the new `main`.
 
 **Repo/branch state as of this write-up**: see the line below for the current exact state.
+
+**PHASE 6 continued (Storage Analytics & Orphan Detection) — done, same session, per Aditya's
+"Start storage analytics and orphan detection."** Master prompt Section 28 (Storage Analytics:
+total storage, breakdown by type/project, largest files, duplicates) and Section 29 (Orphan File
+Detection: a DB record with no matching file, and a file with no matching DB record — "do NOT
+automatically delete orphan files, show them first").
+
+- New pure calculation module, `src/js/storageAnalyticsEngine.js` (no DOM, no store writes, no
+  IndexedDB calls — same separation `scheduleBaselineEngine.js`/`duplicateService.js` already keep).
+  `collectFileRecords(data)` flattens every blob-bearing collection (`documents`, `daily_logs[].
+  photos[]`, `vendor_documents`, `knowledge_base_articles`, `schedules`' imported source file, the
+  settings company logo) into one unified record shape — the single place that knows about all of
+  them, so a future new blob-bearing collection needs one line added here, not scattered changes.
+  `summarizeStorage(records)` computes active totals (trashed reported separately, since it's
+  already hidden from normal use), duplicate bytes (active only), by-type/by-project breakdowns
+  (an `__unassigned__` bucket for no-project records), and the top-20 largest files.
+  `findOrphans(records, blobIds)` diffs the record list against `blobStore.listBlobIds()`.
+  Deliberately sizes everything from each record's own stored `file_size` rather than reading every
+  blob's actual bytes — reading the whole library just to add up sizes would be the "load everything
+  into memory" mistake the master prompt's Section 33 warns against; the only place real blob bytes
+  get read is a handful of found orphans, for display only.
+- New page, "Storage Management" (`src/js/pages/storageManagement.js`, added to the Documents nav
+  group): summary cards, By Type/By Project breakdowns, a Largest Files list, and a "Storage
+  Integrity" panel with a **Scan Storage** button. Scanning only ever surfaces findings — deleting
+  an orphan blob is a deliberate, per-item, confirmed action, never automatic, per Section 29's
+  explicit rule. A record with a missing file gets no delete action at all — there's no file left to
+  recover, so the correct move is telling Aditya to review and decide (remove the record or
+  re-upload), not an automatic "repair" that would have to invent bytes that don't exist.
+- **Real test bug found and fixed while writing the e2e suite, worth remembering**: an early check
+  created a second document ("no-project.pdf") without ever storing a matching blob for it, then a
+  later check asserted "exactly 1 missing-blob record" and failed because that earlier document was
+  *also*, correctly, a missing-blob record by then — the engine was right, the test fixture was
+  incomplete. Fixed by giving that document a real blob at creation time, same "every seeded record
+  needs to actually be internally consistent, or the analytics correctly notice" lesson this
+  engagement has hit before with other engines.
+- Tests: `tests/test_storage_analytics_engine.js` (13 checks, pure logic) +
+  `tests/test_storage_management_e2e.js` (27 checks, jsdom against the real bundled `index.html`,
+  using `fake-indexeddb` for the orphan/missing-blob scan path) + a real-Chromium Playwright smoke
+  test confirming the same Scan Storage → find orphan → delete orphan → verify gone from IndexedDB
+  round trip against the genuine `blobStore.js` path, zero page errors.
+- Full suite: **106 files, 2510 checks, 0 failures**.
+
+**Phase 6 is now down to one deferred item**: content-addressable storage (deduplicating identical
+files at the blob-storage layer itself, not just detecting them at upload time as
+`duplicateService.js` already does) — not started, not requested yet. Bulk Import, Trash/Recycle
+Bin, Storage Analytics, and Orphan File Detection are all complete.
+
+Per the standing CLAUDE.md instruction, this gate is being merged into `main` after the full suite
+passes, `main` pushed, and the working branch restarted from the new `main`.
