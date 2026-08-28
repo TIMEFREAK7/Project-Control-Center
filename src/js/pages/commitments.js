@@ -855,7 +855,7 @@
     list.className = "project-list";
     data.packages.forEach(function (p) {
       var commitmentCount = data.commitments.filter(function (c) { return c.package_id === p.id; }).length;
-      var documentCount = data.documents.filter(function (d) { return d.package_id === p.id; }).length;
+      var documentCount = data.documents.filter(function (d) { return d.package_id === p.id && !d.trashed_at; }).length;
 
       var card = document.createElement("div");
       card.className = "detail-card";

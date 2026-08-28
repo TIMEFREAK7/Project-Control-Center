@@ -184,7 +184,7 @@ function findFieldByLabel(dom, labelText) {
     assert.ok(outletText.indexOf("spec-rev00.pdf") === -1, "Portfolio's ATTACHMENTS must collapse to latest-only, matching Documents' own list");
   });
 
-  await check("Delete on the latest revision removes the ENTIRE revision history, not just that one row", () => {
+  await check("Delete on the latest revision moves the ENTIRE revision history to Trash, not just that one row (PCC Architecture Upgrade Phase 6: Trash/Recycle Bin)", () => {
     win.PCC.router.go("documents");
     win.PCC.router.render();
     var originalConfirm = win.confirm;
@@ -194,9 +194,12 @@ function findFieldByLabel(dom, labelText) {
     win.confirm = originalConfirm;
 
     assert.ok(confirmMessage.indexOf("2") !== -1, "the confirm warning should mention both revisions, got: " + confirmMessage);
+    assert.ok(confirmMessage.toLowerCase().indexOf("trash") !== -1, "the confirm warning should say this moves to Trash, not that it's permanent");
     var data = win.PCC.store.get();
-    assert.ok(!data.documents.some(function (d) { return d.id === doc1Id; }), "the older revision must also be deleted");
-    assert.ok(!data.documents.some(function (d) { return d.id === doc2Id; }), "the latest revision must be deleted");
+    var rev1 = data.documents.find(function (d) { return d.id === doc1Id; });
+    var rev2 = data.documents.find(function (d) { return d.id === doc2Id; });
+    assert.ok(rev1 && rev1.trashed_at, "the older revision's record must still exist, now trashed");
+    assert.ok(rev2 && rev2.trashed_at, "the latest revision's record must still exist, now trashed");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 

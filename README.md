@@ -5525,6 +5525,48 @@ content-addressable storage (duplicates are detected but each copy still occupie
 blob — no storage actually saved). Confirmed with Aditya as the deliberate scope for this increment
 before starting.
 
+## PCC Architecture Upgrade — Phase 6 (Document/File Storage Engine): Trash/Recycle Bin, 2026-08-28
+
+Started per Aditya's "Start the trash/recycle bin." Master upgrade prompt Section 26: DELETE ->
+TRASH -> RETENTION -> PERMANENT DELETE, with RESTORE and EMPTY TRASH, and "do not immediately
+permanently delete important evidence unless the user explicitly requests permanent deletion."
+
+- **`store.js`'s `newDocument()`** gains `trashed_at` (`null` while active, an ISO timestamp once
+  trashed). No schema version bump needed — a missing field on records loaded from an older export
+  behaves identically to `null` everywhere it's checked (`!d.trashed_at`).
+- **Documents' single "Delete" and bulk "Delete Selected"** now move a document's entire revision
+  group to Trash instead of permanently removing it — record and blob both stay fully intact,
+  matching the pre-existing "act on the whole group, never just the latest row" rule the old
+  hard-delete already followed. A new **Trash view** (toggled via a "Trash (N)" button, always
+  visible for discoverability) swaps the same register+preview UI to show trashed documents only,
+  with **Restore** and a separately, more strongly worded **Delete Permanently** — the only place
+  the old hard-delete logic still runs. **Empty Trash** applies Delete Permanently to everything at
+  once. No automatic time-based purge in this increment — deliberately: "never silently delete
+  files" applies just as much to a timer as to a button, so the retention step here is manual
+  review, not automatic expiry.
+- **Real defect found and fixed while building this, not assumed**: a trashed document would have
+  kept counting as satisfying a document-type compliance requirement, kept showing in reports,
+  Executive Center summaries, the Portfolio Attachments list, activity/meeting/package document
+  counts, and duplicate-detection matching — 17 call sites across 11 other page modules all read
+  `data.documents` with no concept of "hidden." Every one now excludes `!d.trashed_at` (or its
+  equivalent for that call site), closing a real "silently gives wrong information" gap the master
+  prompt's own Section 95 explicitly warns against — not hypothetical, this was genuinely how the
+  codebase behaved before this pass touched it.
+- **Real UX gap found and fixed while testing, not designed upfront**: restoring the *last* trashed
+  item correctly leaves the Trash view open showing its own new "Trash is empty" state (reassures
+  the action worked) — but "Empty Trash" doing the same left the user stuck on an empty screen
+  behind an extra click for no reason, since emptying the trash was the whole point of being there.
+  Empty Trash now returns to the active register automatically; single Restore does not, since it's
+  reasonable to want to keep working from the Trash view after restoring one of several items.
+- **Tests**: `tests/test_document_trash_e2e.js` (27 checks) — soft-delete/restore/permanent-delete
+  for both single and bulk actions, blob lifecycle (kept on trash, removed on permanent delete),
+  Trash view rendering (age badge, Restore/Delete Permanently, no New Revision/History), a trashed
+  document's exclusion from a compliance-requirement check, Empty Trash, and confirmation-decline
+  safety — plus a real-Chromium Playwright smoke test confirming the full round trip with zero page
+  errors. One pre-existing test (`test_document_revision_status_e2e.js`) updated to assert the new
+  trash semantics instead of the old hard-delete it was written against.
+- Full suite: **104 files, 2470 checks, 0 failures**.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
@@ -5608,10 +5650,14 @@ Control") already covered most of what Sections 51/52 ask for; the increment clo
 genuine gaps found (calendar changes, constraint changes, and a holistic critical-path-movement
 metric) rather than rebuilding what already worked.
 
-**Phase 6 (Document/File Storage Engine) is started, not complete** — Bulk Import is done (see its
-own section above); trash/recycle bin, storage analytics, orphan-file detection, and
-content-addressable storage remain, each confirmed as a deliberately separate future increment
-rather than in-scope for this one. The rest of the master prompt's later phases (7-9) remain
+**Phase 6 (Document/File Storage Engine) is started, not complete** — Bulk Import and Trash/Recycle
+Bin are both done (see their own sections above); storage analytics, orphan-file detection, and
+content-addressable storage remain, each a deliberately separate future increment rather than
+in-scope for either one so far. Trash's own build surfaced a real cross-cutting defect worth
+remembering: 17 call sites across 11 other page modules read `data.documents` with no concept of
+"hidden," so a trashed document would have kept counting everywhere (compliance requirements,
+reports, Executive Center, Portfolio attachments, duplicate detection) — all fixed as part of this
+increment, not left as a known gap. The rest of the master prompt's later phases (7-9) remain
 unstarted — confirm scope/direction before beginning any of them, the same gate discipline every
 other roadmap on this page already follows.
 

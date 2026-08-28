@@ -5209,4 +5209,50 @@ before this one started.
 Per the standing CLAUDE.md instruction, this gate will also be merged into `main` after the full
 suite passes, `main` pushed, and the working branch restarted from the new `main`.
 
+**PHASE 6 continued (Trash/Recycle Bin) — done, same session, per Aditya's "Start the trash/recycle
+bin."** Master prompt Section 26: DELETE -> TRASH -> RETENTION -> PERMANENT DELETE, with RESTORE and
+EMPTY TRASH, "never immediately permanently delete without explicit confirmation."
+
+- `store.js`'s `newDocument()` gains `trashed_at` (null while active). Documents' single "Delete"
+  and bulk "Delete Selected" now move the whole revision group to Trash (record + blob both stay
+  intact) instead of removing it. New Trash view (a "Trash (N)" toggle, always visible) reuses the
+  same register+preview UI against trashed documents instead of active ones, with Restore and a
+  separately worded Delete Permanently (the only place the old hard-delete logic still runs). Empty
+  Trash applies Delete Permanently to everything at once. No automatic time-based purge — deliberate,
+  same "never silently delete" principle applied to a timer as much as a button.
+- **Real defect found and fixed, not assumed**: a trashed document would have kept counting as
+  satisfying compliance requirements, kept showing in reports/Executive Center/Portfolio
+  attachments/duplicate detection — 17 call sites across 11 other page modules (`schedule.js`,
+  `documentControlDashboard.js`, `reports.js`, `executiveCenter.js`, `portfolio.js`,
+  `projectLookahead.js`, `vendors.js`, `actionCentre.js`, `dashboard.js`, `projectWorkspace.js`,
+  `commitments.js`) all read `data.documents` with zero concept of "hidden." All 17 fixed with
+  `!d.trashed_at` (or the call-site-appropriate equivalent). This was genuinely how the app behaved
+  before this pass, not a hypothetical risk — worth remembering for any FUTURE field that needs to
+  hide a record from view: grep `data.documents` (or whatever collection) app-wide, don't assume the
+  one page you're working in is the only consumer.
+- **Real UX gap found while testing (not designed upfront)**: restoring the last trashed item
+  correctly leaves Trash view open on its own new "Trash is empty" state; Empty Trash doing the same
+  left the user stuck behind an extra click for no reason, since emptying the trash was the entire
+  point of being there. Fixed: Empty Trash returns to the active register automatically; single
+  Restore intentionally does not (staying in Trash to restore more items is reasonable).
+- **Two real test bugs found and fixed while writing `test_document_trash_e2e.js`, both worth
+  remembering**: (1) a regex `/Trashed .* ago/` failed against "Trashed just now" (no "ago" in that
+  variant) — fixed to accept both forms; (2) a race condition — `Empty Trash`'s store mutation is
+  synchronous but its `showTrash` reset waits on `Promise.all(...).then()`, so a synchronous test
+  check asserted on stale DOM before that microtask ran; fixed by awaiting a flush after triggering
+  it. Both are the same "verify against real async timing, don't assume" discipline every prior
+  phase's testing already established.
+- One pre-existing test (`test_document_revision_status_e2e.js`) updated: its Delete-permanence
+  assertion was written against the old hard-delete behavior and needed to assert trash semantics
+  instead — an expected update when intentionally changing behavior, not a regression.
+- Tests: `test_document_trash_e2e.js` (27 checks) + a real-Chromium Playwright smoke test covering
+  the full soft-delete/restore/permanent-delete/blob-lifecycle round trip.
+- Full suite: **104 files, 2470 checks, 0 failures**.
+
+**Still deferred, not overlooked**: storage analytics, orphan-file detection, content-addressable
+storage. No automatic trash retention/expiry either — manual review only, by design.
+
+Per the standing CLAUDE.md instruction, this gate will also be merged into `main` after the full
+suite passes, `main` pushed, and the working branch restarted from the new `main`.
+
 **Repo/branch state as of this write-up**: see the line below for the current exact state.

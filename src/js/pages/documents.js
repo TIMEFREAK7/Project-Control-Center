@@ -115,6 +115,11 @@
     bulkImportFiles: [],
     bulkImportProgress: null, // { done, total } while committing, else null
     bulkImportSummary: null, // { imported, duplicates, skipped, errors } after commit, else null
+    // PCC Architecture Upgrade Phase 6 (Document/File Storage Engine): Trash/Recycle
+    // Bin. Toggles the whole register between its normal (active-documents) view and
+    // the Trash view (trashed documents only) — see trashDocumentGroup()'s own header
+    // comment for the full design.
+    showTrash: false,
   };
 
   function resetPendingClassification() {
@@ -157,6 +162,16 @@
     });
   }
 
+  /** PCC Architecture Upgrade Phase 6 (Document/File Storage Engine): Trash/Recycle
+   * Bin. Excludes trashed documents — used wherever "does a document like this already
+   * exist" is being asked (duplicate detection), since a trashed document shouldn't
+   * block a fresh upload as if it were still active. */
+  function activeDocuments(documents) {
+    return documents.filter(function (d) {
+      return !d.trashed_at;
+    });
+  }
+
   /** All revisions in the same group as `doc`, newest first. */
   function revisionsFor(documents, groupId) {
     return documents
@@ -166,6 +181,75 @@
       .sort(function (a, b) {
         return b.revision_number - a.revision_number;
       });
+  }
+
+  // ---------------------------------------------------------------------------------
+  // PCC Architecture Upgrade Phase 6 (Document/File Storage Engine): Trash/Recycle Bin.
+  // Master upgrade prompt Section 26: DELETE -> TRASH -> RETENTION -> PERMANENT DELETE,
+  // with RESTORE and EMPTY TRASH, and "do not immediately permanently delete important
+  // evidence unless the user explicitly requests permanent deletion." "Delete" (single
+  // or bulk) now moves a document's ENTIRE revision group to trash — same "act on the
+  // whole group, never just the latest row" rule the old hard-delete already followed —
+  // leaving the record and its blob fully intact until Restore or an explicit, separately
+  // confirmed Delete Permanently. No automatic time-based purge in this increment
+  // (deliberately: the master prompt's own "never silently delete files" applies just as
+  // much to a timer as to a button — the retention step here is manual review, not
+  // automatic expiry).
+  // ---------------------------------------------------------------------------------
+
+  function trashDocumentGroup(groupId) {
+    var now = new Date().toISOString();
+    window.PCC.store.update(function (d) {
+      d.documents.forEach(function (item) {
+        if (item.document_group_id === groupId) item.trashed_at = now;
+      });
+    });
+  }
+
+  function restoreDocumentGroup(groupId) {
+    window.PCC.store.update(function (d) {
+      d.documents.forEach(function (item) {
+        if (item.document_group_id === groupId) item.trashed_at = null;
+      });
+    });
+  }
+
+  /** The original hard-delete: actually removes every revision's record and blob, and
+   * cleans up project.attachments. Cannot be undone — only reachable from the Trash view
+   * behind its own, separately worded confirmation. Resolves once every blob delete has
+   * settled (best-effort — a failed individual blob delete never blocks the rest). */
+  function permanentlyDeleteDocumentGroup(documents, groupId) {
+    var allRevisionIds = documents.filter(function (d) { return d.document_group_id === groupId; }).map(function (d) { return d.id; });
+    window.PCC.store.update(function (d) {
+      d.documents = d.documents.filter(function (item) { return allRevisionIds.indexOf(item.id) === -1; });
+      d.projects.forEach(function (p) {
+        if (p.attachments) {
+          p.attachments = p.attachments.filter(function (id) { return allRevisionIds.indexOf(id) === -1; });
+        }
+      });
+    });
+    return Promise.all(
+      allRevisionIds.map(function (id) {
+        return window.PCC.blobStore.deleteBlob(id).catch(function () {});
+      })
+    ).then(function () {
+      return allRevisionIds;
+    });
+  }
+
+  /** PCC Architecture Upgrade Phase 6 (Trash/Recycle Bin): a short "trashed N ago" label
+   * for the Trash view, so a person can judge at a glance whether something is safe to
+   * clean out for good. */
+  function trashedAgoLabel(trashedAtIso) {
+    if (!trashedAtIso) return "";
+    var ms = Date.now() - new Date(trashedAtIso).getTime();
+    var minutes = Math.floor(ms / 60000);
+    if (minutes < 1) return "Trashed just now";
+    if (minutes < 60) return "Trashed " + minutes + " minute" + (minutes === 1 ? "" : "s") + " ago";
+    var hours = Math.floor(minutes / 60);
+    if (hours < 24) return "Trashed " + hours + " hour" + (hours === 1 ? "" : "s") + " ago";
+    var days = Math.floor(hours / 24);
+    return "Trashed " + days + " day" + (days === 1 ? "" : "s") + " ago";
   }
 
   /** Gate 10: see risks.js's identical helper for the full rationale. */
@@ -327,7 +411,9 @@
       uiState.pendingFile.hashMethod = fp.method;
 
       var data = window.PCC.store.get();
-      uiState.duplicateMatches = window.PCC.duplicateService.findFileDuplicates(data.documents, {
+      // PCC Architecture Upgrade Phase 6: a trashed document shouldn't block a fresh
+      // upload as if it still existed — exclude it from duplicate matching.
+      uiState.duplicateMatches = window.PCC.duplicateService.findFileDuplicates(activeDocuments(data.documents), {
         hash: fp.hash,
         method: fp.method,
         filename: file.name,
@@ -378,7 +464,7 @@
 
           var data = window.PCC.store.get();
           var matches = uiState.bulkImportProjectId
-            ? window.PCC.duplicateService.findFileDuplicates(data.documents, {
+            ? window.PCC.duplicateService.findFileDuplicates(activeDocuments(data.documents), {
                 hash: fp.hash,
                 method: fp.method,
                 filename: entry.name,
@@ -477,7 +563,7 @@
           // by the time file N is reached, every earlier file in this same batch is
           // already a real, committed document — so re-running the same check here for
           // free catches intra-batch duplicates too, not just pre-existing ones.
-          var liveMatches = window.PCC.duplicateService.findFileDuplicates(window.PCC.store.get().documents, {
+          var liveMatches = window.PCC.duplicateService.findFileDuplicates(activeDocuments(window.PCC.store.get().documents), {
             hash: entry.hash,
             method: entry.hashMethod,
             filename: entry.name,
@@ -949,7 +1035,7 @@
       // otherwise a stale warning (or a missed one) could carry over from the old project.
       if (uiState.pendingFile && uiState.pendingFile.hash) {
         var d = window.PCC.store.get();
-        uiState.duplicateMatches = window.PCC.duplicateService.findFileDuplicates(d.documents, {
+        uiState.duplicateMatches = window.PCC.duplicateService.findFileDuplicates(activeDocuments(d.documents), {
           hash: uiState.pendingFile.hash,
           method: uiState.pendingFile.hashMethod,
           filename: uiState.pendingFile.name,
@@ -1471,7 +1557,7 @@
       var d = window.PCC.store.get();
       uiState.bulkImportFiles.forEach(function (entry) {
         if (entry.status === "scanning" || entry.status === "error" || !entry.hash) return;
-        var matches = window.PCC.duplicateService.findFileDuplicates(d.documents, {
+        var matches = window.PCC.duplicateService.findFileDuplicates(activeDocuments(d.documents), {
           hash: entry.hash,
           method: entry.hashMethod,
           filename: entry.name,
@@ -1761,7 +1847,7 @@
   // an entire revision history, not just the latest row, and cleans up project
   // attachments + blobStore the same way — a bulk delete that only dropped the latest
   // revision row would silently orphan older revisions.
-  function renderDocumentBulkBar(data, filtered, rerender) {
+  function renderDocumentBulkBar(data, filtered, rerender, trashMode) {
     var n = Object.keys(uiState.selectedIds).length;
     if (n === 0) return null;
     var noun = n === 1 ? "document" : "documents";
@@ -1778,6 +1864,67 @@
 
     var bar = document.createElement("div");
     bar.className = "bulk-action-bar";
+
+    // PCC Architecture Upgrade Phase 6 (Document/File Storage Engine): Trash view's own
+    // bulk bar is deliberately just Restore/Delete Permanently/Clear — Approve/Reject
+    // don't apply to a trashed document, it's not part of the active workflow anymore.
+    if (trashMode) {
+      var countElTrash = document.createElement("span");
+      countElTrash.className = "bulk-action-bar__count";
+      countElTrash.textContent = n + " selected";
+      bar.appendChild(countElTrash);
+
+      var restoreSelectedBtn = document.createElement("button");
+      restoreSelectedBtn.className = "btn btn--primary";
+      restoreSelectedBtn.textContent = "Restore Selected";
+      restoreSelectedBtn.onclick = function () {
+        selectedDocs().forEach(function (doc) {
+          restoreDocumentGroup(doc.document_group_id);
+        });
+        window.PCC.notify(n + " " + noun + " restored.", "success");
+        clearSelection();
+        rerender();
+      };
+      bar.appendChild(restoreSelectedBtn);
+
+      var spacerTrash = document.createElement("div");
+      spacerTrash.className = "bulk-action-bar__spacer";
+      bar.appendChild(spacerTrash);
+
+      var clearBtnTrash = document.createElement("button");
+      clearBtnTrash.className = "btn btn--ghost";
+      clearBtnTrash.textContent = "Clear Selection";
+      clearBtnTrash.onclick = function () {
+        clearSelection();
+        rerender();
+      };
+      bar.appendChild(clearBtnTrash);
+
+      var permanentDeleteSelectedBtn = document.createElement("button");
+      permanentDeleteSelectedBtn.className = "btn btn--ghost";
+      permanentDeleteSelectedBtn.textContent = "Delete Selected Permanently";
+      permanentDeleteSelectedBtn.onclick = function () {
+        var docs = selectedDocs();
+        var totalRevisions = 0;
+        docs.forEach(function (doc) {
+          totalRevisions += revisionsFor(data.documents, doc.document_group_id).length;
+        });
+        if (!window.confirm(
+          "Permanently delete " + n + " selected " + noun + " (" + totalRevisions + " total revision" + (totalRevisions === 1 ? "" : "s") +
+          ")? This removes every stored file and extracted data. This CANNOT be undone."
+        )) return;
+        Promise.all(docs.map(function (doc) { return permanentlyDeleteDocumentGroup(data.documents, doc.document_group_id); })).then(function (deletedIdLists) {
+          var allIds = [].concat.apply([], deletedIdLists);
+          if (allIds.indexOf(uiState.selectedDocId) !== -1) selectDocument(null);
+          window.PCC.notify(n + " " + noun + " permanently deleted.", "info");
+          clearSelection();
+          rerender();
+        });
+      };
+      bar.appendChild(permanentDeleteSelectedBtn);
+
+      return bar;
+    }
 
     var countEl = document.createElement("span");
     countEl.className = "bulk-action-bar__count";
@@ -1827,35 +1974,26 @@
     };
     bar.appendChild(clearBtn);
 
+    // PCC Architecture Upgrade Phase 6 (Document/File Storage Engine): Trash/Recycle
+    // Bin — moves the whole selected batch's revision groups to trash instead of
+    // permanently removing them, same as the single-document Delete button.
     var deleteBtn = document.createElement("button");
     deleteBtn.className = "btn btn--ghost";
     deleteBtn.textContent = "Delete Selected";
     deleteBtn.onclick = function () {
       var docs = selectedDocs();
       var totalRevisions = 0;
-      var allIds = [];
       docs.forEach(function (doc) {
-        var revs = revisionsFor(data.documents, doc.document_group_id);
-        totalRevisions += revs.length;
-        revs.forEach(function (r) { allIds.push(r.id); });
+        totalRevisions += revisionsFor(data.documents, doc.document_group_id).length;
       });
       if (!window.confirm(
-        "Delete " + n + " selected " + noun + " (" + totalRevisions + " total revision" + (totalRevisions === 1 ? "" : "s") +
-        ")? This removes every stored file and extracted data. This can't be undone."
+        "Move " + n + " selected " + noun + " (" + totalRevisions + " total revision" + (totalRevisions === 1 ? "" : "s") +
+        ") to Trash? You can restore them later from the Trash view."
       )) return;
-      window.PCC.store.update(function (d) {
-        d.documents = d.documents.filter(function (item) { return allIds.indexOf(item.id) === -1; });
-        d.projects.forEach(function (p) {
-          if (p.attachments) {
-            p.attachments = p.attachments.filter(function (id) { return allIds.indexOf(id) === -1; });
-          }
-        });
+      docs.forEach(function (doc) {
+        trashDocumentGroup(doc.document_group_id);
       });
-      allIds.forEach(function (id) {
-        window.PCC.blobStore.deleteBlob(id).catch(function () {});
-      });
-      if (allIds.indexOf(uiState.selectedDocId) !== -1) selectDocument(null);
-      window.PCC.notify(n + " " + noun + " deleted.", "info");
+      window.PCC.notify(n + " " + noun + " moved to Trash.", "info");
       clearSelection();
       rerender();
     };
@@ -1864,7 +2002,7 @@
     return bar;
   }
 
-  function renderDocumentListItem(doc, data, isSelected, onSelect, onBulkChanged) {
+  function renderDocumentListItem(doc, data, isSelected, onSelect, onBulkChanged, trashMode) {
     var item = document.createElement("div");
     item.className = "doc-register-item" + (isSelected ? " doc-register-item--selected" : "");
     item.onclick = onSelect;
@@ -1915,12 +2053,18 @@
       dupBadge.title = doc.duplicate_reason || "Flagged as a possible duplicate at upload time.";
       badges.appendChild(dupBadge);
     }
+    if (trashMode && doc.trashed_at) {
+      var trashedBadge = document.createElement("span");
+      trashedBadge.className = "status-badge status-badge--warning";
+      trashedBadge.textContent = trashedAgoLabel(doc.trashed_at);
+      badges.appendChild(trashedBadge);
+    }
     item.appendChild(badges);
 
     return item;
   }
 
-  function renderDocumentPreviewPanel(doc, data, onChanged) {
+  function renderDocumentPreviewPanel(doc, data, onChanged, trashMode) {
     var panel = document.createElement("div");
     panel.className = "panel doc-register-preview";
 
@@ -1967,6 +2111,12 @@
       dupBadge.textContent = "Possible Duplicate";
       dupBadge.title = doc.duplicate_reason || "Flagged as a possible duplicate at upload time.";
       headerBadges.appendChild(dupBadge);
+    }
+    if (trashMode && doc.trashed_at) {
+      var trashedHeaderBadge = document.createElement("span");
+      trashedHeaderBadge.className = "status-badge status-badge--warning";
+      trashedHeaderBadge.textContent = trashedAgoLabel(doc.trashed_at);
+      headerBadges.appendChild(trashedHeaderBadge);
     }
     header.appendChild(headerBadges);
     panel.appendChild(header);
@@ -2082,83 +2232,106 @@
       actions.appendChild(viewActivityBtn);
     }
 
-    // Gate 17: "New Revision" opens the upload form pre-filled from this (the latest)
-    // revision's own classification, carrying document_group_id forward so Save
-    // computes the next revision_number instead of starting a new group.
-    var newRevisionBtn = document.createElement("button");
-    newRevisionBtn.className = "btn btn--ghost";
-    newRevisionBtn.textContent = "New Revision";
-    newRevisionBtn.onclick = function () {
-      uiState.formOpen = true;
-      uiState.pendingFile = null;
-      uiState.readError = null;
-      uiState.duplicateMatches = [];
-      uiState.duplicateAcknowledged = false;
-      uiState.pendingProjectId = doc.project_id;
-      uiState.pendingActivityId = doc.activity_id || "";
-      uiState.pendingCategory = doc.category;
-      uiState.pendingDocumentTypeId = doc.document_type_id || "";
-      uiState.pendingDiscipline = doc.discipline || "";
-      uiState.pendingDocumentNumber = doc.document_number || "";
-      uiState.pendingRevision = doc.revision || "00";
-      uiState.pendingPackageId = doc.package_id || "";
-      uiState.pendingContractOrPo = doc.contract_or_po || "";
-      uiState.pendingVendorId = doc.vendor_id || "";
-      uiState.pendingPriority = doc.priority || "medium";
-      uiState.pendingCriticality = doc.criticality || "";
-      uiState.pendingRemarks = doc.remarks || "";
-      // A new revision hasn't been reviewed yet, regardless of where the previous one
-      // ended up — never carries over "approved"/"rejected" from the prior revision.
-      uiState.pendingStatus = "draft";
-      uiState.pendingRevisionGroupId = doc.document_group_id;
-      onChanged();
-    };
-    actions.appendChild(newRevisionBtn);
-
-    if (allRevisions.length > 1) {
-      var historyBtn = document.createElement("button");
-      historyBtn.className = "btn btn--ghost";
-      historyBtn.textContent = "History (" + allRevisions.length + ")";
-      historyBtn.onclick = function () {
-        uiState.expandedRevisionsGroupId = uiState.expandedRevisionsGroupId === doc.document_group_id ? null : doc.document_group_id;
+    if (trashMode) {
+      // PCC Architecture Upgrade Phase 6 (Document/File Storage Engine): Trash view —
+      // New Revision/History don't apply to a trashed document (it's not the active
+      // register), just Restore and the one place a permanent, unrecoverable delete
+      // is still reachable.
+      var restoreBtn = document.createElement("button");
+      restoreBtn.className = "btn btn--primary";
+      restoreBtn.textContent = "Restore";
+      restoreBtn.onclick = function () {
+        restoreDocumentGroup(doc.document_group_id);
+        window.PCC.notify(
+          allRevisions.length > 1 ? "Document and its revision history restored." : "Document restored.",
+          "success"
+        );
         onChanged();
       };
-      actions.appendChild(historyBtn);
-    }
+      actions.appendChild(restoreBtn);
 
-    var deleteBtn = document.createElement("button");
-    deleteBtn.className = "btn btn--ghost";
-    deleteBtn.textContent = "Delete";
-    deleteBtn.onclick = function () {
-      var allRevisionIds = allRevisions.map(function (item) { return item.id; });
-      var warning =
-        allRevisions.length > 1
-          ? "Delete “" + doc.filename + "” and all " + allRevisions.length + " of its revisions? This removes every stored file and extracted data in this revision history. This can't be undone."
-          : "Delete “" + doc.filename + "”? This removes the stored file and extracted data. This can't be undone.";
-      if (!window.confirm(warning)) return;
-      window.PCC.store.update(function (d) {
-        d.documents = d.documents.filter(function (item) { return allRevisionIds.indexOf(item.id) === -1; });
-        // Keep project.attachments in sync — it's not what rendering reads from (that
-        // filters data.documents directly), but leaving stale ids in there would make
-        // the field mean nothing the next time something does rely on it.
-        d.projects.forEach(function (p) {
-          if (p.attachments) {
-            p.attachments = p.attachments.filter(function (id) { return allRevisionIds.indexOf(id) === -1; });
-          }
+      var permanentDeleteBtn = document.createElement("button");
+      permanentDeleteBtn.className = "btn btn--ghost";
+      permanentDeleteBtn.textContent = "Delete Permanently";
+      permanentDeleteBtn.onclick = function () {
+        var warning =
+          allRevisions.length > 1
+            ? "Permanently delete “" + doc.filename + "” and all " + allRevisions.length + " of its revisions? This removes every stored file and extracted data in this revision history. This CANNOT be undone."
+            : "Permanently delete “" + doc.filename + "”? This removes the stored file and extracted data. This CANNOT be undone.";
+        if (!window.confirm(warning)) return;
+        permanentlyDeleteDocumentGroup(data.documents, doc.document_group_id).then(function (allRevisionIds) {
+          if (allRevisionIds.indexOf(uiState.selectedDocId) !== -1) selectDocument(null);
+          window.PCC.notify(allRevisions.length > 1 ? "Document and its revision history permanently deleted." : "Document permanently deleted.", "info");
+          onChanged();
         });
-      });
-      // Best-effort — the metadata records are already gone either way, so a failed blob
-      // delete here just means an orphaned blob sits harmlessly in IndexedDB rather than
-      // blocking the delete the person actually asked for.
-      allRevisionIds.forEach(function (id) {
-        window.PCC.blobStore.deleteBlob(id).catch(function () {});
-      });
-      if (allRevisionIds.indexOf(uiState.selectedDocId) !== -1) selectDocument(null);
-      if (uiState.expandedRevisionsGroupId === doc.document_group_id) uiState.expandedRevisionsGroupId = null;
-      window.PCC.notify(allRevisions.length > 1 ? "Document and its revision history deleted." : "Document deleted.", "info");
-      onChanged();
-    };
-    actions.appendChild(deleteBtn);
+      };
+      actions.appendChild(permanentDeleteBtn);
+    } else {
+      // Gate 17: "New Revision" opens the upload form pre-filled from this (the latest)
+      // revision's own classification, carrying document_group_id forward so Save
+      // computes the next revision_number instead of starting a new group.
+      var newRevisionBtn = document.createElement("button");
+      newRevisionBtn.className = "btn btn--ghost";
+      newRevisionBtn.textContent = "New Revision";
+      newRevisionBtn.onclick = function () {
+        uiState.formOpen = true;
+        uiState.pendingFile = null;
+        uiState.readError = null;
+        uiState.duplicateMatches = [];
+        uiState.duplicateAcknowledged = false;
+        uiState.pendingProjectId = doc.project_id;
+        uiState.pendingActivityId = doc.activity_id || "";
+        uiState.pendingCategory = doc.category;
+        uiState.pendingDocumentTypeId = doc.document_type_id || "";
+        uiState.pendingDiscipline = doc.discipline || "";
+        uiState.pendingDocumentNumber = doc.document_number || "";
+        uiState.pendingRevision = doc.revision || "00";
+        uiState.pendingPackageId = doc.package_id || "";
+        uiState.pendingContractOrPo = doc.contract_or_po || "";
+        uiState.pendingVendorId = doc.vendor_id || "";
+        uiState.pendingPriority = doc.priority || "medium";
+        uiState.pendingCriticality = doc.criticality || "";
+        uiState.pendingRemarks = doc.remarks || "";
+        // A new revision hasn't been reviewed yet, regardless of where the previous one
+        // ended up — never carries over "approved"/"rejected" from the prior revision.
+        uiState.pendingStatus = "draft";
+        uiState.pendingRevisionGroupId = doc.document_group_id;
+        onChanged();
+      };
+      actions.appendChild(newRevisionBtn);
+
+      if (allRevisions.length > 1) {
+        var historyBtn = document.createElement("button");
+        historyBtn.className = "btn btn--ghost";
+        historyBtn.textContent = "History (" + allRevisions.length + ")";
+        historyBtn.onclick = function () {
+          uiState.expandedRevisionsGroupId = uiState.expandedRevisionsGroupId === doc.document_group_id ? null : doc.document_group_id;
+          onChanged();
+        };
+        actions.appendChild(historyBtn);
+      }
+
+      // PCC Architecture Upgrade Phase 6 (Document/File Storage Engine): Trash/Recycle
+      // Bin. "Delete" now moves the whole revision group to trash (record + blob both
+      // stay fully intact) instead of permanently removing it — see trashDocumentGroup()'s
+      // own header comment. Permanent deletion is a separate, more strongly worded action
+      // reachable only from the Trash view.
+      var deleteBtn = document.createElement("button");
+      deleteBtn.className = "btn btn--ghost";
+      deleteBtn.textContent = "Delete";
+      deleteBtn.onclick = function () {
+        var warning =
+          allRevisions.length > 1
+            ? "Move “" + doc.filename + "” and all " + allRevisions.length + " of its revisions to Trash? You can restore it later from the Trash view."
+            : "Move “" + doc.filename + "” to Trash? You can restore it later from the Trash view.";
+        if (!window.confirm(warning)) return;
+        trashDocumentGroup(doc.document_group_id);
+        if (uiState.expandedRevisionsGroupId === doc.document_group_id) uiState.expandedRevisionsGroupId = null;
+        window.PCC.notify(allRevisions.length > 1 ? "Document and its revision history moved to Trash." : "Document moved to Trash.", "info");
+        onChanged();
+      };
+      actions.appendChild(deleteBtn);
+    }
     panel.appendChild(actions);
 
     if (uiState.previewExtractionExpanded && doc.extraction) {
@@ -2278,6 +2451,13 @@
 
     var hasActiveProjectsForDoc = data.projects.some(function (p) { return !p.archived; });
 
+    // PCC Architecture Upgrade Phase 6 (Document/File Storage Engine): Trash/Recycle
+    // Bin. A trashed document is hidden from the normal register entirely — these two
+    // counts (not just a boolean) are what the empty-state text and the "Trash (N)"
+    // toggle button both need.
+    var activeDocCount = data.documents.filter(function (d) { return !d.trashed_at; }).length;
+    var trashedGroupCount = latestDocuments(data.documents.filter(function (d) { return d.trashed_at; })).length;
+
     // Same as before this gate: the upload form, when open, renders ABOVE the register
     // rather than replacing it — the existing document list/preview stays visible below
     // it (no `return` here), so uploading doesn't hide what's already on file.
@@ -2288,7 +2468,7 @@
       renderBulkImportPanel(outlet, data, rerender);
     }
 
-    if (data.documents.length === 0) {
+    if (!uiState.showTrash && activeDocCount === 0) {
       if (!uiState.formOpen && !uiState.bulkImportOpen) {
         var addBtnEmpty = document.createElement("button");
         addBtnEmpty.className = "btn btn--primary";
@@ -2313,6 +2493,17 @@
           rerender();
         };
         outlet.appendChild(bulkImportBtnEmpty);
+
+        if (trashedGroupCount > 0) {
+          var trashBtnEmpty = document.createElement("button");
+          trashBtnEmpty.className = "btn btn--ghost";
+          trashBtnEmpty.textContent = "Trash (" + trashedGroupCount + ")";
+          trashBtnEmpty.onclick = function () {
+            uiState.showTrash = true;
+            rerender();
+          };
+          outlet.appendChild(trashBtnEmpty);
+        }
       }
 
       var empty = document.createElement("div");
@@ -2321,6 +2512,24 @@
         ? "No documents yet. Click “+ Add Document” to upload one."
         : "Add a project in Portfolio first, then upload documents against it.";
       outlet.appendChild(empty);
+      return;
+    }
+
+    if (uiState.showTrash && trashedGroupCount === 0) {
+      var backFromEmptyTrashBtn = document.createElement("button");
+      backFromEmptyTrashBtn.className = "btn btn--ghost";
+      backFromEmptyTrashBtn.textContent = "← Back to Documents";
+      backFromEmptyTrashBtn.style.marginBottom = "var(--space-4)";
+      backFromEmptyTrashBtn.onclick = function () {
+        uiState.showTrash = false;
+        rerender();
+      };
+      outlet.appendChild(backFromEmptyTrashBtn);
+
+      var emptyTrash = document.createElement("div");
+      emptyTrash.className = "panel empty-state";
+      emptyTrash.textContent = "Trash is empty.";
+      outlet.appendChild(emptyTrash);
       return;
     }
 
@@ -2402,7 +2611,7 @@
     // Hidden while the upload form is already open (below) — avoids a redundant second
     // "+ Add Document" trigger on screen at once, same as the pre-Gate-6 behavior where
     // the single add button lived only in the non-form branch.
-    if (!uiState.formOpen && !uiState.bulkImportOpen) {
+    if (!uiState.formOpen && !uiState.bulkImportOpen && !uiState.showTrash) {
       var addBtn = document.createElement("button");
       addBtn.className = "btn btn--primary";
       addBtn.textContent = "+ Add Document";
@@ -2429,6 +2638,63 @@
         rerender();
       };
       toolbar.appendChild(bulkImportBtn);
+
+      // PCC Architecture Upgrade Phase 6 (Document/File Storage Engine): Trash/Recycle
+      // Bin — always visible (not just when non-empty) for discoverability, same reason
+      // "Bulk Import" is always visible rather than hidden until needed.
+      var trashToggleBtn = document.createElement("button");
+      trashToggleBtn.className = "btn btn--ghost";
+      trashToggleBtn.textContent = "Trash (" + trashedGroupCount + ")";
+      trashToggleBtn.onclick = function () {
+        uiState.showTrash = true;
+        uiState.selectedIds = {};
+        uiState.selectedDocId = null;
+        rerender();
+      };
+      toolbar.appendChild(trashToggleBtn);
+    }
+
+    if (uiState.showTrash) {
+      var backToDocsBtn = document.createElement("button");
+      backToDocsBtn.className = "btn btn--ghost";
+      backToDocsBtn.textContent = "← Back to Documents";
+      backToDocsBtn.onclick = function () {
+        uiState.showTrash = false;
+        uiState.selectedIds = {};
+        uiState.selectedDocId = null;
+        rerender();
+      };
+      toolbar.appendChild(backToDocsBtn);
+
+      // Empty Trash is exactly Delete Permanently applied to every trashed group at
+      // once — its own, most strongly worded confirmation, since unlike a single/bulk
+      // permanent delete this can wipe out everything currently in the Trash view.
+      var emptyTrashBtn = document.createElement("button");
+      emptyTrashBtn.className = "btn btn--ghost";
+      emptyTrashBtn.textContent = "Empty Trash";
+      emptyTrashBtn.onclick = function () {
+        var trashedGroups = latestDocuments(data.documents.filter(function (d) { return d.trashed_at; }));
+        var totalRevisions = 0;
+        trashedGroups.forEach(function (doc) {
+          totalRevisions += revisionsFor(data.documents, doc.document_group_id).length;
+        });
+        if (!window.confirm(
+          "Empty Trash? This permanently deletes " + trashedGroups.length + " document" + (trashedGroups.length === 1 ? "" : "s") +
+          " (" + totalRevisions + " total revision" + (totalRevisions === 1 ? "" : "s") + ") and every stored file. This CANNOT be undone."
+        )) return;
+        Promise.all(trashedGroups.map(function (doc) { return permanentlyDeleteDocumentGroup(data.documents, doc.document_group_id); })).then(function () {
+          window.PCC.notify("Trash emptied.", "info");
+          uiState.selectedIds = {};
+          uiState.selectedDocId = null;
+          // Unlike a single Restore (which deliberately stays on the Trash view to show
+          // its new, still-relevant empty state), emptying the trash was itself the
+          // whole point of being here — nothing left to do in this view, so return to
+          // the active register instead of leaving an empty screen behind an extra click.
+          uiState.showTrash = false;
+          rerender();
+        });
+      };
+      toolbar.appendChild(emptyTrashBtn);
     }
 
     outlet.appendChild(toolbar);
@@ -2436,7 +2702,15 @@
     // ---- Two-panel register + preview (Gate 6) ----
     // Gate 17: only the latest revision of each document group is a top-level row — see
     // latestDocuments()'s own header comment. Older revisions are reached via "History".
-    var filtered = latestDocuments(data.documents)
+    // PCC Architecture Upgrade Phase 6: showTrash swaps which set of documents feeds the
+    // exact same register+preview UI — trashed-only instead of active-only. The filter
+    // toolbar's search/category/status/project controls stay in the DOM either way (no
+    // reason to hide them) but only apply in the normal view; Trash is deliberately just
+    // "show everything trashed," not another set of filters to build and maintain.
+    var filtered = uiState.showTrash
+      ? latestDocuments(data.documents.filter(function (d) { return d.trashed_at; }))
+          .sort(function (a, b) { return new Date(b.trashed_at) - new Date(a.trashed_at); })
+      : latestDocuments(data.documents.filter(function (d) { return !d.trashed_at; }))
       .filter(function (doc) { return documentMatchesFilters(doc, data); })
       .sort(function (a, b) { return new Date(b.uploaded_at) - new Date(a.uploaded_at); });
 
@@ -2472,7 +2746,7 @@
     // Daily-Use Audit Phase 3 (bulk actions): "No bulk actions on any register" —
     // documents.js was one of five named. status change (approve/reject) + delete cover
     // the two highest-frequency bulk operations named in the audit.
-    var bulkBar = renderDocumentBulkBar(data, filtered, rerender);
+    var bulkBar = renderDocumentBulkBar(data, filtered, rerender, uiState.showTrash);
     if (bulkBar) listPane.appendChild(bulkBar);
 
     filtered.forEach(function (doc) {
@@ -2480,7 +2754,7 @@
         renderDocumentListItem(doc, data, doc.id === uiState.selectedDocId, function () {
           selectDocument(doc.id);
           rerender();
-        }, rerender)
+        }, rerender, uiState.showTrash)
       );
     });
     register.appendChild(listPane);
@@ -2529,7 +2803,7 @@
     };
     register.appendChild(resizeHandle);
 
-    register.appendChild(renderDocumentPreviewPanel(selectedDoc, data, rerender));
+    register.appendChild(renderDocumentPreviewPanel(selectedDoc, data, rerender, uiState.showTrash));
 
     outlet.appendChild(register);
   }

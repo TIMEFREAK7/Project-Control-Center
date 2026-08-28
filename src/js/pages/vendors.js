@@ -1955,7 +1955,7 @@
         container.appendChild(card);
         return;
       }
-      var attachmentCount = data.documents.filter(function (doc) { return doc.meeting_id === m.id; }).length;
+      var attachmentCount = data.documents.filter(function (doc) { return doc.meeting_id === m.id && !doc.trashed_at; }).length;
       var top = document.createElement("div");
       top.style.display = "flex";
       top.style.justifyContent = "space-between";
@@ -2465,7 +2465,7 @@
   // here per this app's per-module-helpers convention rather than sharing a util layer.
   function computeRequirementStatus(data, projectId, documentTypeId, plannedDate) {
     var available = data.documents.some(function (d) {
-      return d.project_id === projectId && d.document_type_id === documentTypeId;
+      return d.project_id === projectId && d.document_type_id === documentTypeId && !d.trashed_at;
     });
     if (available) return "available";
     if (plannedDate && plannedDate < today()) return "overdue";

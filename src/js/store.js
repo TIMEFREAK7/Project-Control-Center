@@ -390,6 +390,14 @@
       file_size: 0,
       mime_type: "",
       uploaded_at: now,
+      // PCC Architecture Upgrade Phase 6 (Document/File Storage Engine): Trash/Recycle
+      // Bin. null while active; an ISO timestamp once moved to trash by documents.js's
+      // Delete action — the record and its blob both stay fully intact in trash, only
+      // hidden from every normal view (the register itself and every other page that
+      // reads data.documents — see each page's own `!d.trashed_at` check) until either
+      // Restore (sets this back to null) or Delete Permanently (the old hard-delete:
+      // actually removes the record and blobStore entry, cannot be undone).
+      trashed_at: null,
       extraction: null,
       file_data: null,
       meeting_id: "",

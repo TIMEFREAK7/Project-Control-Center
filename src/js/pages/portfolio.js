@@ -185,7 +185,9 @@
   // revision" per document group.
   function computeRequirementAvailability(data, projectId, documentTypeId) {
     return data.documents.some(function (d) {
-      return d.project_id === projectId && d.document_type_id === documentTypeId;
+      // PCC Architecture Upgrade Phase 6: a trashed document never satisfies a
+      // requirement — see store.js's newDocument() header on trashed_at.
+      return d.project_id === projectId && d.document_type_id === documentTypeId && !d.trashed_at;
     });
   }
 
@@ -945,7 +947,7 @@
     });
     var docsAvailable = requirements.filter(function (r) {
       return data.documents.some(function (d) {
-        return d.project_id === projectId && d.document_type_id === r.document_type_id;
+        return d.project_id === projectId && d.document_type_id === r.document_type_id && !d.trashed_at;
       });
     }).length;
 
@@ -1669,7 +1671,9 @@
     var projectDocs = window.PCC.store
       .get()
       .documents.filter(function (d) {
-        return d.project_id === p.id;
+        // PCC Architecture Upgrade Phase 6 (Document/File Storage Engine): trashed
+        // documents are hidden everywhere, including the Attachments list here.
+        return d.project_id === p.id && !d.trashed_at;
       });
     var attachedDocs = window.PCC.files && window.PCC.files.latestOnly ? window.PCC.files.latestOnly(projectDocs) : projectDocs;
 

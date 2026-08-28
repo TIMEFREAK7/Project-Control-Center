@@ -92,7 +92,7 @@
   // here per this app's per-module-helpers convention.
   function computeRequirementStatus(data, projectId, documentTypeId, plannedDate) {
     var available = data.documents.some(function (d) {
-      return d.project_id === projectId && d.document_type_id === documentTypeId;
+      return d.project_id === projectId && d.document_type_id === documentTypeId && !d.trashed_at;
     });
     if (available) return "available";
     if (plannedDate && plannedDate < todayIso()) return "overdue";

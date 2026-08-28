@@ -396,7 +396,7 @@
     // Documents
     if (sections.documents) {
     var documentsDays = sectionDays.documents;
-    var docs = data.documents.filter(function (d) { return d.project_id === project.id && withinReportDayWindow(d.uploaded_at, documentsDays); });
+    var docs = data.documents.filter(function (d) { return d.project_id === project.id && !d.trashed_at && withinReportDayWindow(d.uploaded_at, documentsDays); });
     var docSection = sectionEl(
       "Documents" + (documentsDays ? " (last " + documentsDays + " days)" : "") + " \u2014 " + docs.length + " on file"
     );
@@ -554,7 +554,7 @@
     var docRows = data.project_document_requirements
       .filter(function (r) { return activeProjectIds[r.project_id] && docTypesById[r.document_type_id]; })
       .map(function (r) {
-        var available = data.documents.some(function (d) { return d.project_id === r.project_id && d.document_type_id === r.document_type_id; });
+        var available = data.documents.some(function (d) { return d.project_id === r.project_id && d.document_type_id === r.document_type_id && !d.trashed_at; });
         var status = available ? "available" : (r.planned_submission_date && r.planned_submission_date < today() ? "overdue" : "required");
         return { row: r, status: status };
       });

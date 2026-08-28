@@ -4515,7 +4515,7 @@
     {
       module: "documents",
       label: function (d) { return "Document: " + d.filename; },
-      list: function (data, activityId) { return data.documents.filter(function (d) { return d.activity_id === activityId; }); },
+      list: function (data, activityId) { return data.documents.filter(function (d) { return d.activity_id === activityId && !d.trashed_at; }); },
       view: function (d) {
         if (window.PCC.documents && window.PCC.documents.expandDocument) window.PCC.documents.expandDocument(d.id);
         window.PCC.router.go("documents");
@@ -4640,7 +4640,7 @@
   // convention rather than sharing a util layer.
   function computeRequirementStatus(data, projectId, documentTypeId, plannedDate) {
     var available = data.documents.some(function (d) {
-      return d.project_id === projectId && d.document_type_id === documentTypeId;
+      return d.project_id === projectId && d.document_type_id === documentTypeId && !d.trashed_at;
     });
     if (available) return "available";
     if (plannedDate && plannedDate < todayIso()) return "overdue";

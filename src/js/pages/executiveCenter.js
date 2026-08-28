@@ -426,7 +426,7 @@
     ctx.upcomingMeetings = upcomingMeetings;
 
     // ---- Documents / Daily Log (for recent activity + snapshot only) ----
-    ctx.documents = data.documents.filter(function (d) { return d.project_id === projectId; });
+    ctx.documents = data.documents.filter(function (d) { return d.project_id === projectId && !d.trashed_at; });
     ctx.dailyLogs = data.daily_logs.filter(function (l) { return l.project_id === projectId; });
 
     // ---- Resources (Gate 11) — only meaningful once the module has real data; the
@@ -462,7 +462,7 @@
     var docControlOverdue = 0;
     var docControlOverdueTypeNames = [];
     projectDocRequirements.forEach(function (r) {
-      var available = data.documents.some(function (d) { return d.project_id === projectId && d.document_type_id === r.document_type_id; });
+      var available = data.documents.some(function (d) { return d.project_id === projectId && d.document_type_id === r.document_type_id && !d.trashed_at; });
       if (available) {
         docControlAvailable++;
       } else if (r.planned_submission_date && r.planned_submission_date < todayIso) {

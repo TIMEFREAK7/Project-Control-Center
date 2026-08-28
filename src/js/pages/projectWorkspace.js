@@ -235,7 +235,7 @@
     var docsAvailable = 0;
     requirements.forEach(function (r) {
       var available = data.documents.some(function (d) {
-        return d.project_id === projectId && d.document_type_id === r.document_type_id;
+        return d.project_id === projectId && d.document_type_id === r.document_type_id && !d.trashed_at;
       });
       if (available) {
         docsAvailable++;
@@ -428,7 +428,7 @@
       .filter(function (co) { return co.project_id === projectId; })
       .forEach(function (co) { items.push({ date: co.updated_at, text: co.number + " " + co.status }); });
     data.documents
-      .filter(function (d) { return d.project_id === projectId; })
+      .filter(function (d) { return d.project_id === projectId && !d.trashed_at; })
       .forEach(function (d) { items.push({ date: d.uploaded_at, text: "Document “" + d.filename + "” uploaded" }); });
     data.daily_logs
       .filter(function (l) { return l.project_id === projectId; })
