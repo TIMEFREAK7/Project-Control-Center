@@ -5613,6 +5613,63 @@ them first").
   flow against the genuine `blobStore.js` IndexedDB path, confirming zero page errors end to end.
 - Full suite: **106 files, 2510 checks, 0 failures**.
 
+## PCC Architecture Upgrade — Phase 6 (Document/File Storage Engine): Content-Addressable Storage, 2026-08-28
+
+Started per Aditya's "Complete the last part of Phase 6" — the final deferred item: deduplicating
+identical files at the blob-storage layer itself, not just detecting them at upload time
+(`duplicateService.js`'s existing SHA-256/name-size flagging stays exactly as it was; this is a
+separate, lower-level change to how the bytes are actually stored).
+
+- **`blobStore.js` gains a second IndexedDB object store, `content`**, keyed by a SHA-256 hash of
+  (declared mime type + file bytes), each entry carrying a `refCount`. The existing `blobs` store —
+  the public contract every caller already depends on, "keyed by the same id as its owning record" —
+  is unchanged as an addressing scheme; a `blobs` record now either holds bytes directly (old shapes,
+  or a fresh write when no strong hash is available) or a `{id, ref: hash}` pointer into `content`.
+  `putBlob`/`getBlob`/`deleteBlob`/`listBlobIds`/`resolve` all still take/return exactly what they
+  did before — no call site anywhere else in the app needed to change.
+- **Mime is folded into the hash, not bytes alone** — two files with identical bytes but a different
+  declared mime type get separate content entries, deliberately, since serving one back with the
+  other's mime would be a real correctness bug, not a theoretical one.
+- **Safety over cleverness, matching this engagement's own established discipline**: content-
+  addressing only ever activates when a real SHA-256 hash is available (`window.crypto.subtle`, a
+  secure context) — never `duplicateService.js`'s own name+size fallback, which is fine for a
+  "possibly a duplicate, please review" UI badge but would be actively dangerous at the storage
+  layer: two *different* files sharing a name and size would silently share stored bytes, corrupting
+  one from the other's point of view. Without a strong hash, `putBlob` simply falls back to the
+  pre-CAS direct write — safe, just not deduplicated.
+- **Same opportunistic-upgrade discipline as the Gate 4 compression change**: an existing legacy
+  record (`{id, data}` or `{id, mime, gz}`) is read as-is and only converted to a `{id, ref}` pointer
+  the next time that id is re-saved, joining an existing content entry if its bytes already match one
+  — no bulk rewrite, no forced migration. `DB_VERSION` bumps 1 -> 2 solely to add the `content` store.
+- **Real test-script bug found and fixed while writing the real-Chromium smoke test, worth
+  remembering**: the smoke test's own raw IndexedDB helper opened the database and immediately read
+  from the (not-yet-created) `content` store *before* any `blobStore.putBlob()` call had gone through
+  blobStore.js's own `onupgradeneeded` — on a genuinely fresh profile this created the database with
+  zero object stores at all, since the test's own bare `indexedDB.open()` call had no
+  `onupgradeneeded` handler of its own. Fixed with a one-line warmup `putBlob`/`deleteBlob` before
+  any raw read — a reminder that a raw IndexedDB helper written for a *test* still has to respect the
+  same "who actually creates the schema" question a real app does.
+- **Tests**: `tests/test_content_addressable_storage_e2e.js` (24 checks, jsdom against the real
+  bundled `index.html`) — jsdom's own `window.crypto.subtle` is `undefined` (confirmed directly, same
+  fact this engagement hit during Bulk Import), so this file polyfills it with Node's real
+  `require("crypto").webcrypto.subtle` to actually exercise genuine SHA-256 dedup/refcounting rather
+  than only ever hitting the no-hash fallback: two/three/four ids sharing identical content collapse
+  to one content-store entry with the correct refCount, refcounted cleanup on delete (partial and
+  final), mime-based separation of otherwise-identical bytes, a true no-op on re-saving unchanged
+  content (no refCount inflation), correct release/rejoin on overwriting content, legacy-record
+  coexistence and opportunistic upgrade-and-join, and `listBlobIds()` never leaking a content-hash
+  key. One check explicitly removes the polyfill to confirm the safe, non-deduplicated fallback still
+  works. Plus a real-Chromium Playwright smoke test with real `crypto.subtle` under `file://`,
+  confirming 3 identical uploads produce exactly 1 stored content entry (refCount 3) and refcounted
+  cleanup on delete, with zero page errors. `tests/test_blob_compression_gate4_e2e.js` updated to
+  open the raw database at version 2 (its own direct-open helpers needed the same version bump
+  blobStore.js itself now uses); all 9 of its existing checks still pass unmodified otherwise.
+- Full suite: **107 files, 2534 checks, 0 failures**.
+
+**Phase 6 (Document/File Storage Engine) is now fully complete** — Bulk Import, Trash/Recycle Bin,
+Storage Analytics, Orphan File Detection, and Content-Addressable Storage are all done. No further
+deferred items remain from this phase.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
@@ -5696,18 +5753,17 @@ Control") already covered most of what Sections 51/52 ask for; the increment clo
 genuine gaps found (calendar changes, constraint changes, and a holistic critical-path-movement
 metric) rather than rebuilding what already worked.
 
-**Phase 6 (Document/File Storage Engine) is started, not complete** — Bulk Import, Trash/Recycle
-Bin, Storage Analytics, and Orphan File Detection are all done (see their own sections above);
-content-addressable storage (deduplicating identical files at the blob-storage layer itself, not
-just detecting them) is the one remaining deferred item, a deliberately separate future increment
-rather than in-scope so far. Trash's own build surfaced a real cross-cutting defect worth
-remembering: 17 call sites across 11 other page modules read `data.documents` with no concept of
-"hidden," so a trashed document would have kept counting everywhere (compliance requirements,
-reports, Executive Center, Portfolio attachments, duplicate detection) — all fixed as part of this
-increment, not left as a known gap; worth remembering for any *future* field that needs to hide a
-record from view — grep the collection app-wide, don't assume the one page you're working in is the
-only consumer. The rest of the master prompt's later phases (7-9) remain unstarted — confirm
-scope/direction before beginning any of them, the same gate discipline every other roadmap on this
+**Phase 6 (Document/File Storage Engine) is now fully complete** — Bulk Import, Trash/Recycle Bin,
+Storage Analytics, Orphan File Detection, and Content-Addressable Storage are all done (see their own
+sections above). No items remain deferred from this phase. Trash's own build surfaced a real
+cross-cutting defect worth remembering: 17 call sites across 11 other page modules read
+`data.documents` with no concept of "hidden," so a trashed document would have kept counting
+everywhere (compliance requirements, reports, Executive Center, Portfolio attachments, duplicate
+detection) — all fixed as part of this phase, not left as a known gap; worth remembering for any
+*future* field that needs to hide a record from view — grep the collection app-wide, don't assume the
+one page you're working in is the only consumer. The rest of the master prompt's later phases (7-9)
+remain unstarted — confirm scope/direction before beginning any of them, the same gate discipline
+every other roadmap on this
 page already follows.
 
 **Tier 2 is complete, and the entire 14-gate Document Control sub-spec Aditya handed over is now

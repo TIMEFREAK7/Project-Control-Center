@@ -56,7 +56,10 @@ const REAL_PNG_B64 = REAL_PNG.toString("base64");
 // test can inspect the actual on-disk shape rather than trusting blobStore's own read path.
 function readRawRecord(win, id) {
   return new Promise((resolve, reject) => {
-    const req = win.indexedDB.open("pcc_blobs_v1", 1);
+    // Version 2 since PCC Architecture Upgrade Phase 6's content-addressable storage
+    // increment added a second object store ("content") — opening at version 1 here would
+    // now throw a VersionError once blobStore.js itself has already upgraded the DB to 2.
+    const req = win.indexedDB.open("pcc_blobs_v1", 2);
     req.onsuccess = () => {
       const db = req.result;
       const tx = db.transaction("blobs", "readonly");
@@ -73,7 +76,10 @@ function readRawRecord(win, id) {
 // needs to handle.
 function writeLegacyRecord(win, id, dataUri) {
   return new Promise((resolve, reject) => {
-    const req = win.indexedDB.open("pcc_blobs_v1", 1);
+    // Version 2 since PCC Architecture Upgrade Phase 6's content-addressable storage
+    // increment added a second object store ("content") — opening at version 1 here would
+    // now throw a VersionError once blobStore.js itself has already upgraded the DB to 2.
+    const req = win.indexedDB.open("pcc_blobs_v1", 2);
     req.onsuccess = () => {
       const db = req.result;
       const tx = db.transaction("blobs", "readwrite");

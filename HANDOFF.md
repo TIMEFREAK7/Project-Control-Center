@@ -5305,3 +5305,57 @@ Bin, Storage Analytics, and Orphan File Detection are all complete.
 
 Per the standing CLAUDE.md instruction, this gate is being merged into `main` after the full suite
 passes, `main` pushed, and the working branch restarted from the new `main`.
+
+**PHASE 6 completed (Content-Addressable Storage) — done, same session, per Aditya's "Complete the
+last part of phase 6."** The last deferred Phase 6 item: deduplicating identical file content at the
+blob-storage layer itself (not just detecting it, which `duplicateService.js` already did).
+
+- `blobStore.js` gains a second IndexedDB object store, `content`, keyed by SHA-256(mime + bytes),
+  each entry carrying a `refCount`. The existing `blobs` store's public contract is unchanged — still
+  keyed by the same id as its owning record, still `putBlob`/`getBlob`/`deleteBlob`/`listBlobIds`/
+  `resolve` with the same signatures — a `blobs` record just now sometimes holds a `{id, ref: hash}`
+  pointer instead of the bytes directly. `DB_VERSION` bumps 1 -> 2 to add the new store; no call site
+  anywhere else in the app changed.
+- **Mime folded into the hash, not bytes alone, deliberately**: two files with identical bytes but a
+  different declared mime type get separate content entries — serving one back with the other's mime
+  would be a real bug, not a theoretical one.
+- **Safety-first design decision, consistent with this whole engagement's discipline**: CAS only ever
+  activates with a real SHA-256 hash (`crypto.subtle` + secure context). Explicitly does NOT fall back
+  to `duplicateService.js`'s name+size heuristic the way duplicate *detection* does — that heuristic
+  is fine for a "please review, might be a duplicate" UI badge, but at the storage layer it would be
+  actively dangerous: two DIFFERENT files sharing a name and size would silently share stored bytes.
+  Without a strong hash, `putBlob` just falls back to the old direct write — safe, not deduplicated.
+- Same opportunistic-upgrade pattern as the Gate 4 compression change: an old-shape record is read
+  as-is and only converted to a CAS pointer the next time it's re-saved (joining an existing content
+  entry if a match already exists) — no bulk rewrite.
+- **Real test-script bug found and fixed while writing the real-Chromium smoke test, worth
+  remembering**: the smoke test's own raw IndexedDB helper read from the `content` store before any
+  `blobStore.putBlob()` call had gone through blobStore.js's own `onupgradeneeded` — on a genuinely
+  fresh browser profile this created the database with ZERO object stores (the test's own bare
+  `indexedDB.open()` call had no upgrade handler of its own), and the very next raw `transaction()`
+  call threw "One of the specified object stores was not found." Fixed with a one-line warmup
+  `putBlob`/`deleteBlob` before any raw read. Worth remembering next time a test writes its own raw
+  IndexedDB helpers instead of going through the app's own store module: it inherits the same "who
+  actually creates the schema" responsibility a real caller has.
+- **Real environment fact reconfirmed, not assumed**: jsdom's `window.crypto.subtle` is still
+  `undefined` (same fact hit during Bulk Import) — the jsdom e2e test polyfills it with Node's real
+  `require("crypto").webcrypto.subtle` so it can exercise genuine SHA-256 dedup rather than only ever
+  hitting the no-hash fallback; the real path is independently reverified in real Chromium under
+  `file://`, where `crypto.subtle` genuinely works.
+- Tests: `tests/test_content_addressable_storage_e2e.js` (24 checks) — dedup/refcounting, refcounted
+  cleanup (partial and final), mime-based separation, no-op re-save, overwrite release/rejoin, legacy
+  coexistence and opportunistic join-on-upgrade, `listBlobIds()` never leaking a hash key, and the
+  safe no-hash fallback — plus a real-Chromium smoke test confirming 3 identical uploads produce
+  exactly 1 stored content entry (refCount 3) with correct refcounted cleanup on delete, zero page
+  errors. `tests/test_blob_compression_gate4_e2e.js` updated to open its raw DB at version 2 (its
+  direct-open helpers needed the same version bump); all 9 of its checks still pass unmodified
+  otherwise.
+- Full suite: **107 files, 2534 checks, 0 failures**.
+
+**Phase 6 (Document/File Storage Engine) is now fully complete.** Bulk Import, Trash/Recycle Bin,
+Storage Analytics, Orphan File Detection, and Content-Addressable Storage are all done — nothing
+remains deferred from this phase. The master prompt's later phases (7-9) remain entirely unstarted.
+
+Per Aditya's explicit instruction this round ("push the branches to main... check if anything is
+broken"), this is being merged into `main` now: rebuild, full suite on `main`, push `main`, verify
+nothing broke, fix anything found, then restart the working branch from the new `main`.
