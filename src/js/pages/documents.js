@@ -96,6 +96,25 @@
     // row — see risks.js's own uiState comment on this exact pattern. Keyed by the same
     // top-level document id selectedDocId uses (always the latest revision).
     selectedIds: {},
+    // PCC Architecture Upgrade Phase 6 (Document/File Storage Engine): bulk import.
+    // Deliberately separate from pendingFile/pendingCategory etc. above rather than
+    // reusing them — bulk import applies ONE set of batch metadata (project, category,
+    // document type, discipline) to every file at once (master upgrade prompt Section
+    // 22/23's own examples), not the single-upload form's full per-file classification
+    // (document_number/revision/package/vendor/priority/criticality/remarks), and
+    // deliberately skips content extraction (Excel/Word/PDF text) — extraction is a
+    // single-file nicety, not something worth doing per-file across a batch that may be
+    // hundreds of photos/drawings of file types extraction doesn't even support.
+    bulkImportOpen: false,
+    bulkImportProjectId: "",
+    bulkImportCategory: "other",
+    bulkImportDocumentTypeId: "",
+    bulkImportDiscipline: "",
+    // [{ file, name, size, type, status: 'scanning'|'ready'|'duplicate'|'error',
+    //    hash, hashMethod, dataUri, duplicateMatch, errorMessage }]
+    bulkImportFiles: [],
+    bulkImportProgress: null, // { done, total } while committing, else null
+    bulkImportSummary: null, // { imported, duplicates, skipped, errors } after commit, else null
   };
 
   function resetPendingClassification() {
@@ -318,6 +337,222 @@
       uiState.duplicateAcknowledged = false;
       rerender();
     });
+  }
+
+  // ---------------------------------------------------------------------------------
+  // PCC Architecture Upgrade Phase 6 (Document/File Storage Engine): Bulk Import.
+  // Master upgrade prompt Section 21 (File Import Lifecycle) / Section 22 (Bulk Import):
+  // SELECT -> SCAN -> VALIDATE/HASH -> DUPLICATE CHECK -> [preview] -> CONFIRM ->
+  // BATCH IMPORT -> PROGRESS -> SUMMARY. Files are hashed/duplicate-checked
+  // sequentially, not in parallel (Section 24's "background/batched processing") —
+  // bounds peak memory when many/large files are picked at once, and mirrors the exact
+  // sequential-chain pattern archive.js's own addDocsToFolder() already uses for the
+  // same reason.
+  // ---------------------------------------------------------------------------------
+
+  function resetBulkImportState() {
+    uiState.bulkImportOpen = false;
+    uiState.bulkImportProjectId = "";
+    uiState.bulkImportCategory = "other";
+    uiState.bulkImportDocumentTypeId = "";
+    uiState.bulkImportDiscipline = "";
+    uiState.bulkImportFiles = [];
+    uiState.bulkImportProgress = null;
+    uiState.bulkImportSummary = null;
+  }
+
+  /** Reads one bulk-import entry's file once (as an ArrayBuffer), computing both its
+   * content fingerprint (for duplicate detection) and its storable data URI from the
+   * SAME read — no second file read needed for storage later. */
+  function hashAndCheckBulkImportFile(entry, rerender) {
+    return new Promise(function (resolve) {
+      var reader = new FileReader();
+      reader.onload = function () {
+        var buffer = reader.result;
+        var mimeType = entry.file.type || "application/octet-stream";
+        entry.dataUri = "data:" + mimeType + ";base64," + arrayBufferToBase64(buffer);
+
+        window.PCC.duplicateService.fingerprintFile(buffer, entry.name, entry.size).then(function (fp) {
+          entry.hash = fp.hash;
+          entry.hashMethod = fp.method;
+
+          var data = window.PCC.store.get();
+          var matches = uiState.bulkImportProjectId
+            ? window.PCC.duplicateService.findFileDuplicates(data.documents, {
+                hash: fp.hash,
+                method: fp.method,
+                filename: entry.name,
+                size: entry.size,
+                projectId: uiState.bulkImportProjectId,
+              })
+            : [];
+          entry.duplicateMatch = matches.length
+            ? matches.reduce(function (best, m) {
+                return !best || (m.strength === "strong" && best.strength !== "strong") ? m : best;
+              }, null)
+            : null;
+          entry.status = entry.duplicateMatch ? "duplicate" : "ready";
+          rerender();
+          resolve();
+        });
+      };
+      reader.onerror = function () {
+        entry.status = "error";
+        entry.errorMessage = "Could not read this file.";
+        rerender();
+        resolve();
+      };
+      reader.readAsArrayBuffer(entry.file);
+    });
+  }
+
+  /** SELECT -> SCAN: adds every file in `fileList` to the pending batch immediately
+   * (so the count/names show up right away), then hashes/duplicate-checks them one at a
+   * time in the background. Appends to any files already staged, so multiple
+   * drag-and-drop/select actions accumulate into one batch rather than replacing it. */
+  function scanBulkImportFiles(fileList, rerender) {
+    var files = Array.prototype.slice.call(fileList);
+    if (files.length === 0) return;
+    uiState.bulkImportSummary = null;
+    var entries = files.map(function (file) {
+      return {
+        file: file,
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        status: "scanning",
+        hash: null,
+        hashMethod: null,
+        dataUri: null,
+        duplicateMatch: null,
+        errorMessage: null,
+      };
+    });
+    uiState.bulkImportFiles = uiState.bulkImportFiles.concat(entries);
+    rerender();
+
+    entries.reduce(function (chain, entry) {
+      return chain.then(function () {
+        return hashAndCheckBulkImportFile(entry, rerender);
+      });
+    }, Promise.resolve());
+  }
+
+  function removeBulkImportFile(index, rerender) {
+    uiState.bulkImportFiles.splice(index, 1);
+    rerender();
+  }
+
+  /** BATCH IMPORT -> PROGRESS -> SUMMARY. Imports every file currently 'ready' or
+   * 'duplicate' (duplicates are flagged, never silently skipped — master upgrade
+   * prompt's own "never automatically delete/reject duplicates, show the relationship
+   * and let the user decide" principle, same as the single-upload form already
+   * follows). Files still 'scanning' or 'error' are left out and counted as skipped.
+   * Same blob-then-metadata write order as the single-upload handler (never orphan a
+   * document record pointing at a blob that was never actually written). */
+  function commitBulkImport(rerender) {
+    if (!uiState.bulkImportProjectId) return;
+    var toImport = uiState.bulkImportFiles.filter(function (e) {
+      return e.status === "ready" || e.status === "duplicate";
+    });
+    var skipped = uiState.bulkImportFiles.length - toImport.length;
+    if (toImport.length === 0) return;
+
+    uiState.bulkImportProgress = { done: 0, total: toImport.length };
+    rerender();
+
+    var imported = 0;
+    var duplicatesImported = 0;
+    var errors = 0;
+
+    toImport
+      .reduce(function (chain, entry) {
+        return chain.then(function () {
+          // Re-check for duplicates against the LIVE store right before creating this
+          // document, rather than trusting entry.duplicateMatch from scan time as-is.
+          // Scan-time duplicate checking can only compare against documents that already
+          // existed BEFORE this batch started — it has no way to catch two files within
+          // the SAME batch that turn out to be identical (e.g. the same photo picked up
+          // twice from an export folder). Because this loop commits files one at a time,
+          // by the time file N is reached, every earlier file in this same batch is
+          // already a real, committed document — so re-running the same check here for
+          // free catches intra-batch duplicates too, not just pre-existing ones.
+          var liveMatches = window.PCC.duplicateService.findFileDuplicates(window.PCC.store.get().documents, {
+            hash: entry.hash,
+            method: entry.hashMethod,
+            filename: entry.name,
+            size: entry.size,
+            projectId: uiState.bulkImportProjectId,
+          });
+          var strongestMatch = liveMatches.length
+            ? liveMatches.reduce(function (best, m) {
+                return !best || (m.strength === "strong" && best.strength !== "strong") ? m : best;
+              }, null)
+            : null;
+          var doc = window.PCC.store.newDocument({
+            project_id: uiState.bulkImportProjectId,
+            filename: entry.name,
+            category: uiState.bulkImportCategory,
+            file_size: entry.size,
+            mime_type: entry.type || "application/octet-stream",
+            file_data: null,
+            content_hash: entry.hash,
+            hash_method: entry.hashMethod,
+            is_duplicate: !!strongestMatch,
+            original_record_id: strongestMatch ? strongestMatch.record.id : null,
+            duplicate_reason: strongestMatch ? strongestMatch.reason : null,
+            duplicate_group_id: strongestMatch
+              ? strongestMatch.record.duplicate_group_id || window.PCC.duplicateService.newGroupId()
+              : null,
+            document_type_id: uiState.bulkImportDocumentTypeId || "",
+            discipline: uiState.bulkImportDiscipline || "",
+          });
+
+          return window.PCC.blobStore
+            .putBlob(doc.id, entry.dataUri)
+            .then(function () {
+              window.PCC.store.update(function (d) {
+                d.documents.push(doc);
+                if (strongestMatch && !strongestMatch.record.duplicate_group_id) {
+                  var original = d.documents.find(function (item) {
+                    return item.id === strongestMatch.record.id;
+                  });
+                  if (original) original.duplicate_group_id = doc.duplicate_group_id;
+                }
+                if (doc.project_id) {
+                  var proj = d.projects.find(function (p) {
+                    return p.id === doc.project_id;
+                  });
+                  if (proj) {
+                    if (!proj.attachments) proj.attachments = [];
+                    proj.attachments.push(doc.id);
+                  }
+                }
+              });
+              imported++;
+              if (strongestMatch) duplicatesImported++;
+            })
+            .catch(function () {
+              errors++;
+            });
+        }).then(function () {
+          uiState.bulkImportProgress.done++;
+          rerender();
+        });
+      }, Promise.resolve())
+      .then(function () {
+        uiState.bulkImportSummary = { imported: imported, duplicates: duplicatesImported, skipped: skipped, errors: errors };
+        uiState.bulkImportProgress = null;
+        uiState.bulkImportFiles = [];
+        window.PCC.notify(
+          "Bulk import complete: " + imported + " file" + (imported === 1 ? "" : "s") + " imported" +
+            (duplicatesImported ? " (" + duplicatesImported + " flagged as possible duplicates)" : "") +
+            (errors ? ", " + errors + " failed" : "") +
+            (skipped ? ", " + skipped + " skipped" : "") + ".",
+          errors ? "warning" : "success"
+        );
+        rerender();
+      });
   }
 
   function handleFileSelected(file, rerender) {
@@ -1168,6 +1403,303 @@
     container.appendChild(panel);
   }
 
+  var BULK_STATUS_LABELS = {
+    scanning: "Scanning…",
+    ready: "Ready",
+    duplicate: "Possible duplicate",
+    error: "Error",
+  };
+
+  /** PCC Architecture Upgrade Phase 6 (Document/File Storage Engine): Bulk Import panel.
+   * Master upgrade prompt Section 22's own worked example (pick a project, category,
+   * tags/discipline once for the whole batch, review a preview, confirm) drives this
+   * layout — see commitBulkImport()/scanBulkImportFiles() above for the actual
+   * SELECT->SCAN->HASH->DUPLICATE CHECK->CONFIRM->IMPORT->PROGRESS->SUMMARY pipeline
+   * this panel drives. */
+  function renderBulkImportPanel(container, data, rerender) {
+    var panel = document.createElement("div");
+    panel.className = "panel";
+    panel.style.marginBottom = "var(--space-4)";
+
+    var heading = document.createElement("h3");
+    heading.style.marginBottom = "var(--space-2)";
+    heading.textContent = "Bulk Import";
+    panel.appendChild(heading);
+
+    var subtext = document.createElement("p");
+    subtext.className = "text-secondary";
+    subtext.style.fontSize = "var(--text-sm)";
+    subtext.style.marginBottom = "var(--space-4)";
+    subtext.textContent =
+      "Import many files at once, all assigned to the same project. Each file is checked for " +
+      "duplicates against this project's existing documents before import — a possible duplicate " +
+      "is still imported and flagged, never silently skipped, so you can review it afterward.";
+    panel.appendChild(subtext);
+
+    var activeProjectsForBulk = data.projects.filter(function (p) {
+      return !p.archived;
+    });
+
+    var grid = document.createElement("div");
+    grid.className = "form-grid";
+
+    var projField = document.createElement("div");
+    projField.className = "field";
+    projField.innerHTML = "<label>Project *</label>";
+    var projSelect = document.createElement("select");
+    if (activeProjectsForBulk.length === 0) {
+      var noProjOpt = document.createElement("option");
+      noProjOpt.value = "";
+      noProjOpt.textContent = "No projects yet — add one in Portfolio first";
+      projSelect.appendChild(noProjOpt);
+      projSelect.disabled = true;
+    } else {
+      activeProjectsForBulk.forEach(function (p) {
+        var opt = document.createElement("option");
+        opt.value = p.id;
+        opt.textContent = p.name || "(unnamed project)";
+        projSelect.appendChild(opt);
+      });
+      if (!uiState.bulkImportProjectId) uiState.bulkImportProjectId = activeProjectsForBulk[0].id;
+      projSelect.value = uiState.bulkImportProjectId;
+    }
+    projSelect.onchange = function () {
+      uiState.bulkImportProjectId = projSelect.value;
+      // Duplicate matching is scoped per-project — a project change after files are
+      // already hashed needs every entry re-checked, same reasoning the single-upload
+      // form's own projSelect.onchange already documents.
+      var d = window.PCC.store.get();
+      uiState.bulkImportFiles.forEach(function (entry) {
+        if (entry.status === "scanning" || entry.status === "error" || !entry.hash) return;
+        var matches = window.PCC.duplicateService.findFileDuplicates(d.documents, {
+          hash: entry.hash,
+          method: entry.hashMethod,
+          filename: entry.name,
+          size: entry.size,
+          projectId: uiState.bulkImportProjectId,
+        });
+        entry.duplicateMatch = matches.length
+          ? matches.reduce(function (best, m) {
+              return !best || (m.strength === "strong" && best.strength !== "strong") ? m : best;
+            }, null)
+          : null;
+        entry.status = entry.duplicateMatch ? "duplicate" : "ready";
+      });
+      rerender();
+    };
+    projField.appendChild(projSelect);
+    grid.appendChild(projField);
+
+    var catField = document.createElement("div");
+    catField.className = "field";
+    catField.innerHTML = "<label>Category (applied to every file)</label>";
+    var catSelect = document.createElement("select");
+    window.PCC.store.DOCUMENT_CATEGORIES.forEach(function (c) {
+      var opt = document.createElement("option");
+      opt.value = c;
+      opt.textContent = CATEGORY_LABELS[c] || c;
+      catSelect.appendChild(opt);
+    });
+    catSelect.value = uiState.bulkImportCategory;
+    catSelect.onchange = function () {
+      uiState.bulkImportCategory = catSelect.value;
+    };
+    catField.appendChild(catSelect);
+    grid.appendChild(catField);
+
+    var disciplineField = document.createElement("div");
+    disciplineField.className = "field";
+    disciplineField.innerHTML = "<label>Discipline (applied to every file, optional)</label>";
+    var disciplineInput = document.createElement("input");
+    disciplineInput.type = "text";
+    disciplineInput.value = uiState.bulkImportDiscipline;
+    disciplineInput.oninput = function () {
+      uiState.bulkImportDiscipline = disciplineInput.value;
+    };
+    disciplineField.appendChild(disciplineInput);
+    grid.appendChild(disciplineField);
+
+    panel.appendChild(grid);
+
+    // ---- Drop zone + file pickers ----
+    var dropZone = document.createElement("div");
+    dropZone.className = "panel";
+    dropZone.style.border = "2px dashed var(--border-default, #444)";
+    dropZone.style.textAlign = "center";
+    dropZone.style.padding = "var(--space-5)";
+    dropZone.style.marginTop = "var(--space-3)";
+    dropZone.style.marginBottom = "var(--space-3)";
+    dropZone.textContent = "Drag and drop files here, or use the buttons below.";
+    dropZone.ondragover = function (e) {
+      e.preventDefault();
+    };
+    dropZone.ondrop = function (e) {
+      e.preventDefault();
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+        scanBulkImportFiles(e.dataTransfer.files, rerender);
+      }
+    };
+    panel.appendChild(dropZone);
+
+    var pickerRow = document.createElement("div");
+    pickerRow.style.display = "flex";
+    pickerRow.style.gap = "var(--space-3)";
+    pickerRow.style.marginBottom = "var(--space-3)";
+
+    var filesInput = document.createElement("input");
+    filesInput.type = "file";
+    filesInput.multiple = true;
+    filesInput.style.display = "none";
+    filesInput.onchange = function (e) {
+      if (e.target.files && e.target.files.length) scanBulkImportFiles(e.target.files, rerender);
+      filesInput.value = "";
+    };
+    var chooseFilesBtn = document.createElement("button");
+    chooseFilesBtn.className = "btn btn--ghost";
+    chooseFilesBtn.textContent = "Choose Files";
+    chooseFilesBtn.onclick = function () {
+      filesInput.click();
+    };
+
+    // Folder import: a plain HTML input attribute (webkitdirectory), not the File
+    // System Access API this project deliberately avoids (see CLAUDE.md) — supported by
+    // desktop browsers/Electron; Android WebViews that don't support it simply fall back
+    // to a normal multi-file picker, so this never blocks anything, it's purely additive.
+    var folderInput = document.createElement("input");
+    folderInput.type = "file";
+    folderInput.multiple = true;
+    folderInput.webkitdirectory = true;
+    folderInput.style.display = "none";
+    folderInput.onchange = function (e) {
+      if (e.target.files && e.target.files.length) scanBulkImportFiles(e.target.files, rerender);
+      folderInput.value = "";
+    };
+    var chooseFolderBtn = document.createElement("button");
+    chooseFolderBtn.className = "btn btn--ghost";
+    chooseFolderBtn.textContent = "Choose Folder";
+    chooseFolderBtn.onclick = function () {
+      folderInput.click();
+    };
+
+    pickerRow.appendChild(chooseFilesBtn);
+    pickerRow.appendChild(filesInput);
+    pickerRow.appendChild(chooseFolderBtn);
+    pickerRow.appendChild(folderInput);
+    panel.appendChild(pickerRow);
+
+    // ---- Preview: per-file status ----
+    if (uiState.bulkImportFiles.length > 0) {
+      var totalCount = uiState.bulkImportFiles.length;
+      var readyCount = uiState.bulkImportFiles.filter(function (e) { return e.status === "ready"; }).length;
+      var duplicateCount = uiState.bulkImportFiles.filter(function (e) { return e.status === "duplicate"; }).length;
+      var errorCount = uiState.bulkImportFiles.filter(function (e) { return e.status === "error"; }).length;
+      var scanningCount = uiState.bulkImportFiles.filter(function (e) { return e.status === "scanning"; }).length;
+      var totalSize = uiState.bulkImportFiles.reduce(function (sum, e) { return sum + (e.size || 0); }, 0);
+
+      var summaryLine = document.createElement("p");
+      summaryLine.style.fontSize = "var(--text-sm)";
+      summaryLine.style.marginBottom = "var(--space-2)";
+      summaryLine.innerHTML =
+        "<strong>" + totalCount + "</strong> file" + (totalCount === 1 ? "" : "s") + " selected (" + formatBytes(totalSize) + ") — " +
+        readyCount + " ready · " + duplicateCount + " possible duplicate" + (duplicateCount === 1 ? "" : "s") +
+        (errorCount ? " · " + errorCount + " error" + (errorCount === 1 ? "" : "s") : "") +
+        (scanningCount ? " · " + scanningCount + " scanning…" : "");
+      panel.appendChild(summaryLine);
+
+      var list = document.createElement("div");
+      list.className = "project-list";
+      list.style.maxHeight = "320px";
+      list.style.overflowY = "auto";
+      uiState.bulkImportFiles.forEach(function (entry, index) {
+        var row = document.createElement("div");
+        row.className = "detail-card";
+        row.style.display = "flex";
+        row.style.justifyContent = "space-between";
+        row.style.alignItems = "center";
+        row.style.marginBottom = "var(--space-2)";
+
+        var main = document.createElement("div");
+        var statusNote =
+          entry.status === "duplicate" && entry.duplicateMatch
+            ? " — matches “" + entry.duplicateMatch.record.filename + "” (" + entry.duplicateMatch.reason + ")"
+            : entry.status === "error"
+            ? " — " + entry.errorMessage
+            : "";
+        main.innerHTML =
+          "<strong>" + entry.name + "</strong> · " + formatBytes(entry.size) +
+          "<br/><span class='text-secondary' style='font-size:12px;'>" +
+          (BULK_STATUS_LABELS[entry.status] || entry.status) + statusNote +
+          "</span>";
+        row.appendChild(main);
+
+        var removeBtn = document.createElement("button");
+        removeBtn.className = "btn btn--ghost";
+        removeBtn.textContent = "Remove";
+        removeBtn.disabled = !!uiState.bulkImportProgress;
+        removeBtn.onclick = function () {
+          removeBulkImportFile(index, rerender);
+        };
+        row.appendChild(removeBtn);
+
+        list.appendChild(row);
+      });
+      panel.appendChild(list);
+    }
+
+    if (uiState.bulkImportProgress) {
+      var progressLine = document.createElement("p");
+      progressLine.style.fontSize = "var(--text-sm)";
+      progressLine.style.marginTop = "var(--space-3)";
+      progressLine.textContent = "Importing " + uiState.bulkImportProgress.done + " of " + uiState.bulkImportProgress.total + "…";
+      panel.appendChild(progressLine);
+    }
+
+    if (uiState.bulkImportSummary) {
+      var s = uiState.bulkImportSummary;
+      var summaryPanel = document.createElement("p");
+      summaryPanel.style.fontSize = "var(--text-sm)";
+      summaryPanel.style.marginTop = "var(--space-3)";
+      summaryPanel.innerHTML =
+        "<strong>Import complete:</strong> " + s.imported + " imported" +
+        (s.duplicates ? " (" + s.duplicates + " flagged as possible duplicates)" : "") +
+        (s.errors ? " · " + s.errors + " failed" : "") +
+        (s.skipped ? " · " + s.skipped + " skipped (still scanning or errored)" : "") + ".";
+      panel.appendChild(summaryPanel);
+    }
+
+    // ---- Actions ----
+    var actions = document.createElement("div");
+    actions.style.display = "flex";
+    actions.style.gap = "var(--space-3)";
+    actions.style.marginTop = "var(--space-4)";
+
+    var importableCount = uiState.bulkImportFiles.filter(function (e) {
+      return e.status === "ready" || e.status === "duplicate";
+    }).length;
+
+    var importBtn = document.createElement("button");
+    importBtn.className = "btn btn--primary";
+    importBtn.textContent = uiState.bulkImportProgress ? "Importing…" : "Import " + importableCount + " File" + (importableCount === 1 ? "" : "s");
+    importBtn.disabled = !uiState.bulkImportProjectId || importableCount === 0 || !!uiState.bulkImportProgress;
+    importBtn.onclick = function () {
+      commitBulkImport(rerender);
+    };
+    actions.appendChild(importBtn);
+
+    var cancelBtn = document.createElement("button");
+    cancelBtn.className = "btn btn--ghost";
+    cancelBtn.textContent = "Close";
+    cancelBtn.disabled = !!uiState.bulkImportProgress;
+    cancelBtn.onclick = function () {
+      resetBulkImportState();
+      rerender();
+    };
+    actions.appendChild(cancelBtn);
+
+    panel.appendChild(actions);
+    container.appendChild(panel);
+  }
+
   /** Reconstructs the original file from its stored data and opens/downloads it.
    * PDFs typically render inline in a new tab; Word/Excel files typically download,
    * since browsers don't natively render those — that's normal, not a bug.
@@ -1752,13 +2284,17 @@
     if (uiState.formOpen) {
       renderUploadForm(outlet, data, rerender);
     }
+    if (uiState.bulkImportOpen) {
+      renderBulkImportPanel(outlet, data, rerender);
+    }
 
     if (data.documents.length === 0) {
-      if (!uiState.formOpen) {
+      if (!uiState.formOpen && !uiState.bulkImportOpen) {
         var addBtnEmpty = document.createElement("button");
         addBtnEmpty.className = "btn btn--primary";
         addBtnEmpty.textContent = "+ Add Document";
         addBtnEmpty.style.marginBottom = "var(--space-4)";
+        addBtnEmpty.style.marginRight = "var(--space-3)";
         addBtnEmpty.disabled = !hasActiveProjectsForDoc;
         addBtnEmpty.title = hasActiveProjectsForDoc ? "" : "Add a project in Portfolio first";
         addBtnEmpty.onclick = function () {
@@ -1766,6 +2302,17 @@
           rerender();
         };
         outlet.appendChild(addBtnEmpty);
+
+        var bulkImportBtnEmpty = document.createElement("button");
+        bulkImportBtnEmpty.className = "btn btn--ghost";
+        bulkImportBtnEmpty.textContent = "Bulk Import";
+        bulkImportBtnEmpty.disabled = !hasActiveProjectsForDoc;
+        bulkImportBtnEmpty.title = hasActiveProjectsForDoc ? "" : "Add a project in Portfolio first";
+        bulkImportBtnEmpty.onclick = function () {
+          uiState.bulkImportOpen = true;
+          rerender();
+        };
+        outlet.appendChild(bulkImportBtnEmpty);
       }
 
       var empty = document.createElement("div");
@@ -1855,7 +2402,7 @@
     // Hidden while the upload form is already open (below) — avoids a redundant second
     // "+ Add Document" trigger on screen at once, same as the pre-Gate-6 behavior where
     // the single add button lived only in the non-form branch.
-    if (!uiState.formOpen) {
+    if (!uiState.formOpen && !uiState.bulkImportOpen) {
       var addBtn = document.createElement("button");
       addBtn.className = "btn btn--primary";
       addBtn.textContent = "+ Add Document";
@@ -1869,6 +2416,19 @@
         rerender();
       };
       toolbar.appendChild(addBtn);
+
+      // PCC Architecture Upgrade Phase 6 (Document/File Storage Engine): Bulk Import.
+      var bulkImportBtn = document.createElement("button");
+      bulkImportBtn.className = "btn btn--ghost";
+      bulkImportBtn.textContent = "Bulk Import";
+      bulkImportBtn.disabled = !hasActiveProjectsForDoc;
+      bulkImportBtn.title = hasActiveProjectsForDoc ? "" : "Add a project in Portfolio first";
+      bulkImportBtn.onclick = function () {
+        uiState.bulkImportOpen = true;
+        if (uiState.projectFilter) uiState.bulkImportProjectId = uiState.projectFilter;
+        rerender();
+      };
+      toolbar.appendChild(bulkImportBtn);
     }
 
     outlet.appendChild(toolbar);

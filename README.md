@@ -5472,6 +5472,59 @@ Section 2 ("preserve what works... don't rewrite simply because... don't redo co
 unless inspection identifies a genuine defect"), only the three specific, real gaps found were
 closed.
 
+## PCC Architecture Upgrade — Phase 6 (Document/File Storage Engine): Bulk Import, 2026-08-27
+
+Started per Aditya's "Start phase 6." Inspection first, same discipline as every phase before this
+one: found real duplicate detection (SHA-256, `duplicateService.js`), document versioning
+(`document_group_id`/`revision_number`), and bulk *delete* already exist — but upload was strictly
+one file at a time (`e.target.files[0]`), no thumbnails, no trash/recycle bin, no orphan-file
+detection, no storage analytics. Aditya confirmed the scope for this increment via a direct
+follow-up question: **Bulk Import** first, the other four (trash, storage analytics,
+content-addressable storage) deferred to later increments.
+
+- **New "Bulk Import" flow in the Documents register** (`src/js/pages/documents.js`) — master
+  upgrade prompt Section 21/22's own pipeline: SELECT (multi-file picker, folder picker via the
+  plain `webkitdirectory` input attribute — not the File System Access API this project deliberately
+  avoids, see CLAUDE.md — and a real drag-and-drop zone) → SCAN (files listed immediately) → HASH +
+  DUPLICATE CHECK (SHA-256 via the existing `duplicateService.fingerprintFile`/`findFileDuplicates`,
+  sequential not parallel — bounds peak memory the same way `archive.js`'s own zip-building already
+  does) → PREVIEW (per-file Ready/Possible Duplicate/Error status, running totals, total size) →
+  CONFIRM → BATCH IMPORT (blob written before metadata commit, same order the single-upload form
+  already uses) → PROGRESS → SUMMARY. One project/category/discipline applies to the whole batch
+  (Section 22's own worked example), deliberately **not** the single-upload form's full per-file
+  classification (document number/revision/package/vendor/priority/criticality/remarks) or content
+  extraction (Excel/Word/PDF text) — those stay single-file niceties, not something worth doing
+  per-file across a batch that may be hundreds of files of types extraction doesn't even support.
+  A possible duplicate is still imported and flagged, never silently rejected — the master prompt's
+  own "never automatically delete/reject duplicates, show the relationship and let the user decide."
+- **Real discovery made while building this, not assumed**: the obvious approach — check each file
+  for duplicates against existing documents at scan time — cannot catch two files *within the same
+  batch* that are identical to each other (nothing to compare against yet, since neither is a
+  document until it's actually imported). Fixed by re-running the duplicate check against the live
+  store immediately before creating each document during commit, not just trusting the scan-time
+  result — since files commit one at a time in sequence, by the time file N is reached every earlier
+  file in the same batch is already a real committed document, so the same check catches intra-batch
+  duplicates for free. Verified with a real-Chromium smoke test using two files with byte-identical
+  content and different names: both import successfully, the second is correctly flagged
+  `is_duplicate: true` sharing the first's real SHA-256 `content_hash`.
+- **Real environment fact confirmed, not assumed**: jsdom has no `crypto.subtle` at all
+  (`window.crypto.subtle` is `undefined`) — `duplicateService.js`'s own documented `name-size`
+  fallback is what the jsdom test suite actually exercises; the real SHA-256 content-hash path is
+  verified separately in real Chromium (which does have a working `crypto.subtle` even under
+  `file://`, also confirmed directly rather than assumed).
+- **Tests**: `tests/test_document_bulk_import_e2e.js` (21 checks) — panel wiring, multi-file
+  scanning, the name-size duplicate path jsdom can actually exercise, remove-before-import, drag-and-
+  drop, and full route-smoke coverage. A dedicated real-Chromium Playwright smoke test confirms the
+  real SHA-256 path and the intra-batch duplicate fix, both unverifiable in jsdom alone.
+- Full suite: **103 files, 2443 checks, 0 failures**.
+
+**Still not done, by design — deferred to a later increment, not overlooked**: trash/recycle bin
+(deletion, bulk or single, is still immediate and permanent), storage analytics (no view of total
+space used, largest files, or duplicates across the portfolio), orphan-file detection, and
+content-addressable storage (duplicates are detected but each copy still occupies its own separate
+blob — no storage actually saved). Confirmed with Aditya as the deliberate scope for this increment
+before starting.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
@@ -5541,21 +5594,26 @@ Assistant, Lessons Learned, final polish
 **PCC Architecture Upgrade**: Phase 0 (Inspection & Baseline), Phase 1 (Canonical Schedule Model,
 schema v61), Phase 2 (Microsoft Project XML **import and export**), Phase 3 (Primavera P6 XER
 **import and export**), **Phase 5 (SQLite)**, and **Phase 4 (Schedule Versioning & Comparison) are
-all now complete** — see their own sections above for the full detail on each. Both
-file-interoperability phases round-trip through PCC's own import/export for every field either side
-handles; opening an exported file in the *real* authoring tool itself is unverified for both (no MS
-Project or Primavera P6 installation available in this environment) — a materially bigger open
-question for the P6/XER side, documented as such rather than downplayed. Phase 5 now has a real,
-two-way "Full Backup (SQLite)" — create and restore, byte-for-byte, including document/photo files,
-proven with real blobs, a real browser, and a real independent SQLite tool — but **by explicit,
-deliberate design, not an oversight**, the live app's actual data layer remains `store.js`/
-localStorage; there is no live continuous SQLite read/write path, and whether to ever build one
-remains entirely Aditya's future call. Phase 4's own inspection found the pre-existing Gate 22
-("Baseline & Schedule Revision Control") already covered most of what Sections 51/52 ask for; the
-increment closed the three genuine gaps found (calendar changes, constraint changes, and a holistic
-critical-path-movement metric) rather than rebuilding what already worked. The rest of the master
-prompt's later phases (6-9) remain unstarted — confirm scope/direction before beginning any of them,
-the same gate discipline every other roadmap on this page already follows.
+complete** — see their own sections above for the full detail on each. Both file-interoperability
+phases round-trip through PCC's own import/export for every field either side handles; opening an
+exported file in the *real* authoring tool itself is unverified for both (no MS Project or Primavera
+P6 installation available in this environment) — a materially bigger open question for the P6/XER
+side, documented as such rather than downplayed. Phase 5 now has a real, two-way "Full Backup
+(SQLite)" — create and restore, byte-for-byte, including document/photo files, proven with real
+blobs, a real browser, and a real independent SQLite tool — but **by explicit, deliberate design,
+not an oversight**, the live app's actual data layer remains `store.js`/localStorage; there is no
+live continuous SQLite read/write path, and whether to ever build one remains entirely Aditya's
+future call. Phase 4's own inspection found the pre-existing Gate 22 ("Baseline & Schedule Revision
+Control") already covered most of what Sections 51/52 ask for; the increment closed the three
+genuine gaps found (calendar changes, constraint changes, and a holistic critical-path-movement
+metric) rather than rebuilding what already worked.
+
+**Phase 6 (Document/File Storage Engine) is started, not complete** — Bulk Import is done (see its
+own section above); trash/recycle bin, storage analytics, orphan-file detection, and
+content-addressable storage remain, each confirmed as a deliberately separate future increment
+rather than in-scope for this one. The rest of the master prompt's later phases (7-9) remain
+unstarted — confirm scope/direction before beginning any of them, the same gate discipline every
+other roadmap on this page already follows.
 
 **Tier 2 is complete, and the entire 14-gate Document Control sub-spec Aditya handed over is now
 built** (Gates 14-28) — no gates from that spec remain. A new, separate roadmap started with Gate

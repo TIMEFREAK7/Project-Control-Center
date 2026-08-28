@@ -5169,4 +5169,44 @@ Per the standing CLAUDE.md instruction ("always merge the working branch into ma
 a gate/phase — don't ask first"), this gate too will be merged into `main` after the full suite
 passes, `main` pushed, and the working branch restarted from the new `main`.
 
+**PHASE 6 (Document/File Storage Engine) — started, same session, per Aditya's "Start phase 6."**
+
+Inspected first, same discipline as every phase before it. Found real duplicate detection
+(SHA-256, `duplicateService.js`), document versioning, and bulk *delete* already existed — but
+upload was strictly one file at a time, no thumbnails/trash/orphan-detection/storage-analytics.
+Asked Aditya directly which of the missing pieces to build first (Phase 6 spans several genuinely
+independent features) — answer: **Bulk Import**.
+
+- **New Bulk Import flow** in `src/js/pages/documents.js`: multi-file picker, folder picker (plain
+  `webkitdirectory` attribute — not the File System Access API this project avoids, per CLAUDE.md),
+  and a real drag-and-drop zone. One project/category/discipline for the whole batch (master
+  prompt's own Section 22 example), deliberately not the single-upload form's full per-file
+  classification or content extraction — those stay single-file niceties. A possible duplicate is
+  imported and flagged, never silently rejected.
+- **Real discovery made while building this**: scan-time duplicate checking can't catch two files
+  *within the same batch* that are identical to each other — neither is a document yet, so there's
+  nothing to compare against. Fixed by re-running the duplicate check against the live store
+  immediately before creating each document during commit (files commit one at a time in sequence,
+  so by file N every earlier file in the batch is already a real committed document) — catches
+  intra-batch duplicates for free, no separate code path. Verified with a real-Chromium smoke test:
+  two files with identical bytes and different names both import, the second correctly flagged
+  `is_duplicate: true` sharing the first's real SHA-256 hash.
+- **Real environment fact confirmed, not assumed**: jsdom's `window.crypto.subtle` is `undefined` —
+  no Web Crypto SubtleCrypto implementation at all. `duplicateService.js`'s own documented
+  `name-size` fallback is what the jsdom suite actually exercises (had to fix a test that wrongly
+  assumed sha256 would be used); the real SHA-256 path — including the intra-batch fix above — is
+  verified separately in real Chromium, where `crypto.subtle` genuinely works even under `file://`
+  (also checked directly rather than assumed).
+- Tests: `test_document_bulk_import_e2e.js` (21 checks, jsdom) + a real-Chromium Playwright smoke
+  test for the SHA-256/intra-batch path jsdom can't exercise.
+- Full suite: **103 files, 2443 checks, 0 failures**.
+
+**Deliberately deferred, not overlooked**: trash/recycle bin (delete is still immediate/permanent),
+storage analytics, orphan-file detection, content-addressable storage (dedup is detected, not
+actually deduplicated at the blob layer). Each confirmed as its own future increment with Aditya
+before this one started.
+
+Per the standing CLAUDE.md instruction, this gate will also be merged into `main` after the full
+suite passes, `main` pushed, and the working branch restarted from the new `main`.
+
 **Repo/branch state as of this write-up**: see the line below for the current exact state.
