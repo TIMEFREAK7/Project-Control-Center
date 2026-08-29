@@ -139,6 +139,9 @@
         dataDate: schedule.data_date,
         nearCriticalThresholdDays: schedule.near_critical_threshold_days,
         calculationMode: schedule.calculation_mode,
+        calendarAware: schedule.calendar_aware,
+        honorConstraints: schedule.constraints_enabled,
+        calendars: (data.calendars || []).filter(function (c) { return c.project_id === projectId; }),
       });
     }
     ctx.cpm = cpm;

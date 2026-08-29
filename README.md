@@ -5670,6 +5670,87 @@ separate, lower-level change to how the bytes are actually stored).
 Storage Analytics, Orphan File Detection, and Content-Addressable Storage are all done. No further
 deferred items remain from this phase.
 
+## PCC Architecture Upgrade — Phase 7 (Advanced Scheduling): Calendar-Aware CPM + Date Constraints, 2026-08-29
+
+Started per Aditya's "Start phase 7." Confirmed scope directly rather than guessing — prior
+sessions' own notes on what "Phase 7" covered were inconsistent — and inspected the real engine
+before proposing anything: `scheduleCpmEngine.js` was explicitly, deliberately calendar-naive
+(plain calendar-day math, despite every activity already carrying a real `calendar_id` since
+Phase 1), and never consulted `constraint_type`/`constraint_date` at all despite MSP/P6 import
+populating both fields since Phase 2/3. Built both, calendar-awareness first, per Aditya's own
+choice of scope.
+
+**Calendar-Aware CPM.** `scheduleCpmEngine.js` can now respect each activity's own Calendar
+(working days/holidays) instead of naive calendar-day arithmetic — new working-day-stepping helpers
+(`isWorkingDay`, `advanceWorkingDays`/`retreatWorkingDays` for duration consumption,
+`offsetWorkingDays` for relationship lag, `workingDaysBetween` for float) sit alongside the existing
+day-number math, all bounded against a zero-working-day calendar looping forever.
+- **Off by default** (`options.calendarAware`, backed by new `schedule.calendar_aware`, schema
+  v61→v62) — the same reasoning Gate 21's `calculation_mode` already established: Phase 1's own
+  migration already wired a default 5-day calendar onto essentially every existing activity, so
+  defaulting this on would have silently recalculated every existing schedule's dates the moment it
+  shipped. An explicit per-schedule opt-in (a new "Calendar-Aware Calculation" checkbox in Schedule
+  Settings) is the only safe way to ship this.
+- Duration is consumed in working days; a not-started activity's ES is normalized to the next
+  working day first. A COMPLETED activity's `early_finish` is never renormalized — it exactly
+  reconstructs the real `actual_finish`, since an observed historical fact isn't subject to a
+  calendar model; an IN-PROGRESS activity's remaining-duration forecast IS calendar-aware, since
+  that part is genuinely a forecast.
+- Relationship lag applies in working days using the constraint's own target activity's calendar
+  (the successor's, for an earliest-start constraint; the predecessor's, for a latest-finish
+  constraint) — a documented, consistent convention, same spirit as this engine's pre-existing Free
+  Float generalization, for the same reason: different commercial tools disagree on whose calendar
+  governs a cross-relationship lag.
+- Total/Free Float are reported in working days (not raw calendar days) once calendar-awareness is
+  on, keeping float in the same unit duration is already expressed in.
+- A missing/unresolved calendar, or one with zero working days (a real data-entry mistake), falls
+  back to "every day is a working day" for that one activity, flagged with a warning — never a thrown
+  error or an infinite search loop.
+
+**Date Constraints** (follow-on, same session). Six of the eight standard constraint types are now
+enforced when turned on: MSO (Must Start On), SNET/SNLT (Start No Earlier/Later Than), MFO (Must
+Finish On), FNET/FNLT (Finish No Earlier/Later Than). ALAP (As Late As Possible) is read and carried
+through import/export like every other type but deliberately NOT enforced — genuinely scheduling
+ALAP requires seeding the forward pass from the backward pass's own late dates, real engineering
+work of its own rather than a natural extension of the other six (all simple floors/ceilings on a
+single pass); an ALAP activity calculates with ordinary ASAP logic instead, flagged as such, not a
+silent gap.
+- **Off by default** (`options.honorConstraints`, backed by new `schedule.constraints_enabled`,
+  schema v62→v63) — identical reasoning to calendar-awareness: every MSP/P6 import since Phase 2/3
+  has been silently populating these fields, so turning this on unconditionally would have silently
+  recalculated every already-imported schedule. A second new checkbox, "Honor Date Constraints," in
+  the same Schedule Settings form.
+- Only ever applies to a NOT-STARTED activity's own ES — never overrides a completed or in-progress
+  activity's real actual dates, the same principle calendar-awareness already follows.
+- **Predecessor logic always wins in a genuine conflict** (e.g. a Must Start On date earlier than
+  what predecessor relationships allow) — the same "the network's logic can never be violated"
+  invariant this engine already applies everywhere (cyclic activities excluded rather than given
+  meaningless numbers). The conflict is flagged as a warning, never silently resolved either way.
+- Finish-oriented constraints (MFO/FNET/FNLT) translate into an equivalent start-side bound using
+  the activity's own effective duration, calendar-aware when that's also on for the schedule. The two
+  Phase 7 features compose but are independently switchable.
+- **Tests**: `tests/test_schedule_cpm_engine.js` grew from 9 to 51 checks (18 calendar-aware, 15
+  constraint-specific, plus combined calendar+constraint cases) — every expected date hand-derived
+  against a real calendar (`date -d`) before writing the assertion, not guessed, and every one passed
+  on the first real run. `tests/test_advanced_scheduling_calendar_aware_e2e.js` (new, 21 checks) —
+  jsdom end-to-end against the real bundled `index.html`: seeding a Mon-Fri calendar and an imported
+  Must Start On constraint, toggling both new Schedule Settings checkboxes through the real form, and
+  confirming "Calculate Schedule" produces different, correct dates with each toggle on vs. off. Plus
+  a real-Chromium Playwright smoke test confirming both features together (weekend-skipping AND a
+  Must Start On constraint) produce correct dates with zero page errors.
+- One real defect found and fixed while wiring this up, not left in: `data.calendars.filter(...)`
+  at all 4 new call sites (`schedule.js` ×2, `delayImpactEngine.js`, `executiveCenter.js`) assumed
+  `data.calendars` always exists — a valid partial `data` shape used by `test_delay_impact_engine.js`'s
+  own fixtures doesn't set it, and threw. Fixed with `(data.calendars || [])` at all 4 sites.
+- Full suite: **108 files, 2579 checks, 0 failures**.
+
+**Deliberately not built this increment**: a Calendar management UI (creating/editing
+working_days/holidays by hand) — calendars today still only come from the Phase 1 migration's
+auto-created default, or a real MSP/P6 import; ALAP enforcement (see above); resource-constrained
+leveling that actually reschedules activities (the existing `resourceLevelingEngine.js` only detects
+over-allocation, doesn't resolve it) — a `Cost/EVM/Resource depth` candidate Aditya didn't pick this
+round, not forgotten.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
@@ -5761,10 +5842,16 @@ cross-cutting defect worth remembering: 17 call sites across 11 other page modul
 everywhere (compliance requirements, reports, Executive Center, Portfolio attachments, duplicate
 detection) — all fixed as part of this phase, not left as a known gap; worth remembering for any
 *future* field that needs to hide a record from view — grep the collection app-wide, don't assume the
-one page you're working in is the only consumer. The rest of the master prompt's later phases (7-9)
-remain unstarted — confirm scope/direction before beginning any of them, the same gate discipline
-every other roadmap on this
-page already follows.
+one page you're working in is the only consumer.
+
+**Phase 7 (Advanced Scheduling) is started, not complete** — Calendar-Aware CPM and Date Constraints
+are both done (see their own section above). Deliberately not built this round: a Calendar management
+UI (calendars still only come from the Phase 1 migration or a real MSP/P6 import — no hand-editing of
+working_days/holidays yet), ALAP constraint enforcement (read/carried through, not calculated), and
+resource-constrained leveling that actually reschedules activities (the existing
+`resourceLevelingEngine.js` only detects over-allocation). The rest of the master prompt's later
+phases (8-9) remain unstarted — confirm scope/direction before beginning any of them, the same gate
+discipline every other roadmap on this page already follows.
 
 **Tier 2 is complete, and the entire 14-gate Document Control sub-spec Aditya handed over is now
 built** (Gates 14-28) — no gates from that spec remain. A new, separate roadmap started with Gate

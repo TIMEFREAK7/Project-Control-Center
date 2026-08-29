@@ -189,10 +189,16 @@
       return { available: false, reason: "This schedule has no activities to calculate." };
     }
 
+    var scheduleCalendars = (data.calendars || []).filter(function (c) {
+      return c.project_id === schedule.project_id;
+    });
     var result = window.PCC.scheduleCpmEngine.calculateSchedule(scheduleActivities, scheduleRelationships, {
       dataDate: schedule.data_date,
       nearCriticalThresholdDays: schedule.near_critical_threshold_days,
       calculationMode: schedule.calculation_mode,
+      calendarAware: schedule.calendar_aware,
+      honorConstraints: schedule.constraints_enabled,
+      calendars: scheduleCalendars,
     });
 
     return {

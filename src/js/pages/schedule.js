@@ -373,6 +373,42 @@
     calcModeField.appendChild(calcModeSelect);
     grid.appendChild(calcModeField);
 
+    // Architecture Upgrade Phase 7 (Advanced Scheduling): off by default (see
+    // store.js's newSchedule() comment) — an explicit per-schedule opt-in, not a global
+    // switch, so turning this on never silently changes a schedule's dates until asked.
+    var calendarAwareField = document.createElement("div");
+    calendarAwareField.className = "field";
+    var calendarAwareLabel = document.createElement("label");
+    calendarAwareLabel.style.display = "flex";
+    calendarAwareLabel.style.alignItems = "center";
+    calendarAwareLabel.style.gap = "var(--space-2)";
+    var calendarAwareCheckbox = document.createElement("input");
+    calendarAwareCheckbox.type = "checkbox";
+    calendarAwareCheckbox.id = "schedfield-calendar_aware";
+    calendarAwareCheckbox.checked = !!schedule.calendar_aware;
+    calendarAwareLabel.appendChild(calendarAwareCheckbox);
+    calendarAwareLabel.appendChild(document.createTextNode("Calendar-Aware Calculation (respect working days/holidays)"));
+    calendarAwareField.appendChild(calendarAwareLabel);
+    grid.appendChild(calendarAwareField);
+
+    // Architecture Upgrade Phase 7 follow-on: off by default, same reasoning as
+    // Calendar-Aware Calculation above — every MSP/P6 import has been silently
+    // populating constraint_type/constraint_date since Phase 2/3.
+    var constraintsField = document.createElement("div");
+    constraintsField.className = "field";
+    var constraintsLabel = document.createElement("label");
+    constraintsLabel.style.display = "flex";
+    constraintsLabel.style.alignItems = "center";
+    constraintsLabel.style.gap = "var(--space-2)";
+    var constraintsCheckbox = document.createElement("input");
+    constraintsCheckbox.type = "checkbox";
+    constraintsCheckbox.id = "schedfield-constraints_enabled";
+    constraintsCheckbox.checked = !!schedule.constraints_enabled;
+    constraintsLabel.appendChild(constraintsCheckbox);
+    constraintsLabel.appendChild(document.createTextNode("Honor Date Constraints (Must Start On, Start No Earlier Than, etc. from import)"));
+    constraintsField.appendChild(constraintsLabel);
+    grid.appendChild(constraintsField);
+
     var statusField = document.createElement("div");
     statusField.className = "field";
     statusField.innerHTML = "<label>Status</label>";
@@ -482,6 +518,8 @@
         data_date: form.querySelector("#schedfield-data_date").value,
         near_critical_threshold_days: Number(form.querySelector("#schedfield-near_critical_threshold_days").value) || 0,
         calculation_mode: form.querySelector("#schedfield-calculation_mode").value,
+        calendar_aware: form.querySelector("#schedfield-calendar_aware").checked,
+        constraints_enabled: form.querySelector("#schedfield-constraints_enabled").checked,
         status: form.querySelector("#schedfield-status").value,
         schedule_type: form.querySelector("#schedfield-schedule_type").value,
         schedule_owner: form.querySelector("#schedfield-schedule_owner").value,
@@ -2254,10 +2292,16 @@
       return;
     }
 
+    var scheduleCalendars = (data.calendars || []).filter(function (c) {
+      return c.project_id === schedule.project_id;
+    });
     var result = window.PCC.scheduleCpmEngine.calculateSchedule(scheduleActivities, scheduleRelationships, {
       dataDate: schedule.data_date,
       nearCriticalThresholdDays: schedule.near_critical_threshold_days,
       calculationMode: schedule.calculation_mode,
+      calendarAware: schedule.calendar_aware,
+      honorConstraints: schedule.constraints_enabled,
+      calendars: scheduleCalendars,
     });
     var freshFingerprint = cpmInputFingerprint(scheduleActivities, scheduleRelationships);
 
@@ -7490,6 +7534,9 @@
         dataDate: schedule.data_date,
         nearCriticalThresholdDays: schedule.near_critical_threshold_days,
         calculationMode: schedule.calculation_mode,
+        calendarAware: schedule.calendar_aware,
+        honorConstraints: schedule.constraints_enabled,
+        calendars: (data.calendars || []).filter(function (c) { return c.project_id === schedule.project_id; }),
       };
       var before = window.PCC.scheduleCpmEngine.calculateSchedule(scheduleActivities, scheduleRelationships, cpmOptions);
 

@@ -119,7 +119,7 @@ check("a v60 dataset migrates to v61: source_platform/source_format inferred cor
   const s = loadStoreWith(JSON.stringify(v60));
   const data = s.get();
 
-  assert.strictEqual(data.schema_version, 61);
+  assert.strictEqual(data.schema_version, 63);
 
   // Excel-sourced schedule: inferred from source_file_name, extension lowercased.
   const sch1 = data.schedules.find((x) => x.id === "sch_1");

@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 61;
+  var SCHEMA_VERSION = 63;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -1252,6 +1252,17 @@
       near_critical_threshold_days: 5,
       // Gate 21: see CALCULATION_MODES above for what this controls.
       calculation_mode: "progress_override",
+      // Architecture Upgrade Phase 7 (Advanced Scheduling, schema v62): off by default
+      // for every schedule, new or existing — see scheduleCpmEngine.js's own
+      // CALENDAR-AWARE CALCULATION header section for why this can't default to true.
+      // Turning it on makes scheduleCpmEngine.js respect each activity's own Calendar
+      // (working_days/holidays) instead of plain calendar-day math.
+      calendar_aware: false,
+      // Architecture Upgrade Phase 7 (Advanced Scheduling, follow-on, schema v63): off
+      // by default, same reasoning as calendar_aware above — every MSP/P6 import since
+      // Phase 2/3 has been silently populating constraint_type/constraint_date, so
+      // defaulting this on would recalculate every already-imported schedule's dates.
+      constraints_enabled: false,
       // Daily-Use Audit Phase 1 (schema 54->55): a fingerprint of this schedule's own
       // CPM-relevant activity/relationship fields at the moment "Calculate Schedule"
       // last ran successfully — see schedule.js's isCpmStale()/cpmInputFingerprint().
@@ -3154,6 +3165,26 @@
         }
       });
       loaded.schema_version = 61;
+    }
+
+    if (loaded.schema_version < 62) {
+      // Architecture Upgrade Phase 7 (Advanced Scheduling): calendar_aware defaults to
+      // false for every existing schedule — see newSchedule()'s own comment. Turning
+      // scheduleCpmEngine.js's calendar-awareness on by default here would silently
+      // recalculate every existing schedule's dates/float the moment this migration ran.
+      (loaded.schedules || []).forEach(function (s) {
+        if (s.calendar_aware === undefined) s.calendar_aware = false;
+      });
+      loaded.schema_version = 62;
+    }
+
+    if (loaded.schema_version < 63) {
+      // Architecture Upgrade Phase 7 (Advanced Scheduling, follow-on): constraints_enabled
+      // defaults to false for every existing schedule — see newSchedule()'s own comment.
+      (loaded.schedules || []).forEach(function (s) {
+        if (s.constraints_enabled === undefined) s.constraints_enabled = false;
+      });
+      loaded.schema_version = 63;
     }
 
     return loaded;
