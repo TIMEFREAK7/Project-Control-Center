@@ -219,5 +219,101 @@ check("bucketTimeline on an empty day list returns an empty array without throwi
   assert.deepStrictEqual(engine.bucketTimeline([], 7), []);
 });
 
+// ---------------------------------------------------------------------------
+// levelResourceWithinFloat (PCC Architecture Upgrade Phase 7, Advanced Scheduling:
+// Resource-Constrained Leveling — the last of the three deferred Phase 7 items)
+// ---------------------------------------------------------------------------
+
+function calculatedActivity(overrides) {
+  // A "Calculate Schedule" has already run: early_start/early_finish/late_start/
+  // total_float are all real, persisted fields, matching schedule.js's own
+  // runCalculation() write-back shape.
+  return activity(Object.assign({ total_float: 0 }, overrides));
+}
+
+check("leveling: a single-resource conflict is resolved by pushing the activity with MORE float later, leaving the more-critical one untouched", () => {
+  var resource = { id: "r1", max_availability: 1 };
+  var critical = calculatedActivity({ id: "A", early_start: "2026-01-01", early_finish: "2026-01-03", late_start: "2026-01-01", total_float: 0 });
+  var slack = calculatedActivity({ id: "B", early_start: "2026-01-01", early_finish: "2026-01-03", late_start: "2026-01-06", total_float: 5 });
+  var assignments = [
+    { id: "asg1", resource_id: "r1", activity_id: "A", quantity: 1 },
+    { id: "asg2", resource_id: "r1", activity_id: "B", quantity: 1 },
+  ];
+  var result = engine.levelResourceWithinFloat(resource, assignments, [critical, slack]);
+  assert.strictEqual(result.available, true);
+  assert.strictEqual(result.leveled, true);
+  assert.strictEqual(result.proposals.length, 1);
+  assert.strictEqual(result.proposals[0].activityId, "B", "the activity with float, not the critical one, must be the one that moves");
+  assert.strictEqual(result.proposals[0].originalStart, "2026-01-01");
+  assert.strictEqual(result.proposals[0].proposedStart, "2026-01-03", "must be pushed until the resource is actually free");
+  assert.strictEqual(result.proposals[0].proposedFinish, "2026-01-05");
+  assert.strictEqual(result.proposals[0].shiftedByDays, 2);
+  assert.deepStrictEqual(result.unresolved, [], "the shift must fully resolve the conflict, nothing left over");
+});
+
+check("leveling: a conflict that can't fit within either activity's float is reported as unresolved, never force-fit or silently extended", () => {
+  var resource = { id: "r1", max_availability: 1 };
+  var a = calculatedActivity({ id: "A", early_start: "2026-01-01", early_finish: "2026-01-04", late_start: "2026-01-01", total_float: 0 });
+  var b = calculatedActivity({ id: "B", early_start: "2026-01-01", early_finish: "2026-01-04", late_start: "2026-01-02", total_float: 1 });
+  var assignments = [
+    { id: "asg1", resource_id: "r1", activity_id: "A", quantity: 1 },
+    { id: "asg2", resource_id: "r1", activity_id: "B", quantity: 1 },
+  ];
+  var result = engine.levelResourceWithinFloat(resource, assignments, [a, b]);
+  assert.strictEqual(result.leveled, false, "B never actually found a fitting slot, so nothing should be reported as moved");
+  assert.strictEqual(result.proposals.length, 0);
+  assert.ok(result.unresolved.length > 0, "the real, unresolved conflict must still be surfaced, not hidden");
+  assert.ok(result.unresolved.every((d) => d.overBy === 1));
+});
+
+check("leveling: an activity with no total_float/early_start (never CPM-calculated) is excluded from leveling and reported, not guessed at", () => {
+  var resource = { id: "r1", max_availability: 5 };
+  var calculated = calculatedActivity({ id: "A", early_start: "2026-01-01", early_finish: "2026-01-03", late_start: "2026-01-01", total_float: 0 });
+  var neverCalculated = activity({ id: "B", planned_start: "2026-01-01", planned_finish: "2026-01-03", early_start: null, early_finish: null, total_float: null });
+  var assignments = [
+    { id: "asg1", resource_id: "r1", activity_id: "A", quantity: 3 },
+    { id: "asg2", resource_id: "r1", activity_id: "B", quantity: 3 }, // 6 > 5 capacity, but B can't be moved
+  ];
+  var result = engine.levelResourceWithinFloat(resource, assignments, [calculated, neverCalculated]);
+  assert.deepStrictEqual(result.excludedActivityIds, ["B"]);
+  assert.strictEqual(result.proposals.length, 0, "an uncalculated activity can never be the one that moves");
+  assert.ok(result.unresolved.length > 0, "its fixed demand still correctly contributes to the (unresolvable, since B can't move) conflict");
+});
+
+check("leveling: a resource with max_availability unset is 'not computable' — no leveling attempted, matching detectOverAllocations' own convention", () => {
+  var resource = { id: "r1", max_availability: null };
+  var a = calculatedActivity({ id: "A", early_start: "2026-01-01", early_finish: "2026-01-03", late_start: "2026-01-01" });
+  var result = engine.levelResourceWithinFloat(resource, [{ id: "asg1", resource_id: "r1", activity_id: "A", quantity: 999 }], [a]);
+  assert.strictEqual(result.available, false);
+  assert.strictEqual(result.leveled, false);
+  assert.deepStrictEqual(result.proposals, []);
+});
+
+check("leveling: no conflict at all means nothing is proposed", () => {
+  var resource = { id: "r1", max_availability: 5 };
+  var a = calculatedActivity({ id: "A", early_start: "2026-01-01", early_finish: "2026-01-03", late_start: "2026-01-01", total_float: 0 });
+  var b = calculatedActivity({ id: "B", early_start: "2026-01-03", early_finish: "2026-01-05", late_start: "2026-01-10", total_float: 5 });
+  var assignments = [
+    { id: "asg1", resource_id: "r1", activity_id: "A", quantity: 2 },
+    { id: "asg2", resource_id: "r1", activity_id: "B", quantity: 2 },
+  ];
+  var result = engine.levelResourceWithinFloat(resource, assignments, [a, b]);
+  assert.strictEqual(result.leveled, false);
+  assert.deepStrictEqual(result.proposals, []);
+  assert.deepStrictEqual(result.unresolved, []);
+});
+
+check("leveling: a resource_unavailability window is respected — leveling pushes an activity past a leave day, not just past other activities", () => {
+  var resource = { id: "r1", max_availability: 1 };
+  // A alone would have plenty of room (capacity 1, A needs 1, no other activity
+  // competing) — but a leave day right in its natural slot forces it to shift anyway.
+  var a = calculatedActivity({ id: "A", early_start: "2026-01-01", early_finish: "2026-01-02", late_start: "2026-01-05", total_float: 4 });
+  var unavailabilities = [{ resource_id: "r1", start_date: "2026-01-01", end_date: "2026-01-01", quantity: 1 }];
+  var result = engine.levelResourceWithinFloat(resource, [{ id: "asg1", resource_id: "r1", activity_id: "A", quantity: 1 }], [a], unavailabilities);
+  assert.strictEqual(result.leveled, true);
+  assert.strictEqual(result.proposals[0].proposedStart, "2026-01-02", "must skip the leave day even though no OTHER activity was competing for it");
+  assert.deepStrictEqual(result.unresolved, []);
+});
+
 console.log("\n" + passed + " passed, " + failed + " failed");
 process.exit(failed > 0 ? 1 : 0);

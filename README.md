@@ -5751,6 +5751,104 @@ leveling that actually reschedules activities (the existing `resourceLevelingEng
 over-allocation, doesn't resolve it) — a `Cost/EVM/Resource depth` candidate Aditya didn't pick this
 round, not forgotten.
 
+## PCC Architecture Upgrade — Phase 7 continued: Calendar Management UI, ALAP Enforcement, Resource-Constrained Leveling, 2026-08-29
+
+Started per Aditya's "Start the open pieces of phase 7" — all three items deferred from the previous
+increment, built together in the recommended order (calendar UI first, then ALAP, then leveling).
+
+**Calendar Management UI.** A new "Calendars" tab in the Schedule module (scoped to the selected
+*project*, like calendars themselves — not the selected schedule) with full add/edit/delete and
+"Set as Default" — the working-days checkboxes and a simple add/remove holiday list, matching
+`newCalendar()`'s own `working_days`/`holidays` shape exactly. A new "Calendar" field on the Activity
+form lets any hand-built activity pick a project calendar, defaulting a brand-new activity to the
+project's own default calendar (never forced — leaving it blank falls back to "every day is a
+working day," per scheduleCpmEngine.js's own documented behavior). Deleting a calendar still
+referenced by an activity is blocked with a clear message, not silently orphaning the reference.
+- **Real bug found and fixed while building this, not shipped broken**: adding or removing a
+  holiday has to rerender to show the updated list — but for a brand-new calendar,
+  `window.PCC.store.newCalendar()` gets called fresh on every render (the same pattern every other
+  "new X" form in this file already uses), so the name field and working-day checkboxes were
+  silently reverting to their factory defaults the moment a holiday was added, discarding whatever
+  the user had already typed. Fixed with a single durable form-draft object
+  (`uiState.calendarFormDraft`) that survives across reranders, synced from the live DOM immediately
+  before any handler that needs to rerender — caught by the test suite before this ever shipped.
+- Tests: `tests/test_calendar_management_ui_e2e.js` (20 checks, jsdom against the real bundled
+  `index.html`) — add/edit/delete/set-default, the Activity form's Calendar field and its
+  project-default fallback, delete-blocked-while-referenced, and a hand-built calendar genuinely
+  driving Calculate Schedule's real output. Plus a real-Chromium smoke test. One real test-fixture
+  bug of my own found and fixed along the way: a 1-day task starting on a Thursday correctly gets
+  `early_finish` on Friday even when Friday isn't a working day on that calendar — EF is an
+  *exclusive* boundary (the day after the one working day actually consumed), not itself required
+  to be a working day, exactly matching how the non-calendar-aware convention already worked; my
+  first test draft wrongly expected it to skip to the following Monday and had to be corrected, not
+  the engine.
+
+**ALAP (As Late As Possible) Enforcement.** Genuinely schedules an ALAP activity at its own late
+dates (zero float) instead of falling back to ASAP logic — the one deferred constraint type from the
+first Phase 7 increment. `scheduleCpmEngine.js`'s forward/backward/float computation was extracted
+into a reinvokable inner function (`runForwardBackwardFloat`) so it can run twice: a preview pass
+(plain ASAP, no warnings pushed) discovers where each ALAP activity's own late-start date would
+land, then a final pass anchors it there — a standard, documented two-pass approach, not a novel
+invention. For the overwhelming common case (no ALAP activities in play) this is byte-for-byte the
+same single pass the engine has always run — verified by re-running the full pre-existing 32-check
+suite unchanged before writing a single new ALAP test.
+- Predecessor logic always wins over an ALAP target in a genuine conflict (contrived but real: an
+  actual-dated activity elsewhere leaves an ALAP activity with negative float in the preview pass) —
+  flagged, never silently picked either way, the same invariant every other constraint type in this
+  file already follows.
+- Never overrides a completed/in-progress activity's real dates — only a not-started activity is
+  eligible, matching every other constraint's own scope.
+- Tests: `tests/test_schedule_cpm_engine.js` grew from 32 to 37 checks — an isolated ALAP activity
+  correctly using up its slack, an ALAP activity with a real successor correctly not delaying it
+  beyond what the network already required (and correctly becoming critical itself as a real
+  consequence), the contrived predecessor-conflict case, and the off-by-default backward-compat
+  check. All passed on the first real run. Extended `test_advanced_scheduling_calendar_aware_e2e.js`
+  with a UI-level ALAP check (22 checks total). Plus a real-Chromium smoke test.
+
+**Resource-Constrained Leveling.** `resourceLevelingEngine.js` gains
+`levelResourceWithinFloat()` — the engine could only ever *detect* over-allocation before this;
+this actually proposes a fix. A standard serial schedule-generation heuristic: activities needing a
+resource are processed in ascending `total_float` order (least slack claims its natural slot first),
+each placed at the earliest day on/after its own `early_start` where the resource has spare capacity
+for its full duration, walking forward past a conflict but never past the activity's own
+`late_start` — deliberately "leveling within float," never a resource-constrained *scheduling* that
+extends the project finish. A conflict that can't be resolved within existing float is reported via
+`unresolved`, not silently force-fit or ignored.
+- **A genuinely useful integration with this same phase's own constraint work**: applying a
+  leveling proposal sets a Start No Earlier Than (SNET) constraint at the proposed date, rather than
+  writing `planned_start`/`planned_finish` directly — those fields don't feed the CPM engine's own
+  ES computation at all, so a planned-date write wouldn't survive the next "Calculate Schedule"
+  click, while a constraint genuinely does (reusing this phase's own constraint-honoring machinery
+  instead of inventing a second, parallel "sticky override" mechanism). The new "Suggested Leveling"
+  panel (Resources module, Leveling tab) computes proposals on demand via a button, shows each with
+  its original/proposed dates and an "Apply" action, and separately surfaces any still-unresolved
+  conflicts and any activities excluded because Calculate Schedule hasn't run for them yet.
+- Only activities with a real `total_float`/`early_start`/`late_start` (i.e., already CPM-calculated)
+  are eligible to move — one lacking those is excluded and reported, never guessed at, and its fixed
+  (unmovable) demand still correctly contributes to the conflict.
+- Scoped to one resource at a time, like every other function in this file — combining proposals
+  across several resources so one doesn't silently conflict with another's own separate proposal is
+  a real, separate, not-yet-built extension, stated plainly rather than glossed over. Calendar-naive,
+  same as every other function here today.
+- Tests: `tests/test_resource_leveling_engine.js` grew from 15 to 21 checks — basic resolution
+  (the activity WITH float moves, the critical one never does), an unresolvable-within-float case,
+  the CPM-not-yet-run exclusion, the `max_availability`-unset early exit, the no-conflict no-op case,
+  and a resource_unavailability (leave) window correctly forcing a shift even with no competing
+  activity. New `tests/test_resource_constrained_leveling_e2e.js` (16 checks) — the full real-UI
+  loop: seed a genuine conflict, Suggest Leveling, Apply, re-run Calculate Schedule, and confirm the
+  conflict is actually gone, not just cosmetically hidden. Plus a real-Chromium smoke test. Two real
+  test-fixture bugs of my own caught and fixed while writing this: an initial fixture gave both
+  competing activities identical, fully-overlapping spans, leaving no room within either one's own
+  float to resolve the conflict at all (a genuine "unresolvable" case, not what the test intended);
+  and a later assertion checked for the literal substring "Over-Allocated Days" anywhere on the page,
+  which is also the ever-present KPI card label — fixed to check the count value and the
+  detail-panel heading specifically.
+- Full suite: **111 files, 2626 checks, 0 failures**.
+
+**Phase 7 (Advanced Scheduling) is now fully complete** — Calendar-Aware CPM, Date Constraints,
+Calendar Management UI, ALAP Enforcement, and Resource-Constrained Leveling are all done. No items
+remain deferred from this phase. The master prompt's later phases (8-9) remain entirely unstarted.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
@@ -5844,12 +5942,9 @@ detection) — all fixed as part of this phase, not left as a known gap; worth r
 *future* field that needs to hide a record from view — grep the collection app-wide, don't assume the
 one page you're working in is the only consumer.
 
-**Phase 7 (Advanced Scheduling) is started, not complete** — Calendar-Aware CPM and Date Constraints
-are both done (see their own section above). Deliberately not built this round: a Calendar management
-UI (calendars still only come from the Phase 1 migration or a real MSP/P6 import — no hand-editing of
-working_days/holidays yet), ALAP constraint enforcement (read/carried through, not calculated), and
-resource-constrained leveling that actually reschedules activities (the existing
-`resourceLevelingEngine.js` only detects over-allocation). The rest of the master prompt's later
+**Phase 7 (Advanced Scheduling) is now fully complete** — Calendar-Aware CPM, Date Constraints,
+Calendar Management UI, ALAP Enforcement, and Resource-Constrained Leveling are all done (see their
+own sections above). No items remain deferred from this phase. The rest of the master prompt's later
 phases (8-9) remain unstarted — confirm scope/direction before beginning any of them, the same gate
 discipline every other roadmap on this page already follows.
 

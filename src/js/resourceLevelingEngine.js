@@ -32,6 +32,45 @@
  * date ranges are INCLUSIVE of both start_date and end_date (see store.js's
  * newResourceUnavailability comment for why that's a deliberate departure from the
  * exclusive-end [start, finish) convention Schedule activities use).
+ *
+ * PCC Architecture Upgrade Phase 7 (Advanced Scheduling): RESOURCE-CONSTRAINED
+ * LEVELING (levelResourceWithinFloat), the last of the three deferred Phase 7 items —
+ * everything above this point only ever DETECTED an over-allocation; this actually
+ * proposes a fix.
+ * - Deliberately "level within float," not "resource-constrained scheduling that
+ *   extends the project": a lower-priority activity may be pushed later, but never
+ *   past its own CPM-calculated late_start/late_finish — the project's own finish date
+ *   never moves as a side effect of leveling. If a conflict genuinely can't be
+ *   resolved within existing float, it's reported as `unresolved`, not silently forced
+ *   by extending the schedule — the same "surface it, let the human decide" principle
+ *   Trash/Storage/every constraint conflict elsewhere in this app already follows.
+ * - A serial schedule-generation heuristic (a standard, well-documented approach to
+ *   resource leveling, not a novel invention): activities needing this resource are
+ *   processed in ascending total_float order (the LEAST slack goes first, claiming its
+ *   natural earliest slot), each placed at the earliest day on/after its own
+ *   early_start where the resource has enough spare capacity for its FULL duration —
+ *   walking forward day by day past a conflict, capped at late_start. This is a
+ *   heuristic, not an optimal solver: for genuinely interlocking multi-activity
+ *   conflicts there can exist a better arrangement this greedy pass won't find — a
+ *   real, documented limitation, not a claim of optimality.
+ * - Read-only, pure, like every other function in this file: returns proposed new
+ *   dates for the caller to review and choose to apply (writing planned_start/
+ *   planned_finish, then re-running Calculate Schedule) — this function itself never
+ *   touches the store, matching this file's own header rule.
+ * - Scoped to ONE resource at a time, like every other function here. An activity
+ *   assigned to multiple resources gets leveled independently per resource; combining
+ *   proposals across several resources at once (so a shift for Resource A doesn't
+ *   silently conflict with Resource B's own separate proposal) is a real, separate,
+ *   NOT-yet-built extension — deliberately out of scope for this increment, same
+ *   "single resource at a time" boundary this whole file already keeps.
+ * - Only activities with a real total_float/early_start/early_finish (i.e., "Calculate
+ *   Schedule" has actually run) are eligible to be shifted — an activity missing those
+ *   fields keeps its original (fixed) demand and is reported via `excludedActivityIds`,
+ *   never silently ignored or guessed at.
+ * - Calendar-naive, matching every other function in this file today (plain calendar-
+ *   day timelines) — becoming calendar-aware here too is a real future increment, not
+ *   an oversight; see scheduleCpmEngine.js's own calendar-awareness for the reasoning
+ *   this file doesn't yet share.
  */
 (function () {
   "use strict";
@@ -288,6 +327,151 @@
     return buckets;
   }
 
+  /** Proposes new dates that resolve (or reduce) over-allocation for ONE resource by
+   * pushing lower-priority activities later, entirely within their own existing float —
+   * see the file header's own section on this function for the full algorithm and its
+   * documented scope/limitations. Pure and read-only: returns proposals for the caller
+   * to apply, never writes anything itself. */
+  function levelResourceWithinFloat(resource, assignments, activities, unavailabilities) {
+    unavailabilities = unavailabilities || [];
+    if (resource.max_availability === null || resource.max_availability === undefined) {
+      return { available: false, leveled: false, proposals: [], unresolved: [], excludedActivityIds: [] };
+    }
+
+    var activityById = {};
+    activities.forEach(function (a) {
+      activityById[a.id] = a;
+    });
+
+    var relevant = assignments.filter(function (a) {
+      return a.resource_id === resource.id;
+    });
+
+    var levelable = []; // { activityId, activityName, qty, startDay, endDay, duration, totalFloat, lateStartDay }
+    var fixed = []; // same shape (minus totalFloat/lateStartDay) for activities that can't be moved
+    var excludedActivityIds = [];
+    var seenExcluded = {};
+
+    relevant.forEach(function (assignment) {
+      var activity = activityById[assignment.activity_id];
+      var qty = Number(assignment.quantity);
+      if (!activity || !qty || qty <= 0) return; // same skip rule computeResourceUsageTimeline uses
+      var dates = effectiveDates(activity);
+      if (dates.source === "none") return;
+      var startDay = toDayNumber(dates.start);
+      var endDay = toDayNumber(dates.finish); // exclusive
+      if (endDay <= startDay) return;
+
+      var canLevel =
+        activity.total_float !== null &&
+        activity.total_float !== undefined &&
+        !!activity.early_start &&
+        !!activity.early_finish &&
+        !!activity.late_start;
+
+      var entry = {
+        activityId: activity.id,
+        activityName: activity.name || "(unnamed activity)",
+        qty: qty,
+        startDay: startDay,
+        endDay: endDay,
+        duration: endDay - startDay,
+      };
+
+      if (canLevel) {
+        entry.totalFloat = activity.total_float;
+        entry.lateStartDay = toDayNumber(activity.late_start);
+        levelable.push(entry);
+      } else {
+        fixed.push(entry);
+        if (!seenExcluded[activity.id]) {
+          seenExcluded[activity.id] = true;
+          excludedActivityIds.push(activity.id);
+        }
+      }
+    });
+
+    // committed[day] = total qty already placed there — seeded from fixed (unmovable)
+    // demand, then grown as each levelable activity below finds its own slot.
+    var committed = {};
+    function addDemand(startDay, endDay, qty) {
+      for (var d = startDay; d < endDay; d++) {
+        committed[d] = (committed[d] || 0) + qty;
+      }
+    }
+    function fitsAt(startDay, endDay, qty) {
+      for (var d = startDay; d < endDay; d++) {
+        var avail = availabilityOnDay(resource, unavailabilities, d);
+        if (avail === null) continue; // not computable for this one day — never treated as a conflict
+        if ((committed[d] || 0) + qty > avail) return false;
+      }
+      return true;
+    }
+
+    fixed.forEach(function (f) {
+      addDemand(f.startDay, f.endDay, f.qty);
+    });
+
+    // Ascending total_float: the LEAST slack (most critical) activity claims its
+    // natural earliest slot first; an activity with more room to move is the one asked
+    // to give way when two compete for the same days.
+    levelable.sort(function (a, b) {
+      return a.totalFloat - b.totalFloat;
+    });
+
+    var proposals = [];
+    levelable.forEach(function (entry) {
+      var candidateStart = entry.startDay;
+      var placed = false;
+      while (candidateStart <= entry.lateStartDay) {
+        if (fitsAt(candidateStart, candidateStart + entry.duration, entry.qty)) {
+          placed = true;
+          break;
+        }
+        candidateStart++;
+      }
+      if (!placed) {
+        // No slot anywhere within this activity's own float — can't invent capacity;
+        // leave it at its natural ES and let it surface via `unresolved` below.
+        candidateStart = entry.startDay;
+      }
+      addDemand(candidateStart, candidateStart + entry.duration, entry.qty);
+      if (candidateStart !== entry.startDay) {
+        proposals.push({
+          activityId: entry.activityId,
+          activityName: entry.activityName,
+          originalStart: toIsoDate(entry.startDay),
+          originalFinish: toIsoDate(entry.endDay),
+          proposedStart: toIsoDate(candidateStart),
+          proposedFinish: toIsoDate(candidateStart + entry.duration),
+          shiftedByDays: candidateStart - entry.startDay,
+        });
+      }
+    });
+
+    var allDays = Object.keys(committed)
+      .map(Number)
+      .sort(function (a, b) {
+        return a - b;
+      });
+    var unresolved = [];
+    allDays.forEach(function (d) {
+      var avail = availabilityOnDay(resource, unavailabilities, d);
+      if (avail === null) return;
+      if (committed[d] > avail) {
+        unresolved.push({ date: toIsoDate(d), allocated: committed[d], available: avail, overBy: committed[d] - avail });
+      }
+    });
+
+    return {
+      available: true,
+      leveled: proposals.length > 0,
+      proposals: proposals,
+      unresolved: unresolved,
+      excludedActivityIds: excludedActivityIds,
+    };
+  }
+
   window.PCC.resourceLevelingEngine = {
     computeResourceUsageTimeline: computeResourceUsageTimeline,
     detectOverAllocations: detectOverAllocations,
@@ -295,6 +479,7 @@
     bucketTimeline: bucketTimeline,
     computeUtilisation: computeUtilisation,
     bucketUtilisation: bucketUtilisation,
+    levelResourceWithinFloat: levelResourceWithinFloat,
     diffDays: diffDays,
     addDays: addDays,
   };

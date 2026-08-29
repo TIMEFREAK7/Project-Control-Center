@@ -5440,3 +5440,74 @@ depth" candidate Aditya didn't pick this round, not forgotten.
 
 Per the standing CLAUDE.md instruction, this phase is being merged into `main` after the full suite
 passes, `main` pushed, and the working branch restarted from the new `main`.
+
+**PHASE 7 continued (Calendar Management UI, ALAP Enforcement, Resource-Constrained Leveling) —
+done, new session, per Aditya's "Start the open pieces of phase 7."** All three deferred items,
+built together in the recommended order (calendar UI, then ALAP, then leveling).
+
+**Calendar Management UI.** New "Calendars" tab in the Schedule module (scoped to the selected
+*project*, matching where calendars themselves live) — add/edit/delete/set-default, working-day
+checkboxes, a simple add/remove holiday list. New "Calendar" field on the Activity form, defaulting
+a brand-new activity to the project's own default calendar. Deleting a still-referenced calendar is
+blocked with a clear message.
+- **Real bug found and fixed, worth remembering**: adding/removing a holiday has to rerender to show
+  the updated list, but for a brand-new calendar `newCalendar()` gets called fresh every render (same
+  pattern every "new X" form in this file uses) — the name field and working-day checkboxes were
+  silently reverting to factory defaults the moment a holiday was added, discarding whatever the user
+  had typed. Fixed with one durable form-draft object (`uiState.calendarFormDraft`), synced from the
+  live DOM before any handler that triggers a rerender. Caught by the test suite before shipping —
+  a genuinely useful case study for any FUTURE form that needs a mid-edit rerender: check whether
+  "new X" objects are recreated fresh per render (most are, in this codebase), and if so, don't read
+  form state from that object after the first render.
+- Tests: `test_calendar_management_ui_e2e.js` (20 checks) + a real-Chromium smoke test. One test bug
+  of my own: expected a 1-day Thursday task to skip a non-working Friday in its `early_finish`, but
+  EF is an *exclusive* boundary (day after the one working day consumed), never required to itself
+  be a working day — matches the pre-existing non-calendar-aware convention exactly; fixed the test,
+  not the engine.
+
+**ALAP Enforcement.** `scheduleCpmEngine.js` now genuinely schedules an ALAP activity at its own late
+dates (zero float) instead of the old ASAP fallback. The forward/backward/float computation was
+extracted into a reinvokable inner function (`runForwardBackwardFloat`) so it can run twice: a
+preview pass (no warnings pushed) discovers each ALAP activity's own late-start date, then a final
+pass anchors it there. For the common case (no ALAP activities) this is byte-for-byte the same single
+pass as before — verified by re-running the pre-existing 32-check suite unchanged first. Predecessor
+logic always wins in a genuine conflict (flagged, never silently picked); never overrides a
+completed/in-progress activity's real dates.
+- Tests: `test_schedule_cpm_engine.js` grew 32 → 37 checks (isolated ALAP, ALAP-with-successor,
+  the contrived predecessor-conflict edge case, off-by-default backward compat) — all passed on the
+  first real run. Extended the Phase 7 UI e2e test with an ALAP check (22 checks total). Plus a
+  real-Chromium smoke test.
+
+**Resource-Constrained Leveling.** `resourceLevelingEngine.js` gains `levelResourceWithinFloat()` —
+detection-only before this, now actually proposes a fix. A standard serial schedule-generation
+heuristic: activities needing a resource process in ascending `total_float` order (least slack
+claims its slot first), each placed at the earliest fitting day on/after its own `early_start`,
+never past its own `late_start` — leveling WITHIN float, never extending the project finish. An
+unresolvable conflict is reported via `unresolved`, not force-fit.
+- **Real integration worth remembering**: applying a proposal sets a Start No Earlier Than (SNET)
+  constraint at the proposed date rather than writing `planned_start`/`planned_finish` — those
+  fields don't feed CPM's own ES computation at all, so a planned-date write wouldn't survive the
+  next Calculate Schedule click, while a constraint does. Reuses this same phase's own
+  constraint-honoring machinery instead of inventing a second "sticky override" mechanism. New
+  "Suggested Leveling" panel in Resources' Leveling tab: compute-on-demand button, per-proposal
+  Apply, plus separate surfacing of unresolved conflicts and CPM-not-yet-run exclusions.
+- Only activities with real `total_float`/`early_start`/`late_start` are eligible to move; one
+  lacking those is excluded and reported, its fixed demand still counted. Scoped to one resource at
+  a time (combining proposals across resources is a real, separate, not-yet-built extension, stated
+  plainly). Calendar-naive, matching every other function in this file today.
+- Tests: `test_resource_leveling_engine.js` grew 15 → 21 checks. New
+  `test_resource_constrained_leveling_e2e.js` (16 checks) — the full real loop: seed a conflict,
+  Suggest Leveling, Apply, re-run Calculate Schedule, confirm the conflict is actually gone. Plus a
+  real-Chromium smoke test. Two real test-fixture bugs of my own, both fixed: an initial fixture gave
+  two competing activities identical, fully-overlapping spans (genuinely unresolvable, not what the
+  test intended — needed a third, unrelated "Driver" activity to give one of them real float); and
+  an assertion checked for the literal substring "Over-Allocated Days" anywhere on the page, which is
+  also the ever-present KPI label — fixed to check the count value and the detail-panel heading.
+- Full suite: **111 files, 2626 checks, 0 failures**.
+
+**Phase 7 (Advanced Scheduling) is now fully complete.** Calendar-Aware CPM, Date Constraints,
+Calendar Management UI, ALAP Enforcement, and Resource-Constrained Leveling are all done — nothing
+remains deferred from this phase. The master prompt's later phases (8-9) remain entirely unstarted.
+
+Per the standing CLAUDE.md instruction, this phase is being merged into `main` after the full suite
+passes, `main` pushed, and the working branch restarted from the new `main`.

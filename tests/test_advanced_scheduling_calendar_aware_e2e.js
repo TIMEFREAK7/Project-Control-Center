@@ -198,6 +198,37 @@ function findButtonByText(win, text) {
     assert.strictEqual(c.early_start, "2026-03-06", "back to ignoring the constraint once the toggle is off again");
   });
 
+  let alapProjectId, alapScheduleId, alapLongId, alapShortId;
+  await check("ALAP enforcement works through the real UI: an activity with slack shifts to use it all up once Honor Date Constraints is on", () => {
+    win.PCC.store.update(function (data) {
+      var project = win.PCC.store.newProject({ name: "ALAP UI Test", status: "on_track" });
+      data.projects.push(project);
+      alapProjectId = project.id;
+      var schedule = win.PCC.store.newSchedule({ project_id: alapProjectId, name: "Rev 0", status: "active", data_date: "2026-01-01", constraints_enabled: true });
+      data.schedules.push(schedule);
+      alapScheduleId = schedule.id;
+      var long = win.PCC.store.newActivity({ project_id: alapProjectId, schedule_id: alapScheduleId, name: "Long Driver", activity_type: "task", duration: 5 });
+      data.activities.push(long);
+      alapLongId = long.id;
+      var short = win.PCC.store.newActivity({ project_id: alapProjectId, schedule_id: alapScheduleId, name: "ALAP Task", activity_type: "task", duration: 2, constraint_type: "ALAP" });
+      data.activities.push(short);
+      alapShortId = short.id;
+    });
+    win.PCC.projectContext.set(alapProjectId);
+    win.PCC.router.go("schedule");
+    win.PCC.router.render();
+    findButtonByText(win, "Calculate Schedule").click();
+    var data = win.PCC.store.get();
+    var longAct = data.activities.find(function (a) { return a.id === alapLongId; });
+    var shortAct = data.activities.find(function (a) { return a.id === alapShortId; });
+    assert.strictEqual(longAct.early_start, "2026-01-01");
+    assert.strictEqual(longAct.early_finish, "2026-01-06");
+    assert.strictEqual(shortAct.early_start, "2026-01-04", "ALAP must push the 2-day task to use up its slack against the 5-day driver, not ASAP-schedule it to day 1");
+    assert.strictEqual(shortAct.early_finish, "2026-01-06");
+    assert.strictEqual(shortAct.total_float, 0);
+    assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
+  });
+
   // ---- Route smoke test ----
   var routes = ["dashboard", "portfolio", "documents", "schedule", "delayRecoveryDashboard", "executiveCenter", "risks", "reports", "settings"];
   for (var i = 0; i < routes.length; i++) {

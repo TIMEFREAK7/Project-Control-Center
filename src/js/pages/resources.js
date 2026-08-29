@@ -51,6 +51,12 @@
     assignmentProjectFilter: "", // narrows the Activity select in the Assignment form
     unavailabilityResourceFilter: "",
     levelingResourceId: "",
+    // Architecture Upgrade Phase 7 (Advanced Scheduling): Resource-Constrained Leveling.
+    // Computed on demand (a "Suggest Leveling" button click), not automatically on every
+    // render — this walks every assignment for the resource, no reason to pay that cost
+    // just from switching tabs. Cleared whenever the selected resource changes so a
+    // stale proposal for a DIFFERENT resource is never shown.
+    levelingProposals: null,
   };
 
   function esc(s) {
@@ -1303,6 +1309,7 @@
     resSelect.value = uiState.levelingResourceId;
     resSelect.onchange = function () {
       uiState.levelingResourceId = resSelect.value;
+      uiState.levelingProposals = null;
       rerender();
     };
     toolbar.appendChild(resSelect);
@@ -1436,6 +1443,126 @@
         conflictPanel.appendChild(more);
       }
       container.appendChild(conflictPanel);
+
+      // Architecture Upgrade Phase 7 (Advanced Scheduling): Resource-Constrained
+      // Leveling. Proposals are computed on demand, never automatically applied — the
+      // same "surface it, let the human decide" principle every other conflict/deletion
+      // in this app already follows. "Apply" sets a Start No Earlier Than constraint at
+      // the proposed date rather than touching planned_start/planned_finish directly —
+      // planned dates don't feed the CPM engine's own ES computation at all, so writing
+      // there wouldn't survive the next "Calculate Schedule" click; a constraint DOES,
+      // reusing this same phase's own constraint-honoring machinery instead of a second,
+      // parallel "sticky override" mechanism.
+      var levelPanel = document.createElement("div");
+      levelPanel.className = "panel";
+      levelPanel.style.marginTop = "var(--space-4)";
+      var levelHeading = document.createElement("h4");
+      levelHeading.style.marginBottom = "var(--space-2)";
+      levelHeading.textContent = "Suggested Leveling";
+      levelPanel.appendChild(levelHeading);
+
+      var levelIntro = document.createElement("p");
+      levelIntro.className = "text-secondary";
+      levelIntro.style.fontSize = "var(--text-sm)";
+      levelIntro.style.marginBottom = "var(--space-3)";
+      levelIntro.textContent =
+        "Proposes pushing lower-priority activities later, entirely within their own existing float — never extends the project finish, never touches a completed/in-progress activity. Applying a proposal sets a Start No Earlier Than constraint on that activity; turn on “Honor Date Constraints” in that Schedule's own settings and re-run Calculate Schedule for it to actually take effect.";
+      levelPanel.appendChild(levelIntro);
+
+      var suggestBtn = document.createElement("button");
+      suggestBtn.className = "btn btn--primary";
+      suggestBtn.textContent = "Suggest Leveling";
+      suggestBtn.onclick = function () {
+        uiState.levelingProposals = window.PCC.resourceLevelingEngine.levelResourceWithinFloat(
+          resource,
+          data.resource_assignments,
+          data.activities,
+          data.resource_unavailability
+        );
+        rerender();
+      };
+      levelPanel.appendChild(suggestBtn);
+
+      if (uiState.levelingProposals) {
+        var lp = uiState.levelingProposals;
+        if (lp.proposals.length === 0 && lp.unresolved.length === 0) {
+          var noneP = document.createElement("p");
+          noneP.className = "text-secondary";
+          noneP.style.fontSize = "var(--text-sm)";
+          noneP.style.marginTop = "var(--space-3)";
+          noneP.textContent = "Nothing to propose — every activity needing this resource already has enough calculated float to fit without a change, or none are eligible to move.";
+          levelPanel.appendChild(noneP);
+        }
+
+        if (lp.excludedActivityIds.length > 0) {
+          var excludedNames = lp.excludedActivityIds
+            .map(function (id) {
+              var a = data.activities.find(function (act) { return act.id === id; });
+              return a ? a.name || "(unnamed activity)" : id;
+            })
+            .join(", ");
+          var excludedP = document.createElement("p");
+          excludedP.className = "text-secondary";
+          excludedP.style.fontSize = "var(--text-sm)";
+          excludedP.style.marginTop = "var(--space-3)";
+          excludedP.textContent = "Not eligible to move (Calculate Schedule hasn't run for them yet): " + excludedNames + ".";
+          levelPanel.appendChild(excludedP);
+        }
+
+        if (lp.proposals.length > 0) {
+          var proposalsList = document.createElement("div");
+          proposalsList.className = "project-list";
+          proposalsList.style.marginTop = "var(--space-3)";
+          lp.proposals.forEach(function (p) {
+            var row = document.createElement("div");
+            row.className = "detail-card";
+            row.style.display = "flex";
+            row.style.justifyContent = "space-between";
+            row.style.alignItems = "center";
+            row.style.marginBottom = "var(--space-2)";
+
+            var main = document.createElement("div");
+            main.innerHTML =
+              "<strong>" + esc(p.activityName) + "</strong><br/>" +
+              "<span class='text-secondary' style='font-size:12px;'>" +
+              p.originalStart + " → " + p.originalFinish + "  becomes  " + p.proposedStart + " → " + p.proposedFinish +
+              " (+" + p.shiftedByDays + "d)</span>";
+            row.appendChild(main);
+
+            var applyBtn = document.createElement("button");
+            applyBtn.className = "btn btn--ghost";
+            applyBtn.textContent = "Apply";
+            applyBtn.onclick = function () {
+              window.PCC.store.update(function (d) {
+                var act = d.activities.find(function (a) { return a.id === p.activityId; });
+                if (act) {
+                  act.constraint_type = "SNET";
+                  act.constraint_date = p.proposedStart;
+                }
+              });
+              window.PCC.notify("Start No Earlier Than " + p.proposedStart + " set on " + p.activityName + ". Re-run Calculate Schedule on its own schedule (with Honor Date Constraints on) to apply it.", "success");
+              uiState.levelingProposals = null;
+              rerender();
+            };
+            row.appendChild(applyBtn);
+
+            proposalsList.appendChild(row);
+          });
+          levelPanel.appendChild(proposalsList);
+        }
+
+        if (lp.unresolved.length > 0) {
+          var unresolvedNote = document.createElement("p");
+          unresolvedNote.style.fontSize = "var(--text-sm)";
+          unresolvedNote.style.color = "var(--status-critical)";
+          unresolvedNote.style.marginTop = "var(--space-3)";
+          unresolvedNote.textContent =
+            lp.unresolved.length + " day(s) remain over-allocated even after leveling within existing float — resolving this needs more capacity, less demand, or accepting a later project finish, none of which this tool decides for you.";
+          levelPanel.appendChild(unresolvedNote);
+        }
+      }
+
+      container.appendChild(levelPanel);
     }
   }
 

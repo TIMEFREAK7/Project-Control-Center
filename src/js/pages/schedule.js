@@ -134,6 +134,22 @@
     editingWbsId: null,
     editingActivityId: null,
     editingRelationshipId: null,
+    // Architecture Upgrade Phase 7 (Advanced Scheduling, Calendar management UI):
+    // calendar id currently being added/edited, or "new", or null. calendarFormDraft
+    // ({name, workingDays, holidays}) is the in-progress working copy of the WHOLE form —
+    // not just holidays — because adding/removing a holiday has to rerender to show the
+    // updated list, and this form's other fields (name, working-day checkboxes) would
+    // otherwise be silently reset by that rerender: for a brand-new calendar,
+    // uiState.editingCalendarId stays "new" but the underlying calendar OBJECT is a
+    // fresh window.PCC.store.newCalendar() call every render (same pattern every other
+    // "new X" form in this file already uses), so anything read only from that object
+    // reverts to its factory defaults the moment a mid-edit rerender happens.
+    // calendarFormDraftForId tracks which edit session the draft belongs to, keyed off
+    // editingCalendarId itself (not the calendar's own id, which changes every render
+    // while adding new).
+    editingCalendarId: null,
+    calendarFormDraft: null,
+    calendarFormDraftForId: null,
     activityFilter: "",
     // PCC Evolution Roadmap, Tier C: Delay & Recovery Management. Recovery action id
     // currently being added/edited in the Activity Detail Panel, or "new", or null.
@@ -2419,7 +2435,7 @@
     return field;
   }
 
-  function renderActivityForm(container, activity, wbsItems, vendors, rerender) {
+  function renderActivityForm(container, activity, wbsItems, vendors, calendars, rerender) {
     var isNew = uiState.editingActivityId === "new";
     var panel = document.createElement("div");
     panel.className = "panel";
@@ -2471,6 +2487,31 @@
     vendorSelect.value = activity.vendor_id || "";
     vendorField.appendChild(vendorSelect);
     form.appendChild(vendorField);
+
+    // Architecture Upgrade Phase 7 (Advanced Scheduling, Calendar management UI): same
+    // hand-built select pattern as WBS/Vendor above. A brand-new activity defaults to the
+    // project's own default Calendar (if one exists) rather than blank — leaving it blank
+    // is a real, deliberate choice too (falls back to "every day is a working day" with a
+    // warning when calendar-aware, see scheduleCpmEngine.js), never forced.
+    var calendarField = document.createElement("div");
+    calendarField.className = "field";
+    calendarField.innerHTML = "<label>Calendar</label>";
+    var calendarSelect = document.createElement("select");
+    calendarSelect.id = "actfield-calendar_id";
+    var noCalendarOpt = document.createElement("option");
+    noCalendarOpt.value = "";
+    noCalendarOpt.textContent = "(none)";
+    calendarSelect.appendChild(noCalendarOpt);
+    calendars.forEach(function (cal) {
+      var opt = document.createElement("option");
+      opt.value = cal.id;
+      opt.textContent = cal.name + (cal.is_default ? " (default)" : "");
+      calendarSelect.appendChild(opt);
+    });
+    var defaultCalendar = calendars.find(function (cal) { return cal.is_default; });
+    calendarSelect.value = activity.calendar_id || (isNew && defaultCalendar ? defaultCalendar.id : "");
+    calendarField.appendChild(calendarSelect);
+    form.appendChild(calendarField);
 
     var grid = document.createElement("div");
     grid.className = "form-grid";
@@ -2571,7 +2612,7 @@
       }
       errorMsg.style.display = "none";
 
-      var values = { wbs_id: wbsSelect.value || null, vendor_id: vendorSelect.value || "" };
+      var values = { wbs_id: wbsSelect.value || null, vendor_id: vendorSelect.value || "", calendar_id: calendarSelect.value || null };
       ACTIVITY_FIELD_CONFIG.forEach(function (cfg) {
         var el = form.querySelector("#actfield-" + cfg.key);
         if (!el) return;
@@ -2706,7 +2747,8 @@
             });
       uiState.newActivityTypeHint = null;
       uiState.activityClonePrefill = null;
-      if (activityBeingEdited) renderActivityForm(container, activityBeingEdited, wbsItems, data.vendors, rerender);
+      var projectCalendars = data.calendars.filter(function (c) { return c.project_id === uiState.projectId; });
+      if (activityBeingEdited) renderActivityForm(container, activityBeingEdited, wbsItems, data.vendors, projectCalendars, rerender);
     }
 
     var toolbar = document.createElement("div");
@@ -4144,6 +4186,348 @@
       };
       row.appendChild(deleteBtn);
 
+      list.appendChild(row);
+    });
+    container.appendChild(list);
+  }
+
+  // ---------------------------------------------------------------------------------
+  // Calendars tab (Architecture Upgrade Phase 7, Advanced Scheduling: Calendar
+  // management UI). A Calendar belongs to a Project (store.js's newCalendar() — the
+  // same working pattern typically applies across a project's schedule revisions), so
+  // this list/form is scoped to uiState.projectId, not uiState.scheduleId, even though
+  // it lives inside the Schedule module (where calendar_id is actually consumed).
+  // ---------------------------------------------------------------------------------
+
+  var WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+  function formatWorkingDays(workingDays) {
+    if (!Array.isArray(workingDays)) return "Unknown";
+    var selected = WEEKDAY_LABELS.filter(function (_, i) {
+      return !!workingDays[i];
+    });
+    if (selected.length === 0) return "No working days (!)";
+    if (selected.length === 7) return "Every day";
+    return selected.join(", ");
+  }
+
+  function renderCalendarForm(container, calendar, rerender) {
+    var isNew = uiState.editingCalendarId === "new";
+    // See uiState's own comment on calendarFormDraft: this whole form's state lives in
+    // one durable draft object, not the `calendar` argument, because adding/removing a
+    // holiday has to rerender to show the updated list, and (for a brand-new calendar)
+    // `calendar` itself is a fresh newCalendar() call every render — reading name/
+    // working_days from it after such a rerender would silently revert to factory
+    // defaults, discarding whatever the user had already typed.
+    if (uiState.calendarFormDraftForId !== uiState.editingCalendarId) {
+      uiState.calendarFormDraft = {
+        name: calendar.name || "",
+        workingDays: (calendar.working_days || []).slice(),
+        holidays: (calendar.holidays || []).slice(),
+      };
+      uiState.calendarFormDraftForId = uiState.editingCalendarId;
+    }
+    var draft = uiState.calendarFormDraft;
+
+    var panel = document.createElement("div");
+    panel.className = "panel";
+    panel.style.marginBottom = "var(--space-4)";
+
+    var heading = document.createElement("h3");
+    heading.style.marginBottom = "var(--space-4)";
+    heading.textContent = isNew ? "Add Calendar" : "Edit Calendar";
+    panel.appendChild(heading);
+
+    var form = document.createElement("form");
+
+    var nameField = document.createElement("div");
+    nameField.className = "field";
+    nameField.innerHTML = "<label>Calendar Name *</label>";
+    var nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.id = "calfield-name";
+    nameInput.value = draft.name;
+    nameField.appendChild(nameInput);
+    form.appendChild(nameField);
+
+    var workingDaysField = document.createElement("div");
+    workingDaysField.className = "field";
+    workingDaysField.innerHTML = "<label>Working Days</label>";
+    var workingDaysRow = document.createElement("div");
+    workingDaysRow.style.display = "flex";
+    workingDaysRow.style.gap = "var(--space-3)";
+    workingDaysRow.style.flexWrap = "wrap";
+    var workingDayCheckboxes = WEEKDAY_LABELS.map(function (label, i) {
+      var wrap = document.createElement("label");
+      wrap.style.display = "flex";
+      wrap.style.alignItems = "center";
+      wrap.style.gap = "var(--space-1)";
+      var cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.id = "calfield-workingday-" + i;
+      cb.checked = !!draft.workingDays[i];
+      wrap.appendChild(cb);
+      wrap.appendChild(document.createTextNode(label));
+      workingDaysRow.appendChild(wrap);
+      return cb;
+    });
+    workingDaysField.appendChild(workingDaysRow);
+    form.appendChild(workingDaysField);
+
+    // Any handler below that needs to rerender (adding/removing a holiday) calls this
+    // first, so the next render's inputs above are rebuilt from what's actually on
+    // screen right now, not from whatever `calendar`/`draft` held before this edit.
+    function syncDraftFromForm() {
+      draft.name = nameInput.value;
+      draft.workingDays = workingDayCheckboxes.map(function (cb) { return cb.checked; });
+    }
+
+    var holidaysField = document.createElement("div");
+    holidaysField.className = "field";
+    holidaysField.innerHTML = "<label>Holidays</label>";
+    if (draft.holidays.length > 0) {
+      var holidaysList = document.createElement("div");
+      holidaysList.style.marginBottom = "var(--space-2)";
+      draft.holidays.forEach(function (dateStr, idx) {
+        var row = document.createElement("div");
+        row.style.display = "flex";
+        row.style.alignItems = "center";
+        row.style.gap = "var(--space-2)";
+        row.style.marginBottom = "var(--space-1)";
+        var span = document.createElement("span");
+        span.className = "mono";
+        span.textContent = dateStr;
+        row.appendChild(span);
+        var removeBtn = document.createElement("button");
+        removeBtn.type = "button";
+        removeBtn.className = "btn btn--ghost";
+        removeBtn.textContent = "Remove";
+        removeBtn.onclick = function () {
+          syncDraftFromForm();
+          draft.holidays.splice(idx, 1);
+          rerender();
+        };
+        row.appendChild(removeBtn);
+        holidaysList.appendChild(row);
+      });
+      holidaysField.appendChild(holidaysList);
+    }
+    var addHolidayRow = document.createElement("div");
+    addHolidayRow.style.display = "flex";
+    addHolidayRow.style.gap = "var(--space-2)";
+    var holidayDateInput = document.createElement("input");
+    holidayDateInput.type = "date";
+    holidayDateInput.id = "calfield-new-holiday";
+    addHolidayRow.appendChild(holidayDateInput);
+    var addHolidayBtn = document.createElement("button");
+    addHolidayBtn.type = "button";
+    addHolidayBtn.className = "btn btn--ghost";
+    addHolidayBtn.textContent = "+ Add Holiday";
+    addHolidayBtn.onclick = function () {
+      if (!holidayDateInput.value) return;
+      syncDraftFromForm();
+      if (draft.holidays.indexOf(holidayDateInput.value) === -1) {
+        draft.holidays.push(holidayDateInput.value);
+        draft.holidays.sort();
+      }
+      rerender();
+    };
+    addHolidayRow.appendChild(addHolidayBtn);
+    holidaysField.appendChild(addHolidayRow);
+    form.appendChild(holidaysField);
+
+    var errorMsg = document.createElement("p");
+    errorMsg.style.color = "var(--status-critical)";
+    errorMsg.style.fontSize = "var(--text-sm)";
+    errorMsg.style.display = "none";
+    errorMsg.textContent = "Calendar name is required.";
+    form.appendChild(errorMsg);
+
+    var actions = document.createElement("div");
+    actions.style.display = "flex";
+    actions.style.gap = "var(--space-3)";
+    actions.style.marginTop = "var(--space-3)";
+
+    var saveBtn = document.createElement("button");
+    saveBtn.type = "submit";
+    saveBtn.className = "btn btn--primary";
+    saveBtn.textContent = isNew ? "Add Calendar" : "Save Changes";
+
+    var cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.className = "btn btn--ghost";
+    cancelBtn.textContent = "Cancel";
+    cancelBtn.onclick = function () {
+      uiState.editingCalendarId = null;
+      uiState.calendarFormDraft = null;
+      uiState.calendarFormDraftForId = null;
+      rerender();
+    };
+
+    actions.appendChild(saveBtn);
+    actions.appendChild(cancelBtn);
+    form.appendChild(actions);
+
+    form.onsubmit = function (e) {
+      e.preventDefault();
+      var name = nameInput.value.trim();
+      if (!name) {
+        errorMsg.style.display = "block";
+        return;
+      }
+      errorMsg.style.display = "none";
+
+      var values = {
+        name: name,
+        working_days: workingDayCheckboxes.map(function (cb) { return cb.checked; }),
+        holidays: draft.holidays.slice(),
+      };
+
+      window.PCC.store.update(function (data) {
+        if (isNew) {
+          data.calendars.push(window.PCC.store.newCalendar(Object.assign({ project_id: uiState.projectId }, values)));
+        } else {
+          var existing = data.calendars.find(function (c) { return c.id === calendar.id; });
+          if (existing) Object.assign(existing, values);
+        }
+      });
+
+      window.PCC.notify(isNew ? "Calendar added." : "Calendar updated.", "success");
+      uiState.editingCalendarId = null;
+      uiState.calendarFormDraft = null;
+      uiState.calendarFormDraftForId = null;
+      rerender();
+    };
+
+    panel.appendChild(form);
+    container.appendChild(panel);
+  }
+
+  function renderCalendarsTab(container, data, rerender) {
+    var calendars = data.calendars.filter(function (c) {
+      return c.project_id === uiState.projectId;
+    });
+
+    if (uiState.editingCalendarId) {
+      var calendarBeingEdited =
+        uiState.editingCalendarId === "new"
+          ? window.PCC.store.newCalendar()
+          : calendars.find(function (c) {
+              return c.id === uiState.editingCalendarId;
+            });
+      if (calendarBeingEdited) renderCalendarForm(container, calendarBeingEdited, rerender);
+    }
+
+    var intro = document.createElement("p");
+    intro.className = "text-secondary";
+    intro.style.fontSize = "var(--text-sm)";
+    intro.style.marginBottom = "var(--space-3)";
+    intro.textContent =
+      "Calendars belong to this project and apply across all its schedules. Assign one to an activity from its own Edit form; Calculate Schedule only respects them once “Calendar-Aware Calculation” is turned on in Schedule Settings.";
+    container.appendChild(intro);
+
+    var toolbar = document.createElement("div");
+    toolbar.className = "toolbar";
+    var spacer = document.createElement("div");
+    spacer.className = "toolbar__spacer";
+    toolbar.appendChild(spacer);
+
+    var addBtn = document.createElement("button");
+    addBtn.className = "btn btn--primary";
+    addBtn.textContent = "+ Add Calendar";
+    addBtn.onclick = function () {
+      uiState.editingCalendarId = "new";
+      rerender();
+    };
+    toolbar.appendChild(addBtn);
+    container.appendChild(toolbar);
+
+    if (calendars.length === 0) {
+      var empty = document.createElement("div");
+      empty.className = "panel empty-state";
+      empty.textContent = "No calendars yet for this project.";
+      container.appendChild(empty);
+      return;
+    }
+
+    var list = document.createElement("div");
+    list.className = "project-list";
+    calendars.forEach(function (cal) {
+      var referencingCount = data.activities.filter(function (a) {
+        return a.calendar_id === cal.id;
+      }).length;
+
+      var row = document.createElement("div");
+      row.className = "detail-card";
+      row.style.display = "flex";
+      row.style.justifyContent = "space-between";
+      row.style.alignItems = "center";
+      row.style.marginBottom = "var(--space-2)";
+
+      var main = document.createElement("div");
+      main.innerHTML =
+        "<strong>" + cal.name + "</strong>" +
+        (cal.is_default ? " <span class='text-secondary' style='font-size:11px; border:1px solid var(--divider); border-radius:4px; padding:1px 6px;'>Default</span>" : "") +
+        "<br/>" +
+        "<span class='text-secondary' style='font-size:12px;'>" +
+        formatWorkingDays(cal.working_days) + " · " +
+        cal.holidays.length + " holiday" + (cal.holidays.length === 1 ? "" : "s") + " · " +
+        "used by " + referencingCount + " activit" + (referencingCount === 1 ? "y" : "ies") +
+        "</span>";
+      row.appendChild(main);
+
+      var actions = document.createElement("div");
+      actions.style.display = "flex";
+      actions.style.gap = "var(--space-2)";
+
+      if (!cal.is_default) {
+        var defaultBtn = document.createElement("button");
+        defaultBtn.className = "btn btn--ghost";
+        defaultBtn.textContent = "Set as Default";
+        defaultBtn.onclick = function () {
+          window.PCC.store.update(function (data2) {
+            data2.calendars.forEach(function (c) {
+              if (c.project_id === uiState.projectId) c.is_default = c.id === cal.id;
+            });
+          });
+          window.PCC.notify("Default calendar updated.", "success");
+          rerender();
+        };
+        actions.appendChild(defaultBtn);
+      }
+
+      var editBtn = document.createElement("button");
+      editBtn.className = "btn btn--ghost";
+      editBtn.textContent = "Edit";
+      editBtn.onclick = function () {
+        uiState.editingCalendarId = cal.id;
+        rerender();
+      };
+      actions.appendChild(editBtn);
+
+      var deleteBtn = document.createElement("button");
+      deleteBtn.className = "btn btn--ghost";
+      deleteBtn.textContent = "Delete";
+      deleteBtn.onclick = function () {
+        if (referencingCount > 0) {
+          window.PCC.notify(
+            "Can't delete — " + referencingCount + " activit" + (referencingCount === 1 ? "y" : "ies") + " still use" + (referencingCount === 1 ? "s" : "") + " this calendar. Reassign them first.",
+            "error"
+          );
+          return;
+        }
+        if (!confirm("Delete calendar “" + cal.name + "”?")) return;
+        window.PCC.store.update(function (data2) {
+          data2.calendars = data2.calendars.filter(function (c) {
+            return c.id !== cal.id;
+          });
+        });
+        window.PCC.notify("Calendar deleted.", "success");
+        rerender();
+      };
+      actions.appendChild(deleteBtn);
+
+      row.appendChild(actions);
       list.appendChild(row);
     });
     container.appendChild(list);
@@ -7732,6 +8116,7 @@
       { key: "gantt", label: "Gantt" },
       { key: "wbs", label: "WBS" },
       { key: "relationships", label: "Relationships" },
+      { key: "calendars", label: "Calendars" },
       { key: "baselines", label: "Baselines" },
       { key: "whatif", label: "What-If" },
     ].forEach(function (t) {
@@ -7743,6 +8128,9 @@
         uiState.editingActivityId = null;
         uiState.editingWbsId = null;
         uiState.editingRelationshipId = null;
+        uiState.editingCalendarId = null;
+        uiState.calendarFormDraft = null;
+        uiState.calendarFormDraftForId = null;
         uiState.ganttDetailActivityId = null;
         rerender();
       };
@@ -7757,6 +8145,7 @@
     else if (uiState.tab === "gantt") renderGanttTab(tabContent, data, rerender);
     else if (uiState.tab === "wbs") renderWbsTab(tabContent, data, rerender);
     else if (uiState.tab === "relationships") renderRelationshipsTab(tabContent, data, rerender);
+    else if (uiState.tab === "calendars") renderCalendarsTab(tabContent, data, rerender);
     else if (uiState.tab === "baselines") renderBaselinesTab(tabContent, data, rerender);
     else if (uiState.tab === "whatif") renderWhatIfTab(tabContent, data, rerender);
   }

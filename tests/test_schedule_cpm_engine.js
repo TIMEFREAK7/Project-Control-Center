@@ -340,10 +340,84 @@ check("constraints: Finish No Later Than (FNLT) is satisfied silently when alrea
   assert.ok(violated.warnings.some((w) => w.activityId === "A" && /Finish No Later Than/i.test(w.message)));
 });
 
-check("constraints: ALAP is read but deliberately not enforced — calculated with ordinary ASAP logic, and flagged as such", () => {
-  var r = engine.calculateSchedule([{ id: "A", duration: 5, constraint_type: "ALAP" }], [], { dataDate: "2026-01-01", honorConstraints: true });
-  assert.strictEqual(r.results.A.early_start, "2026-01-01", "ALAP falls back to plain ASAP-style calculation in this engine");
-  assert.ok(r.warnings.some((w) => w.activityId === "A" && /As Late As Possible/i.test(w.message)));
+check("constraints: ALAP is now genuinely enforced — an ALAP activity with slack shifts to use it all up, landing at zero float", () => {
+  // A (5d, no relationships) drives the project finish. B (2d, ALAP, no relationships)
+  // would ASAP-schedule to day 1-2 with 3 days of float; ALAP instead pushes it to
+  // start as late as possible (day 4-5) so it still finishes exactly when the project
+  // does, with zero float left over.
+  var activities = [
+    { id: "A", duration: 5 },
+    { id: "B", duration: 2, constraint_type: "ALAP" },
+  ];
+  var r = engine.calculateSchedule(activities, [], { dataDate: "2026-01-01", honorConstraints: true });
+  assert.strictEqual(r.results.A.early_start, "2026-01-01");
+  assert.strictEqual(r.results.A.early_finish, "2026-01-06");
+  assert.strictEqual(r.results.B.early_start, "2026-01-04", "ALAP must push B to use up all its slack, not ASAP-schedule it to day 1");
+  assert.strictEqual(r.results.B.early_finish, "2026-01-06", "B's ALAP finish must land exactly on the project finish it was floating against");
+  assert.strictEqual(r.results.B.total_float, 0, "an activity scheduled at its own late dates has zero float by definition");
+  assert.strictEqual(r.results.B.is_critical, true);
+});
+
+check("constraints: an ALAP activity with a real successor never delays that successor beyond what the network already required", () => {
+  // A (5d, no relationships) is the project's critical driver. B (2d, ALAP) -> C (1d,
+  // FS lag 0) is a separate, shorter chain with slack — ALAP must push B as late as
+  // possible WITHOUT pushing C later than the network already allows.
+  var activities = [
+    { id: "A", duration: 5 },
+    { id: "B", duration: 2, constraint_type: "ALAP" },
+    { id: "C", duration: 1 },
+  ];
+  var rels = [{ predecessor_id: "B", successor_id: "C", type: "FS", lag: 0 }];
+  var r = engine.calculateSchedule(activities, rels, { dataDate: "2026-01-01", honorConstraints: true });
+  assert.strictEqual(r.results.B.early_start, "2026-01-03");
+  assert.strictEqual(r.results.B.early_finish, "2026-01-05");
+  assert.strictEqual(r.results.C.early_start, "2026-01-05", "C must not be pushed any later than the network already required just because its predecessor is ALAP");
+  assert.strictEqual(r.results.C.early_finish, "2026-01-06");
+  assert.strictEqual(r.results.B.total_float, 0);
+  assert.strictEqual(r.results.C.total_float, 0, "with B compressed against it, C is now on the critical path too — a real, correct consequence of ALAP, not a bug");
+});
+
+check("constraints: ALAP never overrides a real actual date on a completed or in-progress activity", () => {
+  var completed = engine.calculateSchedule(
+    [{ id: "A", duration: 10, actual_start: "2026-01-01", actual_finish: "2026-01-05", constraint_type: "ALAP" }],
+    [],
+    { dataDate: "2026-01-06", honorConstraints: true }
+  );
+  assert.strictEqual(completed.results.A.early_start, "2026-01-01");
+  assert.strictEqual(completed.results.A.early_finish, "2026-01-05", "a completed activity's real dates must never be replaced by an ALAP late-date calculation");
+});
+
+check("constraints: when an ALAP activity's own late-date target would violate predecessor logic (inconsistent data), predecessor logic wins and it's flagged", () => {
+  // P is completed very late (finishes 01-10). C, P's OWN successor's successor, claims
+  // to have already completed on 01-02 — impossible given P's real finish, but exactly
+  // the kind of bad data that makes an ALAP activity's computed late-start (based on that
+  // impossible early finish) land BEFORE what P's own real completion requires.
+  var activities = [
+    { id: "P", duration: 9, actual_start: "2026-01-01", actual_finish: "2026-01-10" },
+    { id: "B", duration: 1, constraint_type: "ALAP" },
+    { id: "C", duration: 1, actual_start: "2026-01-01", actual_finish: "2026-01-02" },
+  ];
+  var rels = [
+    { predecessor_id: "P", successor_id: "B", type: "FS", lag: 0 },
+    { predecessor_id: "B", successor_id: "C", type: "FS", lag: 0 },
+  ];
+  var r = engine.calculateSchedule(activities, rels, { dataDate: "2026-01-01", honorConstraints: true });
+  assert.strictEqual(r.results.B.early_start, "2026-01-10", "predecessor logic (P's real finish) must win over B's own, impossible-given-the-data ALAP target");
+  assert.ok(
+    r.warnings.some((w) => w.activityId === "B" && /As Late As Possible/i.test(w.message) && /predecessor logic/i.test(w.message)),
+    "expected a conflict warning naming the ALAP target and predecessor logic"
+  );
+});
+
+check("constraints default OFF: ALAP is read but not enforced when honorConstraints is off — same ASAP-style fallback as before this increment", () => {
+  var activities = [
+    { id: "A", duration: 5 },
+    { id: "B", duration: 2, constraint_type: "ALAP" },
+  ];
+  var rDefault = engine.calculateSchedule(activities, [], { dataDate: "2026-01-01" });
+  assert.strictEqual(rDefault.results.B.early_start, "2026-01-01", "with constraints off, ALAP must not be enforced — plain ASAP scheduling");
+  var rEnforced = engine.calculateSchedule(activities, [], { dataDate: "2026-01-01", honorConstraints: true });
+  assert.notStrictEqual(rEnforced.results.B.early_start, rDefault.results.B.early_start, "turning constraints on must actually change B's schedule");
 });
 
 check("constraints: a constraint_type with no constraint_date is ignored and flagged, not treated as an error", () => {

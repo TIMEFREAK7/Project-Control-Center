@@ -6218,125 +6218,185 @@ window.PCC_SQL_WASM_BASE64 = "AGFzbQEAAAABnwRFYAJ/fwF/YAF/AX9gA39/fwBgA39/fwF/YA
       safePredecessors[r.successor_id].push({ fromId: r.predecessor_id, type: r.type, lag: r.lag || 0 });
     });
 
-    // ---- Forward pass: ES/EF in topological order ----
+    // ---- Forward pass, backward pass, and float, as one reinvokable unit ----
+    // Extracted (Phase 7, ALAP enforcement) so it can run twice: once as a plain ASAP-
+    // style preview (needed only to learn where an ALAP activity's own late dates would
+    // land), then a final pass with each ALAP activity anchored there. See the file
+    // header's ALAP section — alapFixedES is empty and pushWarnings is true for the
+    // overwhelming common case (no ALAP activities in play), making this byte-for-byte
+    // the same single pass this engine has always run.
+    //
     // Completed/in-progress activities use their fixed anchor and ignore predecessor
-    // constraints for their OWN start \u2014 the work already began regardless of what
+    // constraints for their OWN start — the work already began regardless of what
     // logic says, but they still constrain their successors normally via EF below.
     // Exception: an in_progress activity that's out-of-sequence (see below) in
     // "retained_logic" mode has its ES pushed to the predecessor-derived constraint
-    // instead \u2014 the actual start already happened, but the forecast keeps respecting
+    // instead — the actual start already happened, but the forecast keeps respecting
     // the logic tie for what's left.
-    var ES = {};
-    var EF = {};
-    var outOfSequenceById = {};
-    order.forEach(function (id) {
-      var calendar = calendarForActivity(id);
-      var preds = safePredecessors[id];
-      var predConstraint = null; // predecessor-derived only, never floored at dataDay
-      preds.forEach(function (edge) {
-        var c = earliestStartConstraint(ES[edge.fromId], EF[edge.fromId], edge.type, edge.lag, duration[id], calendar, calendarAwareRequested);
-        if (predConstraint == null || c > predConstraint) predConstraint = c;
-      });
-
-      var isOOS = !ignoreActuals && fixedES[id] != null && predConstraint != null && predConstraint > fixedES[id];
-      outOfSequenceById[id] = isOOS;
-      if (isOOS) {
-        warnings.push({
-          activityId: id,
-          message:
-            "Out-of-sequence: this activity's actual start is before its predecessor logic would have allowed (" +
-            (statusById[id] === "completed" ? "already completed, dates unaffected" : retainedLogic ? "forecast pushed to respect predecessor logic" : "actual dates retained, predecessor logic overridden") +
-            ").",
-        });
-      }
-
-      var es;
-      var normalizeES = calendarAwareRequested; // real actual anchors below turn this back off
-      if (fixedES[id] != null) {
-        if (isOOS && retainedLogic && statusById[id] === "in_progress") {
-          es = predConstraint;
-        } else {
-          es = fixedES[id]; // real actual_start/actual_finish — never renormalized to a calendar
-          normalizeES = false;
-        }
-      } else {
-        es = dataDay;
-        if (predConstraint != null && predConstraint > es) es = predConstraint;
-        if (honorConstraints) es = applyDateConstraint(byId[id], es, predConstraint, duration[id], calendar, calendarAwareRequested, warnings);
-      }
-      if (normalizeES) es = nextWorkingDayOnOrAfter(calendar, es);
-      ES[id] = es;
-
-      // A COMPLETED activity's EF must exactly reconstruct its real actual_finish
-      // (es + effDuration, effDuration itself being actual elapsed calendar days per
-      // classifyActivity()) regardless of calendar-awareness — an observed historical
-      // fact, not a forecast to walk through working days. Every other status is a
-      // forecast and gets calendar-aware duration consumption when requested.
-      var useCalendarForEF = calendarAwareRequested && statusById[id] !== "completed";
-      EF[id] = useCalendarForEF ? advanceWorkingDays(calendar, es, duration[id]) : es + duration[id];
-    });
-
-    var projectFinishDay = order.length ? Math.max.apply(null, order.map(function (id) { return EF[id]; })) : null;
-
-    // ---- Backward pass: LS/LF in reverse topological order ----
-    // Runs uniformly for every activity, fixed-anchor or not \u2014 retrospective float on
-    // a completed activity is meaningful (see file header: negative float = real slippage).
-    var LS = {};
-    var LF = {};
-    order
-      .slice()
-      .reverse()
-      .forEach(function (id) {
+    function runForwardBackwardFloat(alapFixedES, pushWarnings) {
+      var ES = {};
+      var EF = {};
+      var outOfSequenceById = {};
+      order.forEach(function (id) {
         var calendar = calendarForActivity(id);
-        var succs = safeSuccessors[id];
-        var lf = projectFinishDay;
-        succs.forEach(function (edge) {
-          var c = latestFinishConstraint(LS[edge.toId], LF[edge.toId], edge.type, edge.lag, duration[id], calendar, calendarAwareRequested);
-          if (c < lf) lf = c;
+        var preds = safePredecessors[id];
+        var predConstraint = null; // predecessor-derived only, never floored at dataDay
+        preds.forEach(function (edge) {
+          var c = earliestStartConstraint(ES[edge.fromId], EF[edge.fromId], edge.type, edge.lag, duration[id], calendar, calendarAwareRequested);
+          if (predConstraint == null || c > predConstraint) predConstraint = c;
         });
-        LF[id] = lf;
-        LS[id] = calendarAwareRequested ? retreatWorkingDays(calendar, lf, duration[id]) : lf - duration[id];
+
+        var isOOS = !ignoreActuals && fixedES[id] != null && predConstraint != null && predConstraint > fixedES[id];
+        outOfSequenceById[id] = isOOS;
+        if (isOOS && pushWarnings) {
+          warnings.push({
+            activityId: id,
+            message:
+              "Out-of-sequence: this activity's actual start is before its predecessor logic would have allowed (" +
+              (statusById[id] === "completed" ? "already completed, dates unaffected" : retainedLogic ? "forecast pushed to respect predecessor logic" : "actual dates retained, predecessor logic overridden") +
+              ").",
+          });
+        }
+
+        var es;
+        var normalizeES = calendarAwareRequested; // real actual anchors below turn this back off
+        var alapAnchor = alapFixedES[id];
+        if (alapAnchor != null) {
+          // Already a valid, calendar-consistent day number (the preview pass's own LS
+          // for this activity) — no renormalization needed, UNLESS honoring it would
+          // violate predecessor logic (a real, if rare, edge case: some other activity's
+          // actual dates elsewhere already left this activity with negative float in the
+          // preview pass). Predecessor logic always wins, same principle every other
+          // constraint type in this file already follows — flagged, not silently picked.
+          es = alapAnchor;
+          normalizeES = false;
+          if (predConstraint != null && predConstraint > es) {
+            if (pushWarnings) {
+              warnings.push({ activityId: id, message: "As Late As Possible target could not be fully honored — predecessor logic requires a later date. Predecessor logic wins." });
+            }
+            es = predConstraint;
+            normalizeES = calendarAwareRequested;
+          }
+        } else if (fixedES[id] != null) {
+          if (isOOS && retainedLogic && statusById[id] === "in_progress") {
+            es = predConstraint;
+          } else {
+            es = fixedES[id]; // real actual_start/actual_finish — never renormalized to a calendar
+            normalizeES = false;
+          }
+        } else {
+          es = dataDay;
+          if (predConstraint != null && predConstraint > es) es = predConstraint;
+          if (honorConstraints) es = applyDateConstraint(byId[id], es, predConstraint, duration[id], calendar, calendarAwareRequested, pushWarnings ? warnings : []);
+        }
+        if (normalizeES) es = nextWorkingDayOnOrAfter(calendar, es);
+        ES[id] = es;
+
+        // A COMPLETED activity's EF must exactly reconstruct its real actual_finish
+        // (es + effDuration, effDuration itself being actual elapsed calendar days per
+        // classifyActivity()) regardless of calendar-awareness — an observed historical
+        // fact, not a forecast to walk through working days. Every other status is a
+        // forecast and gets calendar-aware duration consumption when requested.
+        var useCalendarForEF = calendarAwareRequested && statusById[id] !== "completed";
+        EF[id] = useCalendarForEF ? advanceWorkingDays(calendar, es, duration[id]) : es + duration[id];
       });
 
-    // ---- Float ----
-    var results = {};
-    var criticalActivityIds = [];
-    order.forEach(function (id) {
-      var calendar = calendarForActivity(id);
-      var totalFloat = calendarAwareRequested ? workingDaysBetween(calendar, ES[id], LS[id]) : LS[id] - ES[id];
-      var succs = safeSuccessors[id];
-      var freeFloat;
-      if (succs.length === 0) {
-        freeFloat = totalFloat;
-      } else {
-        freeFloat = Math.min.apply(
-          null,
-          succs.map(function (edge) {
-            var succDuration = duration[edge.toId];
-            var succCalendar = calendarForActivity(edge.toId);
-            var requiredIfCritical = earliestStartConstraint(ES[id], EF[id], edge.type, edge.lag, succDuration, succCalendar, calendarAwareRequested);
-            return calendarAwareRequested ? workingDaysBetween(succCalendar, requiredIfCritical, ES[edge.toId]) : ES[edge.toId] - requiredIfCritical;
-          })
-        );
-      }
-      var isCritical = totalFloat <= 0;
-      var isNearCritical = !isCritical && totalFloat <= nearCriticalThreshold;
-      if (isCritical) criticalActivityIds.push(id);
+      var projectFinishDay = order.length ? Math.max.apply(null, order.map(function (id) { return EF[id]; })) : null;
 
-      results[id] = {
-        early_start: toIsoDate(ES[id]),
-        early_finish: toIsoDate(EF[id]),
-        late_start: toIsoDate(LS[id]),
-        late_finish: toIsoDate(LF[id]),
-        total_float: totalFloat,
-        free_float: freeFloat,
-        is_critical: isCritical,
-        is_near_critical: isNearCritical,
-        status: statusById[id],
-        insufficient_data: insufficientById[id],
-        is_out_of_sequence: !!outOfSequenceById[id],
-      };
-    });
+      // ---- Backward pass: LS/LF in reverse topological order ----
+      // Runs uniformly for every activity, fixed-anchor or not — retrospective float on
+      // a completed activity is meaningful (see file header: negative float = real
+      // slippage) — and, for an ALAP activity, this is exactly what tells the FINAL pass
+      // "how late can this legitimately start," via the PREVIEW pass's own LS.
+      var LS = {};
+      var LF = {};
+      order
+        .slice()
+        .reverse()
+        .forEach(function (id) {
+          var calendar = calendarForActivity(id);
+          var succs = safeSuccessors[id];
+          var lf = projectFinishDay;
+          succs.forEach(function (edge) {
+            var c = latestFinishConstraint(LS[edge.toId], LF[edge.toId], edge.type, edge.lag, duration[id], calendar, calendarAwareRequested);
+            if (c < lf) lf = c;
+          });
+          LF[id] = lf;
+          LS[id] = calendarAwareRequested ? retreatWorkingDays(calendar, lf, duration[id]) : lf - duration[id];
+        });
+
+      // ---- Float ----
+      var results = {};
+      var criticalActivityIds = [];
+      order.forEach(function (id) {
+        var calendar = calendarForActivity(id);
+        var totalFloat = calendarAwareRequested ? workingDaysBetween(calendar, ES[id], LS[id]) : LS[id] - ES[id];
+        var succs = safeSuccessors[id];
+        var freeFloat;
+        if (succs.length === 0) {
+          freeFloat = totalFloat;
+        } else {
+          freeFloat = Math.min.apply(
+            null,
+            succs.map(function (edge) {
+              var succDuration = duration[edge.toId];
+              var succCalendar = calendarForActivity(edge.toId);
+              var requiredIfCritical = earliestStartConstraint(ES[id], EF[id], edge.type, edge.lag, succDuration, succCalendar, calendarAwareRequested);
+              return calendarAwareRequested ? workingDaysBetween(succCalendar, requiredIfCritical, ES[edge.toId]) : ES[edge.toId] - requiredIfCritical;
+            })
+          );
+        }
+        var isCritical = totalFloat <= 0;
+        var isNearCritical = !isCritical && totalFloat <= nearCriticalThreshold;
+        if (isCritical) criticalActivityIds.push(id);
+
+        results[id] = {
+          early_start: toIsoDate(ES[id]),
+          early_finish: toIsoDate(EF[id]),
+          late_start: toIsoDate(LS[id]),
+          late_finish: toIsoDate(LF[id]),
+          total_float: totalFloat,
+          free_float: freeFloat,
+          is_critical: isCritical,
+          is_near_critical: isNearCritical,
+          status: statusById[id],
+          insufficient_data: insufficientById[id],
+          is_out_of_sequence: !!outOfSequenceById[id],
+        };
+      });
+
+      return { ES: ES, EF: EF, LS: LS, LF: LF, results: results, criticalActivityIds: criticalActivityIds, projectFinishDay: projectFinishDay, outOfSequenceById: outOfSequenceById };
+    }
+
+    // ALAP needs to know each ALAP activity's own late-start date BEFORE it can anchor
+    // anything there — a genuine chicken-and-egg CPM requires a preview pass to resolve.
+    // Only not-started activities are eligible (never override a real actual date),
+    // matching every other constraint type's own scope.
+    var alapActivityIds = honorConstraints
+      ? order.filter(function (id) {
+          return fixedES[id] == null && byId[id].constraint_type === "ALAP";
+        })
+      : [];
+
+    var finalPass;
+    if (alapActivityIds.length === 0) {
+      finalPass = runForwardBackwardFloat({}, true);
+    } else {
+      var preview = runForwardBackwardFloat({}, false);
+      var alapFixedES = {};
+      alapActivityIds.forEach(function (id) {
+        alapFixedES[id] = preview.LS[id];
+      });
+      finalPass = runForwardBackwardFloat(alapFixedES, true);
+    }
+
+    var ES = finalPass.ES;
+    var EF = finalPass.EF;
+    var projectFinishDay = finalPass.projectFinishDay;
+    var results = finalPass.results;
+    var criticalActivityIds = finalPass.criticalActivityIds;
+    var outOfSequenceById = finalPass.outOfSequenceById;
+
     cyclicActivityIds.forEach(function (id) {
       results[id] = null;
     });
@@ -8034,6 +8094,45 @@ window.PCC_SQL_WASM_BASE64 = "AGFzbQEAAAABnwRFYAJ/fwF/YAF/AX9gA39/fwBgA39/fwF/YA
  * date ranges are INCLUSIVE of both start_date and end_date (see store.js's
  * newResourceUnavailability comment for why that's a deliberate departure from the
  * exclusive-end [start, finish) convention Schedule activities use).
+ *
+ * PCC Architecture Upgrade Phase 7 (Advanced Scheduling): RESOURCE-CONSTRAINED
+ * LEVELING (levelResourceWithinFloat), the last of the three deferred Phase 7 items —
+ * everything above this point only ever DETECTED an over-allocation; this actually
+ * proposes a fix.
+ * - Deliberately "level within float," not "resource-constrained scheduling that
+ *   extends the project": a lower-priority activity may be pushed later, but never
+ *   past its own CPM-calculated late_start/late_finish — the project's own finish date
+ *   never moves as a side effect of leveling. If a conflict genuinely can't be
+ *   resolved within existing float, it's reported as `unresolved`, not silently forced
+ *   by extending the schedule — the same "surface it, let the human decide" principle
+ *   Trash/Storage/every constraint conflict elsewhere in this app already follows.
+ * - A serial schedule-generation heuristic (a standard, well-documented approach to
+ *   resource leveling, not a novel invention): activities needing this resource are
+ *   processed in ascending total_float order (the LEAST slack goes first, claiming its
+ *   natural earliest slot), each placed at the earliest day on/after its own
+ *   early_start where the resource has enough spare capacity for its FULL duration —
+ *   walking forward day by day past a conflict, capped at late_start. This is a
+ *   heuristic, not an optimal solver: for genuinely interlocking multi-activity
+ *   conflicts there can exist a better arrangement this greedy pass won't find — a
+ *   real, documented limitation, not a claim of optimality.
+ * - Read-only, pure, like every other function in this file: returns proposed new
+ *   dates for the caller to review and choose to apply (writing planned_start/
+ *   planned_finish, then re-running Calculate Schedule) — this function itself never
+ *   touches the store, matching this file's own header rule.
+ * - Scoped to ONE resource at a time, like every other function here. An activity
+ *   assigned to multiple resources gets leveled independently per resource; combining
+ *   proposals across several resources at once (so a shift for Resource A doesn't
+ *   silently conflict with Resource B's own separate proposal) is a real, separate,
+ *   NOT-yet-built extension — deliberately out of scope for this increment, same
+ *   "single resource at a time" boundary this whole file already keeps.
+ * - Only activities with a real total_float/early_start/early_finish (i.e., "Calculate
+ *   Schedule" has actually run) are eligible to be shifted — an activity missing those
+ *   fields keeps its original (fixed) demand and is reported via `excludedActivityIds`,
+ *   never silently ignored or guessed at.
+ * - Calendar-naive, matching every other function in this file today (plain calendar-
+ *   day timelines) — becoming calendar-aware here too is a real future increment, not
+ *   an oversight; see scheduleCpmEngine.js's own calendar-awareness for the reasoning
+ *   this file doesn't yet share.
  */
 (function () {
   "use strict";
@@ -8290,6 +8389,151 @@ window.PCC_SQL_WASM_BASE64 = "AGFzbQEAAAABnwRFYAJ/fwF/YAF/AX9gA39/fwBgA39/fwF/YA
     return buckets;
   }
 
+  /** Proposes new dates that resolve (or reduce) over-allocation for ONE resource by
+   * pushing lower-priority activities later, entirely within their own existing float —
+   * see the file header's own section on this function for the full algorithm and its
+   * documented scope/limitations. Pure and read-only: returns proposals for the caller
+   * to apply, never writes anything itself. */
+  function levelResourceWithinFloat(resource, assignments, activities, unavailabilities) {
+    unavailabilities = unavailabilities || [];
+    if (resource.max_availability === null || resource.max_availability === undefined) {
+      return { available: false, leveled: false, proposals: [], unresolved: [], excludedActivityIds: [] };
+    }
+
+    var activityById = {};
+    activities.forEach(function (a) {
+      activityById[a.id] = a;
+    });
+
+    var relevant = assignments.filter(function (a) {
+      return a.resource_id === resource.id;
+    });
+
+    var levelable = []; // { activityId, activityName, qty, startDay, endDay, duration, totalFloat, lateStartDay }
+    var fixed = []; // same shape (minus totalFloat/lateStartDay) for activities that can't be moved
+    var excludedActivityIds = [];
+    var seenExcluded = {};
+
+    relevant.forEach(function (assignment) {
+      var activity = activityById[assignment.activity_id];
+      var qty = Number(assignment.quantity);
+      if (!activity || !qty || qty <= 0) return; // same skip rule computeResourceUsageTimeline uses
+      var dates = effectiveDates(activity);
+      if (dates.source === "none") return;
+      var startDay = toDayNumber(dates.start);
+      var endDay = toDayNumber(dates.finish); // exclusive
+      if (endDay <= startDay) return;
+
+      var canLevel =
+        activity.total_float !== null &&
+        activity.total_float !== undefined &&
+        !!activity.early_start &&
+        !!activity.early_finish &&
+        !!activity.late_start;
+
+      var entry = {
+        activityId: activity.id,
+        activityName: activity.name || "(unnamed activity)",
+        qty: qty,
+        startDay: startDay,
+        endDay: endDay,
+        duration: endDay - startDay,
+      };
+
+      if (canLevel) {
+        entry.totalFloat = activity.total_float;
+        entry.lateStartDay = toDayNumber(activity.late_start);
+        levelable.push(entry);
+      } else {
+        fixed.push(entry);
+        if (!seenExcluded[activity.id]) {
+          seenExcluded[activity.id] = true;
+          excludedActivityIds.push(activity.id);
+        }
+      }
+    });
+
+    // committed[day] = total qty already placed there — seeded from fixed (unmovable)
+    // demand, then grown as each levelable activity below finds its own slot.
+    var committed = {};
+    function addDemand(startDay, endDay, qty) {
+      for (var d = startDay; d < endDay; d++) {
+        committed[d] = (committed[d] || 0) + qty;
+      }
+    }
+    function fitsAt(startDay, endDay, qty) {
+      for (var d = startDay; d < endDay; d++) {
+        var avail = availabilityOnDay(resource, unavailabilities, d);
+        if (avail === null) continue; // not computable for this one day — never treated as a conflict
+        if ((committed[d] || 0) + qty > avail) return false;
+      }
+      return true;
+    }
+
+    fixed.forEach(function (f) {
+      addDemand(f.startDay, f.endDay, f.qty);
+    });
+
+    // Ascending total_float: the LEAST slack (most critical) activity claims its
+    // natural earliest slot first; an activity with more room to move is the one asked
+    // to give way when two compete for the same days.
+    levelable.sort(function (a, b) {
+      return a.totalFloat - b.totalFloat;
+    });
+
+    var proposals = [];
+    levelable.forEach(function (entry) {
+      var candidateStart = entry.startDay;
+      var placed = false;
+      while (candidateStart <= entry.lateStartDay) {
+        if (fitsAt(candidateStart, candidateStart + entry.duration, entry.qty)) {
+          placed = true;
+          break;
+        }
+        candidateStart++;
+      }
+      if (!placed) {
+        // No slot anywhere within this activity's own float — can't invent capacity;
+        // leave it at its natural ES and let it surface via `unresolved` below.
+        candidateStart = entry.startDay;
+      }
+      addDemand(candidateStart, candidateStart + entry.duration, entry.qty);
+      if (candidateStart !== entry.startDay) {
+        proposals.push({
+          activityId: entry.activityId,
+          activityName: entry.activityName,
+          originalStart: toIsoDate(entry.startDay),
+          originalFinish: toIsoDate(entry.endDay),
+          proposedStart: toIsoDate(candidateStart),
+          proposedFinish: toIsoDate(candidateStart + entry.duration),
+          shiftedByDays: candidateStart - entry.startDay,
+        });
+      }
+    });
+
+    var allDays = Object.keys(committed)
+      .map(Number)
+      .sort(function (a, b) {
+        return a - b;
+      });
+    var unresolved = [];
+    allDays.forEach(function (d) {
+      var avail = availabilityOnDay(resource, unavailabilities, d);
+      if (avail === null) return;
+      if (committed[d] > avail) {
+        unresolved.push({ date: toIsoDate(d), allocated: committed[d], available: avail, overBy: committed[d] - avail });
+      }
+    });
+
+    return {
+      available: true,
+      leveled: proposals.length > 0,
+      proposals: proposals,
+      unresolved: unresolved,
+      excludedActivityIds: excludedActivityIds,
+    };
+  }
+
   window.PCC.resourceLevelingEngine = {
     computeResourceUsageTimeline: computeResourceUsageTimeline,
     detectOverAllocations: detectOverAllocations,
@@ -8297,6 +8541,7 @@ window.PCC_SQL_WASM_BASE64 = "AGFzbQEAAAABnwRFYAJ/fwF/YAF/AX9gA39/fwBgA39/fwF/YA
     bucketTimeline: bucketTimeline,
     computeUtilisation: computeUtilisation,
     bucketUtilisation: bucketUtilisation,
+    levelResourceWithinFloat: levelResourceWithinFloat,
     diffDays: diffDays,
     addDays: addDays,
   };
@@ -32604,6 +32849,22 @@ window.PCC_SQL_WASM_BASE64 = "AGFzbQEAAAABnwRFYAJ/fwF/YAF/AX9gA39/fwBgA39/fwF/YA
     editingWbsId: null,
     editingActivityId: null,
     editingRelationshipId: null,
+    // Architecture Upgrade Phase 7 (Advanced Scheduling, Calendar management UI):
+    // calendar id currently being added/edited, or "new", or null. calendarFormDraft
+    // ({name, workingDays, holidays}) is the in-progress working copy of the WHOLE form —
+    // not just holidays — because adding/removing a holiday has to rerender to show the
+    // updated list, and this form's other fields (name, working-day checkboxes) would
+    // otherwise be silently reset by that rerender: for a brand-new calendar,
+    // uiState.editingCalendarId stays "new" but the underlying calendar OBJECT is a
+    // fresh window.PCC.store.newCalendar() call every render (same pattern every other
+    // "new X" form in this file already uses), so anything read only from that object
+    // reverts to its factory defaults the moment a mid-edit rerender happens.
+    // calendarFormDraftForId tracks which edit session the draft belongs to, keyed off
+    // editingCalendarId itself (not the calendar's own id, which changes every render
+    // while adding new).
+    editingCalendarId: null,
+    calendarFormDraft: null,
+    calendarFormDraftForId: null,
     activityFilter: "",
     // PCC Evolution Roadmap, Tier C: Delay & Recovery Management. Recovery action id
     // currently being added/edited in the Activity Detail Panel, or "new", or null.
@@ -34889,7 +35150,7 @@ window.PCC_SQL_WASM_BASE64 = "AGFzbQEAAAABnwRFYAJ/fwF/YAF/AX9gA39/fwBgA39/fwF/YA
     return field;
   }
 
-  function renderActivityForm(container, activity, wbsItems, vendors, rerender) {
+  function renderActivityForm(container, activity, wbsItems, vendors, calendars, rerender) {
     var isNew = uiState.editingActivityId === "new";
     var panel = document.createElement("div");
     panel.className = "panel";
@@ -34941,6 +35202,31 @@ window.PCC_SQL_WASM_BASE64 = "AGFzbQEAAAABnwRFYAJ/fwF/YAF/AX9gA39/fwBgA39/fwF/YA
     vendorSelect.value = activity.vendor_id || "";
     vendorField.appendChild(vendorSelect);
     form.appendChild(vendorField);
+
+    // Architecture Upgrade Phase 7 (Advanced Scheduling, Calendar management UI): same
+    // hand-built select pattern as WBS/Vendor above. A brand-new activity defaults to the
+    // project's own default Calendar (if one exists) rather than blank — leaving it blank
+    // is a real, deliberate choice too (falls back to "every day is a working day" with a
+    // warning when calendar-aware, see scheduleCpmEngine.js), never forced.
+    var calendarField = document.createElement("div");
+    calendarField.className = "field";
+    calendarField.innerHTML = "<label>Calendar</label>";
+    var calendarSelect = document.createElement("select");
+    calendarSelect.id = "actfield-calendar_id";
+    var noCalendarOpt = document.createElement("option");
+    noCalendarOpt.value = "";
+    noCalendarOpt.textContent = "(none)";
+    calendarSelect.appendChild(noCalendarOpt);
+    calendars.forEach(function (cal) {
+      var opt = document.createElement("option");
+      opt.value = cal.id;
+      opt.textContent = cal.name + (cal.is_default ? " (default)" : "");
+      calendarSelect.appendChild(opt);
+    });
+    var defaultCalendar = calendars.find(function (cal) { return cal.is_default; });
+    calendarSelect.value = activity.calendar_id || (isNew && defaultCalendar ? defaultCalendar.id : "");
+    calendarField.appendChild(calendarSelect);
+    form.appendChild(calendarField);
 
     var grid = document.createElement("div");
     grid.className = "form-grid";
@@ -35041,7 +35327,7 @@ window.PCC_SQL_WASM_BASE64 = "AGFzbQEAAAABnwRFYAJ/fwF/YAF/AX9gA39/fwBgA39/fwF/YA
       }
       errorMsg.style.display = "none";
 
-      var values = { wbs_id: wbsSelect.value || null, vendor_id: vendorSelect.value || "" };
+      var values = { wbs_id: wbsSelect.value || null, vendor_id: vendorSelect.value || "", calendar_id: calendarSelect.value || null };
       ACTIVITY_FIELD_CONFIG.forEach(function (cfg) {
         var el = form.querySelector("#actfield-" + cfg.key);
         if (!el) return;
@@ -35176,7 +35462,8 @@ window.PCC_SQL_WASM_BASE64 = "AGFzbQEAAAABnwRFYAJ/fwF/YAF/AX9gA39/fwBgA39/fwF/YA
             });
       uiState.newActivityTypeHint = null;
       uiState.activityClonePrefill = null;
-      if (activityBeingEdited) renderActivityForm(container, activityBeingEdited, wbsItems, data.vendors, rerender);
+      var projectCalendars = data.calendars.filter(function (c) { return c.project_id === uiState.projectId; });
+      if (activityBeingEdited) renderActivityForm(container, activityBeingEdited, wbsItems, data.vendors, projectCalendars, rerender);
     }
 
     var toolbar = document.createElement("div");
@@ -36614,6 +36901,348 @@ window.PCC_SQL_WASM_BASE64 = "AGFzbQEAAAABnwRFYAJ/fwF/YAF/AX9gA39/fwBgA39/fwF/YA
       };
       row.appendChild(deleteBtn);
 
+      list.appendChild(row);
+    });
+    container.appendChild(list);
+  }
+
+  // ---------------------------------------------------------------------------------
+  // Calendars tab (Architecture Upgrade Phase 7, Advanced Scheduling: Calendar
+  // management UI). A Calendar belongs to a Project (store.js's newCalendar() — the
+  // same working pattern typically applies across a project's schedule revisions), so
+  // this list/form is scoped to uiState.projectId, not uiState.scheduleId, even though
+  // it lives inside the Schedule module (where calendar_id is actually consumed).
+  // ---------------------------------------------------------------------------------
+
+  var WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+  function formatWorkingDays(workingDays) {
+    if (!Array.isArray(workingDays)) return "Unknown";
+    var selected = WEEKDAY_LABELS.filter(function (_, i) {
+      return !!workingDays[i];
+    });
+    if (selected.length === 0) return "No working days (!)";
+    if (selected.length === 7) return "Every day";
+    return selected.join(", ");
+  }
+
+  function renderCalendarForm(container, calendar, rerender) {
+    var isNew = uiState.editingCalendarId === "new";
+    // See uiState's own comment on calendarFormDraft: this whole form's state lives in
+    // one durable draft object, not the `calendar` argument, because adding/removing a
+    // holiday has to rerender to show the updated list, and (for a brand-new calendar)
+    // `calendar` itself is a fresh newCalendar() call every render — reading name/
+    // working_days from it after such a rerender would silently revert to factory
+    // defaults, discarding whatever the user had already typed.
+    if (uiState.calendarFormDraftForId !== uiState.editingCalendarId) {
+      uiState.calendarFormDraft = {
+        name: calendar.name || "",
+        workingDays: (calendar.working_days || []).slice(),
+        holidays: (calendar.holidays || []).slice(),
+      };
+      uiState.calendarFormDraftForId = uiState.editingCalendarId;
+    }
+    var draft = uiState.calendarFormDraft;
+
+    var panel = document.createElement("div");
+    panel.className = "panel";
+    panel.style.marginBottom = "var(--space-4)";
+
+    var heading = document.createElement("h3");
+    heading.style.marginBottom = "var(--space-4)";
+    heading.textContent = isNew ? "Add Calendar" : "Edit Calendar";
+    panel.appendChild(heading);
+
+    var form = document.createElement("form");
+
+    var nameField = document.createElement("div");
+    nameField.className = "field";
+    nameField.innerHTML = "<label>Calendar Name *</label>";
+    var nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.id = "calfield-name";
+    nameInput.value = draft.name;
+    nameField.appendChild(nameInput);
+    form.appendChild(nameField);
+
+    var workingDaysField = document.createElement("div");
+    workingDaysField.className = "field";
+    workingDaysField.innerHTML = "<label>Working Days</label>";
+    var workingDaysRow = document.createElement("div");
+    workingDaysRow.style.display = "flex";
+    workingDaysRow.style.gap = "var(--space-3)";
+    workingDaysRow.style.flexWrap = "wrap";
+    var workingDayCheckboxes = WEEKDAY_LABELS.map(function (label, i) {
+      var wrap = document.createElement("label");
+      wrap.style.display = "flex";
+      wrap.style.alignItems = "center";
+      wrap.style.gap = "var(--space-1)";
+      var cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.id = "calfield-workingday-" + i;
+      cb.checked = !!draft.workingDays[i];
+      wrap.appendChild(cb);
+      wrap.appendChild(document.createTextNode(label));
+      workingDaysRow.appendChild(wrap);
+      return cb;
+    });
+    workingDaysField.appendChild(workingDaysRow);
+    form.appendChild(workingDaysField);
+
+    // Any handler below that needs to rerender (adding/removing a holiday) calls this
+    // first, so the next render's inputs above are rebuilt from what's actually on
+    // screen right now, not from whatever `calendar`/`draft` held before this edit.
+    function syncDraftFromForm() {
+      draft.name = nameInput.value;
+      draft.workingDays = workingDayCheckboxes.map(function (cb) { return cb.checked; });
+    }
+
+    var holidaysField = document.createElement("div");
+    holidaysField.className = "field";
+    holidaysField.innerHTML = "<label>Holidays</label>";
+    if (draft.holidays.length > 0) {
+      var holidaysList = document.createElement("div");
+      holidaysList.style.marginBottom = "var(--space-2)";
+      draft.holidays.forEach(function (dateStr, idx) {
+        var row = document.createElement("div");
+        row.style.display = "flex";
+        row.style.alignItems = "center";
+        row.style.gap = "var(--space-2)";
+        row.style.marginBottom = "var(--space-1)";
+        var span = document.createElement("span");
+        span.className = "mono";
+        span.textContent = dateStr;
+        row.appendChild(span);
+        var removeBtn = document.createElement("button");
+        removeBtn.type = "button";
+        removeBtn.className = "btn btn--ghost";
+        removeBtn.textContent = "Remove";
+        removeBtn.onclick = function () {
+          syncDraftFromForm();
+          draft.holidays.splice(idx, 1);
+          rerender();
+        };
+        row.appendChild(removeBtn);
+        holidaysList.appendChild(row);
+      });
+      holidaysField.appendChild(holidaysList);
+    }
+    var addHolidayRow = document.createElement("div");
+    addHolidayRow.style.display = "flex";
+    addHolidayRow.style.gap = "var(--space-2)";
+    var holidayDateInput = document.createElement("input");
+    holidayDateInput.type = "date";
+    holidayDateInput.id = "calfield-new-holiday";
+    addHolidayRow.appendChild(holidayDateInput);
+    var addHolidayBtn = document.createElement("button");
+    addHolidayBtn.type = "button";
+    addHolidayBtn.className = "btn btn--ghost";
+    addHolidayBtn.textContent = "+ Add Holiday";
+    addHolidayBtn.onclick = function () {
+      if (!holidayDateInput.value) return;
+      syncDraftFromForm();
+      if (draft.holidays.indexOf(holidayDateInput.value) === -1) {
+        draft.holidays.push(holidayDateInput.value);
+        draft.holidays.sort();
+      }
+      rerender();
+    };
+    addHolidayRow.appendChild(addHolidayBtn);
+    holidaysField.appendChild(addHolidayRow);
+    form.appendChild(holidaysField);
+
+    var errorMsg = document.createElement("p");
+    errorMsg.style.color = "var(--status-critical)";
+    errorMsg.style.fontSize = "var(--text-sm)";
+    errorMsg.style.display = "none";
+    errorMsg.textContent = "Calendar name is required.";
+    form.appendChild(errorMsg);
+
+    var actions = document.createElement("div");
+    actions.style.display = "flex";
+    actions.style.gap = "var(--space-3)";
+    actions.style.marginTop = "var(--space-3)";
+
+    var saveBtn = document.createElement("button");
+    saveBtn.type = "submit";
+    saveBtn.className = "btn btn--primary";
+    saveBtn.textContent = isNew ? "Add Calendar" : "Save Changes";
+
+    var cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.className = "btn btn--ghost";
+    cancelBtn.textContent = "Cancel";
+    cancelBtn.onclick = function () {
+      uiState.editingCalendarId = null;
+      uiState.calendarFormDraft = null;
+      uiState.calendarFormDraftForId = null;
+      rerender();
+    };
+
+    actions.appendChild(saveBtn);
+    actions.appendChild(cancelBtn);
+    form.appendChild(actions);
+
+    form.onsubmit = function (e) {
+      e.preventDefault();
+      var name = nameInput.value.trim();
+      if (!name) {
+        errorMsg.style.display = "block";
+        return;
+      }
+      errorMsg.style.display = "none";
+
+      var values = {
+        name: name,
+        working_days: workingDayCheckboxes.map(function (cb) { return cb.checked; }),
+        holidays: draft.holidays.slice(),
+      };
+
+      window.PCC.store.update(function (data) {
+        if (isNew) {
+          data.calendars.push(window.PCC.store.newCalendar(Object.assign({ project_id: uiState.projectId }, values)));
+        } else {
+          var existing = data.calendars.find(function (c) { return c.id === calendar.id; });
+          if (existing) Object.assign(existing, values);
+        }
+      });
+
+      window.PCC.notify(isNew ? "Calendar added." : "Calendar updated.", "success");
+      uiState.editingCalendarId = null;
+      uiState.calendarFormDraft = null;
+      uiState.calendarFormDraftForId = null;
+      rerender();
+    };
+
+    panel.appendChild(form);
+    container.appendChild(panel);
+  }
+
+  function renderCalendarsTab(container, data, rerender) {
+    var calendars = data.calendars.filter(function (c) {
+      return c.project_id === uiState.projectId;
+    });
+
+    if (uiState.editingCalendarId) {
+      var calendarBeingEdited =
+        uiState.editingCalendarId === "new"
+          ? window.PCC.store.newCalendar()
+          : calendars.find(function (c) {
+              return c.id === uiState.editingCalendarId;
+            });
+      if (calendarBeingEdited) renderCalendarForm(container, calendarBeingEdited, rerender);
+    }
+
+    var intro = document.createElement("p");
+    intro.className = "text-secondary";
+    intro.style.fontSize = "var(--text-sm)";
+    intro.style.marginBottom = "var(--space-3)";
+    intro.textContent =
+      "Calendars belong to this project and apply across all its schedules. Assign one to an activity from its own Edit form; Calculate Schedule only respects them once “Calendar-Aware Calculation” is turned on in Schedule Settings.";
+    container.appendChild(intro);
+
+    var toolbar = document.createElement("div");
+    toolbar.className = "toolbar";
+    var spacer = document.createElement("div");
+    spacer.className = "toolbar__spacer";
+    toolbar.appendChild(spacer);
+
+    var addBtn = document.createElement("button");
+    addBtn.className = "btn btn--primary";
+    addBtn.textContent = "+ Add Calendar";
+    addBtn.onclick = function () {
+      uiState.editingCalendarId = "new";
+      rerender();
+    };
+    toolbar.appendChild(addBtn);
+    container.appendChild(toolbar);
+
+    if (calendars.length === 0) {
+      var empty = document.createElement("div");
+      empty.className = "panel empty-state";
+      empty.textContent = "No calendars yet for this project.";
+      container.appendChild(empty);
+      return;
+    }
+
+    var list = document.createElement("div");
+    list.className = "project-list";
+    calendars.forEach(function (cal) {
+      var referencingCount = data.activities.filter(function (a) {
+        return a.calendar_id === cal.id;
+      }).length;
+
+      var row = document.createElement("div");
+      row.className = "detail-card";
+      row.style.display = "flex";
+      row.style.justifyContent = "space-between";
+      row.style.alignItems = "center";
+      row.style.marginBottom = "var(--space-2)";
+
+      var main = document.createElement("div");
+      main.innerHTML =
+        "<strong>" + cal.name + "</strong>" +
+        (cal.is_default ? " <span class='text-secondary' style='font-size:11px; border:1px solid var(--divider); border-radius:4px; padding:1px 6px;'>Default</span>" : "") +
+        "<br/>" +
+        "<span class='text-secondary' style='font-size:12px;'>" +
+        formatWorkingDays(cal.working_days) + " · " +
+        cal.holidays.length + " holiday" + (cal.holidays.length === 1 ? "" : "s") + " · " +
+        "used by " + referencingCount + " activit" + (referencingCount === 1 ? "y" : "ies") +
+        "</span>";
+      row.appendChild(main);
+
+      var actions = document.createElement("div");
+      actions.style.display = "flex";
+      actions.style.gap = "var(--space-2)";
+
+      if (!cal.is_default) {
+        var defaultBtn = document.createElement("button");
+        defaultBtn.className = "btn btn--ghost";
+        defaultBtn.textContent = "Set as Default";
+        defaultBtn.onclick = function () {
+          window.PCC.store.update(function (data2) {
+            data2.calendars.forEach(function (c) {
+              if (c.project_id === uiState.projectId) c.is_default = c.id === cal.id;
+            });
+          });
+          window.PCC.notify("Default calendar updated.", "success");
+          rerender();
+        };
+        actions.appendChild(defaultBtn);
+      }
+
+      var editBtn = document.createElement("button");
+      editBtn.className = "btn btn--ghost";
+      editBtn.textContent = "Edit";
+      editBtn.onclick = function () {
+        uiState.editingCalendarId = cal.id;
+        rerender();
+      };
+      actions.appendChild(editBtn);
+
+      var deleteBtn = document.createElement("button");
+      deleteBtn.className = "btn btn--ghost";
+      deleteBtn.textContent = "Delete";
+      deleteBtn.onclick = function () {
+        if (referencingCount > 0) {
+          window.PCC.notify(
+            "Can't delete — " + referencingCount + " activit" + (referencingCount === 1 ? "y" : "ies") + " still use" + (referencingCount === 1 ? "s" : "") + " this calendar. Reassign them first.",
+            "error"
+          );
+          return;
+        }
+        if (!confirm("Delete calendar “" + cal.name + "”?")) return;
+        window.PCC.store.update(function (data2) {
+          data2.calendars = data2.calendars.filter(function (c) {
+            return c.id !== cal.id;
+          });
+        });
+        window.PCC.notify("Calendar deleted.", "success");
+        rerender();
+      };
+      actions.appendChild(deleteBtn);
+
+      row.appendChild(actions);
       list.appendChild(row);
     });
     container.appendChild(list);
@@ -40202,6 +40831,7 @@ window.PCC_SQL_WASM_BASE64 = "AGFzbQEAAAABnwRFYAJ/fwF/YAF/AX9gA39/fwBgA39/fwF/YA
       { key: "gantt", label: "Gantt" },
       { key: "wbs", label: "WBS" },
       { key: "relationships", label: "Relationships" },
+      { key: "calendars", label: "Calendars" },
       { key: "baselines", label: "Baselines" },
       { key: "whatif", label: "What-If" },
     ].forEach(function (t) {
@@ -40213,6 +40843,9 @@ window.PCC_SQL_WASM_BASE64 = "AGFzbQEAAAABnwRFYAJ/fwF/YAF/AX9gA39/fwBgA39/fwF/YA
         uiState.editingActivityId = null;
         uiState.editingWbsId = null;
         uiState.editingRelationshipId = null;
+        uiState.editingCalendarId = null;
+        uiState.calendarFormDraft = null;
+        uiState.calendarFormDraftForId = null;
         uiState.ganttDetailActivityId = null;
         rerender();
       };
@@ -40227,6 +40860,7 @@ window.PCC_SQL_WASM_BASE64 = "AGFzbQEAAAABnwRFYAJ/fwF/YAF/AX9gA39/fwBgA39/fwF/YA
     else if (uiState.tab === "gantt") renderGanttTab(tabContent, data, rerender);
     else if (uiState.tab === "wbs") renderWbsTab(tabContent, data, rerender);
     else if (uiState.tab === "relationships") renderRelationshipsTab(tabContent, data, rerender);
+    else if (uiState.tab === "calendars") renderCalendarsTab(tabContent, data, rerender);
     else if (uiState.tab === "baselines") renderBaselinesTab(tabContent, data, rerender);
     else if (uiState.tab === "whatif") renderWhatIfTab(tabContent, data, rerender);
   }
@@ -49552,6 +50186,12 @@ window.PCC_SQL_WASM_BASE64 = "AGFzbQEAAAABnwRFYAJ/fwF/YAF/AX9gA39/fwBgA39/fwF/YA
     assignmentProjectFilter: "", // narrows the Activity select in the Assignment form
     unavailabilityResourceFilter: "",
     levelingResourceId: "",
+    // Architecture Upgrade Phase 7 (Advanced Scheduling): Resource-Constrained Leveling.
+    // Computed on demand (a "Suggest Leveling" button click), not automatically on every
+    // render — this walks every assignment for the resource, no reason to pay that cost
+    // just from switching tabs. Cleared whenever the selected resource changes so a
+    // stale proposal for a DIFFERENT resource is never shown.
+    levelingProposals: null,
   };
 
   function esc(s) {
@@ -50804,6 +51444,7 @@ window.PCC_SQL_WASM_BASE64 = "AGFzbQEAAAABnwRFYAJ/fwF/YAF/AX9gA39/fwBgA39/fwF/YA
     resSelect.value = uiState.levelingResourceId;
     resSelect.onchange = function () {
       uiState.levelingResourceId = resSelect.value;
+      uiState.levelingProposals = null;
       rerender();
     };
     toolbar.appendChild(resSelect);
@@ -50937,6 +51578,126 @@ window.PCC_SQL_WASM_BASE64 = "AGFzbQEAAAABnwRFYAJ/fwF/YAF/AX9gA39/fwBgA39/fwF/YA
         conflictPanel.appendChild(more);
       }
       container.appendChild(conflictPanel);
+
+      // Architecture Upgrade Phase 7 (Advanced Scheduling): Resource-Constrained
+      // Leveling. Proposals are computed on demand, never automatically applied — the
+      // same "surface it, let the human decide" principle every other conflict/deletion
+      // in this app already follows. "Apply" sets a Start No Earlier Than constraint at
+      // the proposed date rather than touching planned_start/planned_finish directly —
+      // planned dates don't feed the CPM engine's own ES computation at all, so writing
+      // there wouldn't survive the next "Calculate Schedule" click; a constraint DOES,
+      // reusing this same phase's own constraint-honoring machinery instead of a second,
+      // parallel "sticky override" mechanism.
+      var levelPanel = document.createElement("div");
+      levelPanel.className = "panel";
+      levelPanel.style.marginTop = "var(--space-4)";
+      var levelHeading = document.createElement("h4");
+      levelHeading.style.marginBottom = "var(--space-2)";
+      levelHeading.textContent = "Suggested Leveling";
+      levelPanel.appendChild(levelHeading);
+
+      var levelIntro = document.createElement("p");
+      levelIntro.className = "text-secondary";
+      levelIntro.style.fontSize = "var(--text-sm)";
+      levelIntro.style.marginBottom = "var(--space-3)";
+      levelIntro.textContent =
+        "Proposes pushing lower-priority activities later, entirely within their own existing float — never extends the project finish, never touches a completed/in-progress activity. Applying a proposal sets a Start No Earlier Than constraint on that activity; turn on “Honor Date Constraints” in that Schedule's own settings and re-run Calculate Schedule for it to actually take effect.";
+      levelPanel.appendChild(levelIntro);
+
+      var suggestBtn = document.createElement("button");
+      suggestBtn.className = "btn btn--primary";
+      suggestBtn.textContent = "Suggest Leveling";
+      suggestBtn.onclick = function () {
+        uiState.levelingProposals = window.PCC.resourceLevelingEngine.levelResourceWithinFloat(
+          resource,
+          data.resource_assignments,
+          data.activities,
+          data.resource_unavailability
+        );
+        rerender();
+      };
+      levelPanel.appendChild(suggestBtn);
+
+      if (uiState.levelingProposals) {
+        var lp = uiState.levelingProposals;
+        if (lp.proposals.length === 0 && lp.unresolved.length === 0) {
+          var noneP = document.createElement("p");
+          noneP.className = "text-secondary";
+          noneP.style.fontSize = "var(--text-sm)";
+          noneP.style.marginTop = "var(--space-3)";
+          noneP.textContent = "Nothing to propose — every activity needing this resource already has enough calculated float to fit without a change, or none are eligible to move.";
+          levelPanel.appendChild(noneP);
+        }
+
+        if (lp.excludedActivityIds.length > 0) {
+          var excludedNames = lp.excludedActivityIds
+            .map(function (id) {
+              var a = data.activities.find(function (act) { return act.id === id; });
+              return a ? a.name || "(unnamed activity)" : id;
+            })
+            .join(", ");
+          var excludedP = document.createElement("p");
+          excludedP.className = "text-secondary";
+          excludedP.style.fontSize = "var(--text-sm)";
+          excludedP.style.marginTop = "var(--space-3)";
+          excludedP.textContent = "Not eligible to move (Calculate Schedule hasn't run for them yet): " + excludedNames + ".";
+          levelPanel.appendChild(excludedP);
+        }
+
+        if (lp.proposals.length > 0) {
+          var proposalsList = document.createElement("div");
+          proposalsList.className = "project-list";
+          proposalsList.style.marginTop = "var(--space-3)";
+          lp.proposals.forEach(function (p) {
+            var row = document.createElement("div");
+            row.className = "detail-card";
+            row.style.display = "flex";
+            row.style.justifyContent = "space-between";
+            row.style.alignItems = "center";
+            row.style.marginBottom = "var(--space-2)";
+
+            var main = document.createElement("div");
+            main.innerHTML =
+              "<strong>" + esc(p.activityName) + "</strong><br/>" +
+              "<span class='text-secondary' style='font-size:12px;'>" +
+              p.originalStart + " → " + p.originalFinish + "  becomes  " + p.proposedStart + " → " + p.proposedFinish +
+              " (+" + p.shiftedByDays + "d)</span>";
+            row.appendChild(main);
+
+            var applyBtn = document.createElement("button");
+            applyBtn.className = "btn btn--ghost";
+            applyBtn.textContent = "Apply";
+            applyBtn.onclick = function () {
+              window.PCC.store.update(function (d) {
+                var act = d.activities.find(function (a) { return a.id === p.activityId; });
+                if (act) {
+                  act.constraint_type = "SNET";
+                  act.constraint_date = p.proposedStart;
+                }
+              });
+              window.PCC.notify("Start No Earlier Than " + p.proposedStart + " set on " + p.activityName + ". Re-run Calculate Schedule on its own schedule (with Honor Date Constraints on) to apply it.", "success");
+              uiState.levelingProposals = null;
+              rerender();
+            };
+            row.appendChild(applyBtn);
+
+            proposalsList.appendChild(row);
+          });
+          levelPanel.appendChild(proposalsList);
+        }
+
+        if (lp.unresolved.length > 0) {
+          var unresolvedNote = document.createElement("p");
+          unresolvedNote.style.fontSize = "var(--text-sm)";
+          unresolvedNote.style.color = "var(--status-critical)";
+          unresolvedNote.style.marginTop = "var(--space-3)";
+          unresolvedNote.textContent =
+            lp.unresolved.length + " day(s) remain over-allocated even after leveling within existing float — resolving this needs more capacity, less demand, or accepting a later project finish, none of which this tool decides for you.";
+          levelPanel.appendChild(unresolvedNote);
+        }
+      }
+
+      container.appendChild(levelPanel);
     }
   }
 

@@ -588,125 +588,185 @@
       safePredecessors[r.successor_id].push({ fromId: r.predecessor_id, type: r.type, lag: r.lag || 0 });
     });
 
-    // ---- Forward pass: ES/EF in topological order ----
+    // ---- Forward pass, backward pass, and float, as one reinvokable unit ----
+    // Extracted (Phase 7, ALAP enforcement) so it can run twice: once as a plain ASAP-
+    // style preview (needed only to learn where an ALAP activity's own late dates would
+    // land), then a final pass with each ALAP activity anchored there. See the file
+    // header's ALAP section — alapFixedES is empty and pushWarnings is true for the
+    // overwhelming common case (no ALAP activities in play), making this byte-for-byte
+    // the same single pass this engine has always run.
+    //
     // Completed/in-progress activities use their fixed anchor and ignore predecessor
-    // constraints for their OWN start \u2014 the work already began regardless of what
+    // constraints for their OWN start — the work already began regardless of what
     // logic says, but they still constrain their successors normally via EF below.
     // Exception: an in_progress activity that's out-of-sequence (see below) in
     // "retained_logic" mode has its ES pushed to the predecessor-derived constraint
-    // instead \u2014 the actual start already happened, but the forecast keeps respecting
+    // instead — the actual start already happened, but the forecast keeps respecting
     // the logic tie for what's left.
-    var ES = {};
-    var EF = {};
-    var outOfSequenceById = {};
-    order.forEach(function (id) {
-      var calendar = calendarForActivity(id);
-      var preds = safePredecessors[id];
-      var predConstraint = null; // predecessor-derived only, never floored at dataDay
-      preds.forEach(function (edge) {
-        var c = earliestStartConstraint(ES[edge.fromId], EF[edge.fromId], edge.type, edge.lag, duration[id], calendar, calendarAwareRequested);
-        if (predConstraint == null || c > predConstraint) predConstraint = c;
-      });
-
-      var isOOS = !ignoreActuals && fixedES[id] != null && predConstraint != null && predConstraint > fixedES[id];
-      outOfSequenceById[id] = isOOS;
-      if (isOOS) {
-        warnings.push({
-          activityId: id,
-          message:
-            "Out-of-sequence: this activity's actual start is before its predecessor logic would have allowed (" +
-            (statusById[id] === "completed" ? "already completed, dates unaffected" : retainedLogic ? "forecast pushed to respect predecessor logic" : "actual dates retained, predecessor logic overridden") +
-            ").",
-        });
-      }
-
-      var es;
-      var normalizeES = calendarAwareRequested; // real actual anchors below turn this back off
-      if (fixedES[id] != null) {
-        if (isOOS && retainedLogic && statusById[id] === "in_progress") {
-          es = predConstraint;
-        } else {
-          es = fixedES[id]; // real actual_start/actual_finish — never renormalized to a calendar
-          normalizeES = false;
-        }
-      } else {
-        es = dataDay;
-        if (predConstraint != null && predConstraint > es) es = predConstraint;
-        if (honorConstraints) es = applyDateConstraint(byId[id], es, predConstraint, duration[id], calendar, calendarAwareRequested, warnings);
-      }
-      if (normalizeES) es = nextWorkingDayOnOrAfter(calendar, es);
-      ES[id] = es;
-
-      // A COMPLETED activity's EF must exactly reconstruct its real actual_finish
-      // (es + effDuration, effDuration itself being actual elapsed calendar days per
-      // classifyActivity()) regardless of calendar-awareness — an observed historical
-      // fact, not a forecast to walk through working days. Every other status is a
-      // forecast and gets calendar-aware duration consumption when requested.
-      var useCalendarForEF = calendarAwareRequested && statusById[id] !== "completed";
-      EF[id] = useCalendarForEF ? advanceWorkingDays(calendar, es, duration[id]) : es + duration[id];
-    });
-
-    var projectFinishDay = order.length ? Math.max.apply(null, order.map(function (id) { return EF[id]; })) : null;
-
-    // ---- Backward pass: LS/LF in reverse topological order ----
-    // Runs uniformly for every activity, fixed-anchor or not \u2014 retrospective float on
-    // a completed activity is meaningful (see file header: negative float = real slippage).
-    var LS = {};
-    var LF = {};
-    order
-      .slice()
-      .reverse()
-      .forEach(function (id) {
+    function runForwardBackwardFloat(alapFixedES, pushWarnings) {
+      var ES = {};
+      var EF = {};
+      var outOfSequenceById = {};
+      order.forEach(function (id) {
         var calendar = calendarForActivity(id);
-        var succs = safeSuccessors[id];
-        var lf = projectFinishDay;
-        succs.forEach(function (edge) {
-          var c = latestFinishConstraint(LS[edge.toId], LF[edge.toId], edge.type, edge.lag, duration[id], calendar, calendarAwareRequested);
-          if (c < lf) lf = c;
+        var preds = safePredecessors[id];
+        var predConstraint = null; // predecessor-derived only, never floored at dataDay
+        preds.forEach(function (edge) {
+          var c = earliestStartConstraint(ES[edge.fromId], EF[edge.fromId], edge.type, edge.lag, duration[id], calendar, calendarAwareRequested);
+          if (predConstraint == null || c > predConstraint) predConstraint = c;
         });
-        LF[id] = lf;
-        LS[id] = calendarAwareRequested ? retreatWorkingDays(calendar, lf, duration[id]) : lf - duration[id];
+
+        var isOOS = !ignoreActuals && fixedES[id] != null && predConstraint != null && predConstraint > fixedES[id];
+        outOfSequenceById[id] = isOOS;
+        if (isOOS && pushWarnings) {
+          warnings.push({
+            activityId: id,
+            message:
+              "Out-of-sequence: this activity's actual start is before its predecessor logic would have allowed (" +
+              (statusById[id] === "completed" ? "already completed, dates unaffected" : retainedLogic ? "forecast pushed to respect predecessor logic" : "actual dates retained, predecessor logic overridden") +
+              ").",
+          });
+        }
+
+        var es;
+        var normalizeES = calendarAwareRequested; // real actual anchors below turn this back off
+        var alapAnchor = alapFixedES[id];
+        if (alapAnchor != null) {
+          // Already a valid, calendar-consistent day number (the preview pass's own LS
+          // for this activity) — no renormalization needed, UNLESS honoring it would
+          // violate predecessor logic (a real, if rare, edge case: some other activity's
+          // actual dates elsewhere already left this activity with negative float in the
+          // preview pass). Predecessor logic always wins, same principle every other
+          // constraint type in this file already follows — flagged, not silently picked.
+          es = alapAnchor;
+          normalizeES = false;
+          if (predConstraint != null && predConstraint > es) {
+            if (pushWarnings) {
+              warnings.push({ activityId: id, message: "As Late As Possible target could not be fully honored — predecessor logic requires a later date. Predecessor logic wins." });
+            }
+            es = predConstraint;
+            normalizeES = calendarAwareRequested;
+          }
+        } else if (fixedES[id] != null) {
+          if (isOOS && retainedLogic && statusById[id] === "in_progress") {
+            es = predConstraint;
+          } else {
+            es = fixedES[id]; // real actual_start/actual_finish — never renormalized to a calendar
+            normalizeES = false;
+          }
+        } else {
+          es = dataDay;
+          if (predConstraint != null && predConstraint > es) es = predConstraint;
+          if (honorConstraints) es = applyDateConstraint(byId[id], es, predConstraint, duration[id], calendar, calendarAwareRequested, pushWarnings ? warnings : []);
+        }
+        if (normalizeES) es = nextWorkingDayOnOrAfter(calendar, es);
+        ES[id] = es;
+
+        // A COMPLETED activity's EF must exactly reconstruct its real actual_finish
+        // (es + effDuration, effDuration itself being actual elapsed calendar days per
+        // classifyActivity()) regardless of calendar-awareness — an observed historical
+        // fact, not a forecast to walk through working days. Every other status is a
+        // forecast and gets calendar-aware duration consumption when requested.
+        var useCalendarForEF = calendarAwareRequested && statusById[id] !== "completed";
+        EF[id] = useCalendarForEF ? advanceWorkingDays(calendar, es, duration[id]) : es + duration[id];
       });
 
-    // ---- Float ----
-    var results = {};
-    var criticalActivityIds = [];
-    order.forEach(function (id) {
-      var calendar = calendarForActivity(id);
-      var totalFloat = calendarAwareRequested ? workingDaysBetween(calendar, ES[id], LS[id]) : LS[id] - ES[id];
-      var succs = safeSuccessors[id];
-      var freeFloat;
-      if (succs.length === 0) {
-        freeFloat = totalFloat;
-      } else {
-        freeFloat = Math.min.apply(
-          null,
-          succs.map(function (edge) {
-            var succDuration = duration[edge.toId];
-            var succCalendar = calendarForActivity(edge.toId);
-            var requiredIfCritical = earliestStartConstraint(ES[id], EF[id], edge.type, edge.lag, succDuration, succCalendar, calendarAwareRequested);
-            return calendarAwareRequested ? workingDaysBetween(succCalendar, requiredIfCritical, ES[edge.toId]) : ES[edge.toId] - requiredIfCritical;
-          })
-        );
-      }
-      var isCritical = totalFloat <= 0;
-      var isNearCritical = !isCritical && totalFloat <= nearCriticalThreshold;
-      if (isCritical) criticalActivityIds.push(id);
+      var projectFinishDay = order.length ? Math.max.apply(null, order.map(function (id) { return EF[id]; })) : null;
 
-      results[id] = {
-        early_start: toIsoDate(ES[id]),
-        early_finish: toIsoDate(EF[id]),
-        late_start: toIsoDate(LS[id]),
-        late_finish: toIsoDate(LF[id]),
-        total_float: totalFloat,
-        free_float: freeFloat,
-        is_critical: isCritical,
-        is_near_critical: isNearCritical,
-        status: statusById[id],
-        insufficient_data: insufficientById[id],
-        is_out_of_sequence: !!outOfSequenceById[id],
-      };
-    });
+      // ---- Backward pass: LS/LF in reverse topological order ----
+      // Runs uniformly for every activity, fixed-anchor or not — retrospective float on
+      // a completed activity is meaningful (see file header: negative float = real
+      // slippage) — and, for an ALAP activity, this is exactly what tells the FINAL pass
+      // "how late can this legitimately start," via the PREVIEW pass's own LS.
+      var LS = {};
+      var LF = {};
+      order
+        .slice()
+        .reverse()
+        .forEach(function (id) {
+          var calendar = calendarForActivity(id);
+          var succs = safeSuccessors[id];
+          var lf = projectFinishDay;
+          succs.forEach(function (edge) {
+            var c = latestFinishConstraint(LS[edge.toId], LF[edge.toId], edge.type, edge.lag, duration[id], calendar, calendarAwareRequested);
+            if (c < lf) lf = c;
+          });
+          LF[id] = lf;
+          LS[id] = calendarAwareRequested ? retreatWorkingDays(calendar, lf, duration[id]) : lf - duration[id];
+        });
+
+      // ---- Float ----
+      var results = {};
+      var criticalActivityIds = [];
+      order.forEach(function (id) {
+        var calendar = calendarForActivity(id);
+        var totalFloat = calendarAwareRequested ? workingDaysBetween(calendar, ES[id], LS[id]) : LS[id] - ES[id];
+        var succs = safeSuccessors[id];
+        var freeFloat;
+        if (succs.length === 0) {
+          freeFloat = totalFloat;
+        } else {
+          freeFloat = Math.min.apply(
+            null,
+            succs.map(function (edge) {
+              var succDuration = duration[edge.toId];
+              var succCalendar = calendarForActivity(edge.toId);
+              var requiredIfCritical = earliestStartConstraint(ES[id], EF[id], edge.type, edge.lag, succDuration, succCalendar, calendarAwareRequested);
+              return calendarAwareRequested ? workingDaysBetween(succCalendar, requiredIfCritical, ES[edge.toId]) : ES[edge.toId] - requiredIfCritical;
+            })
+          );
+        }
+        var isCritical = totalFloat <= 0;
+        var isNearCritical = !isCritical && totalFloat <= nearCriticalThreshold;
+        if (isCritical) criticalActivityIds.push(id);
+
+        results[id] = {
+          early_start: toIsoDate(ES[id]),
+          early_finish: toIsoDate(EF[id]),
+          late_start: toIsoDate(LS[id]),
+          late_finish: toIsoDate(LF[id]),
+          total_float: totalFloat,
+          free_float: freeFloat,
+          is_critical: isCritical,
+          is_near_critical: isNearCritical,
+          status: statusById[id],
+          insufficient_data: insufficientById[id],
+          is_out_of_sequence: !!outOfSequenceById[id],
+        };
+      });
+
+      return { ES: ES, EF: EF, LS: LS, LF: LF, results: results, criticalActivityIds: criticalActivityIds, projectFinishDay: projectFinishDay, outOfSequenceById: outOfSequenceById };
+    }
+
+    // ALAP needs to know each ALAP activity's own late-start date BEFORE it can anchor
+    // anything there — a genuine chicken-and-egg CPM requires a preview pass to resolve.
+    // Only not-started activities are eligible (never override a real actual date),
+    // matching every other constraint type's own scope.
+    var alapActivityIds = honorConstraints
+      ? order.filter(function (id) {
+          return fixedES[id] == null && byId[id].constraint_type === "ALAP";
+        })
+      : [];
+
+    var finalPass;
+    if (alapActivityIds.length === 0) {
+      finalPass = runForwardBackwardFloat({}, true);
+    } else {
+      var preview = runForwardBackwardFloat({}, false);
+      var alapFixedES = {};
+      alapActivityIds.forEach(function (id) {
+        alapFixedES[id] = preview.LS[id];
+      });
+      finalPass = runForwardBackwardFloat(alapFixedES, true);
+    }
+
+    var ES = finalPass.ES;
+    var EF = finalPass.EF;
+    var projectFinishDay = finalPass.projectFinishDay;
+    var results = finalPass.results;
+    var criticalActivityIds = finalPass.criticalActivityIds;
+    var outOfSequenceById = finalPass.outOfSequenceById;
+
     cyclicActivityIds.forEach(function (id) {
       results[id] = null;
     });
