@@ -79,9 +79,15 @@ function findButtonByText(win, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("navigating to Storage Management renders the heading, info panel, and summary cards", () => {
+  await check("navigating to Storage Management renders the heading, info panel, and summary cards", async () => {
     win.PCC.router.go("storageManagement");
     win.PCC.router.render();
+    // React's createRoot().render() commits its initial mount asynchronously (unlike the
+    // raw DOM writes every other page here still uses) — a real, documented behavior
+    // difference for this page since its React migration, not a jsdom quirk. Every check
+    // below that reads DOM content right after a fresh render() on this route needs the
+    // same flush, matching how this file already awaits the async Scan Storage action.
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("Storage Management") !== -1);
     assert.ok(text.indexOf("Scan Storage tool") !== -1, "expected the info panel copy");
@@ -118,6 +124,7 @@ function findButtonByText(win, text) {
     });
     await win.PCC.blobStore.putBlob(noProjectDocId, "data:application/pdf;base64,bm9wcm9qZWN0");
     win.PCC.router.render();
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("Unassigned") !== -1, "expected an Unassigned bucket, got: " + text.slice(0, 800));
   });
@@ -125,6 +132,7 @@ function findButtonByText(win, text) {
   await check("Scan Storage finds no orphans or missing files when everything matches", async () => {
     win.PCC.router.go("storageManagement");
     win.PCC.router.render();
+    await flush();
     findButtonByText(win, "Scan Storage").click();
     await flush();
     var text = outlet().textContent;
@@ -137,6 +145,7 @@ function findButtonByText(win, text) {
     orphanBlobId = "orphan_blob_1";
     await win.PCC.blobStore.putBlob(orphanBlobId, "data:application/pdf;base64,b3JwaGFuZGF0YQ==");
     win.PCC.router.render();
+    await flush();
     findButtonByText(win, "Scan Storage").click();
     await flush();
     var text = outlet().textContent;
@@ -155,6 +164,7 @@ function findButtonByText(win, text) {
       missingDocId = doc.id;
     });
     win.PCC.router.render();
+    await flush();
     findButtonByText(win, "Scan Storage").click();
     await flush();
     var text = outlet().textContent;
@@ -171,6 +181,7 @@ function findButtonByText(win, text) {
   await check("clicking 'Delete Orphan File' after confirming actually deletes the blob and removes it from the list", async () => {
     win.confirm = () => true;
     win.PCC.router.render();
+    await flush();
     findButtonByText(win, "Scan Storage").click();
     await flush();
     assert.ok(/Orphan Files \(1\)/.test(outlet().textContent));
@@ -186,6 +197,7 @@ function findButtonByText(win, text) {
   await check("declining the confirmation dialog leaves the orphan blob untouched", async () => {
     await win.PCC.blobStore.putBlob("orphan_blob_2", "data:application/pdf;base64,YWJj");
     win.PCC.router.render();
+    await flush();
     findButtonByText(win, "Scan Storage").click();
     await flush();
     assert.ok(/Orphan Files \(1\)/.test(outlet().textContent));

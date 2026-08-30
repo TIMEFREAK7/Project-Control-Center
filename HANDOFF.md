@@ -5511,3 +5511,120 @@ remains deferred from this phase. The master prompt's later phases (8-9) remain 
 
 Per the standing CLAUDE.md instruction, this phase is being merged into `main` after the full suite
 passes, `main` pushed, and the working branch restarted from the new `main`.
+
+---
+
+**POST-PHASE-5 ENGINEERING EVOLUTION — inspection + React Migration Pilot (Storage Management) —
+new session, 2026-08-30.** Aditya handed over a new, separate master prompt ("PCC — Post-Phase 5
+Engineering Evolution") setting a long-term architecture direction: React frontend, a formal
+service/domain layer, robust SQLite, scalable file storage, Python processing, OpenPyXL, MSP/P6
+maturity, a canonical schedule model, delay architecture, PDF processing, reporting, cross-platform
+hardening, and future-local-AI readiness (§76's own priority order) — explicitly NOT a rebuild, and
+explicitly requiring inspection-before-implementation (§79) before any code changes.
+
+**Inspection findings (the required first step, done before touching anything)**: cross-referencing
+the master prompt's own §76 priority list against the real repo found most priorities already done
+or substantially in place under this repo's existing "PCC Architecture Upgrade" Phase 0-7 numbering
+(read the README's own Gate/Phase history — it predates and largely satisfies this new prompt):
+canonical schedule model (Phase 1), MSP/P6 file interop (Phases 2-3), schedule versioning (Phase 4),
+SQLite (Phase 5 — real, tested backup/restore, but *deliberately* still not the live data path,
+`store.js`/localStorage remains that by design), the file/document storage engine (Phase 6 — bulk
+import, trash, storage analytics, orphan detection, content-addressable dedup), and advanced
+scheduling (Phase 7 — calendar-aware CPM, constraints, ALAP, resource leveling). Domain engines
+already followed the master prompt's own "React must not own core calculations" service-separation
+principle in spirit (`scheduleCpmEngine.js`, `costEvmEngine.js`, etc. are all pure, DOM-free) even
+without a formal service layer. **The one large, genuinely unstarted priority: React (§76 priority
+1) — zero React/TypeScript/Python anywhere in the repo.** Aditya chose to start there.
+
+**A real, explicit tension surfaced and resolved before writing any code**: CLAUDE.md's own
+standing architecture rule is "no framework, no npm deps for the app itself... one dependency-free
+file that opens via `file://` with zero install" — in direct tension with the new master prompt's
+"frontend → React" direction. Put to Aditya directly rather than silently picking a side. Resolved
+by separating *build-time tooling* from the *shipped artifact*: a new `react/` directory gets its
+own `package.json`/`node_modules`/esbuild build step (dev/packaging-time only, mirroring `tests/`'s
+own pre-existing `npm install` convention) whose compiled output —
+`src/js/vendor/react-bundle.js`, React + ReactDOM bundled directly in via esbuild, no CDN, no
+runtime npm dependency — gets inlined into `index.html` by `build.js` exactly like every other
+vendor library (pdf.js, xlsx, jszip, sql-wasm all already work this way). The shipped `index.html`
+(and the Electron/Capacitor builds made from it) still need zero runtime dependency and still open
+via `file://`/`content://` with nothing to install — only development/packaging now needs Node.
+Aditya explicitly confirmed a real JSX/esbuild build step (rather than a no-build-step
+`React.createElement`-only approach initially proposed) specifically because the real delivery
+targets are the Windows exe and Android apk, which already package a fully-built `index.html` — the
+"zero install" promise was always about the end user, never about development tooling.
+
+**Storage Management chosen as the pilot page**, not picked at random: self-contained, off the
+daily-use golden path (low blast radius if anything went wrong), already sits behind a clean,
+DOM-free domain engine (`storageAnalyticsEngine.js`), and exercises real React concerns worth
+proving once — async state (Scan Storage), a list with a per-item action (Delete Orphan File), a
+`window.confirm()` gate — without a large surface area. Every other page module is untouched.
+
+**Architecture built**:
+- `react/src/index.js` is the sole entry point — a side-effect module that attaches
+  `window.PCC.React`/`window.PCC.ReactDOM` and registers each migrated page's component onto
+  `window.PCC.reactPages.<name>`. Adding a future migrated page is two lines here.
+- `src/js/reactBridge.js` (new, vanilla, part of `JS_ORDER`) is the ONLY file that knows both
+  "React" and "the vanilla router" exist: `mount(Component, props, container)` creates a fresh
+  `ReactDOM.createRoot` each call (router.js already wipes the container via `outlet.innerHTML = ""`
+  before invoking a page's render function, so reusing a prior root would mean reconciling against
+  DOM nodes ripped out from under it); `unmount()` cleans up the previous root properly first, so a
+  page's real effect cleanup runs instead of being silently abandoned mid-navigation.
+- `router.js` gained exactly one addition: `reactBridge.unmount()` called once, right before its
+  pre-existing `outlet.innerHTML = ""` wipe. The route-registration contract every page module uses
+  (`window.PCC.pages.<name>`) is completely unchanged — all 29 other pages needed zero changes.
+- The old `storageManagement.js` (previously ~300 lines of manual DOM construction, ported here from
+  Phase 6) is now a ~10-line stub: `window.PCC.pages.storageManagement = function(outlet) {
+  window.PCC.reactBridge.mount(window.PCC.reactPages.storageManagement, {}, outlet); };`
+- **Service boundary** (master prompt §9): `react/src/services/storageService.js` is a thin
+  wrapper over the existing `window.PCC.storageAnalyticsEngine`/`blobStore`/`store` globals — the
+  real calculation logic never moved out of `storageAnalyticsEngine.js`. This is the pattern every
+  future migrated page should follow: React component → thin service module → existing, unchanged
+  domain engine. Never reimplement engine logic inside a service module or component.
+- `build.js` now shells out to `npm run build` inside `react/` (via `execFileSync`) as the first
+  step of `build()`, before reading `src/` into the `JS_ORDER` bundle — so `node build.js` stays
+  the one command that regenerates `index.html` from current source, exactly as before. Fails with
+  a clear message (not a cryptic `MODULE_NOT_FOUND`) if `react/node_modules` is missing.
+
+**Two real bugs found and fixed, both worth remembering for any future work in this area:**
+
+1. **`js/vendor/jszip.min.js` leaks a global `setImmediate` polyfill onto `window`.** React's
+   `scheduler` package locks onto whichever scheduling primitive (`MessageChannel`/`setImmediate`/
+   `setTimeout`) is present the moment it first evaluates. With jszip loaded before React in the
+   original `JS_ORDER`, scheduler picked up jszip's polyfill — and every `createRoot().render()`
+   afterward silently never committed: no thrown error, no console output, no unhandled rejection,
+   just a permanently blank container. Root-caused by bisecting the vendor scripts one at a time
+   (confirmed jszip specifically, ruled out xlsx/mammoth/pdf.js/pdf.worker/sql-wasm), then
+   independently reproducing the WORKING case in real Chromium via Playwright (zero collision there
+   — MessageChannel is natively present) before concluding this was a genuine cross-library
+   bundling bug and not a jsdom limitation to shim around. Fixed by moving
+   `js/vendor/react-bundle.js` to load FIRST in `JS_ORDER`, ahead of every other vendor script —
+   confirmed the fix directly (bisection test before/after reorder). **If `JS_ORDER` is ever
+   reshuffled, react-bundle.js must stay ahead of jszip.min.js specifically** (documented in
+   CLAUDE.md's own Architecture section, not just here).
+2. **React 18's `createRoot().render()` commits its *initial* mount asynchronously** — unlike every
+   vanilla page's synchronous raw-DOM writes, and unlike legacy `ReactDOM.render`. Verified this is
+   real behavior (not a jsdom artifact) via the real-Chromium Playwright test, which also needed a
+   `waitForTimeout` after navigation rather than reading content synchronously. Fixed
+   `tests/test_storage_management_e2e.js` by adding `await flush()` after every fresh
+   `router.render()`/`router.go()` call on this route before reading `outlet().textContent` or
+   locating a button — the same category of environment-timing accommodation this suite already
+   makes for IndexedDB/FileReader/CompressionStream gaps, just for a genuinely different reason
+   (real async React behavior, not a jsdom gap). No assertions changed in substance — same text,
+   same button labels, same behavior — only await points added around 7 of the file's 27 checks.
+
+**Tests**: `test_storage_management_e2e.js`'s pre-existing 27 checks all pass against the migrated
+page. New real-Chromium Playwright smoke test: heading render, Scan Storage click → orphan/missing
+findings appear, navigate away to Dashboard and back to confirm mount/unmount work cleanly — zero
+page errors. Full suite: **109 files, 2626 checks, 0 failures** (schema version unchanged at v63 —
+this pilot touched no data-layer code at all, deliberately).
+
+**Deliberately not built this round** (matches the master prompt's own §5 "don't over-implement"):
+no second migrated page yet — one pilot, proving the pattern, not a full-app rewrite (§7); no
+reusable component library beyond what this one page needed (§10's DataTable/FilterBar/etc. stay
+deferred until a second page's real needs justify them); no TypeScript yet (§11 — same "don't add
+it merely to rename files" discipline); Python, OpenPyXL, and PDF processing (§27-31, §48) remain
+entirely untouched, exactly as scoped. SQLite-as-live-store was raised as an explicit alternative
+first priority and Aditya chose React instead — still an open, deliberate "not yet," not forgotten.
+
+Per the standing CLAUDE.md instruction, this pilot is being merged into `main` after the full suite
+passes, `main` pushed, and the working branch restarted from the new `main`.

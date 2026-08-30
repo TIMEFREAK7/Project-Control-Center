@@ -29,6 +29,13 @@
       window.PCC.layout.setActiveNav(name);
     }
 
+    // React migration (see reactBridge.js): unmount any active React root BEFORE the
+    // raw DOM wipe below, so a page's real effect cleanup runs instead of its root being
+    // silently abandoned mid-navigation. A no-op whenever the outgoing page was vanilla.
+    if (window.PCC.reactBridge) {
+      window.PCC.reactBridge.unmount();
+    }
+
     outlet.innerHTML = "";
     renderFn(outlet);
   }

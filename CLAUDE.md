@@ -11,10 +11,54 @@ it documents *why* things are shaped the way they are, not just what exists.
   Never hand-edit `index.html` — edit `src/`, then rebuild.
 - **Build:** `node build.js` bundles everything in `src/` (in the exact order defined by
   `JS_ORDER` in `build.js`) into the single self-contained `index.html`. Run this after every
-  change to `src/`. New files must be added to `JS_ORDER` or they silently won't ship.
-- **No framework, no npm deps for the app itself.** Vanilla JS, hash-based routing
-  (`src/js/router.js`), plain DOM manipulation per page module. This is deliberate — the whole
-  point is one dependency-free file that opens via `file://` with zero install.
+  change to `src/`. New files must be added to `JS_ORDER` or they silently won't ship. This now
+  also runs the `react/` build first (see below) — `node build.js` stays the one command.
+- **Vanilla JS by default, hash-based routing** (`src/js/router.js`), plain DOM manipulation per
+  page module — still true for every page not yet migrated to React. This was originally an
+  absolute "no framework, no npm deps" rule; the Post-Phase-5 Engineering Evolution's React
+  migration (started with the Storage Management page) revises it specifically for the
+  **frontend UI layer**, while preserving the actual goal that rule protected: a single
+  dependency-free `index.html` that opens via `file://`/`content://` with zero install for the end
+  user. See "React migration" below for how that's kept true.
+- **React migration (progressive, one page at a time — Post-Phase-5 Engineering Evolution).**
+  React source lives in `react/src/` (its own `package.json`, `node_modules` — dev/build-time
+  only, `cd react && npm install` once). `react/src/index.js` bundles React + ReactDOM directly in
+  via esbuild (`react/package.json`'s `build` script) into `js/vendor/react-bundle.js`, an IIFE
+  with no CDN and no runtime npm dependency — `node build.js` runs this automatically before
+  bundling `src/` (fails with a clear message if `react/node_modules` is missing). The output
+  gets inlined into `index.html` exactly like every other vendor library, so the shipped
+  Electron/Capacitor build (or a raw `index.html` opened via `file://`) never needs Node, npm, or
+  the `react/` directory present — only development/packaging does.
+  - **Migrating a page**: write the component in `react/src/pages/*.jsx` (React.createElement via
+    JSX + esbuild's classic transform — no separate JSX runtime config needed, just
+    `import React from "react"` in each file that uses JSX), a thin service module in
+    `react/src/services/*.js` that wraps the existing `window.PCC.*` engine/store globals (§9 of
+    the master prompt: **React must not own core calculations** — the service calls the real,
+    unchanged domain engine, never reimplements it), then register the component in
+    `react/src/index.js` onto `window.PCC.reactPages.<routeName>`. The page's existing
+    `src/js/pages/<name>.js` module becomes a ~10-line stub:
+    `window.PCC.pages.<name> = function(outlet) { window.PCC.reactBridge.mount(window.PCC.reactPages.<name>, {}, outlet); };`
+    — the router's route-registration contract (`window.PCC.pages.<name>`) is completely
+    unchanged, so every unmigrated page needs zero changes.
+  - **`src/js/reactBridge.js`** is the only file that knows both "React" and "the router" exist:
+    `mount(Component, props, container)` / `unmount()`. `router.js` calls `reactBridge.unmount()`
+    once, right before its existing `outlet.innerHTML = ""` wipe, so a page's React effects get
+    real cleanup instead of being silently abandoned on navigation — that's the only change made
+    to `router.js` itself.
+  - **`js/vendor/react-bundle.js` MUST load before `js/vendor/jszip.min.js` in `JS_ORDER`** — a
+    real, confirmed bug (not hypothetical): jszip.min.js leaks a global `setImmediate` polyfill
+    onto `window`, and React's scheduler package locks onto whatever scheduling primitive exists
+    the moment it first evaluates. If jszip loads first, scheduler picks up its broken
+    `setImmediate` and every future `createRoot().render()` silently never commits — no thrown
+    error, just a permanently blank page. Loading React first avoids this. Reproduced and fixed
+    during the Storage Management pilot; if `JS_ORDER` is ever reordered, keep this constraint.
+  - **Testing a React page in jsdom**: React 18's `createRoot().render()` commits its *initial*
+    mount asynchronously (unlike every vanilla page's synchronous raw-DOM writes) — real behavior,
+    confirmed in real Chromium too, not a jsdom quirk. Any e2e check that reads DOM content right
+    after a fresh `router.render()`/`router.go()` call on a React-migrated route needs an
+    `await flush()` first (see `tests/test_storage_management_e2e.js` for the pattern) — the same
+    kind of environment-timing accommodation this project's tests already make for
+    IndexedDB/FileReader/CompressionStream.
 - **Data layer:** `src/js/store.js` — single JS object, autosaved to `localStorage`, with a
   `schema_version` + `migrate()` chain so old exported JSON files upgrade cleanly. Bumping the
   schema is a real decision (new fields need defaults + a migration step), not a rename.
@@ -41,7 +85,8 @@ it documents *why* things are shaped the way they are, not just what exists.
 ## Commands
 
 ```
-node build.js          # rebuild index.html from src/ — run after every src/ change
+cd react && npm install  # first time only
+node build.js          # rebuild index.html from src/ (also runs the react/ build) — run after every src/ or react/src change
 cd tests && npm install  # first time only
 cd tests && npm test    # run the full jsdom/fake-indexeddb suite (must pass before shipping)
 node --check src/js/whatever.js   # quick syntax check on a single file
