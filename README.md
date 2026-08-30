@@ -5849,6 +5849,82 @@ extends the project finish. A conflict that can't be resolved within existing fl
 Calendar Management UI, ALAP Enforcement, and Resource-Constrained Leveling are all done. No items
 remain deferred from this phase. The master prompt's later phases (8-9) remain entirely unstarted.
 
+## Post-Phase-5 Engineering Evolution — React Migration Pilot: Storage Management, 2026-08-30
+
+A new, separate master prompt handed over 2026-08-30 ("PCC — Post-Phase 5 Engineering Evolution")
+sets a long-term direction for the app: React frontend, a formal service/domain layer, Python
+processing, MSP/P6/Excel maturity, and more — evolving PCC's architecture without rebuilding it.
+Section 79 of that prompt requires inspecting the real codebase and producing a gap analysis
+before any implementation; that inspection found most of the prompt's priorities already done or
+substantially in place under this repo's own "PCC Architecture Upgrade" phase numbering (SQLite,
+canonical schedule model, MSP/P6 interop, storage engine, advanced scheduling — see Phases 1-7
+above) — the one large, genuinely unstarted priority was React (priority 1 of the prompt's own
+§76 list). Aditya chose to start there.
+
+**The real tension, surfaced and resolved before writing code**: CLAUDE.md's own standing rule is
+"no framework, no npm deps for the app itself... one dependency-free file that opens via `file://`
+with zero install" — in direct tension with the master prompt's "frontend → React." Reconciled by
+distinguishing *build-time* tooling from the *shipped* artifact: `react/` gets its own
+`package.json`/`node_modules`/esbuild step (dev/packaging-time only, mirroring `tests/`'s own
+existing `npm install` convention), but its compiled output (`js/vendor/react-bundle.js`, React +
+ReactDOM bundled directly in, no CDN) gets inlined into `index.html` by `build.js` exactly like
+every other vendor library — the shipped `index.html`, and the Electron/Capacitor apps built from
+it, still need zero runtime dependency and still open via `file://`/`content://` with nothing to
+install. Aditya confirmed a real JSX/esbuild build step specifically because the actual delivery
+targets (Windows exe, Android apk) already package a fully-built `index.html` — the "zero install"
+promise was always about the end user, never about development tooling.
+
+**Storage Management chosen as the pilot page** — self-contained, off the daily-use golden path,
+already sits behind a clean, DOM-free domain engine (`storageAnalyticsEngine.js`), and exercises
+real React concerns (async state, a list with a per-item action, a `window.confirm()` gate)
+without a large surface area. Every other page stays exactly as it was.
+
+- **Architecture**: `react/src/index.js` registers each migrated page's component onto
+  `window.PCC.reactPages.<name>`. A small new vanilla file, `src/js/reactBridge.js`, is the only
+  place that knows both "React" and "the router" exist —
+  `mount(Component, props, container)`/`unmount()`. `router.js` gained exactly one addition:
+  calling `reactBridge.unmount()` right before its pre-existing `outlet.innerHTML = ""` wipe, so a
+  React page's effects get real cleanup on navigation instead of being silently abandoned — the
+  route-registration contract every page module uses (`window.PCC.pages.<name>`) is completely
+  unchanged, so all 29 other pages needed zero changes. The old `storageManagement.js` (previously
+  ~300 lines of manual DOM construction) is now a ~10-line stub handing off to `reactBridge.mount`.
+- **Service boundary** (master prompt §9: "React must not own core calculations"):
+  `react/src/services/storageService.js` is a thin wrapper over the existing
+  `window.PCC.storageAnalyticsEngine`/`blobStore`/`store` globals — the real calculation logic
+  never moved out of `storageAnalyticsEngine.js`, matching this codebase's existing "pure,
+  DOM-free engine" discipline (`scheduleCpmEngine.js`, `costEvmEngine.js`, etc. already followed
+  this pattern before React existed here at all).
+- **Real bug found and fixed, not hypothetical**: `js/vendor/jszip.min.js` leaks a global
+  `setImmediate` polyfill onto `window`. React's scheduler package locks onto whatever scheduling
+  primitive is present the moment it first evaluates — with jszip loaded first (its position in
+  the pre-existing `JS_ORDER`), scheduler picked up jszip's polyfill, and every
+  `createRoot().render()` afterward silently never committed: no thrown error, no console output,
+  just a permanently blank page. Bisected vendor-script-by-vendor-script to confirm jszip
+  specifically, then confirmed the fix: `js/vendor/react-bundle.js` now loads first in `JS_ORDER`,
+  before jszip, so scheduler makes its choice while `setImmediate` is still genuinely absent.
+  Confirmed independently in real Chromium (no such collision there) before concluding this was a
+  jsdom-only symptom of a real cross-library bundling bug, not a jsdom limitation to shim around.
+- **Real, confirmed (not jsdom-only) behavior change worth remembering for every future migrated
+  page**: React 18's `createRoot().render()` commits its *initial* mount asynchronously — unlike
+  every vanilla page's synchronous raw-DOM writes, and unlike legacy `ReactDOM.render`. Verified
+  in real Chromium via Playwright, not assumed. `tests/test_storage_management_e2e.js` updated
+  accordingly: any check reading DOM content immediately after a fresh `router.render()` on this
+  route now awaits a flush first, the same accommodation this suite already makes for
+  IndexedDB/FileReader/CompressionStream gaps in jsdom.
+- Tests: `test_storage_management_e2e.js`'s existing 27 checks all pass against the migrated page
+  unchanged in substance (7 gained a `flush()` for the reason above). A real-Chromium Playwright
+  smoke test confirmed the full click-through (heading, summary cards, Scan Storage, orphan/missing
+  findings, navigate-away-and-back to confirm mount/unmount) with zero page errors.
+- Full suite: **109 files, 2626 checks, 0 failures**.
+
+**Deliberately not built this round**: no other page migrated yet (one pilot, proving the pattern,
+per the master prompt's own §7 progressive-migration principle — not a full-app rewrite); no
+reusable component library beyond what this one page needed (§10's DataTable/FilterBar/etc. stay
+deferred until a second migrated page's real needs justify them, per §5's "don't over-implement");
+no TypeScript yet (§11 — same "don't add it merely to rename files" discipline, revisit once
+there's enough React surface for type contracts to earn their keep); Python, OpenPyXL, and PDF
+processing (§27-31, §48) remain entirely untouched, exactly as scoped.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
@@ -5947,6 +6023,20 @@ Calendar Management UI, ALAP Enforcement, and Resource-Constrained Leveling are 
 own sections above). No items remain deferred from this phase. The rest of the master prompt's later
 phases (8-9) remain unstarted — confirm scope/direction before beginning any of them, the same gate
 discipline every other roadmap on this page already follows.
+
+**A new, separate master prompt (Post-Phase-5 Engineering Evolution, 2026-08-30) set a longer-term
+architecture direction — React, a formal service layer, Python processing, MSP/P6/Excel maturity,
+and more.** Its own required first step (inspect before implementing) found most of its priorities
+already done under this repo's "PCC Architecture Upgrade" phases above; **React was the one large,
+genuinely unstarted priority, and its migration has now started** — one pilot page (Storage
+Management) migrated behind the existing router with zero changes to any other page's contract, a
+formal `react/` build step producing `js/vendor/react-bundle.js`, and a thin service-layer pattern
+(`react/src/services/*.js`) other migrated pages should follow. See its own section above for the
+full detail, including two real bugs found and fixed (a jszip/React scheduler collision via a
+leaked `setImmediate` polyfill, and React 18's asynchronous initial-mount commit needing a test
+accommodation). Python, OpenPyXL, PDF processing, and TypeScript all remain entirely untouched —
+next priorities per that prompt's own §76 order, not started without a fresh scoping conversation
+first, the same gate discipline every roadmap on this page already follows.
 
 **Tier 2 is complete, and the entire 14-gate Document Control sub-spec Aditya handed over is now
 built** (Gates 14-28) — no gates from that spec remain. A new, separate roadmap started with Gate

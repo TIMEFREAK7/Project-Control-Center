@@ -3,11 +3,40 @@
 // never runs this; it's how I (re)generate the single-file deliverable during development.
 const fs = require("fs");
 const path = require("path");
+const { execFileSync } = require("child_process");
 
 const SRC = path.join(__dirname, "src");
 const OUT_FILE = path.join(__dirname, "index.html");
+const REACT_DIR = path.join(__dirname, "react");
+
+// React migration (Post-Phase-5 Engineering Evolution): react/src/**/*.jsx is compiled by
+// esbuild into src/js/vendor/react-bundle.js (React + ReactDOM bundled directly in, IIFE,
+// no CDN, no runtime npm dependency) BEFORE the rest of this script reads src/ into the
+// JS_ORDER bundle below — so `node build.js` stays the one command that regenerates
+// index.html from current source, same as it always has, whether or not src/ itself
+// changed this time. Mirrors `cd tests && npm install` (first time only) from CLAUDE.md's
+// own Commands section: react/node_modules must exist once before this can run.
+function buildReactBundle() {
+  if (!fs.existsSync(path.join(REACT_DIR, "node_modules"))) {
+    throw new Error(
+      "react/node_modules is missing — run `cd react && npm install` once, then re-run `node build.js`."
+    );
+  }
+  execFileSync("npm", ["run", "build"], { cwd: REACT_DIR, stdio: "inherit" });
+}
 
 const JS_ORDER = [
+  // react-bundle.js loads FIRST among vendor scripts, deliberately: jszip.min.js (below)
+  // leaks a global `setImmediate` polyfill onto window, and React's scheduler package
+  // detects and locks onto whatever scheduling primitive (setImmediate/MessageChannel/
+  // setTimeout) is present the moment IT first evaluates — jszip's polyfill doesn't behave
+  // correctly for React's use, silently breaking every future createRoot().render() (no
+  // thrown error, the commit just never flushes). Loading React before jszip means
+  // scheduler makes its choice while setImmediate is still genuinely absent, so it falls
+  // back correctly. Confirmed in real Chromium (which has no such collision) — this is a
+  // real bug in how these two libraries interact when concatenated into one script, not
+  // hypothetical.
+  "js/vendor/react-bundle.js",
   "js/vendor/xlsx.core.min.js",
   "js/vendor/mammoth.browser.min.js",
   "js/vendor/pdf.min.js",
@@ -37,6 +66,7 @@ const JS_ORDER = [
   "js/projectContext.js",
   "js/notifications.js",
   "js/router.js",
+  "js/reactBridge.js",
   "js/layout.js",
   "js/keyboardShortcuts.js",
   "js/loadingIndicator.js",
@@ -131,6 +161,8 @@ function inlineSqlWasm(jsBundle) {
 }
 
 function build() {
+  buildReactBundle();
+
   const cssRaw = fs.readFileSync(path.join(SRC, "css", "styles.css"), "utf8");
   const cssInlined = inlineFonts(cssRaw);
 
