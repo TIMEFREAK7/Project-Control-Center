@@ -223,10 +223,11 @@ function todayPlusDays(days) {
     assert.ok(posRfi !== -1 && posNear !== -1 && posRfi < posNear);
   });
 
-  await check("switching to the 30-day window adds the day-20 meeting but still excludes the day-45 items", () => {
+  await check("switching to the 30-day window adds the day-20 meeting but still excludes the day-45 items", async () => {
     var btn = findButtonByText(dom, "30 Day");
     assert.ok(btn, "30 Day toggle button not found");
     btn.click();
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("next 30 days") !== -1);
     assert.ok(text.indexOf("Client Review (Day 20)") !== -1, "the day-20 meeting must appear once the window is 30 days");
@@ -236,10 +237,11 @@ function todayPlusDays(days) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("switching to the 60-day window adds both day-45 items", () => {
+  await check("switching to the 60-day window adds both day-45 items", async () => {
     var btn = findButtonByText(dom, "60 Day");
     assert.ok(btn, "60 Day toggle button not found");
     btn.click();
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("next 60 days") !== -1);
     assert.ok(text.indexOf("Far future commissioning") !== -1);

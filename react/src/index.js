@@ -20,6 +20,9 @@ import StorageManagementPage from "./pages/StorageManagement.jsx";
 import ComingSoonPage from "./pages/NotFound.jsx";
 import VendorPerformanceCentrePage from "./pages/VendorPerformanceCentre.jsx";
 import DocumentControlDashboardPage from "./pages/DocumentControlDashboard.jsx";
+import DocumentTypesPage from "./pages/DocumentTypes.jsx";
+import ActionCentrePage from "./pages/ActionCentre.jsx";
+import ProjectLookaheadPage from "./pages/ProjectLookahead.jsx";
 
 window.PCC = window.PCC || {};
 window.PCC.React = React;
@@ -35,3 +38,6 @@ window.PCC.reactPages.storageManagement = StorageManagementPage;
 window.PCC.reactPages.comingSoon = ComingSoonPage;
 window.PCC.reactPages.vendorPerformanceCentre = VendorPerformanceCentrePage;
 window.PCC.reactPages.documentControlDashboard = DocumentControlDashboardPage;
+window.PCC.reactPages.documentTypes = DocumentTypesPage;
+window.PCC.reactPages.actionCentre = ActionCentrePage;
+window.PCC.reactPages.projectLookahead = ProjectLookaheadPage;

@@ -52,8 +52,46 @@ it documents *why* things are shaped the way they are, not just what exists.
     `setImmediate` and every future `createRoot().render()` silently never commits — no thrown
     error, just a permanently blank page. Loading React first avoids this. Reproduced and fixed
     during the Storage Management pilot; if `JS_ORDER` is ever reordered, keep this constraint.
-  - **React 18's `createRoot().render()` is asynchronous by default; `reactBridge.js` forces it
-    synchronous.** Confirmed real behavior (not a jsdom quirk) that a React-migrated route's
+  - **A service function that returns `window.PCC.store.get()`'s result directly must return a
+    FRESH reference, or a React refresh-after-mutation is a silent no-op.** `store.get()` returns
+    the SAME mutable module-level object on every call (`store.js`: single object, mutated in
+    place, never replaced) — so a `useState(() => getX())` + `setX(getX())` "refresh" pattern
+    calls `setState` with a reference `Object.is`-equal to the current state, and React silently
+    bails on re-rendering. Real bug, hit and fixed during the Document Types migration: its
+    service's `getData()` returned `window.PCC.store.get()` directly, so deactivating a record
+    updated the store correctly but the list never re-filtered until an unrelated state change
+    (e.g. a checkbox toggle) forced a render for some other reason. Fixed by having the service
+    return `Object.assign({}, window.PCC.store.get())` — a fresh top-level wrapper each call, so
+    `Object.is` sees a genuine change; nested arrays/objects stay the same references (fine,
+    since a render always reads their current, already-mutated contents). Storage Management
+    avoided this by accident, not by design — its snapshot function already built a brand-new
+    `{data, records, summary}` wrapper object every call. **Any new service's "read the current
+    snapshot for a refresh" function needs this same fresh-wrapper treatment**, not just ones that
+    happen to compute a derived object already.
+  - **Testing a React-controlled form/checkbox from outside React needs the right simulation, not
+    a raw DOM property assignment** — real, confirmed-in-Chromium behavior, not a jsdom quirk:
+    - Text/select inputs: `el.value = x` alone does NOT make a controlled input's `onChange`
+      fire — React patches the native value-property setter to track "last known value," and a
+      raw assignment updates that tracker too, so React sees no real change on the next event.
+      Bypass React's patched setter via the native prototype descriptor first, then dispatch the
+      event: `Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,
+      "value").set.call(el, x); el.dispatchEvent(new Event("input", {bubbles:true}))` (use
+      `HTMLSelectElement.prototype` + a `"change"` event for a `<select>`). See
+      `tests/test_document_types_e2e.js`'s `setReactInputValue`/`setReactSelectValue` helpers.
+    - Checkboxes: don't set `.checked` manually at all, even with the descriptor-bypass trick —
+      it did NOT reliably reach a controlled checkbox's `onChange` in testing (confirmed by direct
+      comparison). Use `el.click()` instead — the same real interaction a user actually performs,
+      firing the browser's native toggle + event sequence React listens to.
+  - **A React page's `useState` resets to defaults on every remount — unlike the old vanilla
+    page's persistent module-level `uiState`.** `reactBridge.js`'s `mount()` creates a brand new
+    root (and therefore a brand new component instance) on every `router.render()` call for that
+    route, including navigating away and back. A test (or a real user) that expects a filter/search
+    term/checkbox to still be set after leaving and returning to a React-migrated page will find it
+    reset — this is a real, accepted UX behavior difference for a migrated page, not a bug to
+    "fix," and tests must not assume otherwise (re-set any needed UI state after a fresh
+    `router.go()` back to the page, don't assume it survived from an earlier check).
+  - **React 18's `createRoot().render()` is asynchronous by default; `reactBridge.js` forces
+    only the INITIAL one synchronous.** Confirmed real behavior (not a jsdom quirk) that a React-migrated route's
     content would otherwise NOT be in the DOM the instant `router.render()` returns, unlike every
     vanilla page's raw synchronous DOM writes — which would have meant hunting down and patching
     every existing test that reads a migrated page's DOM content right after navigating to it
@@ -65,6 +103,17 @@ it documents *why* things are shaped the way they are, not just what exists.
     a vanilla page. **No existing or future test needs to know or care that a given route is
     React-backed.** Confirmed against `tests/test_storage_management_e2e.js` with zero
     React-specific accommodations needed in the test itself.
+  - **This `flushSync` fix covers ONLY the very first render after navigation — a state update
+    from an event handler on an already-mounted page (a button click, a checkbox toggle, typing)
+    still commits asynchronously.** Real React 18 behavior, confirmed identically in real
+    Chromium (not a jsdom gap): unlike the initial mount, wrapping every component's every
+    `onClick`/`onChange` in `flushSync` would be impractical and fights React's own automatic
+    batching, so this is NOT "fixed at the source" the way the initial mount was. Any test
+    interaction with an already-mounted React page — clicking a button that opens a form, saving
+    it, toggling a checkbox, typing into a filter — needs `await flush()` afterward before reading
+    the resulting DOM, the same way this suite already awaits genuinely-async operations
+    (IndexedDB, promise chains). See `tests/test_document_types_e2e.js` for the pattern across a
+    full add/edit/deactivate/reactivate/delete flow.
 - **Data layer:** `src/js/store.js` — single JS object, autosaved to `localStorage`, with a
   `schema_version` + `migrate()` chain so old exported JSON files upgrade cleanly. Bumping the
   schema is a real decision (new fields need defaults + a migration step), not a rename.
