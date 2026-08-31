@@ -14,11 +14,24 @@
  * migrates ONE PAGE AT A TIME behind the existing router, not a full-app rewrite.
  */
 import React from "react";
-import ReactDOM from "react-dom/client";
+import ReactDOMClient from "react-dom/client";
+import { flushSync } from "react-dom";
 import StorageManagementPage from "./pages/StorageManagement.jsx";
+import ComingSoonPage from "./pages/NotFound.jsx";
+import VendorPerformanceCentrePage from "./pages/VendorPerformanceCentre.jsx";
+import DocumentControlDashboardPage from "./pages/DocumentControlDashboard.jsx";
 
 window.PCC = window.PCC || {};
 window.PCC.React = React;
-window.PCC.ReactDOM = ReactDOM;
+// flushSync lives in the main "react-dom" package, not "react-dom/client" — merged onto
+// the same window.PCC.ReactDOM object reactBridge.js already expects createRoot on.
+// reactBridge.js wraps every mount's initial root.render() in flushSync() specifically so
+// React's normally-asynchronous initial commit (see its own comment) behaves exactly like
+// every vanilla page's synchronous DOM write — no existing or future test needs to know or
+// care that a given route is React-backed.
+window.PCC.ReactDOM = Object.assign({}, ReactDOMClient, { flushSync: flushSync });
 window.PCC.reactPages = window.PCC.reactPages || {};
 window.PCC.reactPages.storageManagement = StorageManagementPage;
+window.PCC.reactPages.comingSoon = ComingSoonPage;
+window.PCC.reactPages.vendorPerformanceCentre = VendorPerformanceCentrePage;
+window.PCC.reactPages.documentControlDashboard = DocumentControlDashboardPage;

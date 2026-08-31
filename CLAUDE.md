@@ -52,13 +52,19 @@ it documents *why* things are shaped the way they are, not just what exists.
     `setImmediate` and every future `createRoot().render()` silently never commits — no thrown
     error, just a permanently blank page. Loading React first avoids this. Reproduced and fixed
     during the Storage Management pilot; if `JS_ORDER` is ever reordered, keep this constraint.
-  - **Testing a React page in jsdom**: React 18's `createRoot().render()` commits its *initial*
-    mount asynchronously (unlike every vanilla page's synchronous raw-DOM writes) — real behavior,
-    confirmed in real Chromium too, not a jsdom quirk. Any e2e check that reads DOM content right
-    after a fresh `router.render()`/`router.go()` call on a React-migrated route needs an
-    `await flush()` first (see `tests/test_storage_management_e2e.js` for the pattern) — the same
-    kind of environment-timing accommodation this project's tests already make for
-    IndexedDB/FileReader/CompressionStream.
+  - **React 18's `createRoot().render()` is asynchronous by default; `reactBridge.js` forces it
+    synchronous.** Confirmed real behavior (not a jsdom quirk) that a React-migrated route's
+    content would otherwise NOT be in the DOM the instant `router.render()` returns, unlike every
+    vanilla page's raw synchronous DOM writes — which would have meant hunting down and patching
+    every existing test that reads a migrated page's DOM content right after navigating to it
+    (there is no single dedicated test file per page; coverage for most pages is scattered across
+    many files' shared route-smoke arrays). Fixed once, at the source, instead:
+    `react/src/index.js` also exposes `react-dom`'s `flushSync` on `window.PCC.ReactDOM`, and
+    `reactBridge.js`'s `mount()` wraps every initial `root.render()` call in it — so a React page's
+    content is synchronously present the moment `mount()`/`router.render()` returns, exactly like
+    a vanilla page. **No existing or future test needs to know or care that a given route is
+    React-backed.** Confirmed against `tests/test_storage_management_e2e.js` with zero
+    React-specific accommodations needed in the test itself.
 - **Data layer:** `src/js/store.js` — single JS object, autosaved to `localStorage`, with a
   `schema_version` + `migrate()` chain so old exported JSON files upgrade cleanly. Bumping the
   schema is a real decision (new fields need defaults + a migration step), not a rename.
