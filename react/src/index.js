@@ -29,6 +29,9 @@ import LessonsLearnedPage from "./pages/LessonsLearned.jsx";
 import KnowledgeBasePage from "./pages/KnowledgeBase.jsx";
 import OrganizationsPage from "./pages/Organizations.jsx";
 import DelayRecoveryDashboardPage from "./pages/DelayRecoveryDashboard.jsx";
+import DecisionRegisterPage from "./pages/DecisionRegister.jsx";
+import DashboardPage from "./pages/Dashboard.jsx";
+import ProjectWorkspacePage from "./pages/ProjectWorkspace.jsx";
 
 window.PCC = window.PCC || {};
 window.PCC.React = React;
@@ -53,3 +56,6 @@ window.PCC.reactPages.lessonsLearned = LessonsLearnedPage;
 window.PCC.reactPages.knowledgeBase = KnowledgeBasePage;
 window.PCC.reactPages.organizations = OrganizationsPage;
 window.PCC.reactPages.delayRecoveryDashboard = DelayRecoveryDashboardPage;
+window.PCC.reactPages.decisionRegister = DecisionRegisterPage;
+window.PCC.reactPages.dashboard = DashboardPage;
+window.PCC.reactPages.projectWorkspace = ProjectWorkspacePage;

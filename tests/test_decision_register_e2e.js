@@ -97,19 +97,24 @@ function findButtonByText(dom, text) {
     assert.ok(projectId && scheduleId && activityId);
   });
 
-  await check("'+ Add Decision' opens a form requiring Title and Project, defaulting status to Pending", () => {
+  await check("'+ Add Decision' opens a form requiring Title and Project, defaulting status to Pending", async () => {
+    // decisionRegister is a React-migrated page — a click's state update commits
+    // asynchronously (see CLAUDE.md's React migration notes), so await flush() before
+    // reading the resulting DOM.
     findButtonByText(dom, "+ Add Decision").click();
+    await flush();
     var statusSelect = outlet().querySelector("#decfield-status");
     assert.ok(statusSelect, "status field not found");
     assert.strictEqual(statusSelect.value, "pending");
     var form = outlet().querySelector("form");
     form.dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
     assert.ok(outlet().textContent.indexOf("Title and Project are required.") !== -1);
     assert.strictEqual(win.PCC.store.get().decisions.length, 0, "nothing should be saved when validation fails");
   });
 
   var decisionId;
-  await check("filling in the form and linking the activity persists a new decision", () => {
+  await check("filling in the form and linking the activity persists a new decision", async () => {
     outlet().querySelector("#decfield-title").value = "Use precast foundations instead of cast-in-place";
     outlet().querySelector("#decfield-decided_by").value = "Project Director";
     outlet().querySelector("#decfield-decision_date").value = "2026-08-19";
@@ -120,6 +125,7 @@ function findButtonByText(dom, text) {
     activitySelect.value = activityId;
     var form = outlet().querySelector("form");
     form.dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.decisions.length, 1);
@@ -139,8 +145,9 @@ function findButtonByText(dom, text) {
     assert.ok(badges.indexOf("Decided") !== -1, "expected a Decided badge; got: " + badges.join(", "));
   });
 
-  await check("Details shows the linked activity and clicking its row navigates to the Schedule module", () => {
+  await check("Details shows the linked activity and clicking its row navigates to the Schedule module", async () => {
     findButtonByText(dom, "Details").click();
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("LINKED ACTIVITY") !== -1);
     assert.ok(text.indexOf("Foundation Design") !== -1);
@@ -150,22 +157,37 @@ function findButtonByText(dom, text) {
     var row = Array.from(outlet().querySelectorAll(".attention-item--clickable")).find((r) => r.textContent.indexOf("Foundation Design") !== -1);
     assert.ok(row, "clickable row for the linked activity not found");
     row.click();
+    await flush();
     assert.strictEqual(win.PCC.router.currentRouteName(), "schedule");
     assert.ok(outlet().textContent.indexOf("Foundation Design") !== -1, "must land with the linked activity's own Detail Panel open");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("status/project filters narrow the list correctly", () => {
+  // decisionRegister is a React-migrated page: a raw `.value =` assignment doesn't reach
+  // a controlled <select>'s onChange (React patches the native setter to track "last
+  // known value" — see CLAUDE.md's React migration notes), so bypass it via the native
+  // prototype descriptor before dispatching the change event.
+  function setReactSelectValue(select, value) {
+    Object.getOwnPropertyDescriptor(win.HTMLSelectElement.prototype, "value").set.call(select, value);
+    select.dispatchEvent(new win.Event("change", { bubbles: true }));
+  }
+
+  await check("status/project filters narrow the list correctly", async () => {
     win.PCC.router.go("decisionRegister");
     win.PCC.router.render();
+    // Flush here, BEFORE interacting — router.js's suppressNextHashRender is a single
+    // flag, so a hashchange-triggered render can still land asynchronously after this
+    // go()+render() pair and wipe a just-made state change (see CLAUDE.md's React
+    // migration notes on this race).
+    await flush();
 
     var statusFilter = outlet().querySelectorAll("select")[0];
-    statusFilter.value = "pending";
-    statusFilter.dispatchEvent(new win.Event("change", { bubbles: true }));
+    setReactSelectValue(statusFilter, "pending");
+    await flush();
     assert.ok(outlet().textContent.indexOf("No decisions match this search/filter.") !== -1);
 
-    statusFilter.value = "decided";
-    statusFilter.dispatchEvent(new win.Event("change", { bubbles: true }));
+    setReactSelectValue(statusFilter, "decided");
+    await flush();
     assert.ok(outlet().textContent.indexOf("Use precast foundations instead of cast-in-place") !== -1);
   });
 
@@ -179,11 +201,13 @@ function findButtonByText(dom, text) {
     assert.ok(meetingId);
   });
 
-  await check("the Meeting's '+ Add Decision' button opens a prefilled Decision form linked to that meeting", () => {
+  await check("the Meeting's '+ Add Decision' button opens a prefilled Decision form linked to that meeting", async () => {
     win.PCC.meetings.expandMeeting(meetingId);
     win.PCC.router.go("meetings");
     win.PCC.router.render();
+    await flush();
     findButtonByText(dom, "+ Add Decision").click();
+    await flush();
 
     assert.strictEqual(win.PCC.router.currentRouteName(), "decisionRegister");
     var text = outlet().textContent;
@@ -193,10 +217,11 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("saving that prefilled form persists source_meeting_id, and the Meeting's own Details shows it under DECISIONS RAISED", () => {
+  await check("saving that prefilled form persists source_meeting_id, and the Meeting's own Details shows it under DECISIONS RAISED", async () => {
     outlet().querySelector("#decfield-title").value = "Confirm long-lead equipment vendor";
     var form = outlet().querySelector("form");
     form.dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
 
     var data = win.PCC.store.get();
     var meetingDecision = data.decisions.find((d) => d.title === "Confirm long-lead equipment vendor");
@@ -207,15 +232,17 @@ function findButtonByText(dom, text) {
     win.PCC.meetings.expandMeeting(meetingId);
     win.PCC.router.go("meetings");
     win.PCC.router.render();
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("DECISIONS RAISED (1)") !== -1, "got: " + text.match(/DECISIONS RAISED \(\d+\)/));
     assert.ok(text.indexOf("Confirm long-lead equipment vendor") !== -1);
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("'Delete' removes a decision", () => {
+  await check("'Delete' removes a decision", async () => {
     win.PCC.router.go("decisionRegister");
     win.PCC.router.render();
+    await flush();
     var origConfirm = win.confirm;
     win.confirm = () => true;
     var deleteButtons = Array.from(outlet().querySelectorAll("button")).filter((b) => b.textContent.trim() === "Delete");

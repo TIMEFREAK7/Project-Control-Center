@@ -231,7 +231,7 @@ function addDaysIso(days) {
     win.PCC.router.render();
   });
 
-  await check("waiting_on_party (\"Waiting On\") is editable and round-trips on RFI/TQ, Change Order, and Decision forms", () => {
+  await check("waiting_on_party (\"Waiting On\") is editable and round-trips on RFI/TQ, Change Order, and Decision forms", async () => {
     win.PCC.router.go("rfis");
     win.PCC.router.render();
     var rfiEdit = Array.from(outlet().querySelectorAll("button")).find((b) => b.textContent.trim() === "Edit");
@@ -251,9 +251,15 @@ function addDaysIso(days) {
 
     win.PCC.router.go("decisionRegister");
     win.PCC.router.render();
+    // decisionRegister is a React-migrated page — flush before interacting (a
+    // hashchange-triggered render can still land asynchronously after this go()+
+    // render() pair) and again after the click (its state update commits
+    // asynchronously) — see CLAUDE.md's React migration notes.
+    await flush();
     var decEdit = Array.from(outlet().querySelectorAll("button")).find((b) => b.textContent.trim() === "Edit");
     assert.ok(decEdit, "no Edit button found on the seeded Decision");
     decEdit.click();
+    await flush();
     var decSelect = win.document.getElementById("decfield-waiting_on_party");
     assert.ok(decSelect, "Waiting On select not found on Decision form");
     assert.strictEqual(decSelect.value, "consultant", "must reflect the seeded value");
