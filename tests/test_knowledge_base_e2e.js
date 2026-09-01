@@ -47,6 +47,23 @@ function findButtonByText(dom, text) {
   const buttons = Array.from(dom.window.document.querySelectorAll("button"));
   return buttons.find((b) => b.textContent.trim() === text);
 }
+// The Knowledge Base page is React-controlled/uncontrolled-with-onChange. Setting
+// `el.value = x` directly does NOT make React's onChange fire for a controlled element
+// (the filter selects/search box here) — React patches the native value-property setter
+// to track "last known value," and a raw assignment updates that tracker too, so React
+// sees no real change when the event fires next. Bypass React's patched setter via the
+// native prototype descriptor first, then dispatch the event — see
+// tests/test_document_types_e2e.js for the same pattern.
+function setReactSelectValue(win, el, value) {
+  const nativeSetter = Object.getOwnPropertyDescriptor(win.HTMLSelectElement.prototype, "value").set;
+  nativeSetter.call(el, value);
+  el.dispatchEvent(new win.Event("change", { bubbles: true }));
+}
+function setReactInputValue(win, el, value) {
+  const nativeSetter = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, "value").set;
+  nativeSetter.call(el, value);
+  el.dispatchEvent(new win.Event("input", { bubbles: true }));
+}
 
 (async () => {
   const html = fs.readFileSync(INDEX_PATH, "utf8");
@@ -97,8 +114,9 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("'+ Add Article' opens a form requiring only Title, defaulting category to Other and project to General", () => {
+  await check("'+ Add Article' opens a form requiring only Title, defaulting category to Other and project to General", async () => {
     findButtonByText(dom, "+ Add Article").click();
+    await flush();
     var categorySelect = outlet().querySelector("#kbfield-category");
     var projSelect = outlet().querySelector("#kbfield-project_id");
     assert.ok(categorySelect && projSelect, "category/project fields not found");
@@ -106,18 +124,20 @@ function findButtonByText(dom, text) {
     assert.strictEqual(projSelect.value, "");
     var form = outlet().querySelector("form");
     form.dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
     assert.ok(outlet().textContent.indexOf("Title is required.") !== -1);
     assert.strictEqual(win.PCC.store.get().knowledge_base_articles.length, 0, "nothing should be saved when validation fails");
   });
 
   var articleId;
-  await check("filling in Title/Category/Tags/Body with no project and no file persists a portfolio-wide article", () => {
+  await check("filling in Title/Category/Tags/Body with no project and no file persists a portfolio-wide article", async () => {
     outlet().querySelector("#kbfield-title").value = "Rebar Inspection Checklist";
     outlet().querySelector("#kbfield-category").value = "checklist_template";
     outlet().querySelector("#kbfield-tags").value = "rebar, inspection, qa";
     outlet().querySelector("#kbfield-body").value = "Step-by-step checklist for pre-pour rebar inspection.";
     var form = outlet().querySelector("form");
     form.dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.knowledge_base_articles.length, 1);
@@ -148,14 +168,16 @@ function findButtonByText(dom, text) {
     assert.ok(projectId);
   });
 
-  await check("adding a second article tagged to that project persists project_id and shows the project name in the list", () => {
+  await check("adding a second article tagged to that project persists project_id and shows the project name in the list", async () => {
     findButtonByText(dom, "+ Add Article").click();
+    await flush();
     outlet().querySelector("#kbfield-title").value = "Riverside Tower Soil Report Interpretation";
     outlet().querySelector("#kbfield-category").value = "reference_material";
     var projSelect = outlet().querySelector("#kbfield-project_id");
     projSelect.value = projectId;
     var form = outlet().querySelector("form");
     form.dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.knowledge_base_articles.length, 2);
@@ -166,42 +188,43 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("category/project filters narrow the list correctly, including the synthetic 'General (no project)' filter", () => {
+  await check("category/project filters narrow the list correctly, including the synthetic 'General (no project)' filter", async () => {
     var selects = outlet().querySelectorAll("select");
     var categorySelect = selects[0];
     var projSelectFilter = selects[1];
 
-    categorySelect.value = "reference_material";
-    categorySelect.dispatchEvent(new win.Event("change", { bubbles: true }));
+    setReactSelectValue(win, categorySelect, "reference_material");
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("Riverside Tower Soil Report Interpretation") !== -1);
     assert.ok(text.indexOf("Rebar Inspection Checklist") === -1, "the checklist article must be filtered out");
-    categorySelect.value = "";
-    categorySelect.dispatchEvent(new win.Event("change", { bubbles: true }));
+    setReactSelectValue(win, categorySelect, "");
+    await flush();
 
-    projSelectFilter.value = "__general__";
-    projSelectFilter.dispatchEvent(new win.Event("change", { bubbles: true }));
+    setReactSelectValue(win, projSelectFilter, "__general__");
+    await flush();
     text = outlet().textContent;
     assert.ok(text.indexOf("Rebar Inspection Checklist") !== -1);
     assert.ok(text.indexOf("Riverside Tower Soil Report Interpretation") === -1, "the project-tagged article must be filtered out by 'General'");
-    projSelectFilter.value = "";
-    projSelectFilter.dispatchEvent(new win.Event("change", { bubbles: true }));
+    setReactSelectValue(win, projSelectFilter, "");
+    await flush();
   });
 
-  await check("the search box matches on tags", () => {
+  await check("the search box matches on tags", async () => {
     var searchInput = outlet().querySelector("input[type='text']");
-    searchInput.value = "qa";
-    searchInput.dispatchEvent(new win.Event("input", { bubbles: true }));
+    setReactInputValue(win, searchInput, "qa");
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("Rebar Inspection Checklist") !== -1);
     assert.ok(text.indexOf("Riverside Tower Soil Report Interpretation") === -1);
-    searchInput.value = "";
-    searchInput.dispatchEvent(new win.Event("input", { bubbles: true }));
+    setReactInputValue(win, searchInput, "");
+    await flush();
   });
 
-  await check("Details shows the article's body text", () => {
+  await check("Details shows the article's body text", async () => {
     var detailsButtons = Array.from(outlet().querySelectorAll("button")).filter((b) => b.textContent.trim() === "Details");
     detailsButtons[0].click();
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("BODY") !== -1);
   });
@@ -215,13 +238,19 @@ function findButtonByText(dom, text) {
       a.mime_type = "application/pdf";
     });
     win.PCC.router.render();
+    await flush();
 
     var text = outlet().textContent;
     assert.ok(text.indexOf("File Attached") !== -1, "expected a File Attached badge; got: " + text.slice(0, 300));
 
-    // Already expanded from the prior "Details shows the article's body text" check —
-    // uiState.expandedId persists across router.render() since it's module state, not
-    // reset by re-rendering. Clicking "Details" again here would TOGGLE it back closed.
+    // A React page's local state (including expandedId) resets on every remount —
+    // router.render() ALWAYS creates a fresh component instance for this route, even when
+    // already on it (reactBridge.js unmounts + remounts unconditionally) — unlike the old
+    // vanilla page's persistent module-level uiState. Re-open Details explicitly rather
+    // than assuming it survived the render() call above.
+    findButtonByText(dom, "Details").click();
+    await flush();
+    text = outlet().textContent;
     assert.ok(text.indexOf("ATTACHED FILE") !== -1, "got: " + text.slice(0, 400));
     assert.ok(text.indexOf("rebar-checklist.pdf") !== -1);
     // Redesign Gate 10: retrofitted onto .attention-list/.attention-item — the whole
@@ -233,13 +262,15 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("Edit persists a title change", () => {
+  await check("Edit persists a title change", async () => {
     var editButtons = Array.from(outlet().querySelectorAll("button")).filter((b) => b.textContent.trim() === "Edit");
     editButtons[0].click();
+    await flush();
     var titleInput = outlet().querySelector("#kbfield-title");
     titleInput.value = "Rebar Inspection Checklist (Rev 2)";
     var form = outlet().querySelector("form");
     form.dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
 
     var data = win.PCC.store.get();
     var updated = data.knowledge_base_articles.find((a) => a.id === articleId);

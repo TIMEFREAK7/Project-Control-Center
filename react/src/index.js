@@ -25,6 +25,10 @@ import ActionCentrePage from "./pages/ActionCentre.jsx";
 import ProjectLookaheadPage from "./pages/ProjectLookahead.jsx";
 import SettingsPage from "./pages/Settings.jsx";
 import MyWorkPage from "./pages/MyWork.jsx";
+import LessonsLearnedPage from "./pages/LessonsLearned.jsx";
+import KnowledgeBasePage from "./pages/KnowledgeBase.jsx";
+import OrganizationsPage from "./pages/Organizations.jsx";
+import DelayRecoveryDashboardPage from "./pages/DelayRecoveryDashboard.jsx";
 
 window.PCC = window.PCC || {};
 window.PCC.React = React;
@@ -45,3 +49,7 @@ window.PCC.reactPages.actionCentre = ActionCentrePage;
 window.PCC.reactPages.projectLookahead = ProjectLookaheadPage;
 window.PCC.reactPages.settings = SettingsPage;
 window.PCC.reactPages.myWork = MyWorkPage;
+window.PCC.reactPages.lessonsLearned = LessonsLearnedPage;
+window.PCC.reactPages.knowledgeBase = KnowledgeBasePage;
+window.PCC.reactPages.organizations = OrganizationsPage;
+window.PCC.reactPages.delayRecoveryDashboard = DelayRecoveryDashboardPage;

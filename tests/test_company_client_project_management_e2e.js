@@ -169,16 +169,26 @@ async function check(label, fn) {
   // -------------------------------------------------------------------------
   // Organizations page: browse the hierarchy, archive/unarchive, "+ New Project" handoff.
   // -------------------------------------------------------------------------
-  await check("Organizations page lists Companies with their Clients and Projects, and archiving a Company keeps everything intact but drops it from active pickers", () => {
+  await check("Organizations page lists Companies with their Clients and Projects, and archiving a Company keeps everything intact but drops it from active pickers", async () => {
     win.PCC.router.go("organizations");
     win.PCC.router.render();
+    // Flush here, BEFORE interacting — router.js's suppressNextHashRender is a single
+    // flag, so a hashchange-triggered render can still land asynchronously after this
+    // go()+render() pair; flushing now (rather than only after the click below) keeps
+    // that extra render from landing on top of our own state change and wiping it (see
+    // CLAUDE.md's React migration notes on this race).
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("ABC Engineering") !== -1);
     assert.ok(text.indexOf("FABS") !== -1);
 
     // Expand ABC Engineering to see its Tata client and the Ashoka project under it.
+    // Organizations is a React-migrated page — a click's state update commits
+    // asynchronously (see CLAUDE.md's React migration notes), so await flush() before
+    // reading the resulting DOM.
     var expandBtn = Array.from(outlet().querySelectorAll("button")).find((b) => b.textContent.indexOf("ABC Engineering") !== -1);
     expandBtn.click();
+    await flush();
     assert.ok(outlet().textContent.indexOf("Tata") !== -1, "Tata client should be visible once ABC Engineering is expanded");
     assert.ok(outlet().textContent.indexOf("Ashoka") !== -1, "Ashoka project should be visible under ABC Engineering / Tata");
 
@@ -192,33 +202,37 @@ async function check(label, fn) {
     var fabsArchiveBtn = Array.from(fabsPanel.children[0].querySelectorAll("button")).find((b) => b.textContent === "Archive");
     assert.ok(fabsArchiveBtn, "FABS's own Archive button not found in its card header");
     fabsArchiveBtn.click();
+    await flush();
 
     var fabs = win.PCC.store.get().companies.find((c) => c.name === "FABS");
     assert.strictEqual(fabs.archived, true);
     assert.ok(win.PCC.store.get().clients.some((c) => c.name === "PepsiCo"), "PepsiCo client record must still exist after its Company is archived");
     assert.strictEqual(outlet().textContent.indexOf("FABS"), -1, "an archived company must drop out of the default (non-archived) list view");
 
-    // "Show archived" brings it back into view, proving the data is still there.
+    // "Show archived" brings it back into view, proving the data is still there. Use
+    // .click(), not a raw .checked= assignment — a controlled checkbox's onChange isn't
+    // reliably reached by the latter (see CLAUDE.md's React migration notes).
     var showArchivedCheckbox = outlet().querySelector('input[type=checkbox]');
-    showArchivedCheckbox.checked = true;
-    showArchivedCheckbox.dispatchEvent(new win.Event("change"));
+    showArchivedCheckbox.click();
+    await flush();
     assert.ok(outlet().textContent.indexOf("FABS") !== -1, "Show archived must reveal the archived company again");
   });
 
-  await check("Organizations page's '+ New Project' hands off to Portfolio with Company/Client pre-selected (spec point 5B)", () => {
+  await check("Organizations page's '+ New Project' hands off to Portfolio with Company/Client pre-selected (spec point 5B)", async () => {
     win.PCC.router.go("organizations");
     win.PCC.router.render();
-    // The expand/collapse toggle's uiState persists across renders (module-level, like
-    // every other page's uiState in this app) — click it only if ABC Engineering isn't
-    // already expanded from an earlier check in this same run.
+    await flush();
+    // Organizations is a React-migrated page: unlike a vanilla page's persistent
+    // module-level uiState, its local useState (including the expand/collapse toggle)
+    // resets on every fresh mount (see CLAUDE.md's React migration notes) — so re-expand
+    // ABC Engineering here rather than assuming it survived from the earlier check.
+    var expandBtn = Array.from(outlet().querySelectorAll("button")).find((b) => b.textContent.indexOf("ABC Engineering") !== -1);
+    expandBtn.click();
+    await flush();
     var newProjectBtn = Array.from(outlet().querySelectorAll("button")).find((b) => b.textContent === "+ New Project");
-    if (!newProjectBtn) {
-      var expandBtn = Array.from(outlet().querySelectorAll("button")).find((b) => b.textContent.indexOf("ABC Engineering") !== -1);
-      expandBtn.click();
-      newProjectBtn = Array.from(outlet().querySelectorAll("button")).find((b) => b.textContent === "+ New Project");
-    }
     assert.ok(newProjectBtn, "'+ New Project' button not found under ABC Engineering / Tata");
     newProjectBtn.click();
+    await flush();
 
     assert.strictEqual(win.PCC.router.currentRouteName(), "portfolio", "must navigate to Portfolio");
     var heading = outlet().querySelector("h3");

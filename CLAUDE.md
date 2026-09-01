@@ -82,6 +82,30 @@ it documents *why* things are shaped the way they are, not just what exists.
       it did NOT reliably reach a controlled checkbox's `onChange` in testing (confirmed by direct
       comparison). Use `el.click()` instead — the same real interaction a user actually performs,
       firing the browser's native toggle + event sequence React listens to.
+  - **A one-shot "pending prop" channel for cross-page navigation (a stub-file module
+    variable read once via a `useState` lazy initializer, e.g. `createFromMeeting()` on
+    Lessons Learned) must be set INSIDE the initial state itself, never inside a
+    `useEffect`.** `flushSync` (above) only forces the very first `root.render()`
+    synchronous — an effect still runs in React's later, separate passive-effects phase,
+    even on first mount. Real bug hit and fixed on Lessons Learned: opening the prefilled
+    form via `useEffect(() => { if (initialPrefill) setEditingId("new") }, [])` left a real
+    caller (`meetings.js`'s "+ Add Lesson Learned" button) seeing the plain list for a tick
+    before the form appeared — fixed by initializing `editingId` directly:
+    `useState(() => (initialPrefill ? "new" : null))`.
+  - **`router.js`'s `suppressNextHashRender` is a single boolean, not a queue — two
+    `go()` calls fired back-to-back (no tick between them) can leave the second
+    navigation's hashchange event unsuppressed, triggering an extra, unwanted `render()`.**
+    For a React page reading a one-shot "pending prop" (see above), that extra render can
+    arrive AFTER the prop was already consumed and cleared by the first (correct) render,
+    silently discarding it. Real, reproducible edge case — confirmed by direct comparison,
+    fixed by isolating it — but not one a real user's own click-then-click can trigger (real
+    interaction always has wall-clock time between two clicks, letting the first
+    navigation's hashchange settle first); only back-to-back *programmatic* `go()` calls
+    with no await between them hit it, which in practice means test code, not `router.js`
+    itself. Fixed in the test (`tests/test_lessons_learned_e2e.js`: an `await flush()`
+    between the two navigations), not in the shared router — don't "fix" this in
+    `router.js` without a real user-facing repro; the master prompt's own regression
+    caution applies double to a file every page depends on.
   - **A React page's `useState` resets to defaults on every remount — unlike the old vanilla
     page's persistent module-level `uiState`.** `reactBridge.js`'s `mount()` creates a brand new
     root (and therefore a brand new component instance) on every `router.render()` call for that
