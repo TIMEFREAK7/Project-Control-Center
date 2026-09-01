@@ -46,6 +46,18 @@ function findFieldByLabel(dom, labelText) {
   const match = labels.find((l) => l.textContent.trim() === labelText);
   return match ? match.parentElement.querySelector("input, select, textarea") : null;
 }
+// The Settings page is React-controlled/uncontrolled-with-onChange. Setting `el.value = x`
+// directly does NOT make React's onChange fire — React patches the native value-property
+// setter (even for an uncontrolled input) to track "last known value," and a raw
+// assignment updates that tracker too, so React sees no real change when the event fires
+// next. Bypass React's patched setter via the native prototype descriptor first, then
+// dispatch the event — see tests/test_document_types_e2e.js for the same pattern.
+function setReactInputValue(win, el, value) {
+  const nativeSetter = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, "value").set;
+  nativeSetter.call(el, value);
+  el.dispatchEvent(new win.Event("input", { bubbles: true }));
+  el.dispatchEvent(new win.Event("change", { bubbles: true }));
+}
 
 (async () => {
   const html = fs.readFileSync(INDEX_PATH, "utf8");
@@ -197,8 +209,7 @@ function findFieldByLabel(dom, labelText) {
     assert.ok(patternInput, "Pattern field not found in Settings");
     assert.strictEqual(patternInput.value, "PROJECT-DISCIPLINE-DOCUMENTTYPE-NUMBER-REV");
 
-    patternInput.value = "DOCUMENTTYPE_NUMBER_REV";
-    patternInput.dispatchEvent(new win.Event("change"));
+    setReactInputValue(win, patternInput, "DOCUMENTTYPE_NUMBER_REV");
     assert.strictEqual(win.PCC.store.get().settings.document_nomenclature_pattern, "DOCUMENTTYPE_NUMBER_REV");
 
     var enabledCheckbox = win.document.querySelector('input[type="checkbox"]');

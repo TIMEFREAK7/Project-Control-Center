@@ -48,6 +48,19 @@ function findButtonByText(dom, text) {
   const buttons = Array.from(dom.window.document.querySelectorAll("button"));
   return buttons.find((b) => b.textContent.trim() === text);
 }
+
+// The Settings page is React-controlled/uncontrolled-with-onChange. Setting `el.value = x`
+// directly does NOT make React's onChange fire — React patches the native value-property
+// setter (even for an uncontrolled input) to track "last known value," and a raw
+// assignment updates that tracker too, so React sees no real change when the event fires
+// next. Bypass React's patched setter via the native prototype descriptor first, then
+// dispatch the event — see tests/test_document_types_e2e.js for the same pattern.
+function setReactInputValue(win, el, value) {
+  const nativeSetter = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, "value").set;
+  nativeSetter.call(el, value);
+  el.dispatchEvent(new win.Event("input", { bubbles: true }));
+  el.dispatchEvent(new win.Event("change", { bubbles: true }));
+}
 function todayPlusDays(days) {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() + days);
@@ -97,10 +110,8 @@ function todayPlusDays(days) {
     assert.ok(dueSoonInput, "due-soon window input not found");
     assert.ok(upcomingInput, "upcoming window input not found");
 
-    dueSoonInput.value = "5";
-    dueSoonInput.dispatchEvent(new win.Event("change", { bubbles: true }));
-    upcomingInput.value = "45";
-    upcomingInput.dispatchEvent(new win.Event("change", { bubbles: true }));
+    setReactInputValue(win, dueSoonInput, "5");
+    setReactInputValue(win, upcomingInput, "45");
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.settings.document_reminder_due_soon_days, 5);

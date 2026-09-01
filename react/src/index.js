@@ -23,6 +23,8 @@ import DocumentControlDashboardPage from "./pages/DocumentControlDashboard.jsx";
 import DocumentTypesPage from "./pages/DocumentTypes.jsx";
 import ActionCentrePage from "./pages/ActionCentre.jsx";
 import ProjectLookaheadPage from "./pages/ProjectLookahead.jsx";
+import SettingsPage from "./pages/Settings.jsx";
+import MyWorkPage from "./pages/MyWork.jsx";
 
 window.PCC = window.PCC || {};
 window.PCC.React = React;
@@ -41,3 +43,5 @@ window.PCC.reactPages.documentControlDashboard = DocumentControlDashboardPage;
 window.PCC.reactPages.documentTypes = DocumentTypesPage;
 window.PCC.reactPages.actionCentre = ActionCentrePage;
 window.PCC.reactPages.projectLookahead = ProjectLookaheadPage;
+window.PCC.reactPages.settings = SettingsPage;
+window.PCC.reactPages.myWork = MyWorkPage;
