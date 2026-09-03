@@ -35,6 +35,7 @@ import ProjectWorkspacePage from "./pages/ProjectWorkspace.jsx";
 import ReportsPage from "./pages/Reports.jsx";
 import RisksPage from "./pages/Risks.jsx";
 import CommitmentsPage from "./pages/Commitments.jsx";
+import ChangeOrdersPage from "./pages/ChangeOrders.jsx";
 
 window.PCC = window.PCC || {};
 window.PCC.React = React;
@@ -65,3 +66,4 @@ window.PCC.reactPages.projectWorkspace = ProjectWorkspacePage;
 window.PCC.reactPages.reports = ReportsPage;
 window.PCC.reactPages.risks = RisksPage;
 window.PCC.reactPages.commitments = CommitmentsPage;
+window.PCC.reactPages.changeOrders = ChangeOrdersPage;

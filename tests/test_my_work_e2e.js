@@ -243,9 +243,15 @@ function addDaysIso(days) {
 
     win.PCC.router.go("changeOrders");
     win.PCC.router.render();
+    // changeOrders.js is a React-migrated page — flush before interacting (a
+    // hashchange-triggered render can still land asynchronously after this go()+
+    // render() pair) and after the click (its state update commits asynchronously) —
+    // see CLAUDE.md's React migration notes.
+    await flush();
     var coEdit = Array.from(outlet().querySelectorAll("button")).find((b) => b.textContent.trim() === "Edit");
     assert.ok(coEdit, "no Edit button found on a seeded Change Order");
     coEdit.click();
+    await flush();
     var coSelect = win.document.getElementById("cofield-waiting_on_party");
     assert.ok(coSelect, "Waiting On select not found on Change Order form");
 

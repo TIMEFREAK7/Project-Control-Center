@@ -156,10 +156,15 @@ function findButtonByText(dom, text) {
     assert.ok(saved && saved.activity_id === activityId);
   });
 
-  await check("Change Orders: the Add form persists activity_id", () => {
+  await check("Change Orders: the Add form persists activity_id", async () => {
     win.PCC.router.go("changeOrders");
     win.PCC.router.render();
+    // changeOrders.js is a React-migrated page — a click's state update commits
+    // asynchronously (see CLAUDE.md's React migration notes), so await flush() before
+    // reading the resulting DOM.
+    await flush();
     findButtonByText(dom, "+ Add Change Order").click();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     outlet.querySelector("#cofield-title").value = "Extra Excavation";
     outlet.querySelector("#cofield-description").value = "Rock encountered";
@@ -167,6 +172,7 @@ function findButtonByText(dom, text) {
     assert.ok(activitySelect);
     activitySelect.value = activityId;
     outlet.querySelector("form").dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
     var saved = win.PCC.store.get().change_orders.find((co) => co.title === "Extra Excavation");
     assert.ok(saved && saved.activity_id === activityId);
   });
