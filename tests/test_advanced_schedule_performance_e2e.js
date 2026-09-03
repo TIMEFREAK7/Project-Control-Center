@@ -110,10 +110,10 @@ function findButtonByText(dom, text) {
     assert.ok(projectId && scheduleId && activityAId && activityBId);
   });
 
-  await check("Executive Center's SCHEDULE PERFORMANCE panel shows classic SPI (0.95) and Earned Schedule SPI(t) (0.90) diverging correctly", () => {
+  await check("Executive Center's SCHEDULE PERFORMANCE panel shows classic SPI (0.95) and Earned Schedule SPI(t) (0.90) diverging correctly", async () => {
     win.PCC.executiveCenter.viewProject(projectId);
     win.PCC.router.go("executiveCenter");
-    win.PCC.router.render();
+    await flush();
     // UI/UX Overhaul Gate 5: SCHEDULE PERFORMANCE (and the S-Curve chart below it) now
     // live on the Schedule sub-tab, not the default Summary landing view. Every check
     // after this one stays on the Schedule sub-tab too, since nothing here navigates
@@ -121,6 +121,7 @@ function findButtonByText(dom, text) {
     var scheduleTab = Array.from(outlet().querySelectorAll(".toolbar button")).find((b) => b.textContent.trim() === "Schedule");
     assert.ok(scheduleTab, "Schedule sub-tab not found");
     scheduleTab.click();
+    await flush();
 
     var kpiCards = Array.from(outlet().querySelectorAll(".kpi-card"));
     function kpiValue(label) {
@@ -148,10 +149,11 @@ function findButtonByText(dom, text) {
     assert.ok(text.indexOf("Capture a Schedule Performance snapshot (below) to start plotting actual progress here.") !== -1);
   });
 
-  await check("clicking 'Capture Performance Snapshot' persists the exact SPI/SPI(t)/score/schedule_progress_pct figures", () => {
+  await check("clicking 'Capture Performance Snapshot' persists the exact SPI/SPI(t)/score/schedule_progress_pct figures", async () => {
     var captureBtn = findButtonByText(dom, "Capture Performance Snapshot");
     assert.ok(captureBtn, "Capture Performance Snapshot button not found");
     captureBtn.click();
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.schedule_performance_snapshots.length, 1);
@@ -168,7 +170,7 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("the Progress S-Curve now plots the actual-progress overlay from the captured snapshot", () => {
+  await check("the Progress S-Curve now plots the actual-progress overlay from the captured snapshot", async () => {
     // The snapshot's captured_at defaults to "now" (today's real clock date), which
     // falls well outside the seeded activities' Jan 2026 planned-date range — and is
     // correctly excluded from the chart by design (see sCurveChart()'s own comment on
@@ -177,15 +179,22 @@ function findButtonByText(dom, text) {
     win.PCC.store.update(function (d) {
       d.schedule_performance_snapshots[0].captured_at = "2026-01-15T00:00:00.000Z";
     });
+    // executiveCenter.js is React-migrated: a plain render() remounts the page fresh,
+    // resetting the Schedule sub-tab's local selection back to the default (Summary) —
+    // re-select it before reading Schedule-only content (the S-Curve chart).
     win.PCC.router.render();
+    var scheduleTab = Array.from(outlet().querySelectorAll(".toolbar button")).find((b) => b.textContent.trim() === "Schedule");
+    scheduleTab.click();
+    await flush();
 
     var text = outlet().textContent;
     assert.ok(text.indexOf("vs. actual progress (green) from 1 captured Schedule Performance snapshot(s)") !== -1, "got: " + text.slice(text.indexOf("Planned cumulative"), text.indexOf("Planned cumulative") + 300));
   });
 
-  await check("capturing a second snapshot shows both in the history list, newest first", () => {
+  await check("capturing a second snapshot shows both in the history list, newest first", async () => {
     var captureBtn = findButtonByText(dom, "Capture Performance Snapshot");
     captureBtn.click();
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.schedule_performance_snapshots.length, 2);

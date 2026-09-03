@@ -130,14 +130,15 @@ function findButtonByText(dom, text) {
     assert.ok(project1Id && project2Id && scheduleId && activityAId && activityBId);
   });
 
-  await check("Executive Center Overview shows the DELAY & RECOVERY KPI panel with per-activity gap math, not a flat project-wide subtraction", () => {
+  await check("Executive Center Overview shows the DELAY & RECOVERY KPI panel with per-activity gap math, not a flat project-wide subtraction", async () => {
     win.PCC.executiveCenter.viewProject(project1Id, "overview");
     win.PCC.router.go("executiveCenter");
-    win.PCC.router.render();
+    await flush();
     // UI/UX Overhaul Gate 5: DELAY & RECOVERY now lives on the Schedule sub-tab.
     var scheduleTab = Array.from(outlet().querySelectorAll(".toolbar button")).find((b) => b.textContent.trim() === "Schedule");
     assert.ok(scheduleTab, "Schedule sub-tab not found");
     scheduleTab.click();
+    await flush();
 
     var kpiCards = Array.from(outlet().querySelectorAll(".kpi-card"));
     function kpiValue(label) {
@@ -161,11 +162,11 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("'View in Gantt' from the Delay & Recovery gap detail navigates to Activity A", () => {
+  await check("'View in Gantt' from the Delay & Recovery gap detail navigates to Activity A", async () => {
     var viewBtn = findButtonByText(dom, "View in Gantt");
     assert.ok(viewBtn, "View in Gantt button not found in the gap detail list");
     viewBtn.click();
-    win.PCC.router.render();
+    await flush();
     assert.strictEqual(win.PCC.router.currentRouteName(), "schedule");
     assert.ok(outlet().textContent.indexOf("Foundation") !== -1);
   });
@@ -196,14 +197,17 @@ function findButtonByText(dom, text) {
   });
 
   await check("the Management Pack's three new sections (Status Date & Baseline, Delay & Recovery, Schedule Performance) render with real figures", async () => {
-    win.PCC.router.go("executiveCenter");
     win.PCC.executiveCenter.viewProject(project1Id, "output");
-    win.PCC.router.render();
+    win.PCC.router.go("executiveCenter");
+    await flush();
 
     var modeSelect = Array.from(outlet().querySelectorAll("select")).find((s) => s.textContent.indexOf("Management Pack") !== -1);
     assert.ok(modeSelect, "output mode select not found");
-    modeSelect.value = "pack";
-    modeSelect.dispatchEvent(new win.Event("change"));
+    // executiveCenter.js is React-migrated: the output mode <select> is controlled, so
+    // bypass the native setter before dispatching change (see CLAUDE.md's React
+    // migration notes).
+    Object.getOwnPropertyDescriptor(win.HTMLSelectElement.prototype, "value").set.call(modeSelect, "pack");
+    modeSelect.dispatchEvent(new win.Event("change", { bubbles: true }));
     await flush();
 
     var text = outlet().textContent;

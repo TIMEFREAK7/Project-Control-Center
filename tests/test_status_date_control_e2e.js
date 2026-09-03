@@ -120,15 +120,16 @@ function diffDays(fromIso, toIso) {
     assert.ok(projectId && scheduleId && lateActivityId);
   });
 
-  await check("Executive Center's STATUS DATE section shows the correct Completed/In Progress/Not Started/Remaining Duration counts", () => {
+  await check("Executive Center's STATUS DATE section shows the correct Completed/In Progress/Not Started/Remaining Duration counts", async () => {
     win.PCC.executiveCenter.viewProject(projectId);
     win.PCC.router.go("executiveCenter");
-    win.PCC.router.render();
+    await flush();
     // UI/UX Overhaul Gate 5: STATUS DATE now lives on the Schedule sub-tab. Every check
     // after this one stays on the Schedule sub-tab too, since nothing here navigates away.
     var scheduleTab = Array.from(outlet().querySelectorAll(".toolbar button")).find((b) => b.textContent.trim() === "Schedule");
     assert.ok(scheduleTab, "Schedule sub-tab not found");
     scheduleTab.click();
+    await flush();
 
     var text = outlet().textContent;
     assert.ok(text.indexOf("STATUS DATE (2026-06-01)") !== -1, "section header must show the schedule's own data_date as the status date");
@@ -176,11 +177,18 @@ function diffDays(fromIso, toIso) {
     assert.ok(text.indexOf("No baseline captured for this schedule yet") !== -1);
   });
 
-  await check("capturing a baseline updates the panel's count and the View Baselines button lands on the Baselines tab", () => {
+  await check("capturing a baseline updates the panel's count and the View Baselines button lands on the Baselines tab", async () => {
     win.PCC.store.update(function (d) {
       d.schedule_baselines.push(win.PCC.store.newScheduleBaseline({ schedule_id: scheduleId, project_id: projectId, name: "Initial Baseline" }));
     });
+    // A plain render() remounts Executive Center fresh, resetting to the Summary
+    // sub-tab — re-navigate to the Schedule sub-tab to see the updated panel.
     win.PCC.router.render();
+    await flush();
+    var scheduleTab = Array.from(outlet().querySelectorAll(".toolbar button")).find((b) => b.textContent.trim() === "Schedule");
+    assert.ok(scheduleTab, "Schedule sub-tab not found");
+    scheduleTab.click();
+    await flush();
 
     var text = outlet().textContent;
     assert.ok(text.indexOf("1 captured baseline on the Baselines tab") !== -1);
@@ -188,7 +196,7 @@ function diffDays(fromIso, toIso) {
     var viewBtn = findButtonByText(dom, "View Baselines");
     assert.ok(viewBtn, "View Baselines button not found");
     viewBtn.click();
-    win.PCC.router.render();
+    await flush();
     assert.strictEqual(win.PCC.router.currentRouteName(), "schedule");
     var activeTabBtn = Array.from(outlet().querySelectorAll(".tab-btn--active")).find((b) => b.textContent.trim() === "Baselines");
     assert.ok(activeTabBtn, "Baselines tab should be the active tab after navigating");

@@ -175,7 +175,7 @@ function findButtonsByText(dom, text) {
     assert.strictEqual(win.PCC.store.get().schedule_baselines[0].is_official, true);
   });
 
-  await check("Executive Center's Schedule Variance now measures against the Official Baseline, not planned_finish", () => {
+  await check("Executive Center's Schedule Variance now measures against the Official Baseline, not planned_finish", async () => {
     // Extend duration (which genuinely shifts the CPM engine's own computed
     // project finish, unlike planned_finish alone — a not-started activity's
     // early_finish is ES+duration, not derived from planned_finish at all) to
@@ -194,11 +194,12 @@ function findButtonsByText(dom, text) {
 
     win.PCC.executiveCenter.viewProject(projectId);
     win.PCC.router.go("executiveCenter");
-    win.PCC.router.render();
+    await flush();
     // UI/UX Overhaul Gate 5: Schedule Variance now lives on the Schedule sub-tab.
     var scheduleTab = Array.from(outlet().querySelectorAll(".toolbar button")).find((b) => b.textContent.trim() === "Schedule");
     assert.ok(scheduleTab, "Schedule sub-tab not found");
     scheduleTab.click();
+    await flush();
 
     var kpiCards = Array.from(outlet().querySelectorAll(".kpi-card"));
     var varianceCard = kpiCards.find((c) => c.textContent.indexOf("Schedule Variance") !== -1);

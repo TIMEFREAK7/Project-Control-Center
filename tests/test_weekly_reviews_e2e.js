@@ -43,6 +43,18 @@ function findButtonByText(dom, text) {
   const buttons = Array.from(dom.window.document.querySelectorAll("button"));
   return buttons.find((b) => b.textContent.trim() === text);
 }
+// executiveCenter.js is React-migrated: the Weekly Review form's fields are
+// React-controlled, so a raw `.value =` assignment doesn't reliably reach onChange
+// (React patches the native setter to track "last known value" — see CLAUDE.md's React
+// migration notes). Bypass via the native prototype descriptor before dispatching.
+function setReactInputValue(win, el, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, "value").set.call(el, value);
+  el.dispatchEvent(new win.Event("input", { bubbles: true }));
+}
+function setReactTextareaValue(win, el, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLTextAreaElement.prototype, "value").set.call(el, value);
+  el.dispatchEvent(new win.Event("input", { bubbles: true }));
+}
 
 (async () => {
   const html = fs.readFileSync(INDEX_PATH, "utf8");
@@ -73,7 +85,7 @@ function findButtonByText(dom, text) {
   });
 
   var projectId, riskId;
-  await check("seed a project with one open high-severity risk", () => {
+  await check("seed a project with one open high-severity risk", async () => {
     win.PCC.store.update(function (d) {
       var p = win.PCC.store.newProject({ name: "Weekly Review Test Project" });
       d.projects.push(p);
@@ -84,33 +96,37 @@ function findButtonByText(dom, text) {
     });
     win.PCC.executiveCenter.viewProject(projectId);
     win.PCC.router.go("executiveCenter");
-    win.PCC.router.render();
+    await flush();
     assert.ok(outlet().textContent.indexOf("Weekly Review Test Project") !== -1);
   });
 
-  await check("the 'Weekly Reviews' tab shows the empty state before any review is captured", () => {
+  await check("the 'Weekly Reviews' tab shows the empty state before any review is captured", async () => {
     findButtonByText(dom, "Weekly Reviews").click();
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("No weekly reviews logged yet") !== -1);
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
   var firstReviewId;
-  await check("'+ New Weekly Review' captures a live snapshot showing the seeded high risk", () => {
+  await check("'+ New Weekly Review' captures a live snapshot showing the seeded high risk", async () => {
     findButtonByText(dom, "+ New Weekly Review").click();
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("Snapshot captured just now") !== -1);
     assert.ok(outlet().querySelector("#wrfield-review_date"), "review_date field not found");
   });
 
-  await check("filling in notes and saving persists the review with its frozen snapshot", () => {
-    outlet().querySelector("#wrfield-reviewed_by").value = "Project Director";
-    outlet().querySelector("#wrfield-attendees").value = "PM, Site Engineer";
-    outlet().querySelector("#wrfield-progress_notes").value = "Foundation works 40% complete.";
-    outlet().querySelector("#wrfield-issues_notes").value = "Soil conditions causing delay.";
-    outlet().querySelector("#wrfield-actions_notes").value = "Order precast alternative.";
+  await check("filling in notes and saving persists the review with its frozen snapshot", async () => {
+    setReactInputValue(win, outlet().querySelector("#wrfield-reviewed_by"), "Project Director");
+    setReactInputValue(win, outlet().querySelector("#wrfield-attendees"), "PM, Site Engineer");
+    setReactTextareaValue(win, outlet().querySelector("#wrfield-progress_notes"), "Foundation works 40% complete.");
+    setReactTextareaValue(win, outlet().querySelector("#wrfield-issues_notes"), "Soil conditions causing delay.");
+    setReactTextareaValue(win, outlet().querySelector("#wrfield-actions_notes"), "Order precast alternative.");
+    await flush();
     var form = outlet().querySelector("form");
     form.dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.weekly_reviews.length, 1);
@@ -123,34 +139,48 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("the review list shows the saved review with its RAG badge and notes on Details", () => {
+  await check("the review list shows the saved review with its RAG badge and notes on Details", async () => {
     var text = outlet().textContent;
     assert.ok(text.indexOf("Project Director") !== -1);
     findButtonByText(dom, "Details").click();
+    await flush();
     text = outlet().textContent;
     assert.ok(text.indexOf("Foundation works 40% complete.") !== -1);
     assert.ok(text.indexOf("Open Risks (high-severity)") !== -1);
     assert.ok(text.indexOf("1 (1)") !== -1, "expected '1 (1)' for open (high-severity) risks, got: " + text);
   });
 
-  await check("closing an existing risk afterward does NOT change the already-saved review's frozen snapshot", () => {
+  await check("closing an existing risk afterward does NOT change the already-saved review's frozen snapshot", async () => {
     win.PCC.store.update(function (d) {
       var r = d.risks.find(function (x) { return x.id === riskId; });
       r.status = "closed";
     });
-    win.PCC.router.render();
     var data = win.PCC.store.get();
     var review = data.weekly_reviews.find(function (r) { return r.id === firstReviewId; });
     assert.strictEqual(review.snapshot.open_risks, 1, "the frozen snapshot must still show 1 open risk even though the risk is now closed");
+
+    // A plain render() remounts the page fresh, defaulting back to the Overview tab's
+    // Summary sub-tab — re-navigate to Weekly Reviews and re-expand Details to confirm
+    // the rendered card still shows the frozen figure, not today's live 0.
+    win.PCC.executiveCenter.viewProject(projectId, "weeklyReviews");
+    win.PCC.router.render();
+    await flush();
+    findButtonByText(dom, "Details").click();
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("1 (1)") !== -1, "the rendered review must still show the frozen '1 (1)', not today's live 0");
   });
 
   var secondReviewId;
-  await check("a second review captures the new (now-zero) open-risk count, and shows a delta vs. the first review", () => {
+  await check("a second review captures the new (now-zero) open-risk count, and shows a delta vs. the first review", async () => {
+    win.PCC.executiveCenter.viewProject(projectId, "weeklyReviews");
+    win.PCC.router.render();
+    await flush();
     findButtonByText(dom, "+ New Weekly Review").click();
+    await flush();
     var form = outlet().querySelector("form");
     form.dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.weekly_reviews.length, 2);
@@ -162,19 +192,22 @@ function findButtonByText(dom, text) {
     // expand its Details to see the delta line against the older review's 1.
     var detailsButtons = Array.from(outlet().querySelectorAll("button")).filter((b) => b.textContent.trim() === "Details");
     detailsButtons[0].click();
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("Open Risks (high-severity)") !== -1);
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("'Edit Notes' changes only the notes fields, never the frozen snapshot", () => {
+  await check("'Edit Notes' changes only the notes fields, never the frozen snapshot", async () => {
     var editButtons = Array.from(outlet().querySelectorAll("button")).filter((b) => b.textContent.trim() === "Edit Notes");
-    editButtons.find(function () { return true; });
     // Edit the SECOND (first-listed, newest) review's notes.
     editButtons[0].click();
-    outlet().querySelector("#wrfield-progress_notes").value = "Updated progress note.";
+    await flush();
+    setReactTextareaValue(win, outlet().querySelector("#wrfield-progress_notes"), "Updated progress note.");
+    await flush();
     var form = outlet().querySelector("form");
     form.dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
 
     var data = win.PCC.store.get();
     var second = data.weekly_reviews.find(function (r) { return r.id === secondReviewId; });
@@ -183,11 +216,12 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("'Delete' removes a review", () => {
+  await check("'Delete' removes a review", async () => {
     var origConfirm = win.confirm;
     win.confirm = () => true;
     var deleteButtons = Array.from(outlet().querySelectorAll("button")).filter((b) => b.textContent.trim() === "Delete");
     deleteButtons[0].click();
+    await flush();
     win.confirm = origConfirm;
 
     var data = win.PCC.store.get();

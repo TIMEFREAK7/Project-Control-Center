@@ -162,14 +162,15 @@ function addDaysIso(days) {
     assert.strictEqual(atRiskCard.querySelector(".kpi-card__value").textContent, "1");
   });
 
-  await check("Executive Center's COMMITMENTS KPI section shows At Risk: 1", () => {
+  await check("Executive Center's COMMITMENTS KPI section shows At Risk: 1", async () => {
     win.PCC.executiveCenter.viewProject(projectId);
     win.PCC.router.go("executiveCenter");
-    win.PCC.router.render();
+    await flush();
     // UI/UX Overhaul Gate 5: COMMITMENTS now lives on the Cost & Commitments sub-tab.
     var costTab = Array.from(outlet().querySelectorAll(".toolbar button")).find((b) => b.textContent.trim() === "Cost & Commitments");
     assert.ok(costTab, "Cost & Commitments sub-tab not found");
     costTab.click();
+    await flush();
     var kpiCards = Array.from(outlet().querySelectorAll(".kpi-card"));
     var atRiskCard = kpiCards.find((c) => c.textContent.indexOf("At Risk") !== -1);
     assert.ok(atRiskCard, "At Risk KPI card not found in Executive Center");

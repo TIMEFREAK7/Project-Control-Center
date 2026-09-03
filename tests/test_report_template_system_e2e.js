@@ -244,7 +244,7 @@ function setReactSelectValue(win, select, value) {
   });
 
   var scheduleId, activityId;
-  await check("seed a schedule/activity and navigate to Executive Center's Output tab", () => {
+  await check("seed a schedule/activity and navigate to Executive Center's Output tab", async () => {
     win.PCC.store.update(function (d) {
       var sch = win.PCC.store.newSchedule({ project_id: projectId, name: "Template Test Schedule", status: "active" });
       d.schedules.push(sch);
@@ -255,7 +255,7 @@ function setReactSelectValue(win, select, value) {
     });
     win.PCC.executiveCenter.viewProject(projectId, "output");
     win.PCC.router.go("executiveCenter");
-    win.PCC.router.render();
+    await flush();
     assert.ok(scheduleId && activityId);
   });
 
@@ -264,10 +264,12 @@ function setReactSelectValue(win, select, value) {
     assert.ok(img, "expected the logo <img> on the Project Snapshot");
   });
 
-  await check("switching to Management Pack mode shows a Template picker alongside the section checkboxes, and the logo on the cover", () => {
+  await check("switching to Management Pack mode shows a Template picker alongside the section checkboxes, and the logo on the cover", async () => {
     var modeSelect = Array.from(outlet().querySelectorAll("select")).find((s) => s.textContent.indexOf("Management Pack") !== -1);
-    modeSelect.value = "pack";
+    assert.ok(modeSelect, "output-mode select not found");
+    Object.getOwnPropertyDescriptor(win.HTMLSelectElement.prototype, "value").set.call(modeSelect, "pack");
     modeSelect.dispatchEvent(new win.Event("change", { bubbles: true }));
+    await flush();
 
     var text = outlet().textContent;
     assert.ok(text.indexOf("Template:") !== -1);
@@ -277,12 +279,16 @@ function setReactSelectValue(win, select, value) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("saving the current Management Pack section state as a new template persists a management_pack-type record", () => {
+  await check("saving the current Management Pack section state as a new template persists a management_pack-type record", async () => {
     findButtonByText(dom, "Save as New…").click();
+    await flush();
     var nameInput = outlet().querySelector("input[type='text']");
-    nameInput.value = "Steering Committee Pack";
+    assert.ok(nameInput, "new-template name input not found");
+    Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, "value").set.call(nameInput, "Steering Committee Pack");
     nameInput.dispatchEvent(new win.Event("input", { bubbles: true }));
+    await flush();
     findButtonByText(dom, "Save").click();
+    await flush();
 
     var data = win.PCC.store.get();
     var t = data.report_templates.find((x) => x.name === "Steering Committee Pack");

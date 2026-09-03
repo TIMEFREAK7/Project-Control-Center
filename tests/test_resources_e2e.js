@@ -264,7 +264,6 @@ function setReactSelectValue(win, select, value) {
   await check("Executive Center shows a RESOURCES KPI section now that the module has real data", async () => {
     win.PCC.executiveCenter.viewProject(projectAId);
     win.PCC.router.go("executiveCenter");
-    win.PCC.router.render();
     await flush();
     // UI/UX Overhaul Gate 5: the old flat KPI stack is now grouped into sub-tabs; a
     // Resources sub-tab only appears (and needs clicking into) once data.resources has
@@ -273,6 +272,7 @@ function setReactSelectValue(win, select, value) {
     var resourcesTab = Array.from(win.document.querySelectorAll(".toolbar button")).find((b) => b.textContent.trim() === "Resources");
     assert.ok(resourcesTab, "Resources sub-tab not found");
     resourcesTab.click();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     assert.ok(outlet.textContent.indexOf("RESOURCES") !== -1);
     assert.ok(outlet.textContent.indexOf("Resources Assigned") !== -1);
@@ -291,11 +291,11 @@ function setReactSelectValue(win, select, value) {
     });
     win.PCC.executiveCenter.viewProject(win.PCC.store.get().projects.find((p) => p.name === "Empty Project").id);
     win.PCC.router.go("executiveCenter");
-    win.PCC.router.render();
     await flush();
     var resourcesTab = Array.from(win.document.querySelectorAll(".toolbar button")).find((b) => b.textContent.trim() === "Resources");
     assert.ok(resourcesTab, "Resources sub-tab still shows since resources exist in the app");
     resourcesTab.click();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     assert.ok(outlet.textContent.indexOf("RESOURCES") !== -1, "section still shows since resources exist in the app");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));

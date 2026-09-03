@@ -159,8 +159,9 @@ function clickSubTab(dom, label) {
     win.PCC.router.render();
   });
 
-  await check("Schedule sub-tab shows schedule KPI sections and its own charts, not Summary content", () => {
+  await check("Schedule sub-tab shows schedule KPI sections and its own charts, not Summary content", async () => {
     clickSubTab(dom, "Schedule");
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("PROGRESS") !== -1 && text.indexOf("Schedule Progress") !== -1);
     assert.ok(text.indexOf("SCHEDULE PERFORMANCE") !== -1);
@@ -169,8 +170,9 @@ function clickSubTab(dom, label) {
     assert.ok(text.indexOf("Project Health Score") === -1, "Summary-only content must not leak onto Schedule");
   });
 
-  await check("Cost & Commitments sub-tab shows Cost/Commitments/EVM", () => {
+  await check("Cost & Commitments sub-tab shows Cost/Commitments/EVM", async () => {
     clickSubTab(dom, "Cost & Commitments");
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("COST") !== -1);
     assert.ok(text.indexOf("COMMITMENTS") !== -1);
@@ -178,8 +180,9 @@ function clickSubTab(dom, label) {
     assert.ok(text.indexOf("SPI") !== -1 && text.indexOf("CPI") !== -1);
   });
 
-  await check("Risk & Compliance sub-tab shows Risks/Issues/RFIs/Changes and their charts", () => {
+  await check("Risk & Compliance sub-tab shows Risks/Issues/RFIs/Changes and their charts", async () => {
     clickSubTab(dom, "Risk & Compliance");
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("Open Risks") !== -1);
     assert.ok(text.indexOf("Open RFIs") !== -1);
@@ -193,7 +196,7 @@ function clickSubTab(dom, label) {
     assert.strictEqual(subTabButtons(dom).find((b) => b.textContent.trim() === "Resources"), undefined);
   });
 
-  await check("Resources sub-tab appears once the module has real data, and clicking Summary returns to the landing view", () => {
+  await check("Resources sub-tab appears once the module has real data, and clicking Summary returns to the landing view", async () => {
     win.PCC.store.update(function (data) {
       var resource = win.PCC.store.newResource({ name: "Crane Operator", type: "labor" });
       data.resources.push(resource);
@@ -202,9 +205,11 @@ function clickSubTab(dom, label) {
     var resourcesTab = subTabButtons(dom).find((b) => b.textContent.trim() === "Resources");
     assert.ok(resourcesTab, "Resources sub-tab should appear now that a resource exists");
     resourcesTab.click();
+    await flush();
     assert.ok(outlet().textContent.indexOf("Resources Assigned") !== -1);
 
     clickSubTab(dom, "Summary");
+    await flush();
     assert.ok(outlet().textContent.indexOf("Project Health Score") !== -1, "Summary must be reachable again after visiting Resources");
   });
 
