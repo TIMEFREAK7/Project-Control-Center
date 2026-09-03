@@ -286,9 +286,11 @@ function addDaysIso(days) {
     // migration notes on this cross-check-block race).
     await flush();
     findButtonByText(dom, "Vendor List").click();
+    await flush();
     var vendorEdit = Array.from(outlet().querySelectorAll("button")).find((b) => b.textContent.trim() === "Edit");
     assert.ok(vendorEdit, "no Edit button found on the seeded vendor");
     vendorEdit.click();
+    await flush();
     var followUpInput = win.document.getElementById("vendorfield-next_follow_up_date");
     assert.ok(followUpInput, "Next Follow-up Date field not found on the vendor form");
     assert.strictEqual(followUpInput.value, addDaysIso(3), "must reflect the seeded value");

@@ -192,7 +192,6 @@ function kpiValue(dom, label) {
   await check("opening a vendor profile normally (e.g. from the Vendors list) still defaults to the Overview tab — existing callers unaffected", () => {
     win.PCC.vendors.openProfile(vendorGoodId);
     win.PCC.router.go("vendors");
-    win.PCC.router.render();
     var perfTabBtn = findButtonByText(dom, "Performance");
     var overviewTabBtn = findButtonByText(dom, "Overview");
     assert.ok(overviewTabBtn.className.indexOf("tab-btn--active") !== -1, "Overview tab must be active by default");

@@ -285,12 +285,10 @@ function findButtonByText(dom, text) {
       openedWith = opts;
     };
 
-    win.PCC.router.go("vendors");
-    win.PCC.router.render();
     if (win.PCC.vendors) win.PCC.vendors.openProfile(vendorId);
     win.PCC.router.go("vendors");
-    win.PCC.router.render();
     findButtonByText(dom, "Documents").click();
+    await flush();
     const viewBtn = findButtonByText(dom, "View / Download");
     assert.ok(viewBtn, "expected a View / Download button for the seeded vendor document");
     viewBtn.click();
