@@ -32,6 +32,7 @@ import DelayRecoveryDashboardPage from "./pages/DelayRecoveryDashboard.jsx";
 import DecisionRegisterPage from "./pages/DecisionRegister.jsx";
 import DashboardPage from "./pages/Dashboard.jsx";
 import ProjectWorkspacePage from "./pages/ProjectWorkspace.jsx";
+import ReportsPage from "./pages/Reports.jsx";
 
 window.PCC = window.PCC || {};
 window.PCC.React = React;
@@ -59,3 +60,4 @@ window.PCC.reactPages.delayRecoveryDashboard = DelayRecoveryDashboardPage;
 window.PCC.reactPages.decisionRegister = DecisionRegisterPage;
 window.PCC.reactPages.dashboard = DashboardPage;
 window.PCC.reactPages.projectWorkspace = ProjectWorkspacePage;
+window.PCC.reactPages.reports = ReportsPage;

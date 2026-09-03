@@ -49,6 +49,14 @@ function findSelectWithOption(dom, optionText) {
   const selects = Array.from(dom.window.document.querySelectorAll("select"));
   return selects.find((s) => Array.from(s.options).some((o) => o.textContent === optionText));
 }
+// reports.js is a React-migrated page: a raw `.value =` assignment doesn't reliably
+// reach a controlled <select>'s onChange (React patches the native setter to track
+// "last known value" — see CLAUDE.md's React migration notes), so bypass it via the
+// native prototype descriptor before dispatching the change event.
+function setReactSelectValue(win, select, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLSelectElement.prototype, "value").set.call(select, value);
+  select.dispatchEvent(new win.Event("change", { bubbles: true }));
+}
 
 (async () => {
   const html = fs.readFileSync(INDEX_PATH, "utf8");
@@ -112,14 +120,22 @@ function findSelectWithOption(dom, optionText) {
     assert.ok(projectId);
   });
 
-  await check("Reports page: the logo appears in the Project Status report header", () => {
+  await check("Reports page: the logo appears in the Project Status report header", async () => {
     win.PCC.router.go("reports");
     win.PCC.router.render();
+    // reports.js is a React-migrated page — flush here, BEFORE interacting, since a
+    // hashchange-triggered render can still land asynchronously after this go()+
+    // render() pair (router.js's suppressNextHashRender is a single flag — see
+    // CLAUDE.md's React migration notes on this race). The assembled report itself is
+    // also built by a non-initial effect (see Reports.jsx's own comment), which commits
+    // asynchronously, so flush again after this to let the logo blob's async load and
+    // the report doc both settle before reading the DOM.
+    await flush();
     var img = outlet().querySelector("img");
     assert.ok(img, "expected an <img> logo element in the report header");
   });
 
-  await check("unchecking the Risks section removes it from the assembled Project Status report", () => {
+  await check("unchecking the Risks section removes it from the assembled Project Status report", async () => {
     var text = outlet().textContent;
     assert.ok(text.indexOf("Site access delay") !== -1, "risk should show before unchecking");
 
@@ -128,8 +144,10 @@ function findSelectWithOption(dom, optionText) {
       return cb.parentElement.textContent.trim() === "Risk / Issue / Opportunity Register";
     });
     assert.ok(risksCheckbox, "Risk section checkbox not found");
-    risksCheckbox.checked = false;
-    risksCheckbox.dispatchEvent(new win.Event("change", { bubbles: true }));
+    // .click(), not a raw .checked= assignment — a controlled checkbox's onChange isn't
+    // reliably reached by the latter (see CLAUDE.md's React migration notes).
+    risksCheckbox.click();
+    await flush();
 
     // Check the report content itself, not the whole outlet — the checkbox panel's own
     // label always reads "Risk / Issue / Opportunity Register" regardless of checked
@@ -141,12 +159,14 @@ function findSelectWithOption(dom, optionText) {
   });
 
   var savedTemplateId;
-  await check("'Save as New…' persists a named template with the current (Risks-off) section selection", () => {
+  await check("'Save as New…' persists a named template with the current (Risks-off) section selection", async () => {
     findButtonByText(dom, "Save as New…").click();
+    await flush();
     var nameInput = outlet().querySelector("input[type='text']");
     nameInput.value = "Client Report";
     nameInput.dispatchEvent(new win.Event("input", { bubbles: true }));
     findButtonByText(dom, "Save").click();
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.report_templates.length, 1);
@@ -159,27 +179,27 @@ function findSelectWithOption(dom, optionText) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("switching to the Portfolio Summary report shows an empty template list (templates are per report-type)", () => {
+  await check("switching to the Portfolio Summary report shows an empty template list (templates are per report-type)", async () => {
     var typeSelect = findSelectWithOption(dom, "Project Status Report");
-    typeSelect.value = "portfolio";
-    typeSelect.dispatchEvent(new win.Event("change", { bubbles: true }));
+    setReactSelectValue(win, typeSelect, "portfolio");
+    await flush();
 
     var templateSelect = findSelectWithOption(dom, "— Custom selection —");
     var optionTexts = Array.from(templateSelect.options).map((o) => o.textContent);
     assert.deepStrictEqual(optionTexts, ["— Custom selection —"], "no portfolio-type templates exist yet");
   });
 
-  await check("switching back to Project Status Report shows the saved 'Client Report' template in the picker, and selecting it reapplies Risks-off", () => {
+  await check("switching back to Project Status Report shows the saved 'Client Report' template in the picker, and selecting it reapplies Risks-off", async () => {
     var typeSelect = findSelectWithOption(dom, "Portfolio Summary Report");
-    typeSelect.value = "project";
-    typeSelect.dispatchEvent(new win.Event("change", { bubbles: true }));
+    setReactSelectValue(win, typeSelect, "project");
+    await flush();
 
     var templateSelect = findSelectWithOption(dom, "— Custom selection —");
     var optionTexts = Array.from(templateSelect.options).map((o) => o.textContent);
     assert.ok(optionTexts.indexOf("Client Report") !== -1, "expected 'Client Report' in the template picker; got: " + optionTexts.join(", "));
 
-    templateSelect.value = savedTemplateId;
-    templateSelect.dispatchEvent(new win.Event("change", { bubbles: true }));
+    setReactSelectValue(win, templateSelect, savedTemplateId);
+    await flush();
 
     var checkboxes = Array.from(outlet().querySelectorAll("input[type='checkbox']"));
     var risksCheckbox = checkboxes.find(function (cb) {
@@ -189,13 +209,13 @@ function findSelectWithOption(dom, optionText) {
     assert.ok(findButtonByText(dom, "Save Changes"), "Save Changes button should appear once a template is selected");
   });
 
-  await check("editing a checkbox after loading a template keeps it selected — 'Save Changes' stays available and commits the edit", () => {
+  await check("editing a checkbox after loading a template keeps it selected — 'Save Changes' stays available and commits the edit", async () => {
     var checkboxes = Array.from(outlet().querySelectorAll("input[type='checkbox']"));
     var risksCheckbox = checkboxes.find(function (cb) {
       return cb.parentElement.textContent.trim() === "Risk / Issue / Opportunity Register";
     });
-    risksCheckbox.checked = true;
-    risksCheckbox.dispatchEvent(new win.Event("change", { bubbles: true }));
+    risksCheckbox.click();
+    await flush();
 
     var text = outlet().textContent;
     assert.ok(text.indexOf("Site access delay") !== -1, "risk should be back in the report");
@@ -203,17 +223,19 @@ function findSelectWithOption(dom, optionText) {
     assert.ok(saveChangesBtn, "Save Changes must stay available through the edit, not disappear — otherwise there'd be no way to actually update the template");
 
     saveChangesBtn.click();
+    await flush();
     var data = win.PCC.store.get();
     var t = data.report_templates.find((x) => x.id === savedTemplateId);
     assert.strictEqual(t.sections.risks, true, "Save Changes must commit the edited (risks:true) state, overwriting the original risks:false");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("'Delete Template' removes it from the store and the picker", () => {
+  await check("'Delete Template' removes it from the store and the picker", async () => {
     var origConfirm = win.confirm;
     win.confirm = () => true;
     findButtonByText(dom, "Delete Template").click();
     win.confirm = origConfirm;
+    await flush();
     var data = win.PCC.store.get();
     assert.strictEqual(data.report_templates.length, 0);
     var templateSelect = findSelectWithOption(dom, "— Custom selection —");
