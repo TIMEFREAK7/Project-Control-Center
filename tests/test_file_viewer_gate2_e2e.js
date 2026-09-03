@@ -321,10 +321,16 @@ function findButtonByText(dom, text) {
 
     win.PCC.router.go("dailylog");
     win.PCC.router.render();
+    // dailylog.js is a React-migrated page — flush before interacting (a hashchange-
+    // triggered render can still land asynchronously after this go()+render() pair)
+    // and after the click (its state update commits asynchronously); deliberately no
+    // extra win.PCC.router.render() call after the click — see CLAUDE.md's React
+    // migration notes on why a redundant render() here would remount and lose state.
+    await flush();
     const detailsBtn = findButtonByText(dom, "Details");
     assert.ok(detailsBtn, "expected a Details button on the seeded log's card");
     detailsBtn.click();
-    win.PCC.router.render();
+    await flush();
 
     const photoLink = win.document.querySelector('a[title="Open full size"]');
     assert.ok(photoLink, "expected an 'Open full size' link for the seeded photo");

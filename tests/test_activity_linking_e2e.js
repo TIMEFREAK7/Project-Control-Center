@@ -159,11 +159,14 @@ function findButtonByText(dom, text) {
     win.PCC.router.render();
     await flush();
     findButtonByText(dom, "+ Add Daily Log").click();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
+    outlet.querySelector("#dlfield-log_date").value = "2026-01-01";
     var activitySelect = outlet.querySelector("#dlfield-activity_id");
     assert.ok(activitySelect);
     activitySelect.value = activityId;
     outlet.querySelector("form").dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
     var logs = win.PCC.store.get().daily_logs;
     var saved = logs[logs.length - 1];
     assert.ok(saved && saved.activity_id === activityId);
