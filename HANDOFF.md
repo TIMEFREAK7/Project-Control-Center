@@ -5800,3 +5800,150 @@ fresh session picks this up:
    automatically next just because it's the one remaining vanilla page.
 3. Don't assume this section's own detail survives untouched forever — re-read `git log` and
    `git status` first, the same caution every version of this section has given.
+
+## POST-PHASE-5 ENGINEERING EVOLUTION — React Migration Batch G (schedule.js), COMPLETE (2026-09-03)
+
+**If you're picking this up fresh: this is now the most current section in this file — read this
+one first.** The prior section above ("Batches A-F, COMPLETE") deliberately held `schedule.js`
+back for its own gate; this section closes that gate. **Every vanilla-JS page in `src/js/pages/`
+is now migrated to React — there is no remaining unmigrated page.** The React migration phase from
+the original "Complete the react phase completely rather than only for one page" instruction is
+now unconditionally done, with zero exceptions left.
+
+**Scope**: `schedule.js` was 8,192 lines — bigger than Batches D+E+F combined, the single largest
+page in the app by a wide margin — covering 7 tabs (Activities, Gantt, WBS, Relationships,
+Calendars, Baselines, What-If), interactive SVG drag-editing on the Gantt chart, 3 file-import
+formats (Excel/.xlsx, MS Project XML, Primavera P6 XER), and 39 dependent test files (more than
+any other single page migrated so far). Scoped via `AskUserQuestion` at the start of this round:
+build all 6 internal stages plus the cutover in one continuous push ("One continuous effort
+(Recommended)"), matching the earlier Batch F precedent, reporting back only once the whole thing
+was done and fully verified — no further user confirmation was requested or needed partway
+through.
+
+**Files**: `react/src/services/scheduleService.js` (very large — wraps the real domain engines
+`scheduleCpmEngine.js`, `scheduleGanttLayout.js`, `scheduleBaselineEngine.js`,
+`scheduleImportService.js`, `delayImpactEngine.js` without reimplementing any of them, per §9's
+"React must not own core calculations"), `react/src/pages/Schedule.jsx` (the single biggest React
+component in the app — every tab's component tree, ref-based Gantt drag/resize editing, a
+virtualized Activities grid and Gantt chart sharing `scheduleGanttLayout.visibleRowRange()`), and
+`src/js/pages/schedule.js` cut from 8,192 lines down to a ~75-line stub registering the route and
+handling the public API's one-shot pending-prop hand-off (`viewActivity`/`viewBaselines`/
+`viewProject`) — the exact same signatures every other already-migrated page's service already
+calls, so nothing outside `schedule.js` itself needed touching.
+
+**New bug classes found this round, beyond everything Batches A-F's own section above already
+documents (still all relevant — read that section too)**:
+
+1. **A React service file loaded ahead of the domain engine it references crashes at module-eval
+   time, not render time.** `react-bundle.js` loads FIRST in `build.js`'s `JS_ORDER` (deliberately,
+   to dodge the jszip/`setImmediate` collision — see the pilot's own section) — which means it also
+   loads before `scheduleImportService.js`. A naive `var EXCEL_GRID_FIELDS =
+   window.PCC.scheduleImportService.CANONICAL_HEADERS;` at a service module's top level crashed the
+   whole app on boot, since that engine genuinely doesn't exist yet at that point in the script
+   evaluation order. Fixed by converting every such reference into a lazily-invoked function (e.g.
+   `getExcelGridFields()`) called only at render/interaction time, never at module top level — a
+   new rule for any future React service that reads a `window.PCC.<engine>.<CONSTANT>` value,
+   distinct from every previous batch's services (none of which happened to reference a
+   constant from an engine this late in the load order).
+2. **A conditional early return before a `useEffect` is a real, reproducible "Rendered more hooks
+   than during the previous render" crash — not just a lint-rule nicety.** `GanttChart` had an
+   early return (the "no dated activities" empty state) BEFORE its own virtualization
+   `useEffect`/`useRef`, so a schedule that started with zero dated activities (hit fewer hooks on
+   first render) and then got dates from a "Calculate Schedule" click (hitting the main branch,
+   with the effect, on the next render) threw a real React invariant violation. Fixed by hoisting
+   the effect (and the plain constants it needs) above the early return, so every render calls the
+   same hooks in the same order regardless of which branch runs. Caught by
+   `test_delay_gate_g_dashboard_lookahead_e2e.js`; decoded the real (non-minified) error via the
+   established "swap in a dev react-bundle.js, temporarily skip `build.js`'s `buildReactBundle()`
+   call, run the failing test, then restore both" technique documented in the section above.
+3. **A whole prior gate's UI layout can be silently dropped during a page's React port if nothing
+   specifically re-checks it against the vanilla original.** UI/UX Overhaul Gate 7's "Side-by-Side
+   Views" feature (the Gantt Activity Detail Panel sitting next to the chart in a
+   `.gantt-layout-row`/`.gantt-detail-pane` flex row, not stacked above it) was completely absent
+   from the initial React port — `ActivityDetailPanel` and `GanttChart` were just rendered as plain
+   siblings, full-width-stacked, exactly like a page that had never shipped Gate 7 at all. Caught
+   by `test_uiux_gate7_focus_resize_sidebyside_e2e.js` (a test file for a UI/UX gate, not a
+   Schedule-domain gate — worth remembering that ALL a page's historical UI/UX gates, not just its
+   domain-logic ones, need their own dedicated test coverage during a migration). Fixed by giving
+   `GanttChart` a new `detailPanel` prop (the rendered `<ActivityDetailPanel/>` element or `null`)
+   and composing the row internally — full-width above the chart in the "no dated activities"
+   empty-state branch (matching vanilla's own behavior there exactly), side-by-side in a
+   `.gantt-layout-row` in the normal branch. The CSS itself (`.gantt-layout-row`/
+   `.gantt-detail-pane` in `src/css/styles.css`) was untouched by the JS migration and didn't need
+   any changes — only the JSX composition was missing.
+4. **A counter reused for two different purposes drifts the moment one purpose's starting count
+   differs from the other's.** The Excel Editor's `rowIdCounter` (a React ref counting every grid
+   row — loaded AND newly-added — to build a unique `_rowId` key) was reused verbatim for the
+   `"NEW-" + N` external_id suggested on a freshly-added row via "+ Add Row". Vanilla's own
+   `excelEditorNextNewSeq` was a SEPARATE counter starting at 1 regardless of how many rows were
+   already loaded from the schedule, so the very first added row always suggested `NEW-1`; reusing
+   `rowIdCounter` instead gave `NEW-3` on a schedule that already had 2 loaded rows. Confirmed
+   against the real vanilla source via `git show HEAD~1:src/js/pages/schedule.js` before fixing —
+   verify the ACTUAL prior behavior via git history rather than guessing what "seems right" whenever
+   a test's exact expected value looks arbitrary; this is the second time this exact technique
+   caught a real drift, not just an test written wrong (see Batches A-F's own Management Pack
+   section entry above).
+5. **A cross-tab "pending prop" hand-off that sets only a type-hint, not an editing id, needs the
+   receiving tab's OWN initial state to treat "hint present" as "open the form" too.** "+ Add
+   Milestone" on the Gantt tab calls `onSwitchToActivities("milestone")`, which sets
+   `pendingActivityTypeHint` but never `pendingEditActivityId` — the Activities tab's
+   `editingActivityId` initial state was `initialEditingActivityId || null`, so with no editing id
+   ever set, the Add Activity form never actually opened, even though the type hint itself was
+   correctly threaded through once the form WAS manually opened some other way. Same underlying
+   class of bug CLAUDE.md's own React migration notes already document for
+   `RelationshipsTab`'s prefill (a one-shot pending value must be read inside the `useState` lazy
+   initializer itself, never only inside a `useEffect` or as a separate flag nobody checks) — fixed
+   the same way: `useState(() => initialEditingActivityId || (initialActivityTypeHint ? "new" :
+   null))`.
+6. **A file-input `<input type="file">`'s `onChange` needs a `bubbles:true` dispatched event, same
+   as every other React-controlled form control this project has already documented** (select/
+   checkbox/textarea in earlier sections) — the 3 import-flow test files
+   (`test_msp_xml_import_e2e.js`, `test_p6_xer_import_e2e.js`,
+   `test_schedule_import_column_mapping_e2e.js`) were dispatching `new win.Event("change")` with no
+   `bubbles` option at all, which never reached React's root-delegated listener. Not a new class of
+   bug, just the first time this exact control type (`<input type="file">`) hit it, since no
+   earlier migrated page had a file-upload flow.
+7. **A straight-quote vs curly-quote mismatch in porting a string literal is a real, if minor, text
+   regression** — the What-If tab's own explanatory copy used straight `"..."` quotes in the JSX
+   port where every other user-facing string across the same file (and the rest of the app) uses
+   curly “…” quotes; fixed to match, confirmed the surrounding file's own convention via `grep` for
+   the curly-quote character before assuming which was "correct."
+
+**Tests**: full suite — **2626 checks passing, 0 failures**, across every test file the suite
+chains (`cd tests && npm test`, exits 0) — same total check count as Batches A-F's own final
+number, since this round's fixes were entirely to already-existing Schedule-dependent test files
+(all 39 of the ones identified up front as depending on `schedule.js`), not new test files. Also
+verified in real Chromium via Playwright (not just jsdom) — seeded a project/schedule/activities,
+ran Calculate Schedule, dragged a Gantt bar (confirmed the exact expected 3-day date shift), opened
+the Activity Detail Panel and confirmed the `.gantt-layout-row` side-by-side layout, confirmed
+Document Readiness/Linked Records/Recovery Actions/Delay Records sections all render, opened the
+Import Schedule panel, ran Save Baseline + Compare to Current, opened the What-If tab, and
+confirmed Edit Excel stays correctly disabled for a schedule with no source file — zero console/page
+errors throughout.
+
+**Schema version unchanged** — like every batch before it, this was a pure frontend-framework swap
+with zero data-layer/schema changes.
+
+**Repo/branch state as of this write-up**: `main` and the working branch
+`claude/pcc-post-phase-5-evolution-hpq9n7` are both at the same commit (the working branch was
+reset to `main` immediately after the merge, per the standing "restart before the next gate/phase"
+instruction) — head commit is the merge of this round's Batch G work into `main`. **Verify this is
+still true by the time you read this** (`git log origin/main..HEAD` should be empty, `git status`
+should be clean) rather than trusting this paragraph blindly.
+
+**A zip handoff package was compiled and verified this round** — `index.html`, `README.md`,
+`manifest.json`, `icons/`, and empty `data/`/`files/` placeholders (their own `README.txt`
+included), explicitly excluding `src/`, `build.js`, `generate-icons.js`, `tests/`, `.claude/`,
+`CLAUDE.md`, and this file. Verified two ways before being sent: (1) SHA-256 of the zip's own
+extracted `index.html` matched the repo root's `index.html` byte-for-byte; (2) the extracted
+`index.html` was opened fresh via `file://` in real Chromium (Playwright) and confirmed to boot
+with zero console errors and correctly render the newly-migrated Schedule route.
+
+**Next steps — there is no committed-to next feature as of this write-up.** With the React
+migration phase now fully closed (schedule.js was the one deliberate holdout), there's no
+standing instruction pointing at a specific next target. When a fresh session picks this up:
+1. Ask Aditya directly what's next — TypeScript (§11), Python/OpenPyXL/PDF processing (§27-31,
+   §48), a reusable component library, or something else entirely. Don't assume any particular
+   one is "obviously next" just because it's on an old backlog list somewhere in this file.
+2. Don't assume this section's own detail survives untouched forever — re-read `git log` and
+   `git status` first, the same caution every version of this section has given.

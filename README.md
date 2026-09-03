@@ -6004,6 +6004,47 @@ Review capture, and Management Pack generation — with zero console errors. Mer
 TypeScript yet; Python/OpenPyXL/PDF processing untouched; no reusable component library beyond
 what each migrated page's own needs justified.
 
+## Post-Phase-5 Engineering Evolution — React Migration Batch G (schedule.js), 2026-09-03
+
+`schedule.js` — held back from the sweep above for its own dedicated gate — is now migrated too.
+**Every vanilla-JS page in `src/js/pages/` is React now; there is no remaining unmigrated page.**
+At ~8,192 lines (bigger than Batches D+E+F combined) across 7 tabs (Activities, Gantt, WBS,
+Relationships, Calendars, Baselines, What-If), interactive SVG drag-editing, 3 file-import formats
+(Excel/MSP XML/P6 XER), and 39 dependent test files, this was the single largest and riskiest page
+in the app — built in one continuous push (`AskUserQuestion`: "One continuous effort
+(Recommended)") across 6 internal stages plus a cutover sweep of every dependent test file, same
+component + service + thin-stub pattern as every prior batch, zero changes to the router contract.
+
+New bug classes beyond what the Batches A-F section above already documents: a React service
+module referencing a domain-engine constant at its own top level crashes on boot, since
+`react-bundle.js` loads before that engine in `build.js`'s `JS_ORDER` (fixed via lazy accessor
+functions, never a module-level constant); a conditional early return placed before a `useEffect`
+is a real "Rendered more hooks than during the previous render" crash, not just a lint nicety
+(`GanttChart`'s virtualization effect had to be hoisted above its own "no dated activities" early
+return); and — the most consequential one — UI/UX Overhaul Gate 7's "Side-by-Side Views" layout
+(the Activity Detail Panel sitting next to the Gantt chart, not stacked above it) was silently
+dropped entirely during the initial port, caught only because that gate had its own dedicated test
+file (`test_uiux_gate7_focus_resize_sidebyside_e2e.js`) — a reminder that a page's UI/UX-gate test
+coverage needs the same re-verification as its domain-logic coverage during a migration, not just
+the latter. See HANDOFF.md's own Batch G section for the full list (7 distinct bug classes) and
+every fix's detail.
+
+Full suite: **2626 checks passing, 0 failures** — same total as Batches A-F, since this round's
+work was entirely fixes to the 39 already-existing Schedule-dependent test files, not new ones.
+Verified in real Chromium via Playwright: Gantt drag-move (confirmed the exact expected date
+shift), the restored side-by-side detail panel, Document Readiness/Linked Records/Recovery
+Actions/Delay Records sections, Import Schedule, Save Baseline + Compare to Current, the What-If
+tab, and Edit Excel's disabled-state gating — zero console errors. Merged to `main` 2026-09-03. A
+zip handoff package (`index.html`, `README.md`, `manifest.json`, `icons/`, empty `data/`/`files/`
+placeholders) was compiled and verified byte-for-byte plus a fresh real-Chromium `file://` boot
+before being sent.
+
+**With this gate closed, the entire React migration phase from the original Post-Phase-5
+Engineering Evolution master prompt is done, with no remaining exceptions.** No committed-to next
+priority as of this write-up — TypeScript (§11), Python/OpenPyXL/PDF processing (§27-31, §48), and
+a reusable component library all remain open per that prompt's own §76 order, not started without
+a fresh scoping conversation first.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
@@ -6107,16 +6148,17 @@ discipline every other roadmap on this page already follows.
 architecture direction — React, a formal service layer, Python processing, MSP/P6/Excel maturity,
 and more.** Its own required first step (inspect before implementing) found most of its priorities
 already done under this repo's "PCC Architecture Upgrade" phases above; **React was the one large,
-genuinely unstarted priority, and its migration is now complete** — starting from one pilot page
-(Storage Management) behind the existing router with zero changes to any other page's contract,
-then progressively through Batches A-F until every vanilla-JS page except `schedule.js` (held back
-deliberately for its own later gate) was migrated. A formal `react/` build step produces
-`js/vendor/react-bundle.js`, and every page follows the same thin service-layer pattern
-(`react/src/services/*.js`). See the pilot section and the "React Migration Complete" section
-above for the full detail, including every real bug found and fixed along the way. Python,
-OpenPyXL, PDF processing, and TypeScript all remain entirely untouched — next priorities per that
-prompt's own §76 order, not started without a fresh scoping conversation first, the same gate
-discipline every roadmap on this page already follows.
+genuinely unstarted priority, and its migration is now complete in full** — starting from one pilot
+page (Storage Management) behind the existing router with zero changes to any other page's
+contract, then progressively through Batches A-F, then Batch G (`schedule.js`, the one page held
+back for its own dedicated gate) — every vanilla-JS page in `src/js/pages/` is React now, with no
+remaining exceptions. A formal `react/` build step produces `js/vendor/react-bundle.js`, and every
+page follows the same thin service-layer pattern (`react/src/services/*.js`). See the pilot
+section and the "React Migration Complete"/"Batch G" sections above for the full detail, including
+every real bug found and fixed along the way. Python, OpenPyXL, PDF processing, and TypeScript all
+remain entirely untouched — next priorities per that prompt's own §76 order, not started without a
+fresh scoping conversation first, the same gate discipline every roadmap on this page already
+follows.
 
 **Tier 2 is complete, and the entire 14-gate Document Control sub-spec Aditya handed over is now
 built** (Gates 14-28) — no gates from that spec remain. A new, separate roadmap started with Gate
