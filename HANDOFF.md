@@ -5947,3 +5947,74 @@ standing instruction pointing at a specific next target. When a fresh session pi
    one is "obviously next" just because it's on an old backlog list somewhere in this file.
 2. Don't assume this section's own detail survives untouched forever — re-read `git log` and
    `git status` first, the same caution every version of this section has given.
+
+## Richer Excel I/O (ExcelJS) — the "Python + OpenPyXL" line item, resolved differently, 2026-09-03
+
+Scoped this out with Aditya directly when he asked what's next after the React migration closed
+above. "Python + OpenPyXL" had sat on the backlog since the original Post-Phase-5 master prompt
+(§76) with no recorded rationale — the master prompt's own §27-31/§48 sections that would explain
+it live only outside this repo. Inspection before building (per this repo's own standing
+discipline) found: (1) OpenPyXL is Python, and this app ships as one dependency-free `index.html`
+— Python can't run there without Pyodide (WASM, several MB), a server (breaks offline-first), or
+treating it as a dev-only tool never shipped to end users; (2) the actual capability gap —
+SheetJS/js-xlsx (`src/js/vendor/xlsx.core.min.js`) reads/writes `.xlsx` as **raw values only**,
+no formulas/styling/merged cells ever attempted — is a pure-JS problem with a pure-JS answer.
+Put both findings to Aditya via `AskUserQuestion`; he picked "richer Excel I/O in the app," which
+**ExcelJS** (a real npm/browser Excel library, MIT-licensed) solves without any Python at all,
+and confirmed size is a non-issue since the app ships packaged (Android APK / Windows EXE), not
+as a bare-file size-sensitive download.
+
+**What changed**: only `applyExcelEdits()` in `react/src/services/scheduleService.js` — the
+Schedule module's in-app "Excel Editor" write-back path. A closer look at the actual data flow
+found there's no "original file" to preserve/patch here: `commitImport()` already stores the
+raw uploaded file's bytes untouched at import time; the Excel Editor's grid is built from the
+app's own already-imported activity/WBS/relationship records (`buildExcelEditorRows()`), not by
+re-reading the file. So "preserve original formatting" doesn't map onto this architecture —
+there's no known original template structure to patch cells back into safely (multiple sheets,
+merged header cells, unknown extra columns — patching blind would risk writing the wrong value
+into the wrong cell on someone's real project schedule). Instead, the **regenerated** workbook
+that Apply produces is now genuinely well-formed: bold + frozen header row, real Excel date
+cells (not date-look-alike strings) for Planned Start/Finish, a real numeric cell with a "%"
+display format for % Complete, and sensible column widths — via ExcelJS's actual styling API,
+not a hand-rolled string format.
+
+**Left untouched, deliberately**: schedule import parsing (`readImportFile`, still SheetJS —
+only ever needed raw values), Documents' preview/extraction (`extractExcel`), and the file
+viewer's spreadsheet preview (`fileViewer.js`) — none of these write files or would visibly
+benefit from styling, so touching them was unnecessary risk against already-working code.
+
+**Vendoring**: `src/js/vendor/exceljs.min.js` — ExcelJS 4.4.0's own `dist/exceljs.bare.min.js`
+(the browser build, no Node `fs`/`stream` polyfills bundled), same "drop the library's own dist
+file straight into vendor/" pattern `xlsx.core.min.js` already uses (unlike `react-bundle.js`,
+which is esbuild's own output, not a copied dist file). Added to `build.js`'s `JS_ORDER`
+immediately after `xlsx.core.min.js` — still safely after `react-bundle.js`, which is what
+actually matters: ExcelJS bundles its own browserified `setImmediate` polyfill internally (same
+shape as the jszip.min.js collision CLAUDE.md already documents), but the ordering rule only
+cares about what loads BEFORE `react-bundle.js`, and this loads after — confirmed no regression
+via the full suite.
+
+**New test-writing gotcha found, worth remembering for any future test that loads an ExcelJS
+workbook back for inspection**: two DISTINCT cross-realm gotchas hit in the same new test
+(`test_schedule_excel_editor_e2e.js`'s new formatting-verification check) beyond the
+already-documented "cross-realm array" one:
+1. Building the `Uint8Array` to feed `workbook.xlsx.load()` must use `new win.Uint8Array(...)`,
+   not the bare Node global — ExcelJS runs INSIDE the jsdom window (evaluated via
+   `runScripts:"dangerously"`), and its internal JSZip does an `instanceof ArrayBuffer` check
+   against the WINDOW's own `ArrayBuffer` constructor; a Node-realm typed array's `.buffer` fails
+   that check even though the bytes are byte-for-byte identical, throwing "Can't read the data of
+   'the loaded zip file'."
+2. A date cell's `.value` genuinely IS a `Date` instance, but `instanceof Date` (the bare Node
+   global) still returns `false` — ExcelJS constructs it with the WINDOW's own `Date`
+   constructor. Check via `instanceof win.Date` instead, same fix shape as the array gotcha.
+
+**Tests**: `test_schedule_excel_editor_e2e.js` grew by one new check (22 total for that file)
+proving the regenerated workbook is genuinely styled/typed, not just "a file exists." Full suite:
+**2626 checks passing, 0 failures** — same total as before this round, since this was one
+targeted service-function rewrite, not new domain coverage. Also verified in real Chromium via
+Playwright: opened the Excel Editor, applied an edit, loaded the resulting blob back via
+`window.ExcelJS` and confirmed the bold/frozen header, real date cell, and percent format all
+survive outside jsdom too — zero console errors.
+
+**Next steps**: still no committed-to next feature. TypeScript (§11), PDF processing, and a
+reusable component library remain the open candidates from the original scoping conversation —
+ask Aditya directly before starting any of them, per this file's own standing caution.

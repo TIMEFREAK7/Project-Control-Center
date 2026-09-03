@@ -6045,6 +6045,22 @@ priority as of this write-up — TypeScript (§11), Python/OpenPyXL/PDF processi
 a reusable component library all remain open per that prompt's own §76 order, not started without
 a fresh scoping conversation first.
 
+## Richer Excel I/O (ExcelJS), 2026-09-03
+
+The "Python + OpenPyXL" backlog item above got a real scoping conversation and came out
+differently: OpenPyXL is Python, and this app ships as one dependency-free `index.html` — Python
+can't run there without Pyodide, a server, or treating it as a dev-only tool never shipped to end
+users. The actual capability gap (SheetJS reads/writes `.xlsx` as raw values only — no formulas,
+styling, or merged cells) is a pure-JS problem, so **ExcelJS** (vendored at
+`src/js/vendor/exceljs.min.js`, wired into `build.js`'s `JS_ORDER` right after `xlsx.core.min.js`)
+now handles the one place that actually writes a workbook: the Schedule module's in-app Excel
+Editor. Its regenerated file now has a bold/frozen header row, real Excel date cells for Planned
+Start/Finish, and a real percent-formatted cell for % Complete — a genuinely well-formed
+spreadsheet, not a bare grid of strings. Schedule import parsing, Documents' preview, and the file
+viewer's spreadsheet preview stay on SheetJS, unchanged — none of them write files or benefit from
+styling. See HANDOFF.md's own write-up for the full detail, including two new cross-realm testing
+gotchas found along the way. Full suite: 2626 checks, 0 failures; verified in real Chromium too.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →

@@ -38,6 +38,7 @@ const JS_ORDER = [
   // hypothetical.
   "js/vendor/react-bundle.js",
   "js/vendor/xlsx.core.min.js",
+  "js/vendor/exceljs.min.js",
   "js/vendor/mammoth.browser.min.js",
   "js/vendor/pdf.min.js",
   "js/vendor/pdf.worker.min.js",

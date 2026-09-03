@@ -211,6 +211,51 @@ function setReactInputValue(win, el, value) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
+  await check("the regenerated workbook is a real, properly formatted Excel file (ExcelJS), not a bare CSV-in-.xlsx grid", async () => {
+    var storedBlob = await win.PCC.blobStore.getBlob(scheduleId);
+    var base64 = storedBlob.split(",")[1];
+    var binary = win.atob(base64);
+    // Must build the typed array via win.Uint8Array (not the bare Node global) — ExcelJS
+    // runs inside the jsdom window (evaluated via runScripts:"dangerously"), and its
+    // internal JSZip does an `instanceof ArrayBuffer` environment check against the
+    // WINDOW's own ArrayBuffer constructor; a Node-realm typed array's .buffer fails
+    // that check even though the bytes are identical.
+    var bytes = new win.Uint8Array(binary.length);
+    for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+    var workbook = new win.ExcelJS.Workbook();
+    await workbook.xlsx.load(bytes.buffer);
+    var sheet = workbook.getWorksheet("Schedule");
+    assert.ok(sheet, "expected a 'Schedule' worksheet in the regenerated file");
+
+    assert.strictEqual(sheet.getRow(1).font && sheet.getRow(1).font.bold, true, "header row must be bold");
+    assert.ok(sheet.views && sheet.views[0] && sheet.views[0].state === "frozen" && sheet.views[0].ySplit === 1, "header row must be frozen (views[0]: " + JSON.stringify(sheet.views && sheet.views[0]) + ")");
+
+    // Column order matches CANONICAL_HEADERS: external_id, name, activity_type, wbs_code,
+    // wbs_name, duration, planned_start, planned_finish, ...
+    // Array.from(): sheet.getRow(1).values is built inside the jsdom window realm, so a
+    // direct deepStrictEqual against a plain Node-realm array literal fails on
+    // cross-realm prototype identity even when every value matches — same gotcha
+    // documented elsewhere in this suite (e.g. test_calendar_management_ui_e2e.js).
+    var headerLabels = Array.from(sheet.getRow(1).values).slice(1);
+    assert.deepStrictEqual(headerLabels, ["Activity ID", "Activity Name", "Activity Type", "WBS Code", "WBS Name", "Duration", "Planned Start", "Planned Finish", "Predecessors", "% Complete", "Discipline", "Contractor", "Responsible Person", "Status", "Notes"]);
+
+    var row2 = sheet.getRow(2); // A010, "Excavate (Revised)"
+    var plannedStartCell = row2.getCell(7);
+    // win.Date, not the bare Node global: ExcelJS runs inside the jsdom window and
+    // constructs its date cells with the WINDOW's own Date constructor, so a Node-realm
+    // `instanceof Date` check fails even though the value genuinely is a Date instance —
+    // same cross-realm gotcha as the Array.from() note above, just for Date.
+    assert.ok(plannedStartCell.value instanceof win.Date, "Planned Start must be a real Excel date cell, not a date-look-alike string; got: " + JSON.stringify(plannedStartCell.value));
+    assert.strictEqual(plannedStartCell.value.toISOString().slice(0, 10), "2026-03-01");
+    assert.strictEqual(sheet.getColumn(7).numFmt, "yyyy-mm-dd");
+
+    var percentCol = sheet.getColumn(10);
+    assert.strictEqual(percentCol.numFmt, '0"%"', "% Complete column must have a real percent display format");
+
+    assert.strictEqual(sheet.getColumn(2).width, 32, "Activity Name column should be widened for readability");
+  });
+
   // ---- Hand-added-activity safety gate: an activity with no external_id must block
   // Apply until explicitly acknowledged, and is deleted once the user does so. ----
   let handAddedId;
