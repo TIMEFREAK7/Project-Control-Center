@@ -95,7 +95,6 @@ async function check(label, fn) {
   await check("an activity with no linked document requirements shows the empty state, not fabricated content", () => {
     win.PCC.schedule.viewActivity(projectId, scheduleId, unlinkedActivityId);
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
 
     var text = outlet().textContent;
     assert.ok(text.indexOf("Erect Steel") !== -1, "should be showing the unlinked activity");
@@ -132,6 +131,9 @@ async function check(label, fn) {
       var row = d.project_document_requirements.find((r) => r.activity_id === notReadyActivityId);
       row.planned_submission_date = "2020-01-01";
     });
+    // A plain render() remounts Schedule fresh, so the Activity Detail Panel's
+    // one-shot pending prop must be re-set before each render, not just once.
+    win.PCC.schedule.viewActivity(projectId, scheduleId, notReadyActivityId);
     win.PCC.router.render();
 
     var text = outlet().textContent;
@@ -143,6 +145,7 @@ async function check(label, fn) {
     win.PCC.store.update(function (d) {
       d.documents.push(win.PCC.store.newDocument({ project_id: projectId, filename: "boq.pdf", document_type_id: boqTypeId }));
     });
+    win.PCC.schedule.viewActivity(projectId, scheduleId, notReadyActivityId);
     win.PCC.router.render();
 
     var text = outlet().textContent;
@@ -186,7 +189,6 @@ async function check(label, fn) {
   await check("route 'schedule' still renders without throwing after this gate's changes", () => {
     thrownErrors.length = 0;
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 

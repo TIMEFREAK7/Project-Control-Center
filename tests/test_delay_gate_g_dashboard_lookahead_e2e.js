@@ -80,7 +80,7 @@ function todayPlusDays(days) {
   var projectId, scheduleId, criticalActivityId, nonCriticalActivityId, milestoneId;
   var criticalDelayId, absorbedDelayId, closedDelayId;
 
-  await check("seed a project/schedule with a fully critical A->B->M chain plus a slack activity, and calculate", () => {
+  await check("seed a project/schedule with a fully critical A->B->M chain plus a slack activity, and calculate", async () => {
     win.PCC.store.update(function (data) {
       var project = win.PCC.store.newProject({ name: "Gate G Test Tower", status: "on_track" });
       data.projects.push(project);
@@ -113,12 +113,14 @@ function todayPlusDays(days) {
       // finish by starting it well before the critical path and keeping it short.
     });
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
+    await flush();
     win.PCC.schedule.viewActivity(projectId, scheduleId, criticalActivityId);
     win.PCC.router.render();
+    await flush();
     var calcBtn = Array.from(dom.window.document.querySelectorAll("button")).find((b) => b.textContent.trim() === "Calculate Schedule");
     assert.ok(calcBtn, "Calculate Schedule button not found");
     calcBtn.click();
+    await flush();
     var data = win.PCC.store.get();
     var critActivity = data.activities.find((a) => a.id === criticalActivityId);
     var ncActivity = data.activities.find((a) => a.id === nonCriticalActivityId);
@@ -175,9 +177,9 @@ function todayPlusDays(days) {
     assert.strictEqual(summary.criticalDelayCount, 1, "only the delay on the critical activity counts as critical");
   });
 
-  await check("Dashboard's Portfolio Exceptions panel shows Open Delays: 2 and Critical Delays: 1", () => {
+  await check("Dashboard's Portfolio Exceptions panel shows Open Delays: 2 and Critical Delays: 1", async () => {
     win.PCC.router.go("dashboard");
-    win.PCC.router.render();
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("Open Delays") !== -1);
     assert.ok(text.indexOf("Critical Delays") !== -1);
@@ -186,20 +188,22 @@ function todayPlusDays(days) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("clicking the Open Delays chip navigates to the Delay & Recovery Dashboard", () => {
+  await check("clicking the Open Delays chip navigates to the Delay & Recovery Dashboard", async () => {
     var chip = Array.from(dom.window.document.querySelectorAll(".card-stat")).find((c) => c.textContent.indexOf("Open Delays") !== -1);
     assert.ok(chip);
     chip.click();
+    await flush();
     assert.strictEqual(win.PCC.router.currentRouteName(), "delayRecoveryDashboard");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("Project Lookahead shows the critical activity with '1 open delay' in its meta line, without changing its Critical badge", () => {
+  await check("Project Lookahead shows the critical activity with '1 open delay' in its meta line, without changing its Critical badge", async () => {
     win.PCC.router.go("projectLookahead");
-    win.PCC.router.render();
+    await flush();
     var winBtn60 = Array.from(dom.window.document.querySelectorAll("button")).find((b) => b.textContent.trim() === "60 Day");
     assert.ok(winBtn60, "60 Day window toggle not found");
     winBtn60.click();
+    await flush();
     var row = findRowByText(dom, "Foundation Pour");
     assert.ok(row, "the critical activity's Lookahead row wasn't found");
     assert.ok(row.textContent.indexOf("1 open delay") !== -1, "the row must show its own open delay count");
@@ -234,10 +238,10 @@ function todayPlusDays(days) {
     "changeOrders", "cost", "resources", "reports", "settings", "delayRecoveryDashboard",
   ];
   for (var i = 0; i < routes.length; i++) {
-    await check("route '" + routes[i] + "' renders without throwing after Gate G (Dashboard & Lookahead)", () => {
+    await check("route '" + routes[i] + "' renders without throwing after Gate G (Dashboard & Lookahead)", async () => {
       thrownErrors.length = 0;
       win.PCC.router.go(routes[i]);
-      win.PCC.router.render();
+      await flush();
       assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
     });
   }

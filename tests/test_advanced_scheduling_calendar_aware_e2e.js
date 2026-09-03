@@ -63,7 +63,7 @@ function findButtonByText(win, text) {
 
   let projectId, scheduleId, calendarId, activityAId, activityBId;
 
-  await check("seed a project, a Mon-Fri calendar, a schedule, and two FS-linked activities spanning a weekend", () => {
+  await check("seed a project, a Mon-Fri calendar, a schedule, and two FS-linked activities spanning a weekend", async () => {
     win.PCC.store.update(function (data) {
       var project = win.PCC.store.newProject({ name: "Calendar-Aware Test Tower", status: "on_track" });
       data.projects.push(project);
@@ -87,36 +87,40 @@ function findButtonByText(win, text) {
       data.relationships.push(win.PCC.store.newRelationship({ schedule_id: scheduleId, predecessor_id: activityAId, successor_id: activityBId, type: "FS", lag: 0 }));
     });
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
+    await flush();
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("with Calendar-Aware Calculation OFF (the default), the weekend is counted as work time, matching pre-Phase-7 behavior", () => {
+  await check("with Calendar-Aware Calculation OFF (the default), the weekend is counted as work time, matching pre-Phase-7 behavior", async () => {
     findButtonByText(win, "Calculate Schedule").click();
+    await flush();
     var data = win.PCC.store.get();
     var b = data.activities.find(function (a) { return a.id === activityBId; });
     assert.strictEqual(b.early_start, "2026-03-07", "plain calendar-day math: B starts the day after A finishes, weekend included");
   });
 
-  await check("the Schedule Settings form has a 'Calendar-Aware Calculation' checkbox, unchecked by default", () => {
+  await check("the Schedule Settings form has a 'Calendar-Aware Calculation' checkbox, unchecked by default", async () => {
     findButtonByText(win, "Edit Schedule").click();
+    await flush();
     var checkbox = win.document.getElementById("schedfield-calendar_aware");
     assert.ok(checkbox, "expected a calendar_aware checkbox in the Schedule Settings form");
     assert.strictEqual(checkbox.checked, false, "must default to off for an existing schedule with calendar_aware: false");
   });
 
-  await check("turning the checkbox on and saving persists calendar_aware onto the schedule record", () => {
+  await check("turning the checkbox on and saving persists calendar_aware onto the schedule record", async () => {
     var checkbox = win.document.getElementById("schedfield-calendar_aware");
-    checkbox.checked = true;
+    checkbox.click();
     findButtonByText(win, "Save Changes").click();
+    await flush();
     var data = win.PCC.store.get();
     var schedule = data.schedules.find(function (s) { return s.id === scheduleId; });
     assert.strictEqual(schedule.calendar_aware, true);
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("re-running Calculate Schedule with Calendar-Aware Calculation ON now skips the weekend through the real UI", () => {
+  await check("re-running Calculate Schedule with Calendar-Aware Calculation ON now skips the weekend through the real UI", async () => {
     findButtonByText(win, "Calculate Schedule").click();
+    await flush();
     var data = win.PCC.store.get();
     var a = data.activities.find(function (act) { return act.id === activityAId; });
     var b = data.activities.find(function (act) { return act.id === activityBId; });
@@ -127,21 +131,24 @@ function findButtonByText(win, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("Executive Center's live CPM snapshot also respects calendar-awareness for the same schedule", () => {
+  await check("Executive Center's live CPM snapshot also respects calendar-awareness for the same schedule", async () => {
     win.PCC.router.go("executiveCenter");
-    win.PCC.router.render();
+    await flush();
     win.PCC.router.go("schedule"); // executiveCenter.js computes its own cpm internally on render; just confirm no throw when calendar_aware is set
-    win.PCC.router.render();
+    await flush();
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("turning the checkbox back off and recalculating reverts to plain calendar-day math", () => {
+  await check("turning the checkbox back off and recalculating reverts to plain calendar-day math", async () => {
     findButtonByText(win, "Edit Schedule").click();
+    await flush();
     var checkbox = win.document.getElementById("schedfield-calendar_aware");
     assert.strictEqual(checkbox.checked, true, "must reflect the persisted true value when reopening the form");
-    checkbox.checked = false;
+    checkbox.click();
     findButtonByText(win, "Save Changes").click();
+    await flush();
     findButtonByText(win, "Calculate Schedule").click();
+    await flush();
     var data = win.PCC.store.get();
     var b = data.activities.find(function (a) { return a.id === activityBId; });
     assert.strictEqual(b.early_start, "2026-03-07", "back to plain calendar-day math once the toggle is off again");
@@ -160,46 +167,53 @@ function findButtonByText(win, text) {
     assert.ok(activityCId);
   });
 
-  await check("with Honor Date Constraints OFF (the default), an imported Must Start On date is silently ignored, matching pre-Phase-7 behavior", () => {
+  await check("with Honor Date Constraints OFF (the default), an imported Must Start On date is silently ignored, matching pre-Phase-7 behavior", async () => {
     findButtonByText(win, "Calculate Schedule").click();
+    await flush();
     var data = win.PCC.store.get();
     var c = data.activities.find(function (a) { return a.id === activityCId; });
     assert.strictEqual(c.early_start, "2026-03-06", "unenforced constraint must not move the date — plain dataDate-driven ES");
   });
 
-  await check("the Schedule Settings form has a 'Honor Date Constraints' checkbox, unchecked by default", () => {
+  await check("the Schedule Settings form has a 'Honor Date Constraints' checkbox, unchecked by default", async () => {
     findButtonByText(win, "Edit Schedule").click();
+    await flush();
     var checkbox = win.document.getElementById("schedfield-constraints_enabled");
     assert.ok(checkbox, "expected a constraints_enabled checkbox in the Schedule Settings form");
     assert.strictEqual(checkbox.checked, false);
   });
 
-  await check("turning Honor Date Constraints on and recalculating makes the imported Must Start On date take effect through the real UI", () => {
+  await check("turning Honor Date Constraints on and recalculating makes the imported Must Start On date take effect through the real UI", async () => {
     var checkbox = win.document.getElementById("schedfield-constraints_enabled");
-    checkbox.checked = true;
+    checkbox.click();
     findButtonByText(win, "Save Changes").click();
+    await flush();
     var schedule = win.PCC.store.get().schedules.find(function (s) { return s.id === scheduleId; });
     assert.strictEqual(schedule.constraints_enabled, true);
 
     findButtonByText(win, "Calculate Schedule").click();
+    await flush();
     var c = win.PCC.store.get().activities.find(function (a) { return a.id === activityCId; });
     assert.strictEqual(c.early_start, "2026-03-20", "the imported Must Start On constraint must now be honored");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("turning Honor Date Constraints back off and recalculating reverts to ignoring the constraint again", () => {
+  await check("turning Honor Date Constraints back off and recalculating reverts to ignoring the constraint again", async () => {
     findButtonByText(win, "Edit Schedule").click();
+    await flush();
     var checkbox = win.document.getElementById("schedfield-constraints_enabled");
     assert.strictEqual(checkbox.checked, true, "must reflect the persisted true value when reopening the form");
-    checkbox.checked = false;
+    checkbox.click();
     findButtonByText(win, "Save Changes").click();
+    await flush();
     findButtonByText(win, "Calculate Schedule").click();
+    await flush();
     var c = win.PCC.store.get().activities.find(function (a) { return a.id === activityCId; });
     assert.strictEqual(c.early_start, "2026-03-06", "back to ignoring the constraint once the toggle is off again");
   });
 
   let alapProjectId, alapScheduleId, alapLongId, alapShortId;
-  await check("ALAP enforcement works through the real UI: an activity with slack shifts to use it all up once Honor Date Constraints is on", () => {
+  await check("ALAP enforcement works through the real UI: an activity with slack shifts to use it all up once Honor Date Constraints is on", async () => {
     win.PCC.store.update(function (data) {
       var project = win.PCC.store.newProject({ name: "ALAP UI Test", status: "on_track" });
       data.projects.push(project);
@@ -216,8 +230,9 @@ function findButtonByText(win, text) {
     });
     win.PCC.projectContext.set(alapProjectId);
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
+    await flush();
     findButtonByText(win, "Calculate Schedule").click();
+    await flush();
     var data = win.PCC.store.get();
     var longAct = data.activities.find(function (a) { return a.id === alapLongId; });
     var shortAct = data.activities.find(function (a) { return a.id === alapShortId; });
@@ -232,10 +247,10 @@ function findButtonByText(win, text) {
   // ---- Route smoke test ----
   var routes = ["dashboard", "portfolio", "documents", "schedule", "delayRecoveryDashboard", "executiveCenter", "risks", "reports", "settings"];
   for (var i = 0; i < routes.length; i++) {
-    await check("route '" + routes[i] + "' renders without throwing after Advanced Scheduling (Calendar-Aware CPM)", () => {
+    await check("route '" + routes[i] + "' renders without throwing after Advanced Scheduling (Calendar-Aware CPM)", async () => {
       thrownErrors.length = 0;
       win.PCC.router.go(routes[i]);
-      win.PCC.router.render();
+      await flush();
       assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
     });
   }

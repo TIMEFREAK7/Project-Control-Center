@@ -165,6 +165,7 @@ function findButtonByText(dom, text) {
     // re-runs against the just-edited activity rather than showing a cached result.
     var hideBtn = findButtonByText(dom, "Hide Comparison");
     if (hideBtn) hideBtn.click();
+    await flush();
     var compareBtn = findButtonByText(dom, "Compare to Current");
     compareBtn.click();
     await flush();
@@ -190,6 +191,7 @@ function findButtonByText(dom, text) {
     });
     var hideBtn = findButtonByText(dom, "Hide Comparison");
     if (hideBtn) hideBtn.click();
+    await flush();
     var saveBtn = findButtonByText(dom, "Save Baseline");
     saveBtn.click();
     await flush();

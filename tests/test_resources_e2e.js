@@ -204,7 +204,6 @@ function setReactSelectValue(win, select, value) {
   await check("the Gantt's Activity Detail Panel lists the resource assignment as a Linked Record", async () => {
     win.PCC.schedule.viewActivity(projectAId, scheduleAId, activityAId);
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
     await flush();
     var outlet = win.document.getElementById("page-outlet");
     assert.ok(outlet.textContent.indexOf("LINKED RECORDS") !== -1);

@@ -38,6 +38,13 @@ function findButtonByText(dom, text) {
   const buttons = Array.from(dom.window.document.querySelectorAll("button"));
   return buttons.find((b) => b.textContent.trim() === text);
 }
+// schedule.js is React-migrated: form fields are React-controlled, so a raw `.value =`
+// assignment doesn't reliably reach onChange (React patches the native setter to track
+// "last known value" — see CLAUDE.md's React migration notes).
+function setReactSelectValue(win, el, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLSelectElement.prototype, "value").set.call(el, value);
+  el.dispatchEvent(new win.Event("change", { bubbles: true }));
+}
 
 (async () => {
   const html = fs.readFileSync(INDEX_PATH, "utf8");
@@ -107,8 +114,9 @@ function findButtonByText(dom, text) {
     assert.strictEqual(vendorLabel.parentElement.querySelector("div").textContent, "—");
   });
 
-  await check("the Activity form offers a Vendor picker populated with every vendor, defaulting to (none)", () => {
+  await check("the Activity form offers a Vendor picker populated with every vendor, defaulting to (none)", async () => {
     findButtonByText(dom, "Edit").click();
+    await flush();
     var select = outlet().querySelector("#actfield-vendor_id");
     assert.ok(select, "vendor select not found on the Activity form");
     assert.strictEqual(select.value, "", "must default to unassigned");
@@ -118,12 +126,13 @@ function findButtonByText(dom, text) {
     assert.ok(optionLabels.indexOf("XYZ Mechanical") !== -1);
   });
 
-  await check("assigning Vendor A and saving persists vendor_id on the activity", () => {
+  await check("assigning Vendor A and saving persists vendor_id on the activity", async () => {
     var select = outlet().querySelector("#actfield-vendor_id");
-    select.value = vendorAId;
+    setReactSelectValue(win, select, vendorAId);
     var form = outlet().querySelector("form");
     var submitEvent = new win.Event("submit", { bubbles: true, cancelable: true });
     form.dispatchEvent(submitEvent);
+    await flush();
 
     var data = win.PCC.store.get();
     var activity = data.activities.find((a) => a.id === activityId);
@@ -188,10 +197,12 @@ function findButtonByText(dom, text) {
     win.PCC.router.go("schedule");
     await flush();
     findButtonByText(dom, "Edit").click();
+    await flush();
     var select = outlet().querySelector("#actfield-vendor_id");
-    select.value = "";
+    setReactSelectValue(win, select, "");
     var form = outlet().querySelector("form");
     form.dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.activities.find((a) => a.id === activityId).vendor_id, "");

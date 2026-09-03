@@ -45,6 +45,16 @@ function findButtonByText(dom, text, root) {
   const scope = root || dom.window.document;
   return Array.from(scope.querySelectorAll("button")).find((b) => b.textContent.trim() === text);
 }
+// schedule.js is React-migrated: form fields are React-controlled, so a raw `.value =`
+// assignment doesn't reliably reach onChange — see CLAUDE.md's React migration notes.
+function setReactSelectValue(win, el, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLSelectElement.prototype, "value").set.call(el, value);
+  el.dispatchEvent(new win.Event("change", { bubbles: true }));
+}
+function setReactInputValue(win, el, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, "value").set.call(el, value);
+  el.dispatchEvent(new win.Event("input", { bubbles: true }));
+}
 
 (async () => {
   const html = fs.readFileSync(INDEX_PATH, "utf8");
@@ -78,7 +88,7 @@ function findButtonByText(dom, text, root) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("seed a project/schedule with activities spanning WBS/float/dates for grid checks", () => {
+  await check("seed a project/schedule with activities spanning WBS/float/dates for grid checks", async () => {
     win.PCC.store.update(function (d) {
       var p = win.PCC.store.newProject({ name: "Riverside Tower", status: "at_risk" });
       d.projects.push(p);
@@ -101,9 +111,10 @@ function findButtonByText(dom, text, root) {
     });
     win.PCC.schedule.viewProject(projId);
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
+    await flush();
     var actBtn = Array.from(outlet().querySelectorAll(".tab-btn")).find((b) => b.textContent.trim() === "Activities");
     actBtn.click();
+    await flush();
     assert.ok(projId && wbsFoundationId && wbsStructureId);
   });
 
@@ -121,12 +132,13 @@ function findButtonByText(dom, text, root) {
     assert.ok(row.cells[0].textContent.indexOf("⚠") !== -1, "expected the out-of-sequence marker on the name cell");
   });
 
-  await check("clicking the Float column header sorts ascending, then descending, treating an unset float as the least-critical end either way", () => {
+  await check("clicking the Float column header sorts ascending, then descending, treating an unset float as the least-critical end either way", async () => {
     var floatTh = Array.from(grid().querySelectorAll("thead th")).find((th) => th.textContent.indexOf("Float") !== -1);
     var sortBtn = floatTh.querySelector(".data-table__sort-btn");
     assert.ok(sortBtn);
 
     sortBtn.click();
+    await flush();
     var namesAsc = bodyRows().map((r) => r.cells[0].textContent.replace("⚠", "").trim());
     assert.deepStrictEqual(namesAsc, ["Excavation", "Foundation Pour", "Steel Erection", "Structure Complete"], "ascending: 0, 0, 5, then the unset float last");
     // renderList() rebuilds the table on every sort click, so the ORIGINAL floatTh
@@ -135,37 +147,40 @@ function findButtonByText(dom, text, root) {
     assert.ok(floatThAfterAsc.textContent.indexOf("▲") !== -1, "ascending arrow must show on the active sort column");
 
     floatThAfterAsc.querySelector(".data-table__sort-btn").click();
+    await flush();
     var namesDesc = bodyRows().map((r) => r.cells[0].textContent.replace("⚠", "").trim());
     assert.deepStrictEqual(namesDesc, ["Structure Complete", "Steel Erection", "Excavation", "Foundation Pour"], "descending: the unset float first, then 5, then the two 0s in their original relative order (stable sort)");
   });
 
-  await check("clicking the Activity column header sorts back to a clean alphabetical order", () => {
+  await check("clicking the Activity column header sorts back to a clean alphabetical order", async () => {
     var nameTh = Array.from(grid().querySelectorAll("thead th"))[0];
     nameTh.querySelector(".data-table__sort-btn").click();
+    await flush();
     var names = bodyRows().map((r) => r.cells[0].textContent.replace("⚠", "").trim());
     assert.deepStrictEqual(names, ["Excavation", "Foundation Pour", "Steel Erection", "Structure Complete"]);
   });
 
-  await check("the WBS/status/critical filters from Gate 6 still narrow the grid's rows correctly", () => {
+  await check("the WBS/status/critical filters from Gate 6 still narrow the grid's rows correctly", async () => {
     var toolbar = outlet().querySelectorAll(".toolbar")[1];
     var wbsSelect = Array.from(toolbar.querySelectorAll("select")).find((s) =>
       Array.from(s.options).some((o) => o.textContent.indexOf("Structure") !== -1)
     );
-    wbsSelect.value = wbsStructureId;
-    wbsSelect.dispatchEvent(new win.Event("change"));
+    setReactSelectValue(win, wbsSelect, wbsStructureId);
+    await flush();
     assert.strictEqual(bodyRows().length, 2);
     wbsSelect = Array.from(outlet().querySelectorAll(".toolbar")[1].querySelectorAll("select")).find((s) =>
       Array.from(s.options).some((o) => o.textContent.indexOf("Structure") !== -1)
     );
-    wbsSelect.value = "";
-    wbsSelect.dispatchEvent(new win.Event("change"));
+    setReactSelectValue(win, wbsSelect, "");
+    await flush();
     assert.strictEqual(bodyRows().length, 4, "clearing the filter must restore all rows");
   });
 
-  await check("the 'Columns' menu hides and re-shows a column, and never offers to hide Activity or Actions", () => {
+  await check("the 'Columns' menu hides and re-shows a column, and never offers to hide Activity or Actions", async () => {
     var columnsBtn = findButtonByText(dom, "Columns", outlet());
     assert.ok(columnsBtn);
     columnsBtn.click();
+    await flush();
 
     var checkItems = Array.from(outlet().querySelectorAll(".card-menu__checkbox-item"));
     var labels = checkItems.map((i) => i.textContent.trim());
@@ -173,6 +188,7 @@ function findButtonByText(dom, text, root) {
 
     var typeItem = checkItems.find((i) => i.textContent.trim() === "Type");
     typeItem.querySelector("input").click();
+    await flush();
 
     assert.ok(headerLabels().indexOf("Type") === -1, "Type column must be gone from the header once hidden");
     assert.strictEqual(bodyRows()[0].cells.length, 9, "one fewer <td> per row once a column is hidden (was 10: name+select+7+actions)");
@@ -183,19 +199,22 @@ function findButtonByText(dom, text, root) {
     var typeItem2 = Array.from(outlet().querySelectorAll(".card-menu__checkbox-item")).find((i) => i.textContent.trim() === "Type");
     assert.ok(typeItem2, "the column menu must still be open after toggling one checkbox");
     typeItem2.querySelector("input").click();
+    await flush();
     assert.ok(headerLabels().indexOf("Type") !== -1, "Type column must be back after re-checking it");
 
     // Close the menu so later checks in this file don't have to account for it still
     // being open (its own overlay button closes it, same as every other .card-menu).
     outlet().querySelector(".card-menu__overlay").click();
+    await flush();
     assert.strictEqual(outlet().querySelector(".card-menu__dropdown"), null, "columns menu must be closed");
   });
 
-  await check("the row-level '⋯' menu opens with Edit/Clone/Delete, and Edit opens the activity form", () => {
+  await check("the row-level '⋯' menu opens with Edit/Clone/Delete, and Edit opens the activity form", async () => {
     var row = bodyRows().find((r) => r.cells[0].textContent.indexOf("Excavation") !== -1);
     var menuBtn = row.querySelector('.icon-btn[aria-label="More actions"]');
     assert.ok(menuBtn, "row menu toggle not found");
     menuBtn.click();
+    await flush();
 
     // menuBtn.click() rerenders the whole tab, so the row reference above is now
     // detached — re-find it, and scope the dropdown lookup to it specifically (not the
@@ -208,35 +227,39 @@ function findButtonByText(dom, text, root) {
 
     var editItem = Array.from(dropdown.querySelectorAll(".card-menu__item")).find((b) => b.textContent.trim() === "Edit");
     editItem.click();
+    await flush();
     assert.ok(outlet().textContent.indexOf("Edit Activity") !== -1, "edit form must open");
     assert.strictEqual(outlet().querySelector(".card-menu__dropdown"), null, "menu must close once Edit is clicked");
     findButtonByText(dom, "Cancel").click();
+    await flush();
   });
 
-  await check("declining the delete confirm leaves the row and the grid intact", () => {
+  await check("declining the delete confirm leaves the row and the grid intact", async () => {
     var originalConfirm = win.confirm;
     win.confirm = () => false;
     try {
       var beforeCount = win.PCC.store.get().activities.length;
       var row = bodyRows().find((r) => r.cells[0].textContent.indexOf("Excavation") !== -1);
       row.querySelector('.icon-btn[aria-label="More actions"]').click();
+      await flush();
       var deleteItem = Array.from(outlet().querySelectorAll(".card-menu__item")).find((b) => b.textContent.trim() === "Delete");
       deleteItem.click();
+      await flush();
       assert.strictEqual(win.PCC.store.get().activities.length, beforeCount, "no activity should be deleted when the confirm is declined");
     } finally {
       win.confirm = originalConfirm;
     }
   });
 
-  await check("a search/filter with zero matches still shows the correct empty state, not a broken/empty table", () => {
+  await check("a search/filter with zero matches still shows the correct empty state, not a broken/empty table", async () => {
     var toolbar = outlet().querySelectorAll(".toolbar")[1];
     var searchInput = toolbar.querySelector("input[type=text]");
-    searchInput.value = "nonexistent-activity-xyz";
-    searchInput.dispatchEvent(new win.Event("input"));
+    setReactInputValue(win, searchInput, "nonexistent-activity-xyz");
+    await flush();
     assert.ok(outlet().textContent.indexOf("No activities match this search/filter.") !== -1);
     assert.strictEqual(outlet().querySelector(".data-table"), null, "no table should render for a zero-match filter");
-    searchInput.value = "";
-    searchInput.dispatchEvent(new win.Event("input"));
+    setReactInputValue(win, searchInput, "");
+    await flush();
   });
 
   await check("this gate writes nothing back beyond what was seeded — record counts unchanged", () => {
@@ -254,10 +277,10 @@ function findButtonByText(dom, text, root) {
     "cost", "commitments", "resources", "reports", "settings",
   ];
   for (var i = 0; i < routes.length; i++) {
-    await check("route '" + routes[i] + "' renders without throwing after the Schedule Activities data grid conversion", () => {
+    await check("route '" + routes[i] + "' renders without throwing after the Schedule Activities data grid conversion", async () => {
       thrownErrors.length = 0;
       win.PCC.router.go(routes[i]);
-      win.PCC.router.render();
+      await flush();
       assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
     });
   }

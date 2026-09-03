@@ -38,6 +38,16 @@ function findButtonByText(dom, text) {
   const buttons = Array.from(dom.window.document.querySelectorAll("button"));
   return buttons.find((b) => b.textContent.trim() === text);
 }
+// schedule.js is React-migrated: form fields are React-controlled, so a raw `.value =`
+// assignment doesn't reliably reach onChange — see CLAUDE.md's React migration notes.
+function setReactSelectValue(win, el, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLSelectElement.prototype, "value").set.call(el, value);
+  el.dispatchEvent(new win.Event("change", { bubbles: true }));
+}
+function setReactInputValue(win, el, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, "value").set.call(el, value);
+  el.dispatchEvent(new win.Event("input", { bubbles: true }));
+}
 
 (async () => {
   const html = fs.readFileSync(INDEX_PATH, "utf8");
@@ -84,58 +94,66 @@ function findButtonByText(dom, text) {
     assert.strictEqual(win.PCC.store.get().relationships.length, 2);
   });
 
-  await check("manually adding C -> A (which would close the A->B->C->A loop) is rejected with a clear error, not silently saved", () => {
+  await check("manually adding C -> A (which would close the A->B->C->A loop) is rejected with a clear error, not silently saved", async () => {
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
+    await flush();
     var relTabBtn = findButtonByText(dom, "Relationships");
     relTabBtn.click();
+    await flush();
     findButtonByText(dom, "+ Add Relationship").click();
+    await flush();
 
     var predSelect = outlet().querySelector("#relfield-predecessor_id");
     var succSelect = outlet().querySelector("#relfield-successor_id");
     assert.ok(predSelect && succSelect, "relationship form fields not found");
-    predSelect.value = actC;
-    succSelect.value = actA;
+    setReactSelectValue(win, predSelect, actC);
+    setReactSelectValue(win, succSelect, actA);
     var form = outlet().querySelector("form");
     form.dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
 
     assert.strictEqual(win.PCC.store.get().relationships.length, 2, "the cyclic relationship must not be saved");
     assert.ok(outlet().textContent.indexOf("circular dependency") !== -1, "no circular-dependency error shown to the user");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("a non-cyclic relationship (A -> C directly, a redundant but valid path) is still accepted", () => {
+  await check("a non-cyclic relationship (A -> C directly, a redundant but valid path) is still accepted", async () => {
     var predSelect = outlet().querySelector("#relfield-predecessor_id");
     var succSelect = outlet().querySelector("#relfield-successor_id");
-    predSelect.value = actA;
-    succSelect.value = actC;
+    setReactSelectValue(win, predSelect, actA);
+    setReactSelectValue(win, succSelect, actC);
     var form = outlet().querySelector("form");
     form.dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
 
     assert.strictEqual(win.PCC.store.get().relationships.length, 3, "a genuinely valid (non-cyclic) relationship must still save");
   });
 
-  await check("saving an activity with a negative Duration is rejected with a clear error, not silently saved", () => {
+  await check("saving an activity with a negative Duration is rejected with a clear error, not silently saved", async () => {
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
+    await flush();
     var activitiesTabBtn = findButtonByText(dom, "Activities");
     activitiesTabBtn.click();
+    await flush();
     var editButtons = Array.from(outlet().querySelectorAll("button")).filter((b) => b.textContent.trim() === "Edit");
     // Open via the row menu if "Edit" isn't a direct button (fallback to the "..." menu).
     if (editButtons.length === 0) {
       var menuBtns = Array.from(outlet().querySelectorAll("button")).filter((b) => b.textContent.trim() === "⋯");
       if (menuBtns.length) menuBtns[0].click();
+      await flush();
       editButtons = Array.from(outlet().querySelectorAll("button")).filter((b) => b.textContent.trim() === "Edit");
     }
     assert.ok(editButtons.length > 0, "no Edit button found for an activity");
     editButtons[0].click();
+    await flush();
 
     var durationInput = outlet().querySelector("#actfield-duration");
     assert.ok(durationInput, "duration field not found");
     assert.strictEqual(durationInput.min, "0", "duration input should have a min=0 browser-level hint");
-    durationInput.value = "-5";
+    setReactInputValue(win, durationInput, "-5");
     var form = outlet().querySelector("form");
     form.dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
 
     assert.ok(outlet().textContent.indexOf("Duration can't be negative") !== -1, "no negative-duration error shown to the user");
     var data = win.PCC.store.get();

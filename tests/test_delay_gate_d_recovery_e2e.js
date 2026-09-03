@@ -37,6 +37,20 @@ function findButtonByText(dom, text) {
   const buttons = Array.from(dom.window.document.querySelectorAll("button"));
   return buttons.find((b) => b.textContent.trim() === text);
 }
+// schedule.js is React-migrated: form fields are React-controlled, so a raw `.value =`
+// assignment doesn't reliably reach onChange — see CLAUDE.md's React migration notes.
+function setReactSelectValue(win, el, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLSelectElement.prototype, "value").set.call(el, value);
+  el.dispatchEvent(new win.Event("change", { bubbles: true }));
+}
+function setReactInputValue(win, el, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, "value").set.call(el, value);
+  el.dispatchEvent(new win.Event("input", { bubbles: true }));
+}
+function setReactTextareaValue(win, el, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLTextAreaElement.prototype, "value").set.call(el, value);
+  el.dispatchEvent(new win.Event("input", { bubbles: true }));
+}
 
 (async () => {
   const html = fs.readFileSync(INDEX_PATH, "utf8");
@@ -84,16 +98,19 @@ function findButtonByText(dom, text) {
   });
 
   var delayId;
-  await check("TEST 3 setup (spec section 41): create a delay with a 10-day estimated impact (Delay Forecast = 30 Aug)", () => {
+  await check("TEST 3 setup (spec section 41): create a delay with a 10-day estimated impact (Delay Forecast = 30 Aug)", async () => {
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
+    await flush();
     win.PCC.schedule.viewActivity(projectId, scheduleId, activityId);
     win.PCC.router.render();
+    await flush();
     findButtonByText(dom, "+ Add Delay Record").click();
+    await flush();
 
-    outlet().querySelector("#delayfield-delay_days").value = "10";
-    outlet().querySelector("#delayfield-description").value = "Late transformer delivery.";
+    setReactInputValue(win, outlet().querySelector("#delayfield-delay_days"), "10");
+    setReactTextareaValue(win, outlet().querySelector("#delayfield-description"), "Late transformer delivery.");
     findButtonByText(dom, "Add Delay Record").click();
+    await flush();
 
     var data = win.PCC.store.get();
     delayId = data.delay_records[0].id;
@@ -105,16 +122,18 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("TEST 3: adding a 5-day Recovery Action (with Mitigation Type and Comments) moves the Recovery Forecast to 25 Aug", () => {
+  await check("TEST 3: adding a 5-day Recovery Action (with Mitigation Type and Comments) moves the Recovery Forecast to 25 Aug", async () => {
     findButtonByText(dom, "+ Add Recovery Action").click();
-    outlet().querySelector("#recactionfield-description").value = "Additional shift";
-    outlet().querySelector("#recactionfield-responsible_person").value = "Site Manager";
-    outlet().querySelector("#recactionfield-status").value = "in_progress";
-    outlet().querySelector("#recactionfield-estimated_recovery_days").value = "5";
-    outlet().querySelector("#recactionfield-delay_id").value = delayId;
-    outlet().querySelector("#recactionfield-mitigation_type").value = "additional_shift";
-    outlet().querySelector("#recactionfield-comments").value = "Coordinate with vendor for extended hours.";
+    await flush();
+    setReactTextareaValue(win, outlet().querySelector("#recactionfield-description"), "Additional shift");
+    setReactInputValue(win, outlet().querySelector("#recactionfield-responsible_person"), "Site Manager");
+    setReactSelectValue(win, outlet().querySelector("#recactionfield-status"), "in_progress");
+    setReactInputValue(win, outlet().querySelector("#recactionfield-estimated_recovery_days"), "5");
+    setReactSelectValue(win, outlet().querySelector("#recactionfield-delay_id"), delayId);
+    setReactSelectValue(win, outlet().querySelector("#recactionfield-mitigation_type"), "additional_shift");
+    setReactTextareaValue(win, outlet().querySelector("#recactionfield-comments"), "Coordinate with vendor for extended hours.");
     findButtonByText(dom, "Add Recovery Action").click();
+    await flush();
 
     var data = win.PCC.store.get();
     var action = data.recovery_actions.find((r) => r.delay_id === delayId);
@@ -129,43 +148,46 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("spec point 20 (Delay Timeline): the timeline lists both the initial 'Open' entry and the later status change, in order", () => {
+  await check("spec point 20 (Delay Timeline): the timeline lists both the initial 'Open' entry and the later status change, in order", async () => {
     // Change status to pick up a second timeline entry, matching the same mechanism
     // test_delay_management_gate_ab_e2e.js already verified at the data level — this
     // confirms it's actually rendered.
     var delayHeading = Array.from(outlet().querySelectorAll("p")).find((p) => p.textContent.indexOf("DELAY RECORDS") === 0);
     var delaySection = delayHeading.parentElement;
     Array.from(delaySection.querySelectorAll("button")).find((b) => b.textContent.trim() === "Edit").click();
-    outlet().querySelector("#delayfield-status").value = "recovery_in_progress";
+    await flush();
+    setReactSelectValue(win, outlet().querySelector("#delayfield-status"), "recovery_in_progress");
     findButtonByText(dom, "Save Changes").click();
+    await flush();
 
     var text = outlet().textContent;
     assert.ok(text.indexOf("Timeline (2)") !== -1, "two status_history entries (Open, then Recovery in Progress) should be reflected in the timeline count");
     assert.ok(text.indexOf("Delay identified.") !== -1, "the first timeline entry's own note should be shown");
   });
 
-  await check("Actual Finish in the Recovery Forecast reflects the Schedule's own actual_finish once the activity is marked complete", () => {
+  await check("Actual Finish in the Recovery Forecast reflects the Schedule's own actual_finish once the activity is marked complete", async () => {
     win.PCC.store.update(function (data) {
       var a = data.activities.find((x) => x.id === activityId);
       a.actual_finish = "2026-08-24";
       a.status = "complete";
     });
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
+    await flush();
     win.PCC.schedule.viewActivity(projectId, scheduleId, activityId);
     win.PCC.router.render();
+    await flush();
 
     var text = outlet().textContent;
     assert.ok(text.indexOf("2026-08-24") !== -1, "the real actual_finish (24 Aug) should appear as the Actual Finish");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("this gate's changes don't break the rest of the app — every route still renders cleanly", () => {
-    ["dashboard", "portfolio", "schedule", "delayRecoveryDashboard", "executiveCenter", "risks", "reports", "settings"].forEach((route) => {
+  await check("this gate's changes don't break the rest of the app — every route still renders cleanly", async () => {
+    for (const route of ["dashboard", "portfolio", "schedule", "delayRecoveryDashboard", "executiveCenter", "risks", "reports", "settings"]) {
       win.PCC.router.go(route);
-      win.PCC.router.render();
+      await flush();
       assert.strictEqual(thrownErrors.length, 0, "route '" + route + "' threw: " + thrownErrors.join(" | "));
-    });
+    }
   });
 
   console.log("\n" + passed + " passed, " + failed + " failed");

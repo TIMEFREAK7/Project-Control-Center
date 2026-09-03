@@ -41,6 +41,13 @@ function findButtonByText(win, text) {
 /** The Import Excel panel renders below Schedule's own project/schedule picker bar,
  * which has its own <select>s (project, schedule) — scoping to the panel itself avoids
  * off-by-N index mistakes when picking out the mapping step's own <select>s. */
+// schedule.js is React-migrated: form fields are React-controlled, so a raw `.value =`
+// assignment doesn't reliably reach onChange — see CLAUDE.md's React migration notes.
+function setReactSelectValue(win, el, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLSelectElement.prototype, "value").set.call(el, value);
+  el.dispatchEvent(new win.Event("change", { bubbles: true }));
+}
+
 function importPanel(win) {
   // Architecture Upgrade Phase 2: the panel heading became "Import Schedule" (was
   // "Import Schedule from Excel") once it started also accepting Microsoft Project XML.
@@ -63,7 +70,10 @@ function uploadWorkbook(win, fileInput, headers, dataRows, filename) {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   });
   Object.defineProperty(fileInput, "files", { value: [file], configurable: true });
-  fileInput.dispatchEvent(new win.Event("change"));
+  // React's synthetic "change" listener is delegated at the root and relies on the
+  // native event actually bubbling — a dispatched event without bubbles:true never
+  // reaches it.
+  fileInput.dispatchEvent(new win.Event("change", { bubbles: true }));
 }
 
 (async () => {
@@ -96,7 +106,7 @@ function uploadWorkbook(win, fileInput, headers, dataRows, filename) {
   const outlet = () => win.document.getElementById("page-outlet");
 
   let projectId;
-  await check("seed a project and navigate to Schedule, opening the Import Excel panel", () => {
+  await check("seed a project and navigate to Schedule, opening the Import Excel panel", async () => {
     win.PCC.store.update(function (data) {
       var project = { id: "proj_colmap_1", name: "Column Mapping Test Project", archived: false, status: "on_track", progress: 0, attachments: [] };
       data.projects.push(project);
@@ -104,11 +114,12 @@ function uploadWorkbook(win, fileInput, headers, dataRows, filename) {
     });
     win.PCC.projectContext.set(projectId);
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
+    await flush();
 
     var importBtn = findButtonByText(win, "Import Schedule");
     assert.ok(importBtn, "'Import Excel' button not found");
     importBtn.click();
+    await flush();
     assert.ok(outlet().textContent.indexOf("Import Schedule") !== -1);
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
@@ -130,8 +141,10 @@ function uploadWorkbook(win, fileInput, headers, dataRows, filename) {
     // Cancel back to a clean 'pick' step for the next check.
     var cancelBtn = findButtonByText(win, "Cancel");
     cancelBtn.click();
+    await flush();
     var reopenBtn = findButtonByText(win, "Import Schedule");
     reopenBtn.click();
+    await flush();
   });
 
   await check("uploading a file with unrecognized headers opens the manual column-mapping step, pre-filled with auto-detected guesses", async () => {
@@ -160,17 +173,16 @@ function uploadWorkbook(win, fileInput, headers, dataRows, filename) {
     var itemTitleSelect = selects[1];
     var kickoffSelect = selects[2];
 
-    itemRefSelect.value = "external_id";
-    itemRefSelect.dispatchEvent(new win.Event("change"));
-    itemTitleSelect.value = "name";
-    itemTitleSelect.dispatchEvent(new win.Event("change"));
-    kickoffSelect.value = "planned_start";
-    kickoffSelect.dispatchEvent(new win.Event("change"));
+    setReactSelectValue(win, itemRefSelect, "external_id");
+    setReactSelectValue(win, itemTitleSelect, "name");
+    setReactSelectValue(win, kickoffSelect, "planned_start");
+    await flush();
 
     var continueBtn = findButtonByText(win, "Continue");
     assert.ok(continueBtn, "'Continue' button not found on the mapping step");
     assert.strictEqual(continueBtn.disabled, false, "no duplicate mappings, so Continue should be enabled");
     continueBtn.click();
+    await flush();
 
     var text = outlet().textContent;
     assert.ok(text.indexOf("Parsed 1 row(s)") !== -1, "should now be on the review step: " + text.slice(0, 300));
@@ -190,9 +202,10 @@ function uploadWorkbook(win, fileInput, headers, dataRows, filename) {
 
   await check("choosing the same PCC field for two different columns is blocked with a clear error, not silently accepted", async () => {
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
+    await flush();
     var importBtn = findButtonByText(win, "Import Schedule");
     importBtn.click();
+    await flush();
     var fileInput = outlet().querySelector('input[type="file"]');
     uploadWorkbook(
       win,
@@ -204,10 +217,9 @@ function uploadWorkbook(win, fileInput, headers, dataRows, filename) {
     await flush();
 
     var selects = Array.from(importPanel(win).querySelectorAll("select"));
-    selects[0].value = "external_id";
-    selects[0].dispatchEvent(new win.Event("change"));
-    selects[1].value = "external_id"; // same target as column 0 — must be rejected
-    selects[1].dispatchEvent(new win.Event("change"));
+    setReactSelectValue(win, selects[0], "external_id");
+    setReactSelectValue(win, selects[1], "external_id"); // same target as column 0 — must be rejected
+    await flush();
 
     var text = outlet().textContent;
     assert.ok(text.indexOf("can only come from one column") !== -1, "expected a duplicate-mapping error message: " + text.slice(0, 300));
@@ -215,8 +227,8 @@ function uploadWorkbook(win, fileInput, headers, dataRows, filename) {
     assert.strictEqual(continueBtn.disabled, true, "Continue must be disabled while two columns target the same field");
 
     // Fixing the duplicate re-enables Continue.
-    selects[1].value = "";
-    selects[1].dispatchEvent(new win.Event("change"));
+    setReactSelectValue(win, selects[1], "");
+    await flush();
     continueBtn = findButtonByText(win, "Continue");
     assert.strictEqual(continueBtn.disabled, false, "Continue should re-enable once the duplicate is resolved");
   });

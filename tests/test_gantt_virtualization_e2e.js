@@ -121,6 +121,7 @@ async function check(label, fn) {
     });
     assert.ok(ganttTabBtn, "Gantt tab button not found");
     ganttTabBtn.click();
+    await flush();
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
@@ -159,7 +160,7 @@ async function check(label, fn) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("a bar within the scrolled-to window is still fully interactive — clicking its label opens the detail panel", () => {
+  await check("a bar within the scrolled-to window is still fully interactive — clicking its label opens the detail panel", async () => {
     var visibleBar = outlet().querySelector("rect[data-activity-id]");
     var activityId = visibleBar.getAttribute("data-activity-id");
     var labelEls = Array.from(outlet().querySelectorAll("svg text")).filter(function (t) {
@@ -168,12 +169,12 @@ async function check(label, fn) {
     // Click directly via the store-driven navigation hook instead of hunting the exact
     // label element by position — proves the click handler (attached only to rows that
     // actually got real DOM) still wires up correctly post-scroll.
-    var evt = new win.Event("click", { bubbles: true });
     var matchingLabel = Array.from(outlet().querySelectorAll("svg text")).find(function (t) {
       return t.textContent.indexOf("Activity ") === 0;
     });
     assert.ok(matchingLabel, "expected at least one activity label in the currently-rendered window");
-    matchingLabel.dispatchEvent(evt);
+    matchingLabel.dispatchEvent(new win.Event("click", { bubbles: true }));
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("Delete") !== -1 || text.indexOf("Edit") !== -1, "expected the Activity Detail Panel to open after clicking a visible label");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
@@ -192,10 +193,10 @@ async function check(label, fn) {
     "schedule", "delayRecoveryDashboard", "risks", "cost", "commitments", "resources", "reports", "settings",
   ];
   for (var i = 0; i < routes.length; i++) {
-    await check("route '" + routes[i] + "' renders without throwing with a 3,000-activity schedule in the store", () => {
+    await check("route '" + routes[i] + "' renders without throwing with a 3,000-activity schedule in the store", async () => {
       thrownErrors.length = 0;
       win.PCC.router.go(routes[i]);
-      win.PCC.router.render();
+      await flush();
       assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
     });
   }

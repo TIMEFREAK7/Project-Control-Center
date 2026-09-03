@@ -39,6 +39,20 @@ function findButtonByText(dom, text) {
   const buttons = Array.from(dom.window.document.querySelectorAll("button"));
   return buttons.find((b) => b.textContent.trim() === text);
 }
+// schedule.js is React-migrated: form fields are React-controlled, so a raw `.value =`
+// assignment doesn't reliably reach onChange — see CLAUDE.md's React migration notes.
+function setReactSelectValue(win, el, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLSelectElement.prototype, "value").set.call(el, value);
+  el.dispatchEvent(new win.Event("change", { bubbles: true }));
+}
+function setReactInputValue(win, el, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, "value").set.call(el, value);
+  el.dispatchEvent(new win.Event("input", { bubbles: true }));
+}
+function setReactTextareaValue(win, el, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLTextAreaElement.prototype, "value").set.call(el, value);
+  el.dispatchEvent(new win.Event("input", { bubbles: true }));
+}
 
 (async () => {
   const html = fs.readFileSync(INDEX_PATH, "utf8");
@@ -68,7 +82,7 @@ function findButtonByText(dom, text) {
   // "Calculate Schedule" runs, so a delay linked to A is critical from the start —
   // exactly the condition Project Finish Impact needs to actually compute.
   let projectId, scheduleId, activityAId, activityBId, milestoneId;
-  await check("seed A -> B -> M (milestone), a fully critical chain, and calculate", () => {
+  await check("seed A -> B -> M (milestone), a fully critical chain, and calculate", async () => {
     win.PCC.store.update(function (data) {
       var project = win.PCC.store.newProject({ name: "Gate C Test Tower", status: "on_track" });
       data.projects.push(project);
@@ -89,27 +103,31 @@ function findButtonByText(dom, text) {
       data.relationships.push(win.PCC.store.newRelationship({ schedule_id: scheduleId, predecessor_id: activityBId, successor_id: milestoneId, type: "FS", lag: 0 }));
     });
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
+    await flush();
     findButtonByText(dom, "Calculate Schedule").click();
+    await flush();
     var a = win.PCC.store.get().activities.find((x) => x.id === activityAId);
     assert.strictEqual(a.total_float, 0, "the only path in the schedule must be fully critical");
   });
 
   var delayId;
-  await check("the Delay Record form offers milestone-type activities as 'Affected Milestone', and selecting one auto-links it with its own snapshot", () => {
+  await check("the Delay Record form offers milestone-type activities as 'Affected Milestone', and selecting one auto-links it with its own snapshot", async () => {
     win.PCC.schedule.viewActivity(projectId, scheduleId, activityAId);
     win.PCC.router.render();
+    await flush();
     findButtonByText(dom, "+ Add Delay Record").click();
+    await flush();
 
     var milestoneSelect = outlet().querySelector("#delayfield-milestone_activity_id");
     assert.ok(milestoneSelect, "'Affected Milestone' picker not found on the Delay Record form");
     var opt = Array.from(milestoneSelect.options).find((o) => o.textContent === "Structure Complete");
     assert.ok(opt, "the milestone activity should be offered by name");
-    milestoneSelect.value = milestoneId;
+    setReactSelectValue(win, milestoneSelect, milestoneId);
 
-    outlet().querySelector("#delayfield-description").value = "Late rebar delivery holding up Foundation Works.";
-    outlet().querySelector("#delayfield-delay_days").value = "5";
+    setReactTextareaValue(win, outlet().querySelector("#delayfield-description"), "Late rebar delivery holding up Foundation Works.");
+    setReactInputValue(win, outlet().querySelector("#delayfield-delay_days"), "5");
     findButtonByText(dom, "Add Delay Record").click();
+    await flush();
 
     var data = win.PCC.store.get();
     var rec = data.delay_records[0];
@@ -134,7 +152,7 @@ function findButtonByText(dom, text) {
     assert.ok(text.indexOf("No current impact") !== -1, "no schedule change has happened yet — project finish must show no impact");
   });
 
-  await check("growing the critical activity's duration and recalculating moves Project Finish Impact by the same amount, and Milestone Impact reflects the slip too", () => {
+  await check("growing the critical activity's duration and recalculating moves Project Finish Impact by the same amount, and Milestone Impact reflects the slip too", async () => {
     win.PCC.store.update(function (data) {
       var a = data.activities.find((x) => x.id === activityAId);
       a.duration = 15; // 5-day growth on the critical path
@@ -142,11 +160,13 @@ function findButtonByText(dom, text) {
       a.original_duration = 15;
     });
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
+    await flush();
     findButtonByText(dom, "Calculate Schedule").click();
+    await flush();
 
     win.PCC.schedule.viewActivity(projectId, scheduleId, activityAId);
     win.PCC.router.render();
+    await flush();
 
     var text = outlet().textContent;
     assert.ok(text.indexOf("+5d") !== -1, "a 5-day critical-path growth must show as +5d somewhere in the Impact Summary (Activity Impact/Project Finish Impact): " + text.slice(0, 800));
@@ -158,12 +178,12 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("this gate's changes don't break the rest of the app — every route still renders cleanly", () => {
-    ["dashboard", "portfolio", "schedule", "delayRecoveryDashboard", "executiveCenter", "risks", "reports", "settings"].forEach((route) => {
+  await check("this gate's changes don't break the rest of the app — every route still renders cleanly", async () => {
+    for (const route of ["dashboard", "portfolio", "schedule", "delayRecoveryDashboard", "executiveCenter", "risks", "reports", "settings"]) {
       win.PCC.router.go(route);
-      win.PCC.router.render();
+      await flush();
       assert.strictEqual(thrownErrors.length, 0, "route '" + route + "' threw: " + thrownErrors.join(" | "));
-    });
+    }
   });
 
   console.log("\n" + passed + " passed, " + failed + " failed");

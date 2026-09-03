@@ -45,6 +45,7 @@ import MeetingsPage from "./pages/Meetings.jsx";
 import CostPage from "./pages/Cost.jsx";
 import ResourcesPage from "./pages/Resources.jsx";
 import PortfolioPage from "./pages/Portfolio.jsx";
+import SchedulePage from "./pages/Schedule.jsx";
 
 window.PCC = window.PCC || {};
 window.PCC.React = React;
@@ -85,3 +86,4 @@ window.PCC.reactPages.portfolio = PortfolioPage;
 window.PCC.reactPages.vendors = VendorsPage;
 window.PCC.reactPages.documents = DocumentsPage;
 window.PCC.reactPages.executiveCenter = ExecutiveCenterPage;
+window.PCC.reactPages.schedule = SchedulePage;

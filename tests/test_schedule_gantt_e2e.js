@@ -111,18 +111,19 @@ function findButtonByText(dom, text) {
     assert.ok(projectId && scheduleId && designId && buildId && milestoneId && undatedId);
   });
 
-  await check("navigate to the schedule route and it renders without throwing", () => {
+  await check("navigate to the schedule route and it renders without throwing", async () => {
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     assert.ok(outlet.innerHTML.length > 0, "schedule route should render content");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("'Gantt' tab button exists and switches to the Gantt tab", () => {
+  await check("'Gantt' tab button exists and switches to the Gantt tab", async () => {
     var btn = findButtonByText(dom, "Gantt");
     assert.ok(btn, "Gantt tab button not found");
     btn.click();
+    await flush();
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
@@ -198,7 +199,7 @@ function findButtonByText(dom, text) {
   // real "today" at test-run time) so it doesn't depend on the file's other fixed 2026
   // dates happening to include today.
   var closeMarkersProjectId;
-  await check("seed a project whose schedule spans today, with data_date one day after today", () => {
+  await check("seed a project whose schedule spans today, with data_date one day after today", async () => {
     function addDays(iso, n) {
       var d = new Date(iso + "T00:00:00Z");
       d.setUTCDate(d.getUTCDate() + n);
@@ -218,11 +219,11 @@ function findButtonByText(dom, text) {
     });
     win.PCC.schedule.viewProject(closeMarkersProjectId);
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
+    await flush();
     assert.ok(closeMarkersProjectId);
   });
 
-  await check("Today and Data Date labels stagger into separate rows, both clear of the axis date-tick row", () => {
+  await check("Today and Data Date labels stagger into separate rows, both clear of the axis date-tick row", async () => {
     var outlet = win.document.getElementById("page-outlet");
     var svg = outlet.querySelector("svg");
     var texts = Array.from(svg.querySelectorAll("text"));
@@ -244,24 +245,27 @@ function findButtonByText(dom, text) {
     // to it further down), not this check's own throwaway project.
     win.PCC.schedule.viewProject(projectId);
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
+    await flush();
   });
 
-  await check("switching schedules to one with zero activities shows the Gantt empty state", () => {
+  await check("switching schedules to one with zero activities shows the Gantt empty state", async () => {
     win.PCC.store.update(function (data) {
       var empty = win.PCC.store.newSchedule({ project_id: projectId, name: "Empty Schedule", revision_number: 2 });
       data.schedules.push(empty);
     });
     win.PCC.router.render();
+    await flush();
     var schedSelect = win.document.querySelectorAll(".toolbar select")[1];
     assert.ok(schedSelect, "schedule select not found");
     var emptyOption = Array.from(schedSelect.options).find((o) => o.textContent.indexOf("Empty Schedule") !== -1);
     assert.ok(emptyOption, "Empty Schedule option not found in schedule select");
-    schedSelect.value = emptyOption.value;
-    schedSelect.dispatchEvent(new win.Event("change"));
+    Object.getOwnPropertyDescriptor(win.HTMLSelectElement.prototype, "value").set.call(schedSelect, emptyOption.value);
+    schedSelect.dispatchEvent(new win.Event("change", { bubbles: true }));
+    await flush();
 
     var ganttBtn = findButtonByText(dom, "Gantt");
     ganttBtn.click();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     assert.ok(outlet.querySelector("svg") === null, "empty schedule should not render a chart");
     assert.ok(
@@ -275,10 +279,10 @@ function findButtonByText(dom, text) {
   // convention, since this gate touches build.js's JS_ORDER and adds a new module. ----
   var routes = ["dashboard", "portfolio", "documents", "dailylog", "schedule", "risks", "meetings", "rfis", "changeOrders", "reports", "settings"];
   for (var i = 0; i < routes.length; i++) {
-    await check("route '" + routes[i] + "' renders without throwing after the Gate 5 changes", () => {
+    await check("route '" + routes[i] + "' renders without throwing after the Gate 5 changes", async () => {
       thrownErrors.length = 0;
       win.PCC.router.go(routes[i]);
-      win.PCC.router.render();
+      await flush();
       assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
     });
   }

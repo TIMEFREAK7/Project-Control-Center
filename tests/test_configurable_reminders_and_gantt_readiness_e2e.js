@@ -179,27 +179,33 @@ function todayPlusDays(days) {
     assert.ok(scheduleId && notReadyActivityId);
   });
 
-  await check("the Gantt bar for the not-ready activity shows a readiness marker, and the legend explains it", () => {
+  await check("the Gantt bar for the not-ready activity shows a readiness marker, and the legend explains it", async () => {
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
+    await flush();
     findButtonByText(dom, "Gantt").click();
+    await flush();
 
     var svg = outlet().querySelector("svg");
     assert.ok(svg, "Gantt tab should render an <svg> chart");
     var marker = svg.querySelector('circle[data-readiness-marker-for="' + notReadyActivityId + '"]');
     assert.ok(marker, "expected a readiness marker circle on the not-ready activity's bar");
-    assert.strictEqual(marker.getAttribute("style"), "pointer-events:none;", "the marker must not interfere with drag/resize hit-testing");
+    assert.strictEqual(marker.getAttribute("style"), "pointer-events: none;", "the marker must not interfere with drag/resize hit-testing");
 
     var text = outlet().textContent;
     assert.ok(text.indexOf("Not Ready (governing document missing)") !== -1, "legend must explain the marker");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("attaching a matching document removes the readiness marker on the next render", () => {
+  await check("attaching a matching document removes the readiness marker on the next render", async () => {
     win.PCC.store.update(function (d) {
       d.documents.push(win.PCC.store.newDocument({ project_id: projectId, filename: "boq.pdf", document_type_id: boqTypeId }));
     });
+    // A remount resets local tab state (reactBridge.js mounts a fresh root every
+    // render()), so re-select the Gantt tab after the remount.
     win.PCC.router.render();
+    await flush();
+    findButtonByText(dom, "Gantt").click();
+    await flush();
 
     var svg = outlet().querySelector("svg");
     var marker = svg.querySelector('circle[data-readiness-marker-for="' + notReadyActivityId + '"]');
@@ -207,7 +213,7 @@ function todayPlusDays(days) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("an activity with zero linked document requirements never shows a readiness marker", () => {
+  await check("an activity with zero linked document requirements never shows a readiness marker", async () => {
     var freeActivityId;
     win.PCC.store.update(function (d) {
       var a = win.PCC.store.newActivity({
@@ -218,6 +224,9 @@ function todayPlusDays(days) {
       freeActivityId = a.id;
     });
     win.PCC.router.render();
+    await flush();
+    findButtonByText(dom, "Gantt").click();
+    await flush();
 
     var svg = outlet().querySelector("svg");
     var marker = svg.querySelector('circle[data-readiness-marker-for="' + freeActivityId + '"]');
@@ -232,10 +241,10 @@ function todayPlusDays(days) {
     "changeOrders", "decisionRegister", "lessonsLearned", "knowledgeBase", "cost", "commitments", "resources", "reports", "settings",
   ];
   for (var i = 0; i < routes.length; i++) {
-    await check("route '" + routes[i] + "' renders without throwing after this gate's changes", () => {
+    await check("route '" + routes[i] + "' renders without throwing after this gate's changes", async () => {
       thrownErrors.length = 0;
       win.PCC.router.go(routes[i]);
-      win.PCC.router.render();
+      await flush();
       assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
     });
   }
