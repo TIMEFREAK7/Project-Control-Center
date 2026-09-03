@@ -40,6 +40,7 @@ import RfisPage from "./pages/Rfis.jsx";
 import DailyLogPage from "./pages/DailyLog.jsx";
 import MeetingsPage from "./pages/Meetings.jsx";
 import CostPage from "./pages/Cost.jsx";
+import ResourcesPage from "./pages/Resources.jsx";
 
 window.PCC = window.PCC || {};
 window.PCC.React = React;
@@ -75,3 +76,4 @@ window.PCC.reactPages.rfis = RfisPage;
 window.PCC.reactPages.dailylog = DailyLogPage;
 window.PCC.reactPages.meetings = MeetingsPage;
 window.PCC.reactPages.cost = CostPage;
+window.PCC.reactPages.resources = ResourcesPage;

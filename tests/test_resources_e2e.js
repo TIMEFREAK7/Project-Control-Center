@@ -37,6 +37,15 @@ function findButtonByText(dom, text) {
   return buttons.find((b) => b.textContent.trim() === text);
 }
 
+// resources.js is a React-migrated page: a raw `.value =` assignment doesn't reliably
+// reach a controlled <select>'s onChange (React patches the native setter to track "last
+// known value" — see CLAUDE.md's React migration notes), so bypass it via the native
+// prototype descriptor before dispatching the change event.
+function setReactSelectValue(win, select, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLSelectElement.prototype, "value").set.call(select, value);
+  select.dispatchEvent(new win.Event("change", { bubbles: true }));
+}
+
 (async () => {
   const html = fs.readFileSync(INDEX_PATH, "utf8");
   const thrownErrors = [];
@@ -91,17 +100,24 @@ function findButtonByText(dom, text) {
     assert.ok(projectAId && projectBId && activityAId && activityBId);
   });
 
-  await check("navigate to Resources and add a resource through the real Register form", () => {
+  await check("navigate to Resources and add a resource through the real Register form", async () => {
     win.PCC.router.go("resources");
     win.PCC.router.render();
+    // resources.js is a React-migrated page — go() already renders its INITIAL mount
+    // synchronously (reactBridge.js wraps it in flushSync), but await flush() anyway
+    // before interacting, and after every click whose state update commits
+    // asynchronously (see CLAUDE.md's React migration notes).
+    await flush();
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
 
     findButtonByText(dom, "+ Add Resource").click();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     outlet.querySelector("#resfield-name").value = "Tower Crane #1";
     outlet.querySelector("#resfield-unit").value = "unit";
     outlet.querySelector("#resfield-max_availability").value = "1";
     outlet.querySelector("form").dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
 
     var saved = win.PCC.store.get().resources.find((r) => r.name === "Tower Crane #1");
     assert.ok(saved, "resource should be saved");
@@ -111,17 +127,19 @@ function findButtonByText(dom, text) {
   });
 
   let resourceId;
-  await check("add two assignments of the same resource to two DIFFERENT projects' overlapping activities", () => {
+  await check("add two assignments of the same resource to two DIFFERENT projects' overlapping activities", async () => {
     resourceId = win.PCC.store.get().resources.find((r) => r.name === "Tower Crane #1").id;
 
     findButtonByText(dom, "Assignments").click();
+    await flush();
     findButtonByText(dom, "+ Add Assignment").click();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     outlet.querySelector("#asgfield-resource_id").value = resourceId;
     var projSelect = outlet.querySelectorAll("select")[1]; // resource, then project
     var projOptionA = Array.from(projSelect.options).find((o) => o.textContent === "Riverside Tower");
-    projSelect.value = projOptionA.value;
-    projSelect.dispatchEvent(new win.Event("change"));
+    setReactSelectValue(win, projSelect, projOptionA.value);
+    await flush();
 
     var outlet2 = win.document.getElementById("page-outlet");
     var activitySelect = outlet2.querySelector("#asgfield-activity_id");
@@ -130,15 +148,17 @@ function findButtonByText(dom, text) {
     activitySelect.value = activityOption.value;
     outlet2.querySelector("#asgfield-quantity").value = "1";
     outlet2.querySelector("form").dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
 
     // Second assignment: same resource, Project B's overlapping activity.
     findButtonByText(dom, "+ Add Assignment").click();
+    await flush();
     var outlet3 = win.document.getElementById("page-outlet");
     outlet3.querySelector("#asgfield-resource_id").value = resourceId;
     var projSelect2 = outlet3.querySelectorAll("select")[1];
     var projOptionB = Array.from(projSelect2.options).find((o) => o.textContent === "Harborview Depot");
-    projSelect2.value = projOptionB.value;
-    projSelect2.dispatchEvent(new win.Event("change"));
+    setReactSelectValue(win, projSelect2, projOptionB.value);
+    await flush();
     var outlet4 = win.document.getElementById("page-outlet");
     var activitySelect2 = outlet4.querySelector("#asgfield-activity_id");
     var activityOption2 = Array.from(activitySelect2.options).find((o) => o.textContent.indexOf("Depot Steel Lift") !== -1);
@@ -146,6 +166,7 @@ function findButtonByText(dom, text) {
     activitySelect2.value = activityOption2.value;
     outlet4.querySelector("#asgfield-quantity").value = "1";
     outlet4.querySelector("form").dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
 
     var assignments = win.PCC.store.get().resource_assignments;
     assert.strictEqual(assignments.length, 2);
@@ -160,15 +181,16 @@ function findButtonByText(dom, text) {
     assert.ok(outlet.textContent.indexOf("Harborview Depot") !== -1);
   });
 
-  await check("Leveling tab detects the CROSS-PROJECT over-allocation (March 3-5 both activities overlap, demand 2 vs capacity 1)", () => {
+  await check("Leveling tab detects the CROSS-PROJECT over-allocation (March 3-5 both activities overlap, demand 2 vs capacity 1)", async () => {
     findButtonByText(dom, "Leveling").click();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     assert.ok(outlet.textContent.indexOf("Over-Allocated Resources (Portfolio-Wide)") !== -1);
     assert.ok(outlet.textContent.indexOf("Tower Crane #1") !== -1, "the over-allocated resource should be named in the portfolio summary");
 
     var resSelect = Array.from(outlet.querySelectorAll("select")).find((s) => Array.from(s.options).some((o) => o.textContent === "Tower Crane #1"));
-    resSelect.value = resourceId;
-    resSelect.dispatchEvent(new win.Event("change"));
+    setReactSelectValue(win, resSelect, resourceId);
+    await flush();
 
     var outlet2 = win.document.getElementById("page-outlet");
     assert.ok(outlet2.textContent.indexOf("Over-Allocated Days") !== -1);
@@ -179,10 +201,11 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("the Gantt's Activity Detail Panel lists the resource assignment as a Linked Record", () => {
+  await check("the Gantt's Activity Detail Panel lists the resource assignment as a Linked Record", async () => {
     win.PCC.schedule.viewActivity(projectAId, scheduleAId, activityAId);
     win.PCC.router.go("schedule");
     win.PCC.router.render();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     assert.ok(outlet.textContent.indexOf("LINKED RECORDS") !== -1);
     assert.ok(outlet.textContent.indexOf("Tower Crane #1") !== -1, "the resource assignment should be listed by resource name");
@@ -192,16 +215,25 @@ function findButtonByText(dom, text) {
     var viewRow = Array.from(outlet.querySelectorAll(".attention-item--clickable")).find((r) => r.textContent.indexOf("Tower Crane #1") !== -1);
     assert.ok(viewRow, "row for the resource assignment not found");
     viewRow.click();
-    win.PCC.router.render();
+    // resources.js is a React-migrated page — the row's onclick already calls
+    // window.PCC.resources.expandAssignment() + router.go("resources"), and go()
+    // already renders. Deliberately no extra win.PCC.router.render() call here — that
+    // would trigger a second, fresh remount that no longer has the pending props to
+    // consume, silently losing them (see CLAUDE.md's React migration notes).
+    await flush();
     assert.strictEqual(win.PCC.router.currentRouteName(), "resources");
     var outlet2 = win.document.getElementById("page-outlet");
     assert.ok(outlet2.textContent.indexOf("Tower Crane #1") !== -1);
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("Portfolio's Details panel shows a Resources Assigned section flagging the over-allocation, with a working View All link", () => {
+  await check("Portfolio's Details panel shows a Resources Assigned section flagging the over-allocation, with a working View All link", async () => {
     win.PCC.router.go("portfolio");
     win.PCC.router.render();
+    // portfolio.js is still vanilla, but flush anyway before interacting — leaving this
+    // navigation unflushed could leak a pending hashchange into a later check that DOES
+    // touch a React-migrated route (see CLAUDE.md's React migration notes on this race).
+    await flush();
     var detailsButtons = Array.from(win.document.querySelectorAll("button")).filter((b) => b.textContent.trim() === "Details");
     var riversideDetailsBtn = detailsButtons.find((b) => {
       var card = b.closest(".project-entry");
@@ -219,15 +251,20 @@ function findButtonByText(dom, text) {
     var resourcesViewAllBtn = viewAllBtns.find((b) => b.parentElement.textContent.indexOf("RESOURCES ASSIGNED") !== -1);
     assert.ok(resourcesViewAllBtn, "Resources Assigned View All button not found");
     resourcesViewAllBtn.click();
-    win.PCC.router.render();
+    // resources.js is a React-migrated page — portfolio.js's click handler already
+    // calls window.PCC.resources.filterByProject() + router.go("resources") itself,
+    // and go() already renders synchronously. Deliberately no extra
+    // win.PCC.router.render() call here — see the note above.
+    await flush();
     assert.strictEqual(win.PCC.router.currentRouteName(), "resources");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("Executive Center shows a RESOURCES KPI section now that the module has real data", () => {
+  await check("Executive Center shows a RESOURCES KPI section now that the module has real data", async () => {
     win.PCC.executiveCenter.viewProject(projectAId);
     win.PCC.router.go("executiveCenter");
     win.PCC.router.render();
+    await flush();
     // UI/UX Overhaul Gate 5: the old flat KPI stack is now grouped into sub-tabs; a
     // Resources sub-tab only appears (and needs clicking into) once data.resources has
     // real rows, same "only show when the module exists" condition the old always-on
@@ -242,7 +279,7 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("a project with zero resources assigned shows no RESOURCES KPI section for it, and Executive Center for a resource-free project omits the section entirely if no resources exist anywhere", () => {
+  await check("a project with zero resources assigned shows no RESOURCES KPI section for it, and Executive Center for a resource-free project omits the section entirely if no resources exist anywhere", async () => {
     // This app has resources now (seeded above), so the section should still appear
     // globally, but a project with no assignments shows 0 / not over-allocated — not
     // fabricated non-zero numbers.
@@ -254,6 +291,7 @@ function findButtonByText(dom, text) {
     win.PCC.executiveCenter.viewProject(win.PCC.store.get().projects.find((p) => p.name === "Empty Project").id);
     win.PCC.router.go("executiveCenter");
     win.PCC.router.render();
+    await flush();
     var resourcesTab = Array.from(win.document.querySelectorAll(".toolbar button")).find((b) => b.textContent.trim() === "Resources");
     assert.ok(resourcesTab, "Resources sub-tab still shows since resources exist in the app");
     resourcesTab.click();
@@ -262,10 +300,12 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("deleting a resource cascades to remove its assignments, with a confirm warning naming the count", () => {
+  await check("deleting a resource cascades to remove its assignments, with a confirm warning naming the count", async () => {
     win.PCC.router.go("resources");
     win.PCC.router.render();
+    await flush();
     findButtonByText(dom, "Register").click();
+    await flush();
 
     var originalConfirm = win.confirm;
     var confirmMessage = "";
