@@ -137,19 +137,21 @@ function findButtonByText(dom, text) {
   await check("Meetings: the Add form persists activity_id", async () => {
     win.PCC.router.go("meetings");
     win.PCC.router.render();
-    // Flush here even though meetings.js itself is still vanilla — router.js's
-    // suppressNextHashRender is a single flag, so an unflushed go() call can leave a
-    // hashchange event queued that later fires during a subsequent React-migrated
-    // page's own flush() and wipes a one-shot pending prop (see CLAUDE.md's React
-    // migration notes on this race).
+    // meetings.js is a React-migrated page — a click's state update commits
+    // asynchronously (see CLAUDE.md's React migration notes), so await flush() before
+    // interacting and after every click/submit.
     await flush();
     findButtonByText(dom, "+ Add Meeting").click();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     outlet.querySelector("#meetingfield-title").value = "Site Coordination";
+    var dateInput = outlet.querySelector("#meetingfield-meeting_date");
+    if (!dateInput.value) dateInput.value = "2026-01-01";
     var activitySelect = outlet.querySelector("#meetingfield-activity_id");
     assert.ok(activitySelect);
     activitySelect.value = activityId;
     outlet.querySelector("form").dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
     var saved = win.PCC.store.get().meetings.find((m) => m.title === "Site Coordination");
     assert.ok(saved && saved.activity_id === activityId);
   });

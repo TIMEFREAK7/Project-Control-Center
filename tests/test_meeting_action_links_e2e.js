@@ -113,17 +113,36 @@ function findButtonByText(dom, text) {
     assert.ok(project1Id && project2Id && activity1Id && activity2Id && vendorId && rfi1Id && rfi2Id && risk1Id && risk2Id);
   });
 
-  await check("the Add Meeting form's Action row offers Vendor/Activity/RFI/Risk pickers scoped to the selected project", () => {
+  function setReactSelectValue(select, value) {
+    var setter = Object.getOwnPropertyDescriptor(win.HTMLSelectElement.prototype, "value").set;
+    setter.call(select, value);
+    select.dispatchEvent(new win.Event("change", { bubbles: true }));
+  }
+  function setReactInputValue(input, value) {
+    var setter = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, "value").set;
+    setter.call(input, value);
+    input.dispatchEvent(new win.Event("input", { bubbles: true }));
+  }
+
+  await check("the Add Meeting form's Action row offers Vendor/Activity/RFI/Risk pickers scoped to the selected project", async () => {
     win.PCC.router.go("meetings");
     win.PCC.router.render();
+    // meetings.js is a React-migrated page — flush before interacting and after every
+    // click/change whose state update commits asynchronously (see CLAUDE.md's React
+    // migration notes; also flush after every go() per the router's suppressNextHashRender
+    // single-flag race documented there).
+    await flush();
     findButtonByText(dom, "+ Add Meeting").click();
+    await flush();
 
     var titleInput = outlet().querySelector("#meetingfield-title");
-    titleInput.value = "Coordination Meeting";
+    setReactInputValue(titleInput, "Coordination Meeting");
     var projSelect = outlet().querySelector("#meetingfield-project_id");
-    projSelect.value = project1Id;
+    setReactSelectValue(projSelect, project1Id);
+    await flush();
 
     findButtonByText(dom, "+ Add Action").click();
+    await flush();
 
     var row = outlet().querySelector(".action-editor-row");
     assert.ok(row, "action row not found");
@@ -153,10 +172,10 @@ function findButtonByText(dom, text) {
     riskSelect.value = risk1Id;
   });
 
-  await check("switching the meeting's project to Project Two live-rescopes the action row's Activity/RFI/Risk pickers (but not Vendor, which is portfolio-wide)", () => {
+  await check("switching the meeting's project to Project Two live-rescopes the action row's Activity/RFI/Risk pickers (but not Vendor, which is portfolio-wide)", async () => {
     var projSelect = outlet().querySelector("#meetingfield-project_id");
-    projSelect.value = project2Id;
-    projSelect.dispatchEvent(new win.Event("change", { bubbles: true }));
+    setReactSelectValue(projSelect, project2Id);
+    await flush();
 
     var row = outlet().querySelector(".action-editor-row");
     var activityLabels = Array.from(row.querySelector(".action-activity").options).map((o) => o.textContent);
@@ -168,16 +187,18 @@ function findButtonByText(dom, text) {
 
     // Re-select Project One and re-apply the links for the save step below — switching
     // back doesn't restore a prior selection, it's a fresh rescope each time.
-    projSelect.value = project1Id;
-    projSelect.dispatchEvent(new win.Event("change", { bubbles: true }));
+    setReactSelectValue(projSelect, project1Id);
+    await flush();
+    row = outlet().querySelector(".action-editor-row");
     row.querySelector(".action-vendor").value = vendorId;
     row.querySelector(".action-activity").value = activity1Id;
     row.querySelector(".action-rfi").value = rfi1Id;
     row.querySelector(".action-risk").value = risk1Id;
   });
 
-  await check("saving persists all four links on the meeting's action item", () => {
+  await check("saving persists all four links on the meeting's action item", async () => {
     outlet().querySelector("form").dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
     var meeting = win.PCC.store.get().meetings.find((m) => m.title === "Coordination Meeting");
     assert.ok(meeting, "meeting was not saved");
     assert.strictEqual(meeting.actions.length, 1);
@@ -189,10 +210,12 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("the read-only Meeting Details view shows all four links inline", () => {
+  await check("the read-only Meeting Details view shows all four links inline", async () => {
     win.PCC.router.go("meetings");
     win.PCC.router.render();
+    await flush();
     findButtonByText(dom, "Details").click();
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("Vendor: ABC Electrical") !== -1, "expected Vendor link text; got: " + text);
     assert.ok(text.indexOf("Activity: Project One Activity") !== -1);
@@ -200,9 +223,10 @@ function findButtonByText(dom, text) {
     assert.ok(text.indexOf("Risk: Project One Risk") !== -1);
   });
 
-  await check("the Planner Action Centre shows the linked meeting action with Vendor and Activity annotated", () => {
+  await check("the Planner Action Centre shows the linked meeting action with Vendor and Activity annotated", async () => {
     win.PCC.router.go("actionCentre");
     win.PCC.router.render();
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("Submit revised drawing") !== -1);
     assert.ok(text.indexOf("Vendor: ABC Electrical") !== -1);

@@ -235,15 +235,15 @@ function findButtonByText(dom, text) {
   await check("the Meeting's '+ Add Lesson Learned' button opens a prefilled form linked to that meeting", async () => {
     win.PCC.meetings.expandMeeting(meetingId);
     win.PCC.router.go("meetings");
-    win.PCC.router.render();
-    // Let the "meetings" navigation's own (async) hashchange event settle before firing a
-    // second go() from this button's click — router.js's suppressNextHashRender is a single
-    // flag, not a queue, so two go() calls issued back-to-back (no tick between them, unlike
-    // any real user's click-then-click) can leave the second navigation's hashchange
-    // unsuppressed, triggering an extra render() that clears this page's one-shot prefill
-    // prop before it's ever read. Real, reproducible router.js edge case — confirmed by
-    // direct comparison — but not a real-user-facing one, so fixed here, not in the shared
-    // router.
+    // meetings.js is a React-migrated page — go() already renders synchronously;
+    // deliberately no extra win.PCC.router.render() call here, since that would trigger
+    // a second, fresh remount that no longer has the pendingExpandedId prop to consume,
+    // silently losing it (see CLAUDE.md's React migration notes). Then let the
+    // "meetings" navigation's own (async) hashchange event settle before firing a second
+    // go() from this button's click — router.js's suppressNextHashRender is a single
+    // flag, not a queue, so two go() calls issued back-to-back (no tick between them,
+    // unlike any real user's click-then-click) can leave the second navigation's
+    // hashchange unsuppressed, triggering an extra render().
     await flush();
     findButtonByText(dom, "+ Add Lesson Learned").click();
     await flush();

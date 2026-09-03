@@ -204,7 +204,10 @@ function findButtonByText(dom, text) {
   await check("the Meeting's '+ Add Decision' button opens a prefilled Decision form linked to that meeting", async () => {
     win.PCC.meetings.expandMeeting(meetingId);
     win.PCC.router.go("meetings");
-    win.PCC.router.render();
+    // meetings.js is a React-migrated page — go() already renders synchronously;
+    // deliberately no extra win.PCC.router.render() call here, since that would trigger
+    // a second, fresh remount that no longer has the pendingExpandedId prop to consume,
+    // silently losing it (see CLAUDE.md's React migration notes).
     await flush();
     findButtonByText(dom, "+ Add Decision").click();
     await flush();
@@ -231,7 +234,7 @@ function findButtonByText(dom, text) {
 
     win.PCC.meetings.expandMeeting(meetingId);
     win.PCC.router.go("meetings");
-    win.PCC.router.render();
+    // Deliberately no extra render() call — see the note above.
     await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("DECISIONS RAISED (1)") !== -1, "got: " + text.match(/DECISIONS RAISED \(\d+\)/));
