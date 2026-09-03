@@ -58,6 +58,13 @@ function setReactInputValue(win, el, value) {
   el.dispatchEvent(new win.Event("input", { bubbles: true }));
   el.dispatchEvent(new win.Event("change", { bubbles: true }));
 }
+// documents.js is also React-migrated now — its Classification selects (Document
+// Type/Criticality/etc.) are controlled, same bypass needed for a <select>.
+function setReactSelectValue(win, el, value) {
+  const nativeSetter = Object.getOwnPropertyDescriptor(win.HTMLSelectElement.prototype, "value").set;
+  nativeSetter.call(el, value);
+  el.dispatchEvent(new win.Event("change", { bubbles: true }));
+}
 
 (async () => {
   const html = fs.readFileSync(INDEX_PATH, "utf8");
@@ -121,10 +128,10 @@ function setReactInputValue(win, el, value) {
     assert.strictEqual(created.project_code, "SEC");
   });
 
-  await check("the Documents upload form shows a Classification section with Document Type/Vendor selects populated", () => {
+  await check("the Documents upload form shows a Classification section with Document Type/Vendor selects populated", async () => {
     win.PCC.router.go("documents");
-    win.PCC.router.render();
     findButtonByText(dom, "+ Add Document").click();
+    await flush();
 
     var docTypeSelect = findFieldByLabel(dom, "Document Type");
     assert.ok(docTypeSelect, "Document Type select not found");
@@ -146,18 +153,18 @@ function setReactInputValue(win, el, value) {
     assert.ok(findFieldByLabel(dom, "Remarks"), "Remarks field not found");
   });
 
-  await check("selecting a Document Type auto-suggests that type's default_criticality, still freely editable", () => {
+  await check("selecting a Document Type auto-suggests that type's default_criticality, still freely editable", async () => {
     var docTypeSelect = findFieldByLabel(dom, "Document Type");
-    docTypeSelect.value = rfiTypeId;
-    docTypeSelect.dispatchEvent(new win.Event("change"));
+    setReactSelectValue(win, docTypeSelect, rfiTypeId);
+    await flush();
 
     var criticalitySelect = findFieldByLabel(dom, "Criticality");
     var rfiType = win.PCC.store.get().document_types.find(function (t) { return t.id === rfiTypeId; });
     assert.strictEqual(criticalitySelect.value, rfiType.default_criticality);
 
     // Still freely overridable.
-    criticalitySelect.value = "critical";
-    criticalitySelect.dispatchEvent(new win.Event("change"));
+    setReactSelectValue(win, criticalitySelect, "critical");
+    await flush();
     assert.strictEqual(criticalitySelect.value, "critical");
   });
 

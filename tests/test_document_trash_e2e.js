@@ -110,7 +110,7 @@ function findButtonByText(win, text) {
     assert.ok(text.indexOf("standalone.pdf") !== -1);
   });
 
-  await check("clicking 'Delete' on a document moves its whole revision group to Trash (record stays, hidden from the active register)", () => {
+  await check("clicking 'Delete' on a document moves its whole revision group to Trash (record stays, hidden from the active register)", async () => {
     win.confirm = () => true;
     // Select the multi-revision document (rev1/rev2 group) in the preview pane.
     var listItem = Array.from(win.document.querySelectorAll(".doc-register-item")).find(function (el) {
@@ -118,7 +118,9 @@ function findButtonByText(win, text) {
     });
     assert.ok(listItem, "expected to find the rev2.pdf row");
     listItem.click();
+    await flush();
     findButtonByText(win, "Delete").click();
+    await flush();
 
     var data = win.PCC.store.get();
     var rev1 = data.documents.find(function (d) { return d.id === doc1Id; });
@@ -152,8 +154,9 @@ function findButtonByText(win, text) {
     assert.strictEqual(available, false, "with its only matching document trashed, the requirement must no longer show as available");
   });
 
-  await check("switching to the Trash view shows the trashed document with a 'Trashed ... ago' badge, and Restore/Delete Permanently actions", () => {
+  await check("switching to the Trash view shows the trashed document with a 'Trashed ... ago' badge, and Restore/Delete Permanently actions", async () => {
     findButtonByText(win, "Trash (1)").click();
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("rev2.pdf") !== -1, "expected the trashed document to appear in the Trash view");
     assert.ok(text.indexOf("standalone.pdf") === -1, "the active document must NOT appear in the Trash view");
@@ -164,8 +167,9 @@ function findButtonByText(win, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("clicking Restore brings the document back to the active register and clears trashed_at on every revision", () => {
+  await check("clicking Restore brings the document back to the active register and clears trashed_at on every revision", async () => {
     findButtonByText(win, "Restore").click();
+    await flush();
     var data = win.PCC.store.get();
     var rev1 = data.documents.find(function (d) { return d.id === doc1Id; });
     var rev2 = data.documents.find(function (d) { return d.id === doc2Id; });
@@ -173,10 +177,11 @@ function findButtonByText(win, text) {
     assert.strictEqual(rev2.trashed_at, null);
   });
 
-  await check("after restoring the last trashed item, the Trash view (still open) correctly shows 'Trash is empty', and going back shows the restored document again", () => {
+  await check("after restoring the last trashed item, the Trash view (still open) correctly shows 'Trash is empty', and going back shows the restored document again", async () => {
     var text = outlet().textContent;
     assert.ok(text.indexOf("Trash is empty") !== -1, "with nothing left trashed, staying on the Trash view should show its empty state, got: " + text.slice(0, 300));
     findButtonByText(win, "← Back to Documents").click();
+    await flush();
     text = outlet().textContent;
     assert.ok(text.indexOf("rev2.pdf") !== -1, "the restored document must be visible again in the active register");
   });
@@ -187,13 +192,17 @@ function findButtonByText(win, text) {
       return el.textContent.indexOf("rev2.pdf") !== -1;
     });
     listItem.click();
+    await flush();
     findButtonByText(win, "Delete").click();
+    await flush();
 
     var trashBtn = findButtonByText(win, "Trash (1)");
     assert.ok(trashBtn, "expected Trash (1) after re-trashing");
     trashBtn.click();
+    await flush();
 
     findButtonByText(win, "Delete Permanently").click();
+    await flush();
 
     var data = win.PCC.store.get();
     assert.ok(!data.documents.some(function (d) { return d.id === doc1Id; }), "revision 1's record must be gone for good");
@@ -206,23 +215,28 @@ function findButtonByText(win, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("Trash is now empty and shows the empty-trash state", () => {
+  await check("Trash is now empty and shows the empty-trash state", async () => {
     var text = outlet().textContent;
     assert.ok(text.indexOf("Trash is empty") !== -1, "expected the empty-trash state, got: " + text.slice(0, 400));
     assert.ok(findButtonByText(win, "← Back to Documents"), "expected a way back to Documents from empty trash");
     findButtonByText(win, "← Back to Documents").click();
+    await flush();
   });
 
-  await check("BULK: selecting multiple documents and 'Delete Selected' moves them all to Trash together", () => {
+  await check("BULK: selecting multiple documents and 'Delete Selected' moves them all to Trash together", async () => {
     win.confirm = () => true;
+    // Checkboxes are React-controlled — don't set .checked manually, even via a raw
+    // property write; use .click(), the real interaction React's onChange listens to
+    // (see CLAUDE.md's React migration notes).
     var checkboxes = Array.from(win.document.querySelectorAll(".doc-register-item__select"));
     checkboxes.forEach(function (cb) {
-      cb.checked = true;
-      cb.onchange();
+      cb.click();
     });
+    await flush();
     var deleteSelectedBtn = findButtonByText(win, "Delete Selected");
     assert.ok(deleteSelectedBtn, "expected a Delete Selected bulk action");
     deleteSelectedBtn.click();
+    await flush();
 
     var data = win.PCC.store.get();
     var doc3 = data.documents.find(function (d) { return d.id === doc3Id; });
@@ -234,6 +248,7 @@ function findButtonByText(win, text) {
     var trashBtn = findButtonByText(win, "Trash (1)");
     assert.ok(trashBtn, "expected exactly 1 trashed group (standalone.pdf) after the bulk trash above");
     trashBtn.click();
+    await flush();
 
     var emptyTrashBtn = findButtonByText(win, "Empty Trash");
     assert.ok(emptyTrashBtn, "expected an Empty Trash button");
@@ -247,7 +262,7 @@ function findButtonByText(win, text) {
     assert.ok(!data.documents.some(function (d) { return d.id === doc3Id; }), "Empty Trash must permanently remove every trashed document");
   });
 
-  await check("declining the confirmation dialog leaves data untouched (both for Delete and Delete Permanently)", () => {
+  await check("declining the confirmation dialog leaves data untouched (both for Delete and Delete Permanently)", async () => {
     win.PCC.store.update(function (data) {
       var doc = win.PCC.store.newDocument({ project_id: projectId, filename: "confirm-test.pdf" });
       doc.file_data = null;
@@ -255,14 +270,15 @@ function findButtonByText(win, text) {
       win.PCC._confirmTestDocId = doc.id;
     });
     win.PCC.router.go("documents");
-    win.PCC.router.render();
 
     win.confirm = () => false;
     var listItem = Array.from(win.document.querySelectorAll(".doc-register-item")).find(function (el) {
       return el.textContent.indexOf("confirm-test.pdf") !== -1;
     });
     listItem.click();
+    await flush();
     findButtonByText(win, "Delete").click();
+    await flush();
 
     var data = win.PCC.store.get();
     var doc = data.documents.find(function (d) { return d.id === win.PCC._confirmTestDocId; });

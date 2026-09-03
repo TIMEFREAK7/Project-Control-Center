@@ -40,6 +40,20 @@ function findButtonByText(dom, text, root) {
   return Array.from(scope.querySelectorAll("button")).find((b) => b.textContent.trim() === text);
 }
 
+// documents.js is a React-migrated page (Post-Phase-5 Engineering Evolution): a raw
+// `.value =` assignment doesn't reliably reach a controlled <select>/<input>'s onChange
+// (React patches the native setter to track "last known value" — see CLAUDE.md's React
+// migration notes), so bypass it via the native prototype descriptor before dispatching
+// the change/input event.
+function setReactSelectValue(win, select, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLSelectElement.prototype, "value").set.call(select, value);
+  select.dispatchEvent(new win.Event("change", { bubbles: true }));
+}
+function setReactInputValue(win, input, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, "value").set.call(input, value);
+  input.dispatchEvent(new win.Event("input", { bubbles: true }));
+}
+
 (async () => {
   const html = fs.readFileSync(INDEX_PATH, "utf8");
   const thrownErrors = [];
@@ -108,64 +122,65 @@ function findButtonByText(dom, text, root) {
     assert.ok(outlet().querySelector(".doc-register-item--selected"), "one list item must be marked selected");
   });
 
-  await check("filtering by project narrows the register list to just that project's documents", () => {
+  await check("filtering by project narrows the register list to just that project's documents", async () => {
     var projectSelect = Array.from(outlet().querySelectorAll(".toolbar select")).find((s) =>
       Array.from(s.options).some((o) => o.textContent === "Harbor Bridge")
     );
     assert.ok(projectSelect, "project filter select not found");
-    projectSelect.value = projB;
-    projectSelect.dispatchEvent(new win.Event("change"));
+    setReactSelectValue(win, projectSelect, projB);
+    await flush();
     var items = outlet().querySelectorAll(".doc-register-item");
     assert.strictEqual(items.length, 1);
     assert.ok(outlet().textContent.indexOf("invoice-04.pdf") !== -1);
     assert.ok(outlet().textContent.indexOf("site-plan.pdf") === -1);
   });
 
-  await check("filtering by category and clearing back to all projects both work correctly", () => {
+  await check("filtering by category and clearing back to all projects both work correctly", async () => {
     var projectSelect = Array.from(outlet().querySelectorAll(".toolbar select")).find((s) =>
       Array.from(s.options).some((o) => o.textContent === "Harbor Bridge")
     );
-    projectSelect.value = "";
-    projectSelect.dispatchEvent(new win.Event("change"));
+    setReactSelectValue(win, projectSelect, "");
+    await flush();
 
     var categorySelect = Array.from(outlet().querySelectorAll(".toolbar select")).find((s) =>
       Array.from(s.options).some((o) => o.textContent === "Drawing")
     );
-    categorySelect.value = "drawing";
-    categorySelect.dispatchEvent(new win.Event("change"));
+    setReactSelectValue(win, categorySelect, "drawing");
+    await flush();
     var items = outlet().querySelectorAll(".doc-register-item");
     assert.strictEqual(items.length, 1);
     assert.ok(outlet().textContent.indexOf("site-plan.pdf") !== -1);
-    categorySelect.value = "";
-    categorySelect.dispatchEvent(new win.Event("change"));
+    setReactSelectValue(win, categorySelect, "");
+    await flush();
   });
 
-  await check("search narrows by filename", () => {
+  await check("search narrows by filename", async () => {
     var searchInput = outlet().querySelector(".toolbar input[type=text]");
-    searchInput.value = "invoice";
-    searchInput.dispatchEvent(new win.Event("input"));
+    setReactInputValue(win, searchInput, "invoice");
+    await flush();
     var items = outlet().querySelectorAll(".doc-register-item");
     assert.strictEqual(items.length, 1);
     assert.ok(outlet().textContent.indexOf("invoice-04.pdf") !== -1);
-    searchInput.value = "";
-    searchInput.dispatchEvent(new win.Event("input"));
+    setReactInputValue(win, searchInput, "");
+    await flush();
   });
 
-  await check("a search/filter with zero matches shows the correct empty state, not a crash", () => {
+  await check("a search/filter with zero matches shows the correct empty state, not a crash", async () => {
     var searchInput = outlet().querySelector(".toolbar input[type=text]");
-    searchInput.value = "nonexistent-file-xyz";
-    searchInput.dispatchEvent(new win.Event("input"));
+    setReactInputValue(win, searchInput, "nonexistent-file-xyz");
+    await flush();
     assert.ok(outlet().textContent.indexOf("No documents match this search/filter.") !== -1);
-    searchInput.value = "";
-    searchInput.dispatchEvent(new win.Event("input"));
+    setReactInputValue(win, searchInput, "");
+    await flush();
   });
 
-  await check("clicking a different list item selects it into the preview pane", () => {
+  await check("clicking a different list item selects it into the preview pane", async () => {
     var items = Array.from(outlet().querySelectorAll(".doc-register-item"));
     var contractItem = items.find((i) => i.textContent.indexOf("contract.pdf") !== -1);
     assert.ok(contractItem);
     contractItem.click();
-    // rerender() rebuilds the whole outlet, so the old node reference above is now
+    await flush();
+    // rerender rebuilds the register, so the old node reference above is now
     // detached — re-query the freshly-rendered DOM rather than checking the stale one.
     var refreshedItems = Array.from(outlet().querySelectorAll(".doc-register-item"));
     var refreshedContractItem = refreshedItems.find((i) => i.textContent.indexOf("contract.pdf") !== -1);
@@ -176,31 +191,35 @@ function findButtonByText(dom, text, root) {
     assert.ok(preview.textContent.indexOf("Delete") !== -1);
   });
 
-  await check("clicking '+ Add Document' while a project filter is active pre-fills the upload form to that project", () => {
+  await check("clicking '+ Add Document' while a project filter is active pre-fills the upload form to that project", async () => {
     var projectSelect = Array.from(outlet().querySelectorAll(".toolbar select")).find((s) =>
       Array.from(s.options).some((o) => o.textContent === "Harbor Bridge")
     );
-    projectSelect.value = projB;
-    projectSelect.dispatchEvent(new win.Event("change"));
+    setReactSelectValue(win, projectSelect, projB);
+    await flush();
     findButtonByText(dom, "+ Add Document").click();
+    await flush();
     var formPanel = Array.from(outlet().querySelectorAll(".panel")).find((p) => p.textContent.indexOf("Add Document") !== -1 && p.querySelector("select"));
     assert.ok(formPanel, "upload form panel not found");
     var formProjectSelect = formPanel.querySelector("select");
     assert.ok(formProjectSelect, "upload form project select not found");
     assert.strictEqual(formProjectSelect.value, projB, "upload form must default to the currently filtered project");
     findButtonByText(dom, "Cancel").click();
+    await flush();
     projectSelect = Array.from(outlet().querySelectorAll(".toolbar select")).find((s) =>
       Array.from(s.options).some((o) => o.textContent === "Harbor Bridge")
     );
-    projectSelect.value = "";
-    projectSelect.dispatchEvent(new win.Event("change"));
+    setReactSelectValue(win, projectSelect, "");
+    await flush();
   });
 
-  await check("the register/preview still renders below an open upload form (form doesn't hide the existing list)", () => {
+  await check("the register/preview still renders below an open upload form (form doesn't hide the existing list)", async () => {
     findButtonByText(dom, "+ Add Document").click();
+    await flush();
     assert.ok(outlet().textContent.indexOf("Add Document") !== -1 && outlet().querySelector("select"), "upload form not open");
     assert.ok(outlet().querySelector(".doc-register"), "existing register must still render below the open form");
     findButtonByText(dom, "Cancel").click();
+    await flush();
   });
 
   await check("Workspace's Documents tab now lands pre-filtered to the right project (the Gate 4 gap is closed)", async () => {

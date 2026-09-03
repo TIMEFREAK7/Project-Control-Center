@@ -239,9 +239,13 @@ function mouseEvent(win, type, clientX) {
     assert.strictEqual(listPane.style.flex, "0 0 640px", "the drag-committed width must persist across an unrelated rerender");
   });
 
-  await check("double-clicking the handle resets the width override", () => {
+  await check("double-clicking the handle resets the width override", async () => {
     var handle = outlet().querySelector(".doc-register-resize-handle");
     handle.dispatchEvent(new win.MouseEvent("dblclick", { bubbles: true, cancelable: true }));
+    // documents.js is React-migrated: double-click only sets React state (matching the
+    // vanilla page's own uiState + rerender()), unlike the live-drag mousemove handler
+    // which mutates the DOM directly — the resulting style change commits asynchronously.
+    await flush();
 
     var listPane = outlet().querySelector(".doc-register-list");
     assert.strictEqual(listPane.style.flex, "", "double-click must remove the width override entirely");

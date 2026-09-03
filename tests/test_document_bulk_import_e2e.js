@@ -47,7 +47,11 @@ function findButtonByText(win, text) {
 
 function setInputFiles(win, input, files) {
   Object.defineProperty(input, "files", { value: files, configurable: true });
-  input.dispatchEvent(new win.Event("change"));
+  // documents.js is now React-migrated: React's synthetic event system listens at the
+  // document root, so a non-bubbling event dispatched directly on the <input> never
+  // reaches its onChange handler — bubbles:true is required (see CLAUDE.md's React
+  // migration notes on the analogous controlled-input bypass pattern).
+  input.dispatchEvent(new win.Event("change", { bubbles: true }));
 }
 
 (async () => {
@@ -87,10 +91,11 @@ function setInputFiles(win, input, files) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("'Bulk Import' button exists and opens the panel", () => {
+  await check("'Bulk Import' button exists and opens the panel", async () => {
     var btn = findButtonByText(win, "Bulk Import");
     assert.ok(btn, "Bulk Import button not found");
     btn.click();
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("Bulk Import") !== -1);
     assert.ok(text.indexOf("Choose Files") !== -1, "expected a Choose Files control");
@@ -155,6 +160,11 @@ function setInputFiles(win, input, files) {
     assert.strictEqual(Buffer.from(blob1.split(",")[1], "base64").toString("utf8"), "content-of-file-one");
     assert.strictEqual(Buffer.from(blob2.split(",")[1], "base64").toString("utf8"), "content-of-file-two");
 
+    // documents.js is React-migrated: the store update above lands slightly before the
+    // component's own setSummary()/setFiles([]) re-render commits — flush so the next
+    // check reads the settled DOM, not a stale one.
+    await flush();
+
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
@@ -166,7 +176,9 @@ function setInputFiles(win, input, files) {
 
   await check("DUPLICATE DETECTION: bulk-importing a file matching an existing document's name+size flags it as a possible duplicate, but still imports it", async () => {
     findButtonByText(win, "Close").click();
+    await flush();
     findButtonByText(win, "Bulk Import").click();
+    await flush();
     var fileInput = win.document.querySelector('input[type="file"][multiple]:not([webkitdirectory])');
     // Same filename AND same byte length as doc1 ("content-of-file-one", 20 bytes) — this
     // is the "name-size" match duplicateService.js falls back to without crypto.subtle
@@ -205,7 +217,9 @@ function setInputFiles(win, input, files) {
 
   await check("a file can be removed from the pending batch before import", async () => {
     findButtonByText(win, "Close").click();
+    await flush();
     findButtonByText(win, "Bulk Import").click();
+    await flush();
     var fileInput = win.document.querySelector('input[type="file"][multiple]:not([webkitdirectory])');
     var f1 = new win.File(["remove-me"], "temp1.txt", { type: "text/plain" });
     var f2 = new win.File(["keep-me"], "temp2.txt", { type: "text/plain" });
@@ -236,9 +250,10 @@ function setInputFiles(win, input, files) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("'Close' resets the bulk import panel without importing anything pending", () => {
+  await check("'Close' resets the bulk import panel without importing anything pending", async () => {
     var before = win.PCC.store.get().documents.length;
     findButtonByText(win, "Close").click();
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("Bulk Import") === -1 || !win.document.querySelector('input[type="file"][multiple]:not([webkitdirectory])'), "the bulk import panel should be closed");
     assert.strictEqual(win.PCC.store.get().documents.length, before, "closing without importing must not create any documents");

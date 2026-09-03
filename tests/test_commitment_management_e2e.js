@@ -275,10 +275,11 @@ function setReactSelectValue(win, select, value) {
     assert.ok(text.indexOf("Total Committed 50,000") !== -1);
   });
 
-  await check("Documents' Package field offers the shared Packages register and round-trips package_id", () => {
+  await check("Documents' Package field offers the shared Packages register and round-trips package_id", async () => {
     win.PCC.router.go("documents");
-    win.PCC.router.render();
+    await flush();
     findButtonByText(dom, "+ Add Document").click();
+    await flush();
 
     var packageSelect = Array.from(outlet().querySelectorAll("select")).find((s) =>
       Array.from(s.options).some((o) => o.textContent.indexOf("Structural Steel Package") !== -1)
