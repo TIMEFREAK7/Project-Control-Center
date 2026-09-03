@@ -5925,6 +5925,85 @@ no TypeScript yet (§11 — same "don't add it merely to rename files" disciplin
 there's enough React surface for type contracts to earn their keep); Python, OpenPyXL, and PDF
 processing (§27-31, §48) remain entirely untouched, exactly as scoped.
 
+## Post-Phase-5 Engineering Evolution — React Migration Complete, 2026-09-03
+
+Following the pilot above, the rest of the app was migrated one page at a time (Batches A-F),
+each batch rebuilt and full-suite-verified before the next started, per the master prompt's own
+progressive-migration principle. **Every vanilla-JS page in `src/js/pages/` is now migrated to
+React** except `schedule.js` (~8,200 lines, the app's single largest and most stateful module —
+Gantt rendering, drag-based editing, CPM recalculation triggers) — an explicit, deliberate
+decision to hold it back for its own dedicated later gate rather than fold it into this sweep, not
+an oversight or a scope cut.
+
+Batches, in build order: **A** (actionCentre, documentTypes, projectLookahead), **B**
+(settings, myWork, lessonsLearned, knowledgeBase, organizations, delayRecoveryDashboard), **C**
+(decisionRegister, dashboard, projectWorkspace), **D** (reports, risks, commitments,
+changeOrders, rfis, dailyLog, meetings, cost — the largest batch), **E** (resources), and **F**
+(portfolio, vendors, documents, executiveCenter — the "big four": the largest, most calc-heavy
+remaining pages, closing out the migration). Every batch followed the pilot's established
+component + service + thin-stub pattern with zero changes to the router's route-registration
+contract, so no unmigrated page ever needed touching.
+
+**Real bugs found and fixed along the way** (beyond the pilot's jszip/`setImmediate` collision and
+async-initial-mount findings, both still current — see the pilot section above):
+- **A store snapshot returned as a shared, mutated-in-place reference silently breaks a
+  `useState`-based refresh.** `store.js`'s `get()` always returns the *same* module-level object;
+  a service's "read the current state" function that forwarded it directly gave React a value
+  `Object.is`-equal to what it already had, so a mutation (e.g. deactivating a record) never
+  triggered a re-render until an unrelated state change forced one. Fixed with a fresh top-level
+  wrapper object (`Object.assign({}, store.get())`) on every call — first hit and fixed during the
+  Document Types migration (Batch A), then intentionally carried forward as the standard pattern
+  for every later service's own refresh function.
+- **A React-controlled checkbox needs a real click, not a raw `.checked` assignment.** A direct
+  comparison in real Chromium confirmed `.checked = true` + a dispatched event does not reliably
+  reach a controlled checkbox's `onChange` the way `el.click()` — the actual interaction a user
+  performs — does. Standardized across every migrated page's test coverage.
+- **A one-shot "pending prop" cross-page navigation channel (e.g. "create this record prefilled
+  from that meeting") must be consumed inside the initial `useState` lazy initializer, never a
+  `useEffect`.** `flushSync` only forces the very first `render()` synchronous; an effect still
+  runs in React's later, separate passive-effects pass even on first mount, so a `useEffect`-based
+  consumer left a real caller seeing the plain list for one tick before the prefilled form
+  appeared. Found and fixed on Lessons Learned (Batch B).
+- **`router.js`'s `suppressNextHashRender` is a single boolean, not a queue** — two back-to-back
+  `go()` calls with no tick between them can leave the second navigation's hashchange
+  unsuppressed, firing an extra render that can silently discard an already-consumed pending prop.
+  Confirmed as a real edge case only *programmatic* back-to-back calls (i.e. test code) can hit —
+  a real user's two clicks always have wall-clock time between them — so fixed in the affected
+  tests (an `await flush()` between navigations), not in the shared router itself, per the
+  master prompt's own regression caution doubling for a file every page depends on. The same
+  single-flag race was later found to leak *across* separate test blocks too, not just within one
+  (jsdom dispatches `hashchange` as a real queued macrotask), fixed the same way.
+- **A DOM event's `currentTarget` is nulled out once its own listener phase completes, per spec** —
+  real Chromium/jsdom behavior, not a quirk. Documents' resize-handle drag handler referenced
+  `currentTarget` inside a later-firing `mouseup` handler registered during the original
+  `mousedown`, which threw once that reference had already gone `null` — fixed by capturing the
+  actual DOM element into a local variable at mousedown time instead of relying on the event
+  object later.
+- **Conditional early-return branches wrapping a stateful child component remount it, discarding
+  in-progress state.** Documents' upload form and bulk-import panel were each rendered inside
+  separate empty/non-empty branches of the page's top-level `return`; an operation that itself
+  flipped the branch mid-flight (e.g. a bulk import completing and creating the first document)
+  remounted the panel and wiped its own just-finished summary before the user ever saw it. Fixed
+  by rendering both panels once, at a single fixed tree position, above a computed `body` variable
+  that does the branching — matching the original vanilla page's own render structure.
+- **Executive Center's Management Pack JSX reimplementation drifted from the original vanilla
+  output** — a first pass through the section content (kpis, schedule + critical-path sub-section,
+  status-date, delay/recovery detail table, schedule-performance-score labeling, cost +
+  commitments sub-section, EVM's VAC row, and every register section's per-record tables) diverged
+  from what the original computed and rendered. Caught by a test assertion on one specific label,
+  but the actual drift was far broader than that one string once the JSX was compared line-by-line
+  against the real original, recovered via `git show HEAD:src/js/pages/executiveCenter.js` before
+  its stub rewrite was committed. Fixed by rewriting the section to match the original precisely.
+
+Full suite: **2626 checks passing, 0 failures**, across every test file the suite runs. Verified
+in real Chromium (not just jsdom) on Executive Center specifically — Overview, a full Weekly
+Review capture, and Management Pack generation — with zero console errors. Merged to `main`
+2026-09-03.
+
+**Still open, explicitly deferred, not an oversight**: `schedule.js` itself (see above); no
+TypeScript yet; Python/OpenPyXL/PDF processing untouched; no reusable component library beyond
+what each migrated page's own needs justified.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
@@ -6028,15 +6107,16 @@ discipline every other roadmap on this page already follows.
 architecture direction — React, a formal service layer, Python processing, MSP/P6/Excel maturity,
 and more.** Its own required first step (inspect before implementing) found most of its priorities
 already done under this repo's "PCC Architecture Upgrade" phases above; **React was the one large,
-genuinely unstarted priority, and its migration has now started** — one pilot page (Storage
-Management) migrated behind the existing router with zero changes to any other page's contract, a
-formal `react/` build step producing `js/vendor/react-bundle.js`, and a thin service-layer pattern
-(`react/src/services/*.js`) other migrated pages should follow. See its own section above for the
-full detail, including two real bugs found and fixed (a jszip/React scheduler collision via a
-leaked `setImmediate` polyfill, and React 18's asynchronous initial-mount commit needing a test
-accommodation). Python, OpenPyXL, PDF processing, and TypeScript all remain entirely untouched —
-next priorities per that prompt's own §76 order, not started without a fresh scoping conversation
-first, the same gate discipline every roadmap on this page already follows.
+genuinely unstarted priority, and its migration is now complete** — starting from one pilot page
+(Storage Management) behind the existing router with zero changes to any other page's contract,
+then progressively through Batches A-F until every vanilla-JS page except `schedule.js` (held back
+deliberately for its own later gate) was migrated. A formal `react/` build step produces
+`js/vendor/react-bundle.js`, and every page follows the same thin service-layer pattern
+(`react/src/services/*.js`). See the pilot section and the "React Migration Complete" section
+above for the full detail, including every real bug found and fixed along the way. Python,
+OpenPyXL, PDF processing, and TypeScript all remain entirely untouched — next priorities per that
+prompt's own §76 order, not started without a fresh scoping conversation first, the same gate
+discipline every roadmap on this page already follows.
 
 **Tier 2 is complete, and the entire 14-gate Document Control sub-spec Aditya handed over is now
 built** (Gates 14-28) — no gates from that spec remain. A new, separate roadmap started with Gate
