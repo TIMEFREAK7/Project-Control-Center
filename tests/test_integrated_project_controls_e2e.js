@@ -223,9 +223,16 @@ function findButtonByText(dom, text) {
     });
   });
 
-  await check("the Delay & Recovery Dashboard rolls up the portfolio-wide Unaddressed Delay Days KPI and worst-first activity list", () => {
+  await check("the Delay & Recovery Dashboard rolls up the portfolio-wide Unaddressed Delay Days KPI and worst-first activity list", async () => {
     win.PCC.router.go("delayRecoveryDashboard");
     win.PCC.router.render();
+    // router.js's suppressNextHashRender is a single flag, not a queue — an unflushed
+    // go() call here can leave a hashchange event queued that later fires during a
+    // subsequent check's own flush() and consumes the flag meant for THAT check's own
+    // navigation, triggering an unwanted extra render() there (see CLAUDE.md's React
+    // migration notes on this exact cross-check-block race). Flush after every go(),
+    // even to a route that itself doesn't need it.
+    await flush();
 
     var kpiCards = Array.from(outlet().querySelectorAll(".kpi-card"));
     function kpiValue(label) {
@@ -242,9 +249,10 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("Portfolio Performance's KPI strip shows the same portfolio-wide Unaddressed Delay Days total", () => {
+  await check("Portfolio Performance's KPI strip shows the same portfolio-wide Unaddressed Delay Days total", async () => {
     win.PCC.router.go("portfolio");
     win.PCC.router.render();
+    await flush();
 
     var kpiCards = Array.from(outlet().querySelectorAll(".kpi-card"));
     var card = kpiCards.find((c) => c.textContent.indexOf("UNADDRESSED DELAY (DAYS)") !== -1);
@@ -253,11 +261,15 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("Portfolio Performance's Compare table has a new 'Sched. Perf.' column with a RAG badge per project", () => {
+  await check("Portfolio Performance's Compare table has a new 'Sched. Perf.' column with a RAG badge per project", async () => {
     var compareBtn = findButtonByText(dom, "Compare");
     if (compareBtn) {
       compareBtn.click();
-      win.PCC.router.render();
+      // portfolio.js is a React-migrated page — a click's state update commits
+      // asynchronously (see CLAUDE.md's React migration notes), so await flush()
+      // before reading the resulting DOM. Deliberately no extra
+      // win.PCC.router.render() call here.
+      await flush();
     }
     var headerText = outlet().textContent;
     assert.ok(headerText.indexOf("Sched. Perf.") !== -1, "expected a 'Sched. Perf.' column header; got: " + headerText.slice(0, 300));

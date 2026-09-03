@@ -35,6 +35,15 @@ async function check(label, fn) {
   }
 }
 
+// portfolio.js is a React-migrated page: a raw `.value =` assignment doesn't reliably
+// reach a controlled <select>'s onChange (React patches the native setter to track "last
+// known value" — see CLAUDE.md's React migration notes), so bypass it via the native
+// prototype descriptor before dispatching the change event.
+function setReactSelectValue(win, select, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLSelectElement.prototype, "value").set.call(select, value);
+  select.dispatchEvent(new win.Event("change", { bubbles: true }));
+}
+
 function findButtonByText(dom, text) {
   const buttons = Array.from(dom.window.document.querySelectorAll("button"));
   return buttons.find((b) => b.textContent.trim() === text);
@@ -162,10 +171,15 @@ function findButtonsByTextPrefix(dom, prefix) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("Portfolio's project details panel shows the same link (Vendor Management -> Portfolio direction)", () => {
+  await check("Portfolio's project details panel shows the same link (Vendor Management -> Portfolio direction)", async () => {
     win.PCC.router.go("portfolio");
     win.PCC.router.render();
+    // portfolio.js is a React-migrated page — flush before interacting and after every
+    // click whose state update commits asynchronously (see CLAUDE.md's React
+    // migration notes).
+    await flush();
     findButtonByText(dom, "Details").click();
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("VENDORS (1)") !== -1, "expected the Vendors section to show the 1 link made from the Vendor Profile side, got: " + text.slice(0, 1000));
     assert.ok(text.indexOf("Acme Steel Suppliers") !== -1);
@@ -173,8 +187,9 @@ function findButtonsByTextPrefix(dom, prefix) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("unlinking from Portfolio removes it, and '+ Link Vendor' from Portfolio re-links it (Portfolio -> Vendor Management direction)", () => {
+  await check("unlinking from Portfolio removes it, and '+ Link Vendor' from Portfolio re-links it (Portfolio -> Vendor Management direction)", async () => {
     findButtonByText(dom, "Unlink").click();
+    await flush();
     var afterUnlink = win.PCC.store.get();
     assert.strictEqual(afterUnlink.vendor_project_links.filter((l) => l.vendor_id === vendorId).length, 0);
     assert.ok(outlet().textContent.indexOf("VENDORS (0)") !== -1);
@@ -182,10 +197,13 @@ function findButtonsByTextPrefix(dom, prefix) {
     var linkBtn = findButtonByText(dom, "+ Link Vendor");
     assert.strictEqual(linkBtn.disabled, false, "the vendor should be available to link again after unlinking");
     linkBtn.click();
+    await flush();
     var picker = Array.from(win.document.querySelectorAll("select")).find((s) => Array.from(s.options).some((o) => o.textContent === "Acme Steel Suppliers"));
     assert.ok(picker, "vendor picker select not found in Portfolio's Link Vendor panel");
-    picker.value = vendorId;
+    setReactSelectValue(win, picker, vendorId);
+    await flush();
     findButtonByText(dom, "Link").click();
+    await flush();
 
     var afterRelink = win.PCC.store.get();
     var relinked = afterRelink.vendor_project_links.filter((l) => l.vendor_id === vendorId && l.project_id === projectId);

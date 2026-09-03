@@ -174,11 +174,17 @@ function findFieldByLabel(dom, labelText) {
     assert.strictEqual(updated.status, "under_review");
   });
 
-  await check("Portfolio's ATTACHMENTS section also shows only the latest revision, not one row per revision", () => {
+  await check("Portfolio's ATTACHMENTS section also shows only the latest revision, not one row per revision", async () => {
     win.PCC.router.go("portfolio");
     win.PCC.router.render();
+    // portfolio.js is a React-migrated page — flush before interacting and after every
+    // click whose state update commits asynchronously (see CLAUDE.md's React
+    // migration notes). Deliberately no extra win.PCC.router.render() call after the
+    // click — that would trigger a second, fresh remount losing the expanded state
+    // (see CLAUDE.md's React migration notes on this general class of bug).
+    await flush();
     findButtonByText(dom, "Details").click();
-    win.PCC.router.render();
+    await flush();
     var outletText = win.document.getElementById("page-outlet").textContent;
     assert.ok(outletText.indexOf("spec-rev01.pdf") !== -1);
     assert.ok(outletText.indexOf("spec-rev00.pdf") === -1, "Portfolio's ATTACHMENTS must collapse to latest-only, matching Documents' own list");

@@ -277,9 +277,14 @@ function addDaysIso(days) {
     assert.strictEqual(decSelect.value, "consultant", "must reflect the seeded value");
   });
 
-  await check("Vendor's Next Follow-up Date round-trips and Portfolio's edit form has a Review Cadence field", () => {
+  await check("Vendor's Next Follow-up Date round-trips and Portfolio's edit form has a Review Cadence field", async () => {
     win.PCC.router.go("vendors");
     win.PCC.router.render();
+    // router.js's suppressNextHashRender is a single flag, not a queue — flush after
+    // every go(), even to a still-vanilla route, so a queued hashchange never leaks
+    // into a later check that touches a React-migrated route (see CLAUDE.md's React
+    // migration notes on this cross-check-block race).
+    await flush();
     findButtonByText(dom, "Vendor List").click();
     var vendorEdit = Array.from(outlet().querySelectorAll("button")).find((b) => b.textContent.trim() === "Edit");
     assert.ok(vendorEdit, "no Edit button found on the seeded vendor");
@@ -290,6 +295,10 @@ function addDaysIso(days) {
 
     win.PCC.router.go("portfolio");
     win.PCC.router.render();
+    // portfolio.js is a React-migrated page — flush before interacting and after every
+    // click whose state update commits asynchronously (see CLAUDE.md's React
+    // migration notes).
+    await flush();
     // Gate 3 (UI/UX Overhaul, Portfolio): Edit/Archive moved behind each card's "..."
     // contextual menu — open the first card's menu before looking for Edit.
     var menuButtons = Array.from(outlet().querySelectorAll("button.icon-btn")).filter(
@@ -297,17 +306,20 @@ function addDaysIso(days) {
     );
     assert.ok(menuButtons.length > 0, "no card contextual menu button found");
     menuButtons[0].click();
+    await flush();
     var editButtons = Array.from(outlet().querySelectorAll("button")).filter((b) => b.textContent.trim() === "Edit");
     assert.ok(editButtons.length > 0);
     editButtons[0].click();
+    await flush();
     var cadenceSelect = win.document.getElementById("field-review_cadence_days");
     assert.ok(cadenceSelect, "Review Cadence field not found on the project edit form");
     assert.strictEqual(cadenceSelect.value, "7", "must default to weekly (7 days)");
   });
 
-  await check("this gate writes nothing back beyond what was seeded — record counts unchanged", () => {
+  await check("this gate writes nothing back beyond what was seeded — record counts unchanged", async () => {
     win.PCC.router.go("myWork");
     win.PCC.router.render();
+    await flush();
     var data = win.PCC.store.get();
     assert.strictEqual(data.projects.length, 1);
     assert.strictEqual(data.activities.length, 2);

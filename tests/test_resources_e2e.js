@@ -230,9 +230,9 @@ function setReactSelectValue(win, select, value) {
   await check("Portfolio's Details panel shows a Resources Assigned section flagging the over-allocation, with a working View All link", async () => {
     win.PCC.router.go("portfolio");
     win.PCC.router.render();
-    // portfolio.js is still vanilla, but flush anyway before interacting — leaving this
-    // navigation unflushed could leak a pending hashchange into a later check that DOES
-    // touch a React-migrated route (see CLAUDE.md's React migration notes on this race).
+    // portfolio.js is a React-migrated page — flush before interacting and after every
+    // click whose state update commits asynchronously (see CLAUDE.md's React
+    // migration notes).
     await flush();
     var detailsButtons = Array.from(win.document.querySelectorAll("button")).filter((b) => b.textContent.trim() === "Details");
     var riversideDetailsBtn = detailsButtons.find((b) => {
@@ -241,6 +241,7 @@ function setReactSelectValue(win, select, value) {
     });
     assert.ok(riversideDetailsBtn, "Details button for Riverside Tower not found");
     riversideDetailsBtn.click();
+    await flush();
 
     var outlet = win.document.getElementById("page-outlet");
     assert.ok(outlet.textContent.indexOf("RESOURCES ASSIGNED") !== -1);

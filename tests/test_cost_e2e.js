@@ -253,13 +253,14 @@ function findButtonByText(win, text) {
   await check("Portfolio's Details panel shows the project's Cost Tracking summary", async () => {
     win.PCC.router.go("portfolio");
     win.PCC.router.render();
-    // portfolio.js is still vanilla, but flush anyway before interacting — leaving this
-    // navigation unflushed could leak a pending hashchange into a later check that DOES
-    // touch a React-migrated route (see CLAUDE.md's React migration notes on this race).
+    // portfolio.js is a React-migrated page — flush before interacting and after every
+    // click whose state update commits asynchronously (see CLAUDE.md's React
+    // migration notes).
     await flush();
     var detailsBtn = findButtonByText(win, "Details");
     assert.ok(detailsBtn, "Details button not found on the project card");
     detailsBtn.click();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     assert.ok(outlet.textContent.indexOf("COST TRACKING") !== -1, "expected a Cost Tracking section in project details");
     assert.ok(outlet.textContent.indexOf("Budgeted") !== -1 && outlet.textContent.indexOf("variance") !== -1);
@@ -327,6 +328,7 @@ function findButtonByText(win, text) {
     var detailsBtn = Array.from(fallbackCard.querySelectorAll("button")).find((b) => b.textContent.trim() === "Details");
     assert.ok(detailsBtn, "Details button not found within the Fallback Test Project card");
     detailsBtn.click();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     assert.ok(outlet.textContent.indexOf("75,000") !== -1, "expected the fallback figure in Portfolio's Details panel");
     assert.ok(

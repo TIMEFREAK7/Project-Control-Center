@@ -102,15 +102,21 @@ function setReactInputValue(win, el, value) {
     rfiTypeId = rfiType.id;
   });
 
-  await check("Portfolio's Add Project form has a Project Code field, and it persists", () => {
+  await check("Portfolio's Add Project form has a Project Code field, and it persists", async () => {
     win.PCC.router.go("portfolio");
     win.PCC.router.render();
+    // portfolio.js is a React-migrated page — flush before interacting and after every
+    // click whose state update commits asynchronously (see CLAUDE.md's React
+    // migration notes).
+    await flush();
     findButtonByText(dom, "+ Add Project").click();
+    await flush();
     var codeInput = findFieldByLabel(dom, "Project Code");
     assert.ok(codeInput, "Project Code field not found in the Add Project form");
     dom.window.document.querySelector("#field-name").value = "Second Project";
     codeInput.value = "SEC";
     findButtonByText(dom, "Add Project").click();
+    await flush();
     var created = win.PCC.store.get().projects.find(function (p) { return p.name === "Second Project"; });
     assert.strictEqual(created.project_code, "SEC");
   });

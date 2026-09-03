@@ -41,6 +41,7 @@ import DailyLogPage from "./pages/DailyLog.jsx";
 import MeetingsPage from "./pages/Meetings.jsx";
 import CostPage from "./pages/Cost.jsx";
 import ResourcesPage from "./pages/Resources.jsx";
+import PortfolioPage from "./pages/Portfolio.jsx";
 
 window.PCC = window.PCC || {};
 window.PCC.React = React;
@@ -77,3 +78,4 @@ window.PCC.reactPages.dailylog = DailyLogPage;
 window.PCC.reactPages.meetings = MeetingsPage;
 window.PCC.reactPages.cost = CostPage;
 window.PCC.reactPages.resources = ResourcesPage;
+window.PCC.reactPages.portfolio = PortfolioPage;
