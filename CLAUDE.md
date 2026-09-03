@@ -106,6 +106,24 @@ it documents *why* things are shaped the way they are, not just what exists.
     between the two navigations), not in the shared router — don't "fix" this in
     `router.js` without a real user-facing repro; the master prompt's own regression
     caution applies double to a file every page depends on.
+  - **The same single-flag race also leaks ACROSS separate `check()` blocks in a test
+    file, not just between two `go()` calls inside one block — a jsdom-confirmed detail
+    that makes this bite in a non-obvious place.** Confirmed directly: `window.location.hash
+    = x` in jsdom dispatches `hashchange` as a real macrotask (one full `setTimeout(…, 0)`
+    tick later), never synchronously — so a `go()` call left un-flushed at the END of one
+    `check()` block queues a hashchange that is still pending when the NEXT block starts.
+    If that next block does its own `go()` (setting `suppressNextHashRender = true` again)
+    and then `await flush()`s, the STALE hashchange from the previous block fires first,
+    reads the flag as `true`, and resets it — leaving the flag `false` by the time the
+    current block's own (later-queued) hashchange fires, which then runs an unwanted extra
+    `render()` and wipes that block's one-shot pending prop. Real bug, hit and fixed in
+    `tests/test_activity_linking_e2e.js`: a `viewRow.click(); window.PCC.router.render();`
+    at the tail of one `check()` (vanilla `schedule` route, so the redundant manual
+    `render()` call looked harmless) with no trailing `await flush()` silently broke a
+    LATER, unrelated check's `rfis.expandRfi()` pending-prop two blocks later. Fix is the
+    same either way: `await flush()` after every `go()` a check performs, even ones to a
+    still-vanilla route and even at the very end of a check block — don't reason "this
+    route doesn't need it" per-block; reason about the queue the whole file shares.
   - **A React page's `useState` resets to defaults on every remount — unlike the old vanilla
     page's persistent module-level `uiState`.** `reactBridge.js`'s `mount()` creates a brand new
     root (and therefore a brand new component instance) on every `router.render()` call for that

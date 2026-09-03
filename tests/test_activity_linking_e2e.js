@@ -113,10 +113,15 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("RFI/TQ: the Add form persists activity_id", () => {
+  await check("RFI/TQ: the Add form persists activity_id", async () => {
     win.PCC.router.go("rfis");
     win.PCC.router.render();
+    // rfis.js is a React-migrated page — a click's state update commits asynchronously
+    // (see CLAUDE.md's React migration notes), so await flush() before reading the
+    // resulting DOM.
+    await flush();
     findButtonByText(dom, "+ Add RFI / TQ").click();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     outlet.querySelector("#rfifield-subject").value = "Beam Spec";
     outlet.querySelector("#rfifield-question").value = "Which spec applies?";
@@ -124,13 +129,20 @@ function findButtonByText(dom, text) {
     assert.ok(activitySelect);
     activitySelect.value = activityId;
     outlet.querySelector("form").dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
     var saved = win.PCC.store.get().rfis.find((r) => r.subject === "Beam Spec");
     assert.ok(saved && saved.activity_id === activityId);
   });
 
-  await check("Meetings: the Add form persists activity_id", () => {
+  await check("Meetings: the Add form persists activity_id", async () => {
     win.PCC.router.go("meetings");
     win.PCC.router.render();
+    // Flush here even though meetings.js itself is still vanilla — router.js's
+    // suppressNextHashRender is a single flag, so an unflushed go() call can leave a
+    // hashchange event queued that later fires during a subsequent React-migrated
+    // page's own flush() and wipes a one-shot pending prop (see CLAUDE.md's React
+    // migration notes on this race).
+    await flush();
     findButtonByText(dom, "+ Add Meeting").click();
     var outlet = win.document.getElementById("page-outlet");
     outlet.querySelector("#meetingfield-title").value = "Site Coordination";
@@ -142,9 +154,10 @@ function findButtonByText(dom, text) {
     assert.ok(saved && saved.activity_id === activityId);
   });
 
-  await check("Daily Log: the Add form persists activity_id", () => {
+  await check("Daily Log: the Add form persists activity_id", async () => {
     win.PCC.router.go("dailylog");
     win.PCC.router.render();
+    await flush();
     findButtonByText(dom, "+ Add Daily Log").click();
     var outlet = win.document.getElementById("page-outlet");
     var activitySelect = outlet.querySelector("#dlfield-activity_id");
@@ -213,6 +226,14 @@ function findButtonByText(dom, text) {
     assert.ok(viewRow, "linked-activity row not found");
     viewRow.click();
     win.PCC.router.render();
+    // Flush here, before this check ends — router.js's suppressNextHashRender is a
+    // single flag, and jsdom fires "hashchange" asynchronously (confirmed: a full
+    // macrotask later, not synchronously with the hash assignment). Leaving this
+    // go("schedule")'s hashchange un-flushed lets it linger into the NEXT check, where
+    // it fires during that check's own await flush() and incorrectly consumes the flag
+    // meant for that check's own navigation — see CLAUDE.md's React migration notes on
+    // this exact race.
+    await flush();
     assert.strictEqual(win.PCC.router.currentRouteName(), "schedule");
     var outlet2 = win.document.getElementById("page-outlet");
     assert.ok(outlet2.textContent.indexOf("Pour Foundation") !== -1, "should land on the Gantt tab showing the linked activity");
@@ -225,7 +246,7 @@ function findButtonByText(dom, text) {
   // linked record (risk/RFI/meeting/document/change order) is listed, and clicking
   // "View" on one navigates to and expands that specific record. ----
 
-  await check("the Linked Records section lists every type linked to this activity, and each 'View' button navigates to and expands that record", () => {
+  await check("the Linked Records section lists every type linked to this activity, and each 'View' button navigates to and expands that record", async () => {
     var outlet = win.document.getElementById("page-outlet");
     var text = outlet.textContent;
     assert.ok(text.indexOf("Ground Conditions") !== -1, "risk should be listed");
@@ -240,7 +261,13 @@ function findButtonByText(dom, text) {
     var rfiRow = Array.from(outlet.querySelectorAll(".attention-item--clickable")).find((r) => r.textContent.indexOf("Beam Spec") !== -1);
     assert.ok(rfiRow, "RFI's row not found in Linked Records");
     rfiRow.click();
-    win.PCC.router.render();
+    // Deliberately no extra win.PCC.router.render() call here — the row's onclick
+    // already calls window.PCC.rfis.expandRfi() + router.go("rfis"), and go() already
+    // renders. rfis.js is a React-migrated page whose expandRfi() is a one-shot
+    // pending-prop consumed on that exact mount (see CLAUDE.md's React migration
+    // notes) — a redundant extra render() call here would trigger a second, fresh
+    // remount that no longer has the prop to consume, silently losing it.
+    await flush();
     assert.strictEqual(win.PCC.router.currentRouteName(), "rfis");
     var outlet2 = win.document.getElementById("page-outlet");
     assert.ok(outlet2.textContent.indexOf("Beam Spec") !== -1);

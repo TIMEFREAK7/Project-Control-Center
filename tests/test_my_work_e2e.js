@@ -234,9 +234,15 @@ function addDaysIso(days) {
   await check("waiting_on_party (\"Waiting On\") is editable and round-trips on RFI/TQ, Change Order, and Decision forms", async () => {
     win.PCC.router.go("rfis");
     win.PCC.router.render();
+    // rfis.js is a React-migrated page — flush before interacting (a hashchange-
+    // triggered render can still land asynchronously after this go()+render() pair)
+    // and after the click (its state update commits asynchronously) — see CLAUDE.md's
+    // React migration notes.
+    await flush();
     var rfiEdit = Array.from(outlet().querySelectorAll("button")).find((b) => b.textContent.trim() === "Edit");
     assert.ok(rfiEdit, "no Edit button found on the seeded RFI");
     rfiEdit.click();
+    await flush();
     var rfiSelect = win.document.getElementById("rfifield-waiting_on_party");
     assert.ok(rfiSelect, "Waiting On select not found on RFI form");
     assert.strictEqual(rfiSelect.value, "client", "must reflect the seeded value");
