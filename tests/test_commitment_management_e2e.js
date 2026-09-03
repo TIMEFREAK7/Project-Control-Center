@@ -173,18 +173,28 @@ function setReactSelectValue(win, select, value) {
   await check("logging an Actual Cost in Cost Tracking against this commitment updates its computed Actual Value", async () => {
     win.PCC.router.go("cost");
     win.PCC.router.render();
+    // cost.js is a React-migrated page — flush before interacting and after every
+    // click whose state update commits asynchronously (see CLAUDE.md's React
+    // migration notes).
+    await flush();
     findButtonByText(dom, "Actuals").click();
+    await flush();
     findButtonByText(dom, "+ Log Actual Cost").click();
+    await flush();
 
-    win.document.getElementById("costactualfield-project_id").value = projectId;
-    // Project select's onchange populates the commitment dropdown for that project.
-    win.document.getElementById("costactualfield-project_id").dispatchEvent(new win.Event("change", { bubbles: true }));
+    // costactualfield-project_id is a CONTROLLED select (its onChange rescopes the
+    // Budget Item/Commitment dropdowns) — bypass React's patched value setter, since a
+    // raw assignment alone doesn't make its onChange fire (see CLAUDE.md's React
+    // migration notes).
+    setReactSelectValue(win, win.document.getElementById("costactualfield-project_id"), projectId);
+    await flush();
     var commitmentSelect = win.document.getElementById("costactualfield-commitment_id");
     commitmentSelect.value = commitmentId;
     win.document.getElementById("costactualfield-description").value = "First steel delivery";
     win.document.getElementById("costactualfield-amount").value = "15000";
     win.document.getElementById("costactualfield-date").value = "2026-02-01";
     findButtonByText(dom, "Log Cost").click();
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.cost_actuals.length, 1);
@@ -202,14 +212,23 @@ function setReactSelectValue(win, select, value) {
   await check("a second Actual Cost against the same commitment accumulates into the sum", async () => {
     win.PCC.router.go("cost");
     win.PCC.router.render();
+    await flush();
+    // cost.js is a React-migrated page — its tab state resets to the default ("Budget")
+    // on every fresh mount, unlike the old vanilla page's persistent module-level
+    // uiState (see CLAUDE.md's React migration notes), so re-select the Actuals tab
+    // rather than assuming it's still active from the earlier check.
+    findButtonByText(dom, "Actuals").click();
+    await flush();
     findButtonByText(dom, "+ Log Actual Cost").click();
-    win.document.getElementById("costactualfield-project_id").value = projectId;
-    win.document.getElementById("costactualfield-project_id").dispatchEvent(new win.Event("change", { bubbles: true }));
+    await flush();
+    setReactSelectValue(win, win.document.getElementById("costactualfield-project_id"), projectId);
+    await flush();
     win.document.getElementById("costactualfield-commitment_id").value = commitmentId;
     win.document.getElementById("costactualfield-description").value = "Second steel delivery";
     win.document.getElementById("costactualfield-amount").value = "10000";
     win.document.getElementById("costactualfield-date").value = "2026-02-15";
     findButtonByText(dom, "Log Cost").click();
+    await flush();
 
     win.PCC.router.go("commitments");
     win.PCC.router.render();
