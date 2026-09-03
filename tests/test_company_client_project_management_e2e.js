@@ -60,8 +60,13 @@ async function check(label, fn) {
   function selectByVisibleText(select, text) {
     const opt = Array.from(select.options).find((o) => o.textContent === text);
     assert.ok(opt, `option "${text}" not found in select (options: ${Array.from(select.options).map((o) => o.textContent).join(", ")})`);
-    select.value = opt.value;
-    select.dispatchEvent(new win.Event("change"));
+    // Several of these selects (Portfolio's Company/Client pickers, the header/Dashboard
+    // context switchers) are React-controlled: a raw `.value =` assignment doesn't
+    // reliably reach a controlled <select>'s onChange (React patches the native setter
+    // to track "last known value" — see CLAUDE.md's React migration notes), so bypass it
+    // via the native prototype descriptor before dispatching the change event.
+    Object.getOwnPropertyDescriptor(win.HTMLSelectElement.prototype, "value").set.call(select, opt.value);
+    select.dispatchEvent(new win.Event("change", { bubbles: true }));
   }
 
   // -------------------------------------------------------------------------
@@ -69,12 +74,17 @@ async function check(label, fn) {
   // Company…"/"+ Add New Client…" right inside the Add Project form.
   // -------------------------------------------------------------------------
   var projectId;
-  await check("Portfolio's Add Project form: creating a new Company and Client inline, then saving, links the project by id and syncs the legacy client/company text fields", () => {
+  await check("Portfolio's Add Project form: creating a new Company and Client inline, then saving, links the project by id and syncs the legacy client/company text fields", async () => {
     win.PCC.router.go("portfolio");
     win.PCC.router.render();
+    // portfolio.js is a React-migrated page — flush before interacting and after every
+    // click whose state update commits asynchronously (see CLAUDE.md's React
+    // migration notes).
+    await flush();
     var addBtn = byText("button", "+ Add Project");
     assert.ok(addBtn, "'+ Add Project' button not found");
     addBtn.click();
+    await flush();
 
     var nameInput = outlet().querySelector("#field-name");
     nameInput.value = "Ashoka";
@@ -85,26 +95,39 @@ async function check(label, fn) {
     assert.ok(companySelect && clientSelect, "Company/Client selects not found in the Add Project form");
 
     selectByVisibleText(companySelect, "+ Add New Company…");
+    await flush();
+    companySelect = outlet().querySelector("#field-company_id");
     var companyNameInput = companySelect.parentElement.querySelector("input[type=text]");
-    companyNameInput.value = "FABS";
+    var companyNameSetter = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, "value").set;
+    companyNameSetter.call(companyNameInput, "FABS");
+    companyNameInput.dispatchEvent(new win.Event("input", { bubbles: true }));
     var companyCreateBtn = Array.from(companySelect.parentElement.querySelectorAll("button")).find((b) => b.textContent === "Create");
     companyCreateBtn.click();
+    await flush();
 
     assert.ok(win.PCC.store.get().companies.some((c) => c.name === "FABS"), "Company must be created in the store immediately");
+    companySelect = outlet().querySelector("#field-company_id");
     assert.strictEqual(Array.from(companySelect.options).find((o) => o.selected).textContent, "FABS", "the newly created Company must be auto-selected");
 
+    clientSelect = outlet().querySelector("#field-client_id");
     selectByVisibleText(clientSelect, "+ Add New Client…");
+    await flush();
+    clientSelect = outlet().querySelector("#field-client_id");
     var clientNameInput = clientSelect.parentElement.querySelector("input[type=text]");
-    clientNameInput.value = "PepsiCo";
+    var clientNameSetter = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, "value").set;
+    clientNameSetter.call(clientNameInput, "PepsiCo");
+    clientNameInput.dispatchEvent(new win.Event("input", { bubbles: true }));
     var clientCreateBtn = Array.from(clientSelect.parentElement.querySelectorAll("button")).find((b) => b.textContent === "Create");
     clientCreateBtn.click();
+    await flush();
 
     var createdClient = win.PCC.store.get().clients.find((c) => c.name === "PepsiCo");
     assert.ok(createdClient, "Client must be created in the store immediately");
     assert.strictEqual(createdClient.company_id, win.PCC.store.get().companies.find((c) => c.name === "FABS").id, "the new Client must be scoped to the just-created Company");
 
     var form = outlet().querySelector("form");
-    form.dispatchEvent(new win.Event("submit", { cancelable: true }));
+    form.dispatchEvent(new win.Event("submit", { cancelable: true, bubbles: true }));
+    await flush();
 
     var project = win.PCC.store.get().projects.find((p) => p.name === "Ashoka");
     assert.ok(project, "project must have been saved");
@@ -123,7 +146,7 @@ async function check(label, fn) {
   // Relationship change (spec points 12/13): editing the project onto a different
   // Company/Client must record the PRIOR relationship in history, never lose it.
   // -------------------------------------------------------------------------
-  await check("editing an existing project's Company/Client to a different pair records the prior relationship in relationship_history and preserves all other project data", () => {
+  await check("editing an existing project's Company/Client to a different pair records the prior relationship in relationship_history and preserves all other project data", async () => {
     win.PCC.store.update((d) => {
       var abc = win.PCC.store.newCompany({ name: "ABC Engineering" });
       d.companies.push(abc);
@@ -133,6 +156,7 @@ async function check(label, fn) {
 
     win.PCC.router.go("portfolio");
     win.PCC.router.render();
+    await flush();
     // Open this specific project's Edit form via its card menu.
     var cards = Array.from(outlet().querySelectorAll(".project-card"));
     var card = cards.find((c) => c.textContent.indexOf("Ashoka") !== -1);
@@ -140,17 +164,23 @@ async function check(label, fn) {
     var toggle = Array.from(card.querySelectorAll("button")).find((b) => b.getAttribute("aria-label") === "More actions");
     assert.ok(toggle, "card menu toggle ('More actions') not found on the Ashoka card");
     toggle.click();
+    await flush();
     var editItem = Array.from(outlet().querySelectorAll(".card-menu__item")).find((b) => b.textContent.trim() === "Edit");
     assert.ok(editItem, "Edit menu item not found on the Ashoka card");
     editItem.click();
+    await flush();
 
     var companySelect = outlet().querySelector("#field-company_id");
     var clientSelect = outlet().querySelector("#field-client_id");
     selectByVisibleText(companySelect, "ABC Engineering");
+    await flush();
+    clientSelect = outlet().querySelector("#field-client_id");
     selectByVisibleText(clientSelect, "Tata");
+    await flush();
 
     var form = outlet().querySelector("form");
-    form.dispatchEvent(new win.Event("submit", { cancelable: true }));
+    form.dispatchEvent(new win.Event("submit", { cancelable: true, bubbles: true }));
+    await flush();
 
     var project = win.PCC.store.get().projects.find((p) => p.id === projectId);
     var abc = win.PCC.store.get().companies.find((c) => c.name === "ABC Engineering");
@@ -169,16 +199,26 @@ async function check(label, fn) {
   // -------------------------------------------------------------------------
   // Organizations page: browse the hierarchy, archive/unarchive, "+ New Project" handoff.
   // -------------------------------------------------------------------------
-  await check("Organizations page lists Companies with their Clients and Projects, and archiving a Company keeps everything intact but drops it from active pickers", () => {
+  await check("Organizations page lists Companies with their Clients and Projects, and archiving a Company keeps everything intact but drops it from active pickers", async () => {
     win.PCC.router.go("organizations");
     win.PCC.router.render();
+    // Flush here, BEFORE interacting — router.js's suppressNextHashRender is a single
+    // flag, so a hashchange-triggered render can still land asynchronously after this
+    // go()+render() pair; flushing now (rather than only after the click below) keeps
+    // that extra render from landing on top of our own state change and wiping it (see
+    // CLAUDE.md's React migration notes on this race).
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("ABC Engineering") !== -1);
     assert.ok(text.indexOf("FABS") !== -1);
 
     // Expand ABC Engineering to see its Tata client and the Ashoka project under it.
+    // Organizations is a React-migrated page — a click's state update commits
+    // asynchronously (see CLAUDE.md's React migration notes), so await flush() before
+    // reading the resulting DOM.
     var expandBtn = Array.from(outlet().querySelectorAll("button")).find((b) => b.textContent.indexOf("ABC Engineering") !== -1);
     expandBtn.click();
+    await flush();
     assert.ok(outlet().textContent.indexOf("Tata") !== -1, "Tata client should be visible once ABC Engineering is expanded");
     assert.ok(outlet().textContent.indexOf("Ashoka") !== -1, "Ashoka project should be visible under ABC Engineering / Tata");
 
@@ -192,33 +232,37 @@ async function check(label, fn) {
     var fabsArchiveBtn = Array.from(fabsPanel.children[0].querySelectorAll("button")).find((b) => b.textContent === "Archive");
     assert.ok(fabsArchiveBtn, "FABS's own Archive button not found in its card header");
     fabsArchiveBtn.click();
+    await flush();
 
     var fabs = win.PCC.store.get().companies.find((c) => c.name === "FABS");
     assert.strictEqual(fabs.archived, true);
     assert.ok(win.PCC.store.get().clients.some((c) => c.name === "PepsiCo"), "PepsiCo client record must still exist after its Company is archived");
     assert.strictEqual(outlet().textContent.indexOf("FABS"), -1, "an archived company must drop out of the default (non-archived) list view");
 
-    // "Show archived" brings it back into view, proving the data is still there.
+    // "Show archived" brings it back into view, proving the data is still there. Use
+    // .click(), not a raw .checked= assignment — a controlled checkbox's onChange isn't
+    // reliably reached by the latter (see CLAUDE.md's React migration notes).
     var showArchivedCheckbox = outlet().querySelector('input[type=checkbox]');
-    showArchivedCheckbox.checked = true;
-    showArchivedCheckbox.dispatchEvent(new win.Event("change"));
+    showArchivedCheckbox.click();
+    await flush();
     assert.ok(outlet().textContent.indexOf("FABS") !== -1, "Show archived must reveal the archived company again");
   });
 
-  await check("Organizations page's '+ New Project' hands off to Portfolio with Company/Client pre-selected (spec point 5B)", () => {
+  await check("Organizations page's '+ New Project' hands off to Portfolio with Company/Client pre-selected (spec point 5B)", async () => {
     win.PCC.router.go("organizations");
     win.PCC.router.render();
-    // The expand/collapse toggle's uiState persists across renders (module-level, like
-    // every other page's uiState in this app) — click it only if ABC Engineering isn't
-    // already expanded from an earlier check in this same run.
+    await flush();
+    // Organizations is a React-migrated page: unlike a vanilla page's persistent
+    // module-level uiState, its local useState (including the expand/collapse toggle)
+    // resets on every fresh mount (see CLAUDE.md's React migration notes) — so re-expand
+    // ABC Engineering here rather than assuming it survived from the earlier check.
+    var expandBtn = Array.from(outlet().querySelectorAll("button")).find((b) => b.textContent.indexOf("ABC Engineering") !== -1);
+    expandBtn.click();
+    await flush();
     var newProjectBtn = Array.from(outlet().querySelectorAll("button")).find((b) => b.textContent === "+ New Project");
-    if (!newProjectBtn) {
-      var expandBtn = Array.from(outlet().querySelectorAll("button")).find((b) => b.textContent.indexOf("ABC Engineering") !== -1);
-      expandBtn.click();
-      newProjectBtn = Array.from(outlet().querySelectorAll("button")).find((b) => b.textContent === "+ New Project");
-    }
     assert.ok(newProjectBtn, "'+ New Project' button not found under ABC Engineering / Tata");
     newProjectBtn.click();
+    await flush();
 
     assert.strictEqual(win.PCC.router.currentRouteName(), "portfolio", "must navigate to Portfolio");
     var heading = outlet().querySelector("h3");
@@ -231,10 +275,18 @@ async function check(label, fn) {
     assert.strictEqual(clientSelect.value, tata.id, "Client must be pre-selected");
 
     // Cancelling and reopening a fresh "+ Add Project" must NOT still carry the old prefill.
+    // Flush between the two clicks — portfolio.js is a React-migrated page, and two
+    // setEditingId() calls fired back-to-back with no tick between them (unlike any
+    // real user's click-then-click, which always has wall-clock time in between) can
+    // get batched into a single React 18 render, so ProjectForm's key={editingId} never
+    // actually changes and the form never remounts to reset its state (see CLAUDE.md's
+    // React migration notes on this general class of back-to-back-interaction race).
     var cancelBtn = byText("button", "Cancel");
     cancelBtn.click();
+    await flush();
     var addBtn = byText("button", "+ Add Project");
     addBtn.click();
+    await flush();
     var freshCompanySelect = outlet().querySelector("#field-company_id");
     assert.strictEqual(freshCompanySelect.value, "", "a later unrelated '+ Add Project' must not inherit a stale prefill");
   });

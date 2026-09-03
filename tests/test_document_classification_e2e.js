@@ -46,6 +46,25 @@ function findFieldByLabel(dom, labelText) {
   const match = labels.find((l) => l.textContent.trim() === labelText);
   return match ? match.parentElement.querySelector("input, select, textarea") : null;
 }
+// The Settings page is React-controlled/uncontrolled-with-onChange. Setting `el.value = x`
+// directly does NOT make React's onChange fire — React patches the native value-property
+// setter (even for an uncontrolled input) to track "last known value," and a raw
+// assignment updates that tracker too, so React sees no real change when the event fires
+// next. Bypass React's patched setter via the native prototype descriptor first, then
+// dispatch the event — see tests/test_document_types_e2e.js for the same pattern.
+function setReactInputValue(win, el, value) {
+  const nativeSetter = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, "value").set;
+  nativeSetter.call(el, value);
+  el.dispatchEvent(new win.Event("input", { bubbles: true }));
+  el.dispatchEvent(new win.Event("change", { bubbles: true }));
+}
+// documents.js is also React-migrated now — its Classification selects (Document
+// Type/Criticality/etc.) are controlled, same bypass needed for a <select>.
+function setReactSelectValue(win, el, value) {
+  const nativeSetter = Object.getOwnPropertyDescriptor(win.HTMLSelectElement.prototype, "value").set;
+  nativeSetter.call(el, value);
+  el.dispatchEvent(new win.Event("change", { bubbles: true }));
+}
 
 (async () => {
   const html = fs.readFileSync(INDEX_PATH, "utf8");
@@ -90,23 +109,29 @@ function findFieldByLabel(dom, labelText) {
     rfiTypeId = rfiType.id;
   });
 
-  await check("Portfolio's Add Project form has a Project Code field, and it persists", () => {
+  await check("Portfolio's Add Project form has a Project Code field, and it persists", async () => {
     win.PCC.router.go("portfolio");
     win.PCC.router.render();
+    // portfolio.js is a React-migrated page — flush before interacting and after every
+    // click whose state update commits asynchronously (see CLAUDE.md's React
+    // migration notes).
+    await flush();
     findButtonByText(dom, "+ Add Project").click();
+    await flush();
     var codeInput = findFieldByLabel(dom, "Project Code");
     assert.ok(codeInput, "Project Code field not found in the Add Project form");
     dom.window.document.querySelector("#field-name").value = "Second Project";
     codeInput.value = "SEC";
     findButtonByText(dom, "Add Project").click();
+    await flush();
     var created = win.PCC.store.get().projects.find(function (p) { return p.name === "Second Project"; });
     assert.strictEqual(created.project_code, "SEC");
   });
 
-  await check("the Documents upload form shows a Classification section with Document Type/Vendor selects populated", () => {
+  await check("the Documents upload form shows a Classification section with Document Type/Vendor selects populated", async () => {
     win.PCC.router.go("documents");
-    win.PCC.router.render();
     findButtonByText(dom, "+ Add Document").click();
+    await flush();
 
     var docTypeSelect = findFieldByLabel(dom, "Document Type");
     assert.ok(docTypeSelect, "Document Type select not found");
@@ -128,18 +153,18 @@ function findFieldByLabel(dom, labelText) {
     assert.ok(findFieldByLabel(dom, "Remarks"), "Remarks field not found");
   });
 
-  await check("selecting a Document Type auto-suggests that type's default_criticality, still freely editable", () => {
+  await check("selecting a Document Type auto-suggests that type's default_criticality, still freely editable", async () => {
     var docTypeSelect = findFieldByLabel(dom, "Document Type");
-    docTypeSelect.value = rfiTypeId;
-    docTypeSelect.dispatchEvent(new win.Event("change"));
+    setReactSelectValue(win, docTypeSelect, rfiTypeId);
+    await flush();
 
     var criticalitySelect = findFieldByLabel(dom, "Criticality");
     var rfiType = win.PCC.store.get().document_types.find(function (t) { return t.id === rfiTypeId; });
     assert.strictEqual(criticalitySelect.value, rfiType.default_criticality);
 
     // Still freely overridable.
-    criticalitySelect.value = "critical";
-    criticalitySelect.dispatchEvent(new win.Event("change"));
+    setReactSelectValue(win, criticalitySelect, "critical");
+    await flush();
     assert.strictEqual(criticalitySelect.value, "critical");
   });
 
@@ -197,8 +222,7 @@ function findFieldByLabel(dom, labelText) {
     assert.ok(patternInput, "Pattern field not found in Settings");
     assert.strictEqual(patternInput.value, "PROJECT-DISCIPLINE-DOCUMENTTYPE-NUMBER-REV");
 
-    patternInput.value = "DOCUMENTTYPE_NUMBER_REV";
-    patternInput.dispatchEvent(new win.Event("change"));
+    setReactInputValue(win, patternInput, "DOCUMENTTYPE_NUMBER_REV");
     assert.strictEqual(win.PCC.store.get().settings.document_nomenclature_pattern, "DOCUMENTTYPE_NUMBER_REV");
 
     var enabledCheckbox = win.document.querySelector('input[type="checkbox"]');

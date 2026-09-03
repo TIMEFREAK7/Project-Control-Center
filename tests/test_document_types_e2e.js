@@ -40,6 +40,26 @@ function findAllButtonsByText(dom, text) {
   return buttons.filter((b) => b.textContent.trim() === text);
 }
 
+// This page is React-controlled (unlike the old vanilla uncontrolled DOM form this test was
+// originally written against). Setting `el.value = x` directly does NOT make React's onChange
+// fire — React patches the native value-property setter to track "last known value," and a
+// raw assignment updates that tracker too, so the framework sees no real change when the
+// event fires next. The fix real user typing already gets for free: bypass React's patched
+// setter via the native prototype descriptor, THEN dispatch the event, so React's tracker
+// sees a genuine mismatch and its onChange handler actually runs. Needed for every
+// React-controlled form field this suite drives programmatically from here on.
+function setReactInputValue(win, el, value) {
+  const proto = el.tagName === "TEXTAREA" ? win.HTMLTextAreaElement.prototype : win.HTMLInputElement.prototype;
+  const nativeSetter = Object.getOwnPropertyDescriptor(proto, "value").set;
+  nativeSetter.call(el, value);
+  el.dispatchEvent(new win.Event("input", { bubbles: true }));
+}
+function setReactSelectValue(win, el, value) {
+  const nativeSetter = Object.getOwnPropertyDescriptor(win.HTMLSelectElement.prototype, "value").set;
+  nativeSetter.call(el, value);
+  el.dispatchEvent(new win.Event("change", { bubbles: true }));
+}
+
 (async () => {
   const html = fs.readFileSync(INDEX_PATH, "utf8");
   const thrownErrors = [];
@@ -78,18 +98,26 @@ function findAllButtonsByText(dom, text) {
     assert.ok(data.document_types.length >= 28, "seed list should have at least the ~28 documented starting types");
   });
 
+  // This page is React-controlled. Unlike a vanilla page's synchronous raw-DOM writes, a
+  // React 18 state update triggered from an event handler (a button click, a checkbox
+  // toggle, typing) commits asynchronously — confirmed real behavior in real Chromium too,
+  // not a jsdom quirk (only the very first render after navigation is forced synchronous,
+  // via reactBridge.js's flushSync wrapper). Every interaction below that expects the DOM
+  // to reflect a state change needs an `await flush()` first.
   let newTypeId;
-  await check("Add Document Type creates a new type through the real form", () => {
+  await check("Add Document Type creates a new type through the real form", async () => {
     findButtonByText(dom, "+ Add Document Type").click();
+    await flush();
     const nameInput = win.document.querySelector("#dtfield-name");
     const codeInput = win.document.querySelector("#dtfield-code");
     const categoryInput = win.document.querySelector("#dtfield-category");
     const critSelect = win.document.querySelector("#dtfield-criticality");
-    nameInput.value = "Cable Schedule";
-    codeInput.value = "CS";
-    categoryInput.value = "Engineering";
-    critSelect.value = "major";
+    setReactInputValue(win, nameInput, "Cable Schedule");
+    setReactInputValue(win, codeInput, "CS");
+    setReactInputValue(win, categoryInput, "Engineering");
+    setReactSelectValue(win, critSelect, "major");
     findButtonByText(dom, "Add Document Type").click();
+    await flush();
 
     const data = win.PCC.store.get();
     const created = data.document_types.find((t) => t.name === "Cable Schedule");
@@ -101,20 +129,21 @@ function findAllButtonsByText(dom, text) {
     newTypeId = created.id;
   });
 
-  await check("Edit updates an existing type in place (no duplicate created)", () => {
+  await check("Edit updates an existing type in place (no duplicate created)", async () => {
     const before = win.PCC.store.get().document_types.length;
-    const editBtns = findAllButtonsByText(dom, "Edit");
     // Find the Edit button belonging to the "Cable Schedule" card specifically.
     const cards = Array.from(win.document.querySelectorAll(".detail-card"));
     const targetCard = cards.find((c) => c.textContent.indexOf("Cable Schedule") !== -1);
     assert.ok(targetCard, "Cable Schedule card must be present");
     const editBtn = Array.from(targetCard.querySelectorAll("button")).find((b) => b.textContent.trim() === "Edit");
     editBtn.click();
+    await flush();
 
     const nameInput = win.document.querySelector("#dtfield-name");
     assert.strictEqual(nameInput.value, "Cable Schedule");
-    nameInput.value = "Cable Schedule (Rev)";
+    setReactInputValue(win, nameInput, "Cable Schedule (Rev)");
     findButtonByText(dom, "Save Changes").click();
+    await flush();
 
     const data = win.PCC.store.get();
     assert.strictEqual(data.document_types.length, before, "editing must not create a new record");
@@ -122,11 +151,12 @@ function findAllButtonsByText(dom, text) {
     assert.strictEqual(updated.name, "Cable Schedule (Rev)");
   });
 
-  await check("Deactivate hides a type from the default (active-only) view, Show Inactive reveals it", () => {
+  await check("Deactivate hides a type from the default (active-only) view, Show Inactive reveals it", async () => {
     const cards = () => Array.from(win.document.querySelectorAll(".detail-card"));
     const targetCard = cards().find((c) => c.textContent.indexOf("Cable Schedule (Rev)") !== -1);
     const deactivateBtn = Array.from(targetCard.querySelectorAll("button")).find((b) => b.textContent.trim() === "Deactivate");
     deactivateBtn.click();
+    await flush();
 
     const data = win.PCC.store.get();
     const type = data.document_types.find((t) => t.id === newTypeId);
@@ -135,30 +165,35 @@ function findAllButtonsByText(dom, text) {
     // Default view (Show Inactive unchecked) must no longer list it.
     assert.ok(!cards().some((c) => c.textContent.indexOf("Cable Schedule (Rev)") !== -1), "deactivated type should be hidden by default");
 
-    // Checking "Show Inactive" reveals it again, marked INACTIVE.
+    // Checking "Show Inactive" reveals it again, marked INACTIVE. `.click()`, not manually
+    // setting `.checked` + dispatching a synthetic event — a real user always toggles a
+    // checkbox via a real click, which fires the browser's own native toggle+event sequence
+    // React listens to; manually driving `.checked` bypassed that and silently failed to
+    // reach React's onChange in this exact case (confirmed by direct comparison).
     const showInactiveCheckbox = win.document.querySelector('input[type="checkbox"]');
-    showInactiveCheckbox.checked = true;
-    showInactiveCheckbox.dispatchEvent(new win.Event("change"));
+    showInactiveCheckbox.click();
+    await flush();
     const revealedCard = cards().find((c) => c.textContent.indexOf("Cable Schedule (Rev)") !== -1);
     assert.ok(revealedCard, "Show Inactive must reveal the deactivated type");
     assert.ok(revealedCard.textContent.indexOf("INACTIVE") !== -1);
   });
 
-  await check("Reactivate flips it back to active", () => {
+  await check("Reactivate flips it back to active", async () => {
     const cards = () => Array.from(win.document.querySelectorAll(".detail-card"));
     const targetCard = cards().find((c) => c.textContent.indexOf("Cable Schedule (Rev)") !== -1);
     const reactivateBtn = Array.from(targetCard.querySelectorAll("button")).find((b) => b.textContent.trim() === "Reactivate");
     reactivateBtn.click();
+    await flush();
     const data = win.PCC.store.get();
     assert.strictEqual(data.document_types.find((t) => t.id === newTypeId).active, true);
   });
 
-  await check("Search filters the list by name/code", () => {
+  await check("Search filters the list by name/code", async () => {
     win.PCC.router.go("documentTypes");
     win.PCC.router.render();
     const search = win.document.querySelector('input[type="text"]');
-    search.value = "BOQ";
-    search.dispatchEvent(new win.Event("input"));
+    setReactInputValue(win, search, "BOQ");
+    await flush();
     const outlet = win.document.getElementById("page-outlet");
     assert.ok(outlet.textContent.indexOf("BOQ") !== -1);
     assert.ok(outlet.textContent.indexOf("Method Statements") === -1, "search should narrow the list, not just highlight");
@@ -173,23 +208,30 @@ function findAllButtonsByText(dom, text) {
     assert.ok(active.some((t) => t.name === "BOQ"), "activeTypes() must still include active seeded types");
   });
 
-  await check("Delete removes a document type from the store", () => {
+  await check("Delete removes a document type from the store", async () => {
+    // A fresh navigation remounts this React page from scratch, so its local UI state
+    // (search term, Show Inactive) resets to defaults every time — unlike the old vanilla
+    // page's persistent module-level uiState, which used to carry "BOQ" and "checked" over
+    // from earlier checks. Real, accepted behavior difference for a React-migrated page
+    // (see reactBridge.js: every mount() call creates a brand new root/component instance).
     win.PCC.router.go("documentTypes");
     win.PCC.router.render();
-    // The "Search filters" check above left uiState.search set to "BOQ" — clear it so
-    // "Retired Type" (added after that check) isn't hidden by a stale search term.
     const search = win.document.querySelector('input[type="text"]');
-    search.value = "";
-    search.dispatchEvent(new win.Event("input"));
+    setReactInputValue(win, search, "");
+    await flush();
+    const showInactiveCheckbox = win.document.querySelector('input[type="checkbox"]');
+    showInactiveCheckbox.click();
+    await flush();
 
     const before = win.PCC.store.get().document_types.length;
     const cards = Array.from(win.document.querySelectorAll(".detail-card"));
     const targetCard = cards.find((c) => c.textContent.indexOf("Retired Type") !== -1);
-    assert.ok(targetCard, "Retired Type card must be present (Show Inactive is still checked from an earlier check)");
+    assert.ok(targetCard, "Retired Type card must be present after checking Show Inactive on this fresh mount");
     const originalConfirm = win.confirm;
     win.confirm = () => true;
     const deleteBtn = Array.from(targetCard.querySelectorAll("button")).find((b) => b.textContent.trim() === "Delete");
     deleteBtn.click();
+    await flush();
     win.confirm = originalConfirm;
 
     const data = win.PCC.store.get();

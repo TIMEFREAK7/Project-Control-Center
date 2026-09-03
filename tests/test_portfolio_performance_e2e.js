@@ -55,6 +55,14 @@ function selectByDefaultOptionText(dom, text) {
   const selects = Array.from(dom.window.document.querySelectorAll("select"));
   return selects.find((s) => s.options.length > 0 && s.options[0].textContent === text);
 }
+// portfolio.js is a React-migrated page: a raw `.value =` assignment doesn't reliably
+// reach a controlled <select>'s onChange (React patches the native setter to track "last
+// known value" — see CLAUDE.md's React migration notes), so bypass it via the native
+// prototype descriptor before dispatching the change event.
+function setReactSelectValue(win, select, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLSelectElement.prototype, "value").set.call(select, value);
+  select.dispatchEvent(new win.Event("change", { bubbles: true }));
+}
 
 (async () => {
   const html = fs.readFileSync(INDEX_PATH, "utf8");
@@ -87,7 +95,7 @@ function selectByDefaultOptionText(dom, text) {
   });
 
   var projA, projB, projC, projD;
-  await check("seed four projects: on-track+delayed, at-risk+upcoming, completed, archived", () => {
+  await check("seed four projects: on-track+delayed, at-risk+upcoming, completed, archived", async () => {
     win.PCC.store.update(function (d) {
       var a = win.PCC.store.newProject({
         name: "Project Alpha", status: "on_track", progress: 80, client: "Acme", country: "USA",
@@ -133,6 +141,10 @@ function selectByDefaultOptionText(dom, text) {
     });
     win.PCC.router.go("portfolio");
     win.PCC.router.render();
+    // portfolio.js is a React-migrated page — go() already renders its INITIAL mount
+    // synchronously (reactBridge.js wraps it in flushSync), but await flush() anyway
+    // before the next check interacts with it, per CLAUDE.md's React migration notes.
+    await flush();
     assert.ok(projA && projB && projC && projD);
   });
 
@@ -145,26 +157,28 @@ function selectByDefaultOptionText(dom, text) {
     assert.strictEqual(kpiValue(dom, "UPCOMING"), "1", "Project Beta's start_date is in the future");
   });
 
-  await check("the new filters are populated from real project data and filtering by Country narrows the Cards list", () => {
+  await check("the new filters are populated from real project data and filtering by Country narrows the Cards list", async () => {
     var countrySelect = selectByDefaultOptionText(dom, "All countries");
     assert.ok(countrySelect, "country filter not found");
     var optionTexts = Array.from(countrySelect.options).map((o) => o.textContent);
     assert.ok(optionTexts.indexOf("USA") !== -1 && optionTexts.indexOf("UK") !== -1 && optionTexts.indexOf("Canada") !== -1);
 
-    countrySelect.value = "USA";
-    countrySelect.dispatchEvent(new win.Event("change", { bubbles: true }));
+    setReactSelectValue(win, countrySelect, "USA");
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("Project Alpha") !== -1);
     assert.ok(text.indexOf("Project Charlie") !== -1);
     assert.ok(text.indexOf("Project Beta") === -1, "UK project must be filtered out");
 
     // Reset for later checks.
-    countrySelect.value = "";
-    countrySelect.dispatchEvent(new win.Event("change", { bubbles: true }));
+    countrySelect = selectByDefaultOptionText(dom, "All countries");
+    setReactSelectValue(win, countrySelect, "");
+    await flush();
   });
 
-  await check("switching to Compare view shows the Project/Progress/Schedule/Risk/Health table", () => {
+  await check("switching to Compare view shows the Project/Progress/Schedule/Risk/Health table", async () => {
     findButtonByText(dom, "Compare").click();
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("Progress") !== -1 && text.indexOf("Schedule") !== -1 && text.indexOf("Risk") !== -1 && text.indexOf("Health") !== -1);
     assert.ok(text.indexOf("Project Alpha") !== -1);
@@ -182,11 +196,12 @@ function selectByDefaultOptionText(dom, text) {
     assert.ok(badges.length >= 2, "expected Schedule/Risk/Health badges, got: " + badges.join(", "));
   });
 
-  await check("clicking a project name in Compare switches to Cards view with that project's details expanded", () => {
+  await check("clicking a project name in Compare switches to Cards view with that project's details expanded", async () => {
     var rows = Array.from(outlet().querySelectorAll("tbody tr"));
     var alphaRow = rows.find((r) => r.textContent.indexOf("Project Alpha") !== -1);
     var nameBtn = alphaRow.querySelector("button");
     nameBtn.click();
+    await flush();
 
     var text = outlet().textContent;
     assert.ok(text.indexOf("Overdue Task") === -1 || text.indexOf("Project Alpha") !== -1); // sanity: still on portfolio
@@ -194,10 +209,13 @@ function selectByDefaultOptionText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("Project Type is now editable on the Add/Edit Project form and round-trips correctly", () => {
+  await check("Project Type is now editable on the Add/Edit Project form and round-trips correctly", async () => {
     win.PCC.router.go("portfolio");
     win.PCC.router.render();
-    findButtonByText(dom, "Compare"); // no-op, just ensure page loaded
+    // portfolio.js is a React-migrated page — flush before interacting and after every
+    // click whose state update commits asynchronously (see CLAUDE.md's React
+    // migration notes).
+    await flush();
     // Gate 3 (UI/UX Overhaul, Portfolio): Edit/Archive moved behind each card's "..."
     // contextual menu — open the first card's menu before looking for Edit.
     var menuButtons = Array.from(outlet().querySelectorAll("button.icon-btn")).filter(
@@ -205,9 +223,11 @@ function selectByDefaultOptionText(dom, text) {
     );
     assert.ok(menuButtons.length > 0, "no card contextual menu button found");
     menuButtons[0].click();
+    await flush();
     var editButtons = Array.from(outlet().querySelectorAll("button")).filter((b) => b.textContent.trim() === "Edit");
     assert.ok(editButtons.length > 0, "no Edit button found on any project card");
     editButtons[0].click();
+    await flush();
     var typeInput = Array.from(outlet().querySelectorAll("label")).find((l) => l.textContent.indexOf("Project Type") !== -1);
     assert.ok(typeInput, "Project Type field not found on the Add/Edit Project form");
   });

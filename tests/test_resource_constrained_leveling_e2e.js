@@ -35,6 +35,15 @@ async function check(label, fn) {
   }
 }
 
+// resources.js is a React-migrated page: a raw `.value =` assignment doesn't reliably
+// reach a controlled <select>'s onChange (React patches the native setter to track "last
+// known value" — see CLAUDE.md's React migration notes), so bypass it via the native
+// prototype descriptor before dispatching the change event.
+function setReactSelectValue(win, select, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLSelectElement.prototype, "value").set.call(select, value);
+  select.dispatchEvent(new win.Event("change", { bubbles: true }));
+}
+
 function findButtonByText(win, text) {
   return Array.from(win.document.querySelectorAll("button")).find((b) => b.textContent.trim() === text);
 }
@@ -108,18 +117,25 @@ function findButtonByText(win, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("the Leveling tab's 'Suggest Leveling' button proposes shifting the activity WITH float, not the critical one", () => {
+  await check("the Leveling tab's 'Suggest Leveling' button proposes shifting the activity WITH float, not the critical one", async () => {
     win.PCC.router.go("resources");
     win.PCC.router.render();
+    // resources.js is a React-migrated page — go() already renders its INITIAL mount
+    // synchronously (reactBridge.js wraps it in flushSync), but await flush() anyway
+    // before interacting, and after every click whose state update commits
+    // asynchronously (see CLAUDE.md's React migration notes).
+    await flush();
     findButtonByText(win, "Leveling").click();
+    await flush();
     var resSelect = Array.from(outlet().querySelectorAll("select")).find(function (s) {
       return Array.from(s.options).some(function (o) { return o.textContent === "Tower Crane #1"; });
     });
-    resSelect.value = resourceId;
-    resSelect.dispatchEvent(new win.Event("change"));
+    setReactSelectValue(win, resSelect, resourceId);
+    await flush();
 
     assert.ok(outlet().textContent.indexOf("Over-Allocated Days") !== -1, "expected a real over-allocation to be detected first");
     findButtonByText(win, "Suggest Leveling").click();
+    await flush();
 
     var text = outlet().textContent;
     assert.ok(text.indexOf("Suggested Leveling") !== -1);
@@ -130,8 +146,9 @@ function findButtonByText(win, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("clicking 'Apply' sets a Start No Earlier Than constraint at the proposed date, not a planned-date change", () => {
+  await check("clicking 'Apply' sets a Start No Earlier Than constraint at the proposed date, not a planned-date change", async () => {
     findButtonByText(win, "Apply").click();
+    await flush();
     var data = win.PCC.store.get();
     var slack = data.activities.find(function (a) { return a.id === slackId; });
     assert.strictEqual(slack.constraint_type, "SNET");
@@ -139,10 +156,12 @@ function findButtonByText(win, text) {
     assert.strictEqual(slack.planned_start, "", "planned_start must NOT be touched — it doesn't feed CPM, a constraint does");
   });
 
-  await check("re-running Calculate Schedule (with Honor Date Constraints already on) now genuinely reflects the applied leveling decision", () => {
+  await check("re-running Calculate Schedule (with Honor Date Constraints already on) now genuinely reflects the applied leveling decision", async () => {
     win.PCC.router.go("schedule");
     win.PCC.router.render();
+    await flush();
     findButtonByText(win, "Calculate Schedule").click();
+    await flush();
     var data = win.PCC.store.get();
     var critical = data.activities.find(function (a) { return a.id === criticalId; });
     var slack = data.activities.find(function (a) { return a.id === slackId; });
@@ -151,15 +170,17 @@ function findButtonByText(win, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("after applying, re-suggesting leveling on the resource shows the conflict is resolved", () => {
+  await check("after applying, re-suggesting leveling on the resource shows the conflict is resolved", async () => {
     win.PCC.router.go("resources");
     win.PCC.router.render();
+    await flush();
     findButtonByText(win, "Leveling").click();
+    await flush();
     var resSelect = Array.from(outlet().querySelectorAll("select")).find(function (s) {
       return Array.from(s.options).some(function (o) { return o.textContent === "Tower Crane #1"; });
     });
-    resSelect.value = resourceId;
-    resSelect.dispatchEvent(new win.Event("change"));
+    setReactSelectValue(win, resSelect, resourceId);
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("Over-Allocated Days0") !== -1, "the KPI card must now read 0 over-allocated days");
     assert.ok(!/Over-Allocated Days \(/.test(text), "the detailed conflict panel (only rendered when count > 0) must be gone entirely");

@@ -181,24 +181,31 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("spec point 22 (Daily Site Log): '+ Log Delay' on an entry WITH a linked activity creates a delay already linked to the Schedule, with a real historical snapshot", () => {
+  await check("spec point 22 (Daily Site Log): '+ Log Delay' on an entry WITH a linked activity creates a delay already linked to the Schedule, with a real historical snapshot", async () => {
     win.PCC.router.go("dailylog");
     win.PCC.router.render();
+    // dailylog.js is a React-migrated page — a click's state update commits
+    // asynchronously (see CLAUDE.md's React migration notes), so await flush() before
+    // reading the resulting DOM.
+    await flush();
     // Expand the entry with an activity link (2 Aug) to reach its own Details panel.
     var detailsButtons = Array.from(outlet().querySelectorAll("button")).filter((b) => b.textContent.trim() === "Details");
     var cards = Array.from(outlet().querySelectorAll(".project-card"));
     var cardIdx = cards.findIndex((c) => c.textContent.indexOf("2026-08-02") !== -1);
     assert.ok(cardIdx !== -1, "the 2 Aug daily log card wasn't found");
     detailsButtons[cardIdx].click();
+    await flush();
 
     var logBtn = findButtonByText(dom, "+ Log Delay");
     assert.ok(logBtn, "'+ Log Delay' button not found on the expanded Daily Log entry");
     logBtn.click();
+    await flush();
 
     outlet().querySelector("#dailylogdelay-category").value = "resource_shortage";
     outlet().querySelector("#dailylogdelay-days").value = "2";
     outlet().querySelector("#dailylogdelay-description").value = "Labour shortage on site.";
     findButtonByText(dom, "Log Delay").click();
+    await flush();
 
     var data = win.PCC.store.get();
     var rec = data.delay_records.find((r) => r.daily_log_id === dailyLogWithActivityId);
@@ -212,18 +219,22 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("'+ Log Delay' on an entry WITHOUT a linked activity creates a delay correctly showing 'Schedule Impact Not Yet Assessed'", () => {
+  await check("'+ Log Delay' on an entry WITHOUT a linked activity creates a delay correctly showing 'Schedule Impact Not Yet Assessed'", async () => {
     win.PCC.router.go("dailylog");
     win.PCC.router.render();
+    await flush();
     var cards = Array.from(outlet().querySelectorAll(".project-card"));
     var cardIdx = cards.findIndex((c) => c.textContent.indexOf("2026-08-03") !== -1);
     assert.ok(cardIdx !== -1, "the 3 Aug daily log card wasn't found");
     var detailsButtons = Array.from(outlet().querySelectorAll("button")).filter((b) => b.textContent.trim() === "Details");
     detailsButtons[cardIdx].click();
+    await flush();
 
     findButtonByText(dom, "+ Log Delay").click();
+    await flush();
     outlet().querySelector("#dailylogdelay-description").value = "Weather interruption, no crane access.";
     findButtonByText(dom, "Log Delay").click();
+    await flush();
 
     var data = win.PCC.store.get();
     var rec = data.delay_records.find((r) => r.daily_log_id === dailyLogNoActivityId);

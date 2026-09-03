@@ -69,6 +69,15 @@ function todayPlusDays(days) {
   const win = dom.window;
   const outlet = () => win.document.getElementById("page-outlet");
 
+  // delayRecoveryDashboard is a React-migrated page: a raw `.value =` assignment doesn't
+  // reach a controlled <select>'s onChange (React patches the native setter to track
+  // "last known value" — see CLAUDE.md's React migration notes), so bypass it via the
+  // native prototype descriptor before dispatching the change event.
+  function setReactSelectValue(select, value) {
+    Object.getOwnPropertyDescriptor(win.HTMLSelectElement.prototype, "value").set.call(select, value);
+    select.dispatchEvent(new win.Event("change", { bubbles: true }));
+  }
+
   var projectId, scheduleId, criticalActivityId, nonCriticalActivityId;
   var openCriticalDelayId, closedDelayId, noActivityDelayId;
 
@@ -149,9 +158,16 @@ function todayPlusDays(days) {
     assert.ok(openCriticalDelayId && closedDelayId && noActivityDelayId);
   });
 
-  await check("the Delay Analytics panel breaks the full set down by status, category, responsibility, and criticality", () => {
+  await check("the Delay Analytics panel breaks the full set down by status, category, responsibility, and criticality", async () => {
     win.PCC.router.go("delayRecoveryDashboard");
     win.PCC.router.render();
+    // Flush here, BEFORE any later interaction with this page — router.js's
+    // suppressNextHashRender is a single flag, so a hashchange-triggered render can
+    // still land asynchronously after this go()+render() pair; flushing now (rather than
+    // only after a later click/select) keeps that extra render from landing on top of a
+    // later state change and silently wiping it (a React-migrated page's local state
+    // resets on remount — see CLAUDE.md's React migration notes on this race).
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("Delay Analytics") !== -1);
     assert.ok(text.indexOf("By status:") !== -1 && text.indexOf("Under Investigation (1)") !== -1 && text.indexOf("Closed (1)") !== -1 && text.indexOf("Open (1)") !== -1);
@@ -180,13 +196,13 @@ function todayPlusDays(days) {
     assert.ok(text.indexOf("Schedule Impact Not Yet Assessed") !== -1, "the delay with no linked activity must read this, never a guessed impact");
   });
 
-  await check("filtering the Delay Register to 'Closed' narrows the list to just that one row, without changing the KPIs or breakdown panels above", () => {
+  await check("filtering the Delay Register to 'Closed' narrows the list to just that one row, without changing the KPIs or breakdown panels above", async () => {
     var select = Array.from(dom.window.document.querySelectorAll("select")).find((s) =>
       Array.from(s.options).some((o) => o.textContent === "Closed") && Array.from(s.options).some((o) => o.textContent === "All Statuses")
     );
     assert.ok(select, "the Delay Register's own Status filter select wasn't found");
-    select.value = "closed";
-    select.dispatchEvent(new dom.window.Event("change"));
+    setReactSelectValue(select, "closed");
+    await flush();
 
     var text = outlet().textContent;
     assert.ok(text.indexOf("Old resolved rain delay") !== -1, "the closed delay must still show");
@@ -198,12 +214,12 @@ function todayPlusDays(days) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("clearing the filter back to 'All Statuses' shows all three rows again", () => {
+  await check("clearing the filter back to 'All Statuses' shows all three rows again", async () => {
     var select = Array.from(dom.window.document.querySelectorAll("select")).find((s) =>
       Array.from(s.options).some((o) => o.textContent === "Closed") && Array.from(s.options).some((o) => o.textContent === "All Statuses")
     );
-    select.value = "";
-    select.dispatchEvent(new dom.window.Event("change"));
+    setReactSelectValue(select, "");
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("Steel delivery delayed") !== -1);
     assert.ok(text.indexOf("Old resolved rain delay") !== -1);

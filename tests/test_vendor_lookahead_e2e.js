@@ -91,11 +91,11 @@ function findButtonByText(dom, text) {
     assert.ok(vendorId && projectAId && projectBId && boqTypeId && itpTypeId);
   });
 
-  await check("Document Lookahead tab shows an empty state before any requirement is assigned to this vendor", () => {
+  await check("Document Lookahead tab shows an empty state before any requirement is assigned to this vendor", async () => {
     win.PCC.vendors.openProfile(vendorId);
     win.PCC.router.go("vendors");
-    win.PCC.router.render();
     findButtonByText(dom, "Document Lookahead").click();
+    await flush();
 
     var bodyText = outlet().textContent;
     assert.ok(bodyText.indexOf("No document requirements are currently assigned") !== -1);
@@ -142,6 +142,7 @@ function findButtonByText(dom, text) {
   });
 
   await check("the summary line shows the correct assigned count, project count, and overdue count", () => {
+    win.PCC.vendors.openProfile(vendorId, "lookahead");
     win.PCC.router.render();
     var bodyText = outlet().textContent;
     assert.ok(bodyText.indexOf("3 document requirements assigned across 2 project(s)") !== -1, "expected the summary line reflecting all 3 rows across both projects; got: " + bodyText);
@@ -184,6 +185,7 @@ function findButtonByText(dom, text) {
       var row = d.project_document_requirements.find((r) => r.id === futureLinkedReqId);
       row.vendor_id = "";
     });
+    win.PCC.vendors.openProfile(vendorId, "lookahead");
     win.PCC.router.render();
     var bodyText = outlet().textContent;
     assert.ok(bodyText.indexOf("2 document requirements assigned across 1 project(s)") !== -1, "unassigning must be reflected live since this tab computes from the store directly; got: " + bodyText);

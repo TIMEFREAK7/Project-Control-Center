@@ -44,6 +44,14 @@ function findButtonByText(dom, text, root) {
   const scope = root || dom.window.document;
   return Array.from(scope.querySelectorAll("button")).find((b) => b.textContent.trim() === text);
 }
+// risks.js is a React-migrated page: a raw `.value =` assignment doesn't reliably reach
+// a controlled <select>'s onChange (React patches the native setter to track "last known
+// value" — see CLAUDE.md's React migration notes), so bypass it via the native prototype
+// descriptor before dispatching the change event.
+function setReactSelectValue(win, select, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLSelectElement.prototype, "value").set.call(select, value);
+  select.dispatchEvent(new win.Event("change", { bubbles: true }));
+}
 
 (async () => {
   const html = fs.readFileSync(INDEX_PATH, "utf8");
@@ -102,13 +110,13 @@ function findButtonByText(dom, text, root) {
     assert.ok(outlet().textContent.indexOf("Reflects the current search/type/status/project filters") !== -1, "narrowed subtitle must be shown");
   });
 
-  await check("filtering the toolbar to one project also narrows the heat map, not just the list", () => {
+  await check("filtering the toolbar to one project also narrows the heat map, not just the list", async () => {
     var projectSelect = Array.from(outlet().querySelectorAll(".toolbar select")).find((s) =>
       Array.from(s.options).some((o) => o.textContent === "Harbor Bridge")
     );
     assert.ok(projectSelect, "project filter select not found");
-    projectSelect.value = projB;
-    projectSelect.dispatchEvent(new win.Event("change"));
+    setReactSelectValue(win, projectSelect, projB);
+    await flush();
 
     var cells = outlet().querySelectorAll(".heatmap-cell");
     var total = Array.from(cells).reduce(function (sum, c) { return sum + parseInt(c.textContent, 10); }, 0);
@@ -120,17 +128,17 @@ function findButtonByText(dom, text, root) {
     projectSelect = Array.from(outlet().querySelectorAll(".toolbar select")).find((s) =>
       Array.from(s.options).some((o) => o.textContent === "Harbor Bridge")
     );
-    projectSelect.value = "";
-    projectSelect.dispatchEvent(new win.Event("change"));
+    setReactSelectValue(win, projectSelect, "");
+    await flush();
   });
 
-  await check("switching the status filter to 'All statuses' widens the heat map back out", () => {
+  await check("switching the status filter to 'All statuses' widens the heat map back out", async () => {
     var statusSelect = Array.from(outlet().querySelectorAll(".toolbar select")).find((s) =>
       Array.from(s.options).some((o) => o.textContent === "All statuses")
     );
     assert.ok(statusSelect);
-    statusSelect.value = "";
-    statusSelect.dispatchEvent(new win.Event("change"));
+    setReactSelectValue(win, statusSelect, "");
+    await flush();
 
     var cells = outlet().querySelectorAll(".heatmap-cell");
     var total = Array.from(cells).reduce(function (sum, c) { return sum + parseInt(c.textContent, 10); }, 0);
@@ -140,8 +148,8 @@ function findButtonByText(dom, text, root) {
     statusSelect = Array.from(outlet().querySelectorAll(".toolbar select")).find((s) =>
       Array.from(s.options).some((o) => o.textContent === "All statuses")
     );
-    statusSelect.value = "open";
-    statusSelect.dispatchEvent(new win.Event("change"));
+    setReactSelectValue(win, statusSelect, "open");
+    await flush();
   });
 
   await check("risk cards show only 'Details' directly — Edit/Delete are not visible buttons on the card face", () => {
@@ -156,9 +164,10 @@ function findButtonByText(dom, text, root) {
     assert.ok(actions.querySelector(".card-menu .icon-btn"), "card must have a '⋯' menu toggle button");
   });
 
-  await check("clicking the '⋯' menu opens a dropdown with Edit, Clone, and Delete, and the overlay closes it again", () => {
+  await check("clicking the '⋯' menu opens a dropdown with Edit, Clone, and Delete, and the overlay closes it again", async () => {
     var menuBtn = outlet().querySelector(".card-menu .icon-btn");
     menuBtn.click();
+    await flush();
     var dropdown = outlet().querySelector(".card-menu__dropdown");
     assert.ok(dropdown, "dropdown must open on menu click");
     var items = Array.from(dropdown.querySelectorAll(".card-menu__item")).map((b) => b.textContent.trim());
@@ -167,30 +176,36 @@ function findButtonByText(dom, text, root) {
     var overlay = outlet().querySelector(".card-menu__overlay");
     assert.ok(overlay, "overlay must render while the menu is open");
     overlay.click();
+    await flush();
     assert.strictEqual(outlet().querySelector(".card-menu__dropdown"), null, "dropdown must close after clicking the overlay");
   });
 
-  await check("clicking 'Edit' in the card menu opens the edit form and closes the menu", () => {
+  await check("clicking 'Edit' in the card menu opens the edit form and closes the menu", async () => {
     var menuBtn = outlet().querySelector(".card-menu .icon-btn");
     menuBtn.click();
+    await flush();
     var editItem = Array.from(outlet().querySelectorAll(".card-menu__item")).find((b) => b.textContent.trim() === "Edit");
     assert.ok(editItem);
     editItem.click();
+    await flush();
     assert.ok(outlet().textContent.indexOf("Edit Register Entry") !== -1, "edit form must open");
     assert.strictEqual(outlet().querySelector(".card-menu__dropdown"), null, "menu must close once Edit is clicked");
     findButtonByText(dom, "Cancel").click();
+    await flush();
   });
 
-  await check("clicking 'Delete' in the card menu, then confirming, removes the entry and closes the menu", () => {
+  await check("clicking 'Delete' in the card menu, then confirming, removes the entry and closes the menu", async () => {
     var originalConfirm = win.confirm;
     win.confirm = () => true;
     try {
       var beforeCount = win.PCC.store.get().risks.length;
       var menuBtn = outlet().querySelector(".card-menu .icon-btn");
       menuBtn.click();
+      await flush();
       var deleteItem = Array.from(outlet().querySelectorAll(".card-menu__item")).find((b) => b.textContent.trim() === "Delete");
       assert.ok(deleteItem);
       deleteItem.click();
+      await flush();
       assert.strictEqual(win.PCC.store.get().risks.length, beforeCount - 1, "entry must be deleted");
       assert.strictEqual(outlet().querySelector(".card-menu__dropdown"), null, "menu must be closed after deleting");
     } finally {
@@ -198,15 +213,17 @@ function findButtonByText(dom, text, root) {
     }
   });
 
-  await check("declining the confirm dialog leaves the entry and the menu open", () => {
+  await check("declining the confirm dialog leaves the entry and the menu open", async () => {
     var originalConfirm = win.confirm;
     win.confirm = () => false;
     try {
       var beforeCount = win.PCC.store.get().risks.length;
       var menuBtn = outlet().querySelector(".card-menu .icon-btn");
       menuBtn.click();
+      await flush();
       var deleteItem = Array.from(outlet().querySelectorAll(".card-menu__item")).find((b) => b.textContent.trim() === "Delete");
       deleteItem.click();
+      await flush();
       assert.strictEqual(win.PCC.store.get().risks.length, beforeCount, "entry must not be deleted when the confirm is declined");
     } finally {
       win.confirm = originalConfirm;

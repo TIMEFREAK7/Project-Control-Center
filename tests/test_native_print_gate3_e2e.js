@@ -161,7 +161,6 @@ function findButtonByText(dom, text) {
     const projectId = data.projects[data.projects.length - 1].id;
     win.PCC.executiveCenter.viewProject(projectId, "output");
     win.PCC.router.go("executiveCenter");
-    win.PCC.router.render();
     await flush();
     const printBtn = findButtonByText(dom, "Print / Save as PDF");
     assert.ok(printBtn, "expected a Print / Save as PDF button on the Executive Center's Output tab");

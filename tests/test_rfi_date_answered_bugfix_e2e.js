@@ -75,14 +75,20 @@ function findButtonByText(dom, text) {
     assert.strictEqual(win.PCC.store.get().rfis[0].date_answered, "");
   });
 
-  await check("closing an RFI directly from 'open' to 'closed' (skipping 'answered') still records date_answered", () => {
+  await check("closing an RFI directly from 'open' to 'closed' (skipping 'answered') still records date_answered", async () => {
     win.PCC.router.go("rfis");
+    // rfis.js is a React-migrated page — a click's state update commits asynchronously
+    // (see CLAUDE.md's React migration notes), so await flush() before reading the
+    // resulting DOM.
+    await flush();
     findButtonByText(dom, "Edit").click();
+    await flush();
     var statusSelect = outlet().querySelector("#rfifield-status");
     assert.ok(statusSelect, "status field not found");
     statusSelect.value = "closed";
     var form = outlet().querySelector("form");
     form.dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
 
     var rfi = win.PCC.store.get().rfis.find((r) => r.id === rfiId);
     assert.strictEqual(rfi.status, "closed");
@@ -91,19 +97,22 @@ function findButtonByText(dom, text) {
   });
 
   var rfiId2;
-  await check("an RFI answered then closed (going through 'answered' first) keeps its original date_answered, not overwritten on the later close", () => {
+  await check("an RFI answered then closed (going through 'answered' first) keeps its original date_answered, not overwritten on the later close", async () => {
     win.PCC.store.update(function (d) {
       var rfi = win.PCC.store.newRfi({ project_id: projectId, type: "rfi", number: "RFI-002", subject: "Second question", question: "Confirm something else.", status: "answered", date_answered: "2020-01-01" });
       d.rfis.push(rfi);
       rfiId2 = rfi.id;
     });
     win.PCC.router.render();
+    await flush();
     var editButtons = Array.from(outlet().querySelectorAll("button")).filter((b) => b.textContent.trim() === "Edit");
     editButtons[editButtons.length - 1].click();
+    await flush();
     var statusSelect = outlet().querySelector("#rfifield-status");
     statusSelect.value = "closed";
     var form = outlet().querySelector("form");
     form.dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
 
     var rfi = win.PCC.store.get().rfis.find((r) => r.id === rfiId2);
     assert.strictEqual(rfi.status, "closed");

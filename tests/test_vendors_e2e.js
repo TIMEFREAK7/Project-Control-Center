@@ -35,6 +35,23 @@ async function check(label, fn) {
   }
 }
 
+// vendors.js (and portfolio.js) are React-migrated pages: a raw `.value =` assignment
+// doesn't reliably reach a controlled <select>'s onChange (React patches the native
+// setter to track "last known value" — see CLAUDE.md's React migration notes), so
+// bypass it via the native prototype descriptor before dispatching the change event.
+function setReactSelectValue(win, select, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLSelectElement.prototype, "value").set.call(select, value);
+  select.dispatchEvent(new win.Event("change", { bubbles: true }));
+}
+function setReactInputValue(win, input, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, "value").set.call(input, value);
+  input.dispatchEvent(new win.Event("input", { bubbles: true }));
+}
+function setReactTextareaValue(win, textarea, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLTextAreaElement.prototype, "value").set.call(textarea, value);
+  textarea.dispatchEvent(new win.Event("input", { bubbles: true }));
+}
+
 function findButtonByText(dom, text) {
   const buttons = Array.from(dom.window.document.querySelectorAll("button"));
   return buttons.find((b) => b.textContent.trim() === text);
@@ -109,9 +126,11 @@ function findButtonsByTextPrefix(dom, prefix) {
   });
 
   let vendorId;
-  await check("switch to Vendor List, add a vendor with a primary contact, and land on its Profile", () => {
+  await check("switch to Vendor List, add a vendor with a primary contact, and land on its Profile", async () => {
     findButtonByText(dom, "Vendor List").click();
+    await flush();
     findButtonByText(dom, "+ Add Vendor").click();
+    await flush();
 
     win.document.getElementById("vendorfield-vendor_name").value = "Acme Steel Suppliers";
     win.document.getElementById("vendorfield-company_name").value = "Acme Pvt Ltd";
@@ -124,6 +143,7 @@ function findButtonsByTextPrefix(dom, prefix) {
     win.document.getElementById("vendorfield-contact-email").value = "rajesh@acme.example";
 
     findButtonByText(dom, "Add Vendor").click();
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.vendors.length, 1);
@@ -141,9 +161,11 @@ function findButtonsByTextPrefix(dom, prefix) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("Projects tab: link the vendor to the seeded project with role/scope/contract status", () => {
+  await check("Projects tab: link the vendor to the seeded project with role/scope/contract status", async () => {
     findButtonByText(dom, "Projects").click();
+    await flush();
     findButtonByText(dom, "+ Link Project").click();
+    await flush();
 
     var form = win.document.querySelector("form");
     form.querySelector("select").value = projectId; // project select is the form's only <select> before contract_status
@@ -151,6 +173,7 @@ function findButtonsByTextPrefix(dom, prefix) {
     win.document.getElementById("vplfield-contract_status").value = "active";
     win.document.getElementById("vplfield-scope_of_work").value = "Supply and deliver structural steel per BOQ.";
     findButtonByText(dom, "Link Project").click();
+    await flush();
 
     var data = win.PCC.store.get();
     var links = data.vendor_project_links.filter((l) => l.vendor_id === vendorId);
@@ -162,10 +185,15 @@ function findButtonsByTextPrefix(dom, prefix) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("Portfolio's project details panel shows the same link (Vendor Management -> Portfolio direction)", () => {
+  await check("Portfolio's project details panel shows the same link (Vendor Management -> Portfolio direction)", async () => {
     win.PCC.router.go("portfolio");
     win.PCC.router.render();
+    // portfolio.js is a React-migrated page — flush before interacting and after every
+    // click whose state update commits asynchronously (see CLAUDE.md's React
+    // migration notes).
+    await flush();
     findButtonByText(dom, "Details").click();
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("VENDORS (1)") !== -1, "expected the Vendors section to show the 1 link made from the Vendor Profile side, got: " + text.slice(0, 1000));
     assert.ok(text.indexOf("Acme Steel Suppliers") !== -1);
@@ -173,8 +201,9 @@ function findButtonsByTextPrefix(dom, prefix) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("unlinking from Portfolio removes it, and '+ Link Vendor' from Portfolio re-links it (Portfolio -> Vendor Management direction)", () => {
+  await check("unlinking from Portfolio removes it, and '+ Link Vendor' from Portfolio re-links it (Portfolio -> Vendor Management direction)", async () => {
     findButtonByText(dom, "Unlink").click();
+    await flush();
     var afterUnlink = win.PCC.store.get();
     assert.strictEqual(afterUnlink.vendor_project_links.filter((l) => l.vendor_id === vendorId).length, 0);
     assert.ok(outlet().textContent.indexOf("VENDORS (0)") !== -1);
@@ -182,10 +211,13 @@ function findButtonsByTextPrefix(dom, prefix) {
     var linkBtn = findButtonByText(dom, "+ Link Vendor");
     assert.strictEqual(linkBtn.disabled, false, "the vendor should be available to link again after unlinking");
     linkBtn.click();
+    await flush();
     var picker = Array.from(win.document.querySelectorAll("select")).find((s) => Array.from(s.options).some((o) => o.textContent === "Acme Steel Suppliers"));
     assert.ok(picker, "vendor picker select not found in Portfolio's Link Vendor panel");
-    picker.value = vendorId;
+    setReactSelectValue(win, picker, vendorId);
+    await flush();
     findButtonByText(dom, "Link").click();
+    await flush();
 
     var afterRelink = win.PCC.store.get();
     var relinked = afterRelink.vendor_project_links.filter((l) => l.vendor_id === vendorId && l.project_id === projectId);
@@ -194,24 +226,27 @@ function findButtonsByTextPrefix(dom, prefix) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("the Portfolio-side link is visible back on the vendor's own Projects tab (round trip)", () => {
+  await check("the Portfolio-side link is visible back on the vendor's own Projects tab (round trip)", async () => {
     if (win.PCC.vendors) win.PCC.vendors.openProfile(vendorId);
     win.PCC.router.go("vendors");
-    win.PCC.router.render();
     findButtonByText(dom, "Projects").click();
+    await flush();
     assert.ok(outlet().textContent.indexOf("Vendor Test Tower") !== -1);
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("Contacts tab: primary contact is listed, and a second contact can be added", () => {
+  await check("Contacts tab: primary contact is listed, and a second contact can be added", async () => {
     findButtonByText(dom, "Contacts").click();
+    await flush();
     assert.ok(outlet().textContent.indexOf("Rajesh Kumar") !== -1);
     assert.ok(outlet().textContent.indexOf("Primary") !== -1);
 
     findButtonByText(dom, "+ Add Contact").click();
+    await flush();
     win.document.getElementById("vcfield-name").value = "Priya Sharma";
     win.document.getElementById("vcfield-designation").value = "Site Coordinator";
     findButtonByText(dom, "Add Contact").click();
+    await flush();
 
     var data = win.PCC.store.get();
     var contacts = data.vendor_contacts.filter((c) => c.vendor_id === vendorId);
@@ -235,14 +270,16 @@ function findButtonsByTextPrefix(dom, prefix) {
     await win.PCC.blobStore.putBlob(docId, "data:application/pdf;base64,ZmFrZS1wZGY=");
 
     findButtonByText(dom, "Documents").click();
+    await flush();
     assert.ok(outlet().textContent.indexOf("insurance-2026.pdf") !== -1);
     assert.ok(outlet().textContent.indexOf("Insurance Document") !== -1);
     assert.ok(findButtonByText(dom, "View / Download"), "expected a View / Download button for the stored document");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("uploading a new revision increments revision_number and keeps the same document_group_id", () => {
+  await check("uploading a new revision increments revision_number and keeps the same document_group_id", async () => {
     findButtonByText(dom, "New Revision").click();
+    await flush();
     var data = win.PCC.store.get();
     // Simulate the file having been read (bypassing FileReader, same convention as
     // every other file-upload test in this suite — see documents.js/schedule.js tests).
@@ -264,74 +301,94 @@ function findButtonsByTextPrefix(dom, prefix) {
     assert.strictEqual(sortedRevs, "1,2");
   });
 
-  await check("Meetings tab: linking the seeded meeting and clicking 'View Meeting' navigates to Meetings with it expanded", () => {
+  await check("Meetings tab: linking the seeded meeting and clicking 'View Meeting' navigates to Meetings with it expanded", async () => {
     findButtonByText(dom, "Meetings").click();
+    await flush();
     findButtonByText(dom, "+ Link Existing Meeting").click();
+    await flush();
     var picker = win.document.querySelector(".panel select");
     assert.ok(picker, "meeting picker select not found");
     picker.value = meetingId;
     findButtonByText(dom, "Link").click();
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.vendor_meeting_links.filter((l) => l.vendor_id === vendorId).length, 1);
     assert.ok(outlet().textContent.indexOf("Kickoff Meeting") !== -1);
 
     findButtonByText(dom, "View Meeting").click();
+    await flush();
     assert.strictEqual(win.PCC.router.currentRouteName(), "meetings");
     assert.ok(outlet().textContent.indexOf("Kickoff Meeting") !== -1, "expected the meetings page to show the linked meeting");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
 
     win.PCC.router.go("vendors");
     win.PCC.router.render();
+    await flush();
   });
 
-  await check("RFIs tab: linking the seeded RFI shows correct pending/closed/open-TQ counts and 'View RFI / TQ' navigates", () => {
+  await check("RFIs tab: linking the seeded RFI shows correct pending/closed/open-TQ counts and 'View RFI / TQ' navigates", async () => {
     if (win.PCC.vendors) win.PCC.vendors.openProfile(vendorId);
     win.PCC.router.render();
+    await flush();
     findButtonByText(dom, "RFI / TQ").click();
+    await flush();
     findButtonByText(dom, "+ Link Existing RFI / TQ").click();
+    await flush();
     var picker = win.document.querySelector(".panel select");
     picker.value = rfiId;
     findButtonByText(dom, "Link").click();
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.vendor_rfi_links.filter((l) => l.vendor_id === vendorId).length, 1);
     assert.ok(outlet().textContent.indexOf("1") !== -1 && outlet().textContent.indexOf("Pending RFIs") !== -1);
 
     findButtonByText(dom, "View RFI / TQ").click();
+    await flush();
     assert.strictEqual(win.PCC.router.currentRouteName(), "rfis");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
 
     win.PCC.router.go("vendors");
     win.PCC.router.render();
+    await flush();
   });
 
-  await check("Risks tab: linking the seeded risk and clicking 'View Risk' navigates to Risk Register", () => {
+  await check("Risks tab: linking the seeded risk and clicking 'View Risk' navigates to Risk Register", async () => {
     if (win.PCC.vendors) win.PCC.vendors.openProfile(vendorId);
     win.PCC.router.render();
+    await flush();
     findButtonByText(dom, "Risks").click();
+    await flush();
     findButtonByText(dom, "+ Link Existing Risk").click();
+    await flush();
     var picker = win.document.querySelector(".panel select");
     picker.value = riskId;
     findButtonByText(dom, "Link").click();
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.vendor_risk_links.filter((l) => l.vendor_id === vendorId).length, 1);
     assert.ok(outlet().textContent.indexOf("Late steel delivery") !== -1);
 
     findButtonByText(dom, "View Risk").click();
+    await flush();
     assert.strictEqual(win.PCC.router.currentRouteName(), "risks");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
 
     win.PCC.router.go("vendors");
     win.PCC.router.render();
+    await flush();
   });
 
-  await check("Performance tab: adding a review computes the correct overall average", () => {
+  await check("Performance tab: adding a review computes the correct overall average", async () => {
     if (win.PCC.vendors) win.PCC.vendors.openProfile(vendorId);
     win.PCC.router.render();
+    await flush();
     findButtonByText(dom, "Performance").click();
+    await flush();
     findButtonByText(dom, "+ Add Review").click();
+    await flush();
 
     win.document.getElementById("vperffield-quality_rating").value = "4";
     win.document.getElementById("vperffield-delivery_rating").value = "5";
@@ -339,6 +396,7 @@ function findButtonsByTextPrefix(dom, prefix) {
     win.document.getElementById("vperffield-safety_rating").value = "4";
     win.document.getElementById("vperffield-reviewed_by").value = "Site PM";
     findButtonByText(dom, "Add Review").click();
+    await flush();
 
     var data = win.PCC.store.get();
     var reviews = data.vendor_performance.filter((p) => p.vendor_id === vendorId);
@@ -349,10 +407,12 @@ function findButtonsByTextPrefix(dom, prefix) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("Notes tab: adding a note appends it to the vendor's note log", () => {
+  await check("Notes tab: adding a note appends it to the vendor's note log", async () => {
     findButtonByText(dom, "Notes").click();
-    win.document.querySelector("textarea").value = "Called vendor re: delivery delay.";
+    await flush();
+    setReactTextareaValue(win, win.document.querySelector("textarea"), "Called vendor re: delivery delay.");
     findButtonByText(dom, "Add Note").click();
+    await flush();
 
     var data = win.PCC.store.get();
     var notes = data.vendor_notes.filter((n) => n.vendor_id === vendorId);
@@ -361,32 +421,35 @@ function findButtonsByTextPrefix(dom, prefix) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("Dashboard reflects the seeded vendor correctly (Total/Preferred, Vendors per Project, Expiring Documents)", () => {
+  await check("Dashboard reflects the seeded vendor correctly (Total/Preferred, Vendors per Project, Expiring Documents)", async () => {
     findButtonByText(dom, "← Back to Vendor List").click();
+    await flush();
     findButtonByText(dom, "Dashboard").click();
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("Vendor Test Tower — 1 vendor") !== -1, "expected the per-project breakdown, got: " + text.slice(0, 800));
     assert.ok(text.indexOf("insurance-2026-v2.pdf") !== -1 || text.indexOf("Insurance Document") !== -1, "expiring-soon document should be listed (10 days out, within the 30-day window)");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("Vendor List search finds the vendor by trade, and status filter narrows correctly", () => {
+  await check("Vendor List search finds the vendor by trade, and status filter narrows correctly", async () => {
     findButtonByText(dom, "Vendor List").click();
+    await flush();
     var search = win.document.querySelector('input[type="text"]');
-    search.value = "Structural Steel";
-    search.dispatchEvent(new win.Event("input"));
+    setReactInputValue(win, search, "Structural Steel");
+    await flush();
     assert.ok(outlet().textContent.indexOf("Acme Steel Suppliers") !== -1);
 
-    search.value = "nonexistent-trade-xyz";
-    search.dispatchEvent(new win.Event("input"));
+    setReactInputValue(win, search, "nonexistent-trade-xyz");
+    await flush();
     assert.ok(outlet().textContent.indexOf("No vendors match") !== -1);
 
-    search.value = "";
-    search.dispatchEvent(new win.Event("input"));
+    setReactInputValue(win, search, "");
+    await flush();
     var statusSelect = Array.from(win.document.querySelectorAll("select")).find((s) => s.value === "" && Array.from(s.options).some((o) => o.textContent === "Preferred Vendor"));
     assert.ok(statusSelect, "status filter select not found");
-    statusSelect.value = "blacklisted";
-    statusSelect.dispatchEvent(new win.Event("change"));
+    setReactSelectValue(win, statusSelect, "blacklisted");
+    await flush();
     assert.ok(outlet().textContent.indexOf("No vendors match") !== -1, "preferred vendor should be filtered out by a blacklisted-only filter");
   });
 
@@ -394,8 +457,8 @@ function findButtonsByTextPrefix(dom, prefix) {
     var confirmed = win.confirm;
     win.confirm = () => true;
     var statusSelect = Array.from(win.document.querySelectorAll("select")).find((s) => Array.from(s.options).some((o) => o.textContent === "Preferred Vendor"));
-    statusSelect.value = "";
-    statusSelect.dispatchEvent(new win.Event("change"));
+    setReactSelectValue(win, statusSelect, "");
+    await flush();
 
     findButtonByText(dom, "Delete").click();
     await flush();

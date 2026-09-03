@@ -90,10 +90,15 @@ function findButtonByText(dom, text) {
     assert.ok(projectId && scheduleId && activityId && vendorAId && vendorBId);
   });
 
-  await check("the Activity Detail Panel shows no Vendor before one is assigned", () => {
+  await check("the Activity Detail Panel shows no Vendor before one is assigned", async () => {
     win.PCC.schedule.viewActivity(projectId, scheduleId, activityId);
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
+    // vendors.js (later in this file) is a React-migrated page whose route mounts
+    // consume a one-shot pending prop — a hashchange left un-flushed from THIS go()
+    // call can leak into a later check and fire an unwanted extra render there (see
+    // CLAUDE.md's router.js suppressNextHashRender notes). Flush after every go(),
+    // even to this still-vanilla route.
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("Transformer Installation") !== -1);
     // "Vendor" the detail-item LABEL should render with an em-dash value since nothing is assigned.
@@ -133,11 +138,11 @@ function findButtonByText(dom, text) {
     assert.strictEqual(vendorLabel.parentElement.querySelector("div").textContent, "ABC Electrical");
   });
 
-  await check("Vendor A's profile 'Activities' tab shows the assigned activity with the correct project and a badge", () => {
+  await check("Vendor A's profile 'Activities' tab shows the assigned activity with the correct project and a badge", async () => {
     win.PCC.vendors.openProfile(vendorAId);
     win.PCC.router.go("vendors");
-    win.PCC.router.render();
     findButtonByText(dom, "Activities").click();
+    await flush();
 
     var text = outlet().textContent;
     assert.ok(text.indexOf("Transformer Installation") !== -1);
@@ -151,36 +156,37 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("Vendor B's profile 'Activities' tab shows the empty state — no cross-contamination between vendors", () => {
+  await check("Vendor B's profile 'Activities' tab shows the empty state — no cross-contamination between vendors", async () => {
     win.PCC.vendors.openProfile(vendorBId);
     win.PCC.router.go("vendors");
-    win.PCC.router.render();
     findButtonByText(dom, "Activities").click();
+    await flush();
 
     var text = outlet().textContent;
     assert.ok(text.indexOf("No Schedule activities are currently assigned to this vendor") !== -1);
     assert.ok(text.indexOf("Transformer Installation") === -1);
   });
 
-  await check("'View in Schedule' from Vendor A's Activities tab navigates to Schedule with the activity's detail panel open", () => {
+  await check("'View in Schedule' from Vendor A's Activities tab navigates to Schedule with the activity's detail panel open", async () => {
     win.PCC.vendors.openProfile(vendorAId);
     win.PCC.router.go("vendors");
-    win.PCC.router.render();
     findButtonByText(dom, "Activities").click();
+    await flush();
 
     var viewBtn = findButtonByText(dom, "View in Schedule");
     assert.ok(viewBtn, "View in Schedule button not found");
     viewBtn.click();
+    await flush();
 
     assert.strictEqual(win.PCC.router.currentRouteName(), "schedule");
     assert.ok(outlet().textContent.indexOf("Transformer Installation") !== -1, "the activity detail panel must show the linked activity");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("unassigning the vendor (back to '(none)') clears vendor_id and the activity disappears from Vendor A's Activities tab", () => {
+  await check("unassigning the vendor (back to '(none)') clears vendor_id and the activity disappears from Vendor A's Activities tab", async () => {
     win.PCC.schedule.viewActivity(projectId, scheduleId, activityId);
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
+    await flush();
     findButtonByText(dom, "Edit").click();
     var select = outlet().querySelector("#actfield-vendor_id");
     select.value = "";
@@ -192,8 +198,8 @@ function findButtonByText(dom, text) {
 
     win.PCC.vendors.openProfile(vendorAId);
     win.PCC.router.go("vendors");
-    win.PCC.router.render();
     findButtonByText(dom, "Activities").click();
+    await flush();
     assert.ok(outlet().textContent.indexOf("No Schedule activities are currently assigned to this vendor") !== -1);
   });
 

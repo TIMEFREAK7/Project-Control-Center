@@ -163,15 +163,16 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("Executive Center's STATUS DATE panel shows the Out of Sequence KPI and lists Framing under the active mode", () => {
+  await check("Executive Center's STATUS DATE panel shows the Out of Sequence KPI and lists Framing under the active mode", async () => {
     win.PCC.executiveCenter.viewProject(projectId);
     win.PCC.router.go("executiveCenter");
-    win.PCC.router.render();
+    await flush();
     // UI/UX Overhaul Gate 5: STATUS DATE now lives on the Schedule sub-tab. The next
     // check stays on it too, since nothing here navigates away.
     var scheduleTab = Array.from(outlet().querySelectorAll(".toolbar button")).find((b) => b.textContent.trim() === "Schedule");
     assert.ok(scheduleTab, "Schedule sub-tab not found");
     scheduleTab.click();
+    await flush();
 
     var text = outlet().textContent;
     var kpiCards = Array.from(outlet().querySelectorAll(".kpi-card"));
@@ -184,12 +185,19 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("switching back to Progress Override mode updates Executive Center's panel without a Calculate Schedule click (live recompute)", () => {
+  await check("switching back to Progress Override mode updates Executive Center's panel without a Calculate Schedule click (live recompute)", async () => {
     win.PCC.store.update(function (d) {
       var schedule = d.schedules.find((s) => s.id === scheduleId);
       schedule.calculation_mode = "progress_override";
     });
+    // A plain render() remounts Executive Center fresh, resetting to the Summary
+    // sub-tab — re-navigate to the Schedule sub-tab to see the live-recomputed panel.
     win.PCC.router.render();
+    await flush();
+    var scheduleTab = Array.from(outlet().querySelectorAll(".toolbar button")).find((b) => b.textContent.trim() === "Schedule");
+    assert.ok(scheduleTab, "Schedule sub-tab not found");
+    scheduleTab.click();
+    await flush();
 
     var text = outlet().textContent;
     assert.ok(text.indexOf("Out of Sequence (1) — Progress Override mode") !== -1);

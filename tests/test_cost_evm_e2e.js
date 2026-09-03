@@ -89,17 +89,22 @@ function findButtonByText(win, text) {
     assert.ok(projectId && scheduleId && activityId);
   });
 
-  await check("navigate to the cost route and it renders without throwing", () => {
+  await check("navigate to the cost route and it renders without throwing", async () => {
     win.PCC.router.go("cost");
     win.PCC.router.render();
+    // cost.js is a React-migrated page — go() already renders its INITIAL mount
+    // synchronously (reactBridge.js wraps it in flushSync), but await flush() anyway
+    // before the next check interacts with it, per CLAUDE.md's React migration notes.
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     assert.ok(outlet.innerHTML.length > 0, "cost route should render content");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("the Budget Item form's Schedule Activity dropdown offers the seeded activity, labeled with its schedule", () => {
+  await check("the Budget Item form's Schedule Activity dropdown offers the seeded activity, labeled with its schedule", async () => {
     var addBtn = findButtonByText(win, "+ Add Budget Item");
     addBtn.click();
+    await flush();
     var activitySelect = win.document.querySelector("#costbudgetfield-activity_id");
     assert.ok(activitySelect, "Schedule Activity select not found on the Budget Item form");
     var options = Array.from(activitySelect.options).map((o) => o.textContent);
@@ -111,12 +116,13 @@ function findButtonByText(win, text) {
   });
 
   let linkedBudgetItemId;
-  await check("submitting the Budget Item form with an activity selected links it (activity_id stored)", () => {
+  await check("submitting the Budget Item form with an activity selected links it (activity_id stored)", async () => {
     win.document.querySelector("#costbudgetfield-name").value = "Excavation Labor";
     win.document.querySelector("#costbudgetfield-planned_amount").value = "1000";
     win.document.querySelector("#costbudgetfield-activity_id").value = activityId;
     var form = win.document.querySelector("#costbudgetfield-name").closest("form");
     form.dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.cost_budget_items.length, 1);
@@ -131,27 +137,32 @@ function findButtonByText(win, text) {
     assert.ok(outlet.textContent.indexOf("50% complete") !== -1);
   });
 
-  await check("logging an actual cost against this project (AC = 500, on-budget for a 50%-complete, 50%-elapsed activity)", () => {
+  await check("logging an actual cost against this project (AC = 500, on-budget for a 50%-complete, 50%-elapsed activity)", async () => {
     win.PCC.router.render();
+    await flush();
     var actualsTabBtn = findButtonByText(win, "Actuals");
     actualsTabBtn.click();
+    await flush();
     var logBtn = findButtonByText(win, "+ Log Actual Cost");
     logBtn.click();
+    await flush();
     win.document.querySelector("#costactualfield-description").value = "Excavation crew, week 1";
     win.document.querySelector("#costactualfield-amount").value = "500";
     win.document.querySelector("#costactualfield-date").value = "2026-01-06";
     var form = win.document.querySelector("#costactualfield-description").closest("form");
     form.dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.cost_actuals.length, 1);
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("the EVM tab shows hand-checkable PV/EV/AC/CPI/SPI for this exact-midpoint, on-budget scenario", () => {
+  await check("the EVM tab shows hand-checkable PV/EV/AC/CPI/SPI for this exact-midpoint, on-budget scenario", async () => {
     var evmTabBtn = findButtonByText(win, "EVM");
     assert.ok(evmTabBtn, "EVM tab button not found");
     evmTabBtn.click();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     // Activity: 10-day span (Jan 1-11), data_date Jan 6 = 5 days elapsed = 50% -> PV = 500.
     // 50% complete on a 1000 budget item -> EV = 500. AC = 500 (logged above). CPI = SPI = 1.00.
@@ -161,17 +172,21 @@ function findButtonByText(win, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("adding a second, unlinked budget item drops coverage below 100% and shows the coverage note", () => {
+  await check("adding a second, unlinked budget item drops coverage below 100% and shows the coverage note", async () => {
     win.PCC.router.render();
+    await flush();
     var budgetTabBtn = findButtonByText(win, "Budget");
     budgetTabBtn.click();
+    await flush();
     var addBtn = findButtonByText(win, "+ Add Budget Item");
     addBtn.click();
+    await flush();
     win.document.querySelector("#costbudgetfield-name").value = "Miscellaneous";
     win.document.querySelector("#costbudgetfield-planned_amount").value = "1000";
     // Leave Schedule Activity at its default "(none — not linked...)".
     var form = win.document.querySelector("#costbudgetfield-name").closest("form");
     form.dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.cost_budget_items.length, 2);
@@ -180,6 +195,7 @@ function findButtonByText(win, text) {
 
     var evmTabBtn = findButtonByText(win, "EVM");
     evmTabBtn.click();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     // BAC is now 2000 (1000 linked + 1000 unlinked); linked share is 1000/2000 = 50%.
     assert.ok(outlet.textContent.indexOf("50% linked") !== -1, "expected 50% linked coverage, got: " + outlet.textContent.slice(0, 600));
@@ -190,15 +206,17 @@ function findButtonByText(win, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("with no active projects, the EVM tab shows its own empty state", () => {
+  await check("with no active projects, the EVM tab shows its own empty state", async () => {
     win.PCC.store.update(function (data) {
       data.projects.forEach(function (p) {
         p.archived = true;
       });
     });
     win.PCC.router.render();
+    await flush();
     var evmTabBtn = findButtonByText(win, "EVM");
     evmTabBtn.click();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     assert.ok(outlet.textContent.indexOf("Add a project in Portfolio first") !== -1, "got: " + outlet.textContent.slice(0, 400));
 

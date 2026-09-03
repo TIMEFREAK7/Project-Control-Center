@@ -124,12 +124,18 @@ async function check(label, fn) {
     }
   });
 
-  await check("clearing a page's own filter back to 'All Projects' locally persists across a re-render as long as global context doesn't change again", () => {
+  await check("clearing a page's own filter back to 'All Projects' locally persists across a re-render as long as global context doesn't change again", async () => {
     win.PCC.router.go("dashboard");
     win.PCC.router.render();
+    // Dashboard is a React-migrated page — flush before interacting (a hashchange-
+    // triggered render can still land asynchronously after this go()+render() pair,
+    // per router.js's suppressNextHashRender single-flag race) and after the click
+    // (its state update commits asynchronously) — see CLAUDE.md's React migration notes.
+    await flush();
     var showAllBtn = Array.from(outlet().querySelectorAll("button")).find((b) => b.textContent.trim() === "Show All Projects");
     assert.ok(showAllBtn, "no 'Show All Projects' button found while a project is focused");
     showAllBtn.click();
+    await flush();
     assert.ok(outlet().textContent.indexOf("Focused on") === -1, "the focus banner should be gone immediately after clicking Show All Projects");
 
     // Re-render without touching context again (e.g. navigating away and back) — the
@@ -138,6 +144,7 @@ async function check(label, fn) {
     win.PCC.router.render();
     win.PCC.router.go("dashboard");
     win.PCC.router.render();
+    await flush();
     assert.ok(outlet().textContent.indexOf("Focused on") === -1, "Show All Projects must persist across a revisit when context hasn't changed again");
   });
 

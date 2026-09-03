@@ -80,6 +80,17 @@ function findFieldByLabel(dom, labelText) {
   const match = labels.find((l) => l.textContent.trim().indexOf(labelText) === 0);
   return match ? match.parentElement.querySelector("input, select, textarea") : null;
 }
+// portfolio.js is a React-migrated page: several of its own controlled inputs (the
+// Document Requirements checklist's per-row date/select/number fields, its Apply
+// Template select) don't reliably fire onChange from a raw `.value =` assignment —
+// React patches the native setter to track "last known value" (see CLAUDE.md's React
+// migration notes) — so bypass it via the native prototype descriptor before
+// dispatching the change event.
+function setReactValue(win, el, value) {
+  var proto = el.tagName === "SELECT" ? win.HTMLSelectElement.prototype : win.HTMLInputElement.prototype;
+  Object.getOwnPropertyDescriptor(proto, "value").set.call(el, value);
+  el.dispatchEvent(new win.Event("change", { bubbles: true }));
+}
 
 (async () => {
   const html = fs.readFileSync(INDEX_PATH, "utf8");
@@ -114,11 +125,19 @@ function findFieldByLabel(dom, labelText) {
     assert.ok(seededTypeCount > 0, "the master repository must already be seeded");
   });
 
-  await check("'+ Add Project' opens the form with a DOCUMENT REQUIREMENTS field showing 0 selected", () => {
+  await check("'+ Add Project' opens the form with a DOCUMENT REQUIREMENTS field showing 0 selected", async () => {
     win.PCC.router.go("portfolio");
     win.PCC.router.render();
+    // portfolio.js is a React-migrated page — flush before interacting and after every
+    // click whose state update commits asynchronously (see CLAUDE.md's React
+    // migration notes). Deliberately no extra win.PCC.router.render() calls anywhere in
+    // this file from here on — the Document Requirements checklist's whole uncommitted
+    // selection lives in this form's own React state, and a redundant render() call
+    // would force a full remount that wipes it, the same class of bug documented for
+    // one-shot pending props elsewhere in this codebase.
+    await flush();
     findButtonByText(dom, "+ Add Project").click();
-    win.PCC.router.render();
+    await flush();
 
     var count = requirementFieldCount(dom);
     assert.ok(count, "DOCUMENT REQUIREMENTS field not found inside the Add Project form");
@@ -127,25 +146,28 @@ function findFieldByLabel(dom, labelText) {
     assert.ok(findLabelContaining(dom, "BOQ"), "the checklist itself must already be visible — no separate 'Manage' toggle any more");
   });
 
-  await check("checking a box in the Add form updates the field's count but writes nothing to the store yet", () => {
+  await check("checking a box in the Add form updates the field's count but writes nothing to the store yet", async () => {
     var boqLabel = findLabelContaining(dom, "BOQ");
     var checkbox = boqLabel.querySelector('input[type="checkbox"]');
     assert.ok(checkbox && !checkbox.checked, "BOQ must start unchecked");
-    checkbox.checked = true;
-    checkbox.dispatchEvent(new win.Event("change"));
+    // Use .click(), not a raw .checked= assignment — a controlled checkbox's onChange
+    // isn't reliably reached by the latter (see CLAUDE.md's React migration notes).
+    checkbox.click();
+    await flush();
 
     assert.strictEqual(requirementFieldCount(dom).selected, 1);
     assert.strictEqual(win.PCC.store.get().project_document_requirements.length, 0, "nothing may be written to the store before Save");
     assert.strictEqual(win.PCC.store.get().projects.length, 0, "the project itself isn't created until Save either");
   });
 
-  await check("Apply Template (EPC) adds matching active types to the field's selection, still uncommitted", () => {
+  await check("Apply Template (EPC) adds matching active types to the field's selection, still uncommitted", async () => {
     var selects = Array.from(win.document.querySelectorAll("select"));
     var templateSelect = selects.find((s) => Array.from(s.options).some((o) => o.textContent === "EPC"));
     assert.ok(templateSelect, "template select not found");
-    templateSelect.value = "epc";
-    templateSelect.dispatchEvent(new win.Event("change"));
+    setReactValue(win, templateSelect, "epc");
+    await flush();
     findButtonByText(dom, "Apply").click();
+    await flush();
 
     var epcTemplate = win.PCC.store.PROJECT_TEMPLATES.find((t) => t.key === "epc");
     // BOQ was already checked by hand; the template may or may not also suggest BOQ, so
@@ -156,10 +178,11 @@ function findFieldByLabel(dom, labelText) {
   });
 
   var projectId;
-  await check("Save creates the project AND commits the selected requirements atomically", () => {
+  await check("Save creates the project AND commits the selected requirements atomically", async () => {
     var selectedBeforeSave = requirementFieldCount(dom).selected;
     findFieldByLabel(dom, "Project Name").value = "Requirements Test Project";
     findButtonByText(dom, "Add Project").click();
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.projects.length, 1, "the project must be created");
@@ -168,25 +191,31 @@ function findFieldByLabel(dom, labelText) {
     assert.strictEqual(rows.length, selectedBeforeSave, "every checked requirement must be committed on Save, in one step with the project record");
   });
 
-  await check("Cancel on a fresh Add form discards the uncommitted selection (re-opening starts at 0 again)", () => {
+  await check("Cancel on a fresh Add form discards the uncommitted selection (re-opening starts at 0 again)", async () => {
     findButtonByText(dom, "+ Add Project").click();
-    win.PCC.router.render();
+    await flush();
     var boqLabel = findLabelContaining(dom, "BOQ");
     boqLabel.querySelector('input[type="checkbox"]').click();
+    await flush();
     assert.strictEqual(requirementFieldCount(dom).selected, 1);
 
+    // Flush between every click here — two setEditingId() calls fired back-to-back
+    // with no tick between them (unlike any real user's click-then-click) can get
+    // batched into a single React render, so ProjectForm's key={editingId} never
+    // actually changes and the form never remounts to reset its state (see CLAUDE.md's
+    // React migration notes on this general class of back-to-back-interaction race).
     findButtonByText(dom, "Cancel").click();
-    win.PCC.router.render();
+    await flush();
     findButtonByText(dom, "+ Add Project").click();
-    win.PCC.router.render();
+    await flush();
     assert.strictEqual(requirementFieldCount(dom).selected, 0, "a fresh Add Project form must not carry over a previously-cancelled selection");
     findButtonByText(dom, "Cancel").click();
-    win.PCC.router.render();
+    await flush();
   });
 
-  await check("Portfolio Details shows a read-only DOCUMENT REQUIREMENTS summary with an Edit Requirements button, no checkboxes", () => {
+  await check("Portfolio Details shows a read-only DOCUMENT REQUIREMENTS summary with an Edit Requirements button, no checkboxes", async () => {
     findButtonByText(dom, "Details").click();
-    win.PCC.router.render();
+    await flush();
 
     var summary = requirementSummaryCount(dom);
     assert.ok(summary, "read-only DOCUMENT REQUIREMENTS summary not found in Details");
@@ -196,13 +225,24 @@ function findFieldByLabel(dom, labelText) {
     assert.ok(!findLabelContaining(dom, "BOQ"), "Details must be read-only — no checkbox-bearing labels");
   });
 
-  await check("attaching a document with a matching document_type_id flips that requirement to Available", () => {
+  await check("attaching a document with a matching document_type_id flips that requirement to Available", async () => {
     var data = win.PCC.store.get();
     var boqType = data.document_types.find((t) => t.name === "BOQ");
     win.PCC.store.update(function (d) {
       d.documents.push(win.PCC.store.newDocument({ project_id: projectId, filename: "boq.pdf", document_type_id: boqType.id }));
     });
-    win.PCC.router.render();
+    // portfolio.js is a React-migrated page — a raw external store.update() doesn't
+    // trigger any automatic re-render (React doesn't subscribe to the store), so a bare
+    // win.PCC.router.render() alone would either show stale data (if it flushSync'd the
+    // currently-mounted tree, which it doesn't) or, correctly, force a fresh mount that
+    // reads the store again — but a fresh mount defaults expandedId to null, closing
+    // the very details panel this check needs to read. window.PCC.portfolio.
+    // viewProject() re-arms the pending-prop so the fresh mount lands already expanded
+    // on this project, matching what a real user would see returning to Portfolio
+    // after attaching the document elsewhere.
+    win.PCC.portfolio.viewProject(projectId);
+    win.PCC.router.go("portfolio");
+    await flush();
 
     var summary = requirementSummaryCount(dom);
     assert.strictEqual(summary.available, 1, "attaching a matching document must flip its requirement to Available, computed live");
@@ -211,9 +251,9 @@ function findFieldByLabel(dom, labelText) {
     assert.ok(bodyText.indexOf("Required") !== -1, "the remaining unmatched requirements must still read Required");
   });
 
-  await check("Edit Requirements opens the Edit form pre-filled with the project's existing selection and live availability badges", () => {
+  await check("Edit Requirements opens the Edit form pre-filled with the project's existing selection and live availability badges", async () => {
     findButtonByText(dom, "Edit Requirements").click();
-    win.PCC.router.render();
+    await flush();
 
     var boqLabel = findLabelContaining(dom, "BOQ");
     assert.ok(boqLabel, "BOQ row must appear in the Edit form's checklist");
@@ -222,7 +262,7 @@ function findFieldByLabel(dom, labelText) {
     assert.ok(boqLabel.textContent.indexOf("Available") !== -1, "a checked requirement with a matching document must show an Available badge in the form too");
   });
 
-  await check("unchecking BOQ and checking a previously-unselected type, then Save, reconciles both add and remove", () => {
+  await check("unchecking BOQ and checking a previously-unselected type, then Save, reconciles both add and remove", async () => {
     var data = win.PCC.store.get();
     var priorRows = data.project_document_requirements.filter((r) => r.project_id === projectId);
     var boqType = data.document_types.find((t) => t.name === "BOQ");
@@ -233,8 +273,11 @@ function findFieldByLabel(dom, labelText) {
     assert.ok(!wasKickoffSelected, "test setup assumption: Kickoff Checklist must not already be selected");
 
     findLabelContaining(dom, "BOQ").querySelector('input[type="checkbox"]').click();
+    await flush();
     findLabelContaining(dom, "Kickoff Checklist").querySelector('input[type="checkbox"]').click();
+    await flush();
     findButtonByText(dom, "Save Changes").click();
+    await flush();
 
     var after = win.PCC.store.get().project_document_requirements.filter((r) => r.project_id === projectId);
     assert.ok(!after.some((r) => r.document_type_id === boqType.id), "unchecked BOQ must be removed from the store on Save");
@@ -250,43 +293,45 @@ function findFieldByLabel(dom, labelText) {
 
   // ---- Gate 5 (Document Control 5: Schedule Due Dates) ----
   var dueDatesProjectId;
-  await check("a checked requirement in the Add form shows a date input, and an unchecked one does not", () => {
+  await check("a checked requirement in the Add form shows a date input, and an unchecked one does not", async () => {
     findButtonByText(dom, "+ Add Project").click();
-    win.PCC.router.render();
+    await flush();
 
     var kickoffLabel = findLabelContaining(dom, "Kickoff Checklist");
     assert.ok(kickoffLabel, "Kickoff Checklist row not found");
     assert.ok(!kickoffLabel.querySelector('input[type="date"]'), "an unchecked requirement must not show a date input");
 
     kickoffLabel.querySelector('input[type="checkbox"]').click();
+    await flush();
     kickoffLabel = findLabelContaining(dom, "Kickoff Checklist");
     assert.ok(kickoffLabel.querySelector('input[type="date"]'), "a checked requirement must show a due-date input");
   });
 
-  await check("setting a past due date on a checked (not-yet-available) requirement shows an Overdue badge; clearing it reverts to Required", () => {
+  await check("setting a past due date on a checked (not-yet-available) requirement shows an Overdue badge; clearing it reverts to Required", async () => {
     var kickoffLabel = findLabelContaining(dom, "Kickoff Checklist");
     var dateInput = kickoffLabel.querySelector('input[type="date"]');
-    dateInput.value = "2020-01-01";
-    dateInput.dispatchEvent(new win.Event("change"));
+    setReactValue(win, dateInput, "2020-01-01");
+    await flush();
 
     kickoffLabel = findLabelContaining(dom, "Kickoff Checklist");
     assert.ok(kickoffLabel.textContent.indexOf("Overdue") !== -1, "a past due date on a not-yet-available requirement must show Overdue");
 
     dateInput = kickoffLabel.querySelector('input[type="date"]');
-    dateInput.value = "";
-    dateInput.dispatchEvent(new win.Event("change"));
+    setReactValue(win, dateInput, "");
+    await flush();
     kickoffLabel = findLabelContaining(dom, "Kickoff Checklist");
     assert.ok(kickoffLabel.textContent.indexOf("Required") !== -1, "clearing the due date must revert the badge to Required");
     assert.ok(kickoffLabel.textContent.indexOf("Overdue") === -1);
   });
 
-  await check("Save persists planned_submission_date onto the store row, atomically with the rest of the requirement", () => {
+  await check("Save persists planned_submission_date onto the store row, atomically with the rest of the requirement", async () => {
     var dateInput = findLabelContaining(dom, "Kickoff Checklist").querySelector('input[type="date"]');
-    dateInput.value = "2030-06-15";
-    dateInput.dispatchEvent(new win.Event("change"));
+    setReactValue(win, dateInput, "2030-06-15");
+    await flush();
 
     findFieldByLabel(dom, "Project Name").value = "Due Dates Test Project";
     findButtonByText(dom, "Add Project").click();
+    await flush();
 
     var data = win.PCC.store.get();
     var newProject = data.projects.find((p) => p.name === "Due Dates Test Project");
@@ -300,20 +345,20 @@ function findFieldByLabel(dom, labelText) {
     assert.strictEqual(row.planned_submission_date, "2030-06-15", "the manual due date must be persisted verbatim");
   });
 
-  await check("Edit Requirements pre-fills the stored due date back into the form's date input", () => {
+  await check("Edit Requirements pre-fills the stored due date back into the form's date input", async () => {
     findButtonByText(dom, "Details").click();
-    win.PCC.router.render();
+    await flush();
     findButtonByText(dom, "Edit Requirements").click();
-    win.PCC.router.render();
+    await flush();
 
     var kickoffLabel = findLabelContaining(dom, "Kickoff Checklist");
     var dateInput = kickoffLabel.querySelector('input[type="date"]');
     assert.strictEqual(dateInput.value, "2030-06-15", "re-opening Edit must show the previously-saved due date, not a blank field");
     findButtonByText(dom, "Cancel").click();
-    win.PCC.router.render();
+    await flush();
   });
 
-  await check("the Details summary shows the due date and an overdue count once a requirement's date has passed", () => {
+  await check("the Details summary shows the due date and an overdue count once a requirement's date has passed", async () => {
     var data = win.PCC.store.get();
     var kickoffType = data.document_types.find((t) => t.name === "Kickoff Checklist");
     win.PCC.store.update(function (d) {
@@ -323,11 +368,13 @@ function findFieldByLabel(dom, labelText) {
       row.planned_submission_date = "2020-01-01";
     });
 
+    // A raw external store.update() doesn't auto-refresh a React page — re-arm the
+    // pending-prop so this fresh mount lands already expanded on Due Dates Test
+    // Project, matching what a real user would see (see the earlier "attaching a
+    // document..." check's comment for the full reasoning).
+    win.PCC.portfolio.viewProject(dueDatesProjectId);
     win.PCC.router.go("portfolio");
-    win.PCC.router.render();
-    // Due Dates Test Project's details are already expanded from the previous check
-    // (uiState.expandedId persists across navigations within this page module), so no
-    // extra "Details" click is needed — and its button now reads "Hide Details" anyway.
+    await flush();
 
     var bodyText = win.document.getElementById("page-outlet").textContent;
     assert.ok(bodyText.indexOf("due 2020-01-01") !== -1, "the read-only summary must show the requirement's due date");
@@ -346,12 +393,13 @@ function findFieldByLabel(dom, labelText) {
     assert.ok(testVendorId);
   });
 
-  await check("a checked requirement in the Add form shows a vendor select defaulting to '(no vendor)'", () => {
+  await check("a checked requirement in the Add form shows a vendor select defaulting to '(no vendor)'", async () => {
     findButtonByText(dom, "+ Add Project").click();
-    win.PCC.router.render();
+    await flush();
 
     var kickoffLabel = findLabelContaining(dom, "Kickoff Checklist");
     kickoffLabel.querySelector('input[type="checkbox"]').click();
+    await flush();
     kickoffLabel = findLabelContaining(dom, "Kickoff Checklist");
 
     var vendorSelect = kickoffLabel.querySelector("select");
@@ -362,14 +410,15 @@ function findFieldByLabel(dom, labelText) {
   });
 
   var vendorProjectId;
-  await check("selecting a vendor and saving persists vendor_id onto the store row, atomically with the rest of the requirement", () => {
+  await check("selecting a vendor and saving persists vendor_id onto the store row, atomically with the rest of the requirement", async () => {
     var kickoffLabel = findLabelContaining(dom, "Kickoff Checklist");
     var vendorSelect = kickoffLabel.querySelector("select");
-    vendorSelect.value = testVendorId;
-    vendorSelect.dispatchEvent(new win.Event("change"));
+    setReactValue(win, vendorSelect, testVendorId);
+    await flush();
 
     findFieldByLabel(dom, "Project Name").value = "Vendor Register Test Project";
     findButtonByText(dom, "Add Project").click();
+    await flush();
 
     var data = win.PCC.store.get();
     var newProject = data.projects.find((p) => p.name === "Vendor Register Test Project");
@@ -383,20 +432,20 @@ function findFieldByLabel(dom, labelText) {
     assert.strictEqual(row.vendor_id, testVendorId, "the assigned vendor must be persisted");
   });
 
-  await check("Edit Requirements pre-fills the stored vendor back into the form's select", () => {
+  await check("Edit Requirements pre-fills the stored vendor back into the form's select", async () => {
     // Scoped to this specific card: by now three project cards are on screen and more
     // than one reads plain "Details" (only the currently-expanded one reads "Hide
     // Details"), so an unscoped findButtonByText could click the wrong project's.
     findButtonInCardByText(dom, "Vendor Register Test Project", "Details").click();
-    win.PCC.router.render();
+    await flush();
     findButtonByText(dom, "Edit Requirements").click();
-    win.PCC.router.render();
+    await flush();
 
     var kickoffLabel = findLabelContaining(dom, "Kickoff Checklist");
     var vendorSelect = kickoffLabel.querySelector("select");
     assert.strictEqual(vendorSelect.value, testVendorId, "re-opening Edit must show the previously-assigned vendor, not blank");
     findButtonByText(dom, "Cancel").click();
-    win.PCC.router.render();
+    await flush();
   });
 
   await check("the Details summary shows the assigned vendor's name inline", () => {
@@ -423,11 +472,11 @@ function findFieldByLabel(dom, labelText) {
     assert.ok(testActivityId);
   });
 
-  await check("a checked requirement in the Edit form shows a Linked Activity select listing the project's own activities", () => {
+  await check("a checked requirement in the Edit form shows a Linked Activity select listing the project's own activities", async () => {
     ensureCardExpanded(dom, "Vendor Register Test Project");
-    win.PCC.router.render();
+    await flush();
     findButtonByText(dom, "Edit Requirements").click();
-    win.PCC.router.render();
+    await flush();
 
     var kickoffLabel = findLabelContaining(dom, "Kickoff Checklist");
     var selects = Array.from(kickoffLabel.querySelectorAll("select"));
@@ -441,12 +490,13 @@ function findFieldByLabel(dom, labelText) {
     assert.strictEqual(activitySelect.value, "", "must default to unlinked");
   });
 
-  await check("selecting an activity and saving persists activity_id onto the store row, atomically with the rest of the requirement, without touching planned_submission_date", () => {
+  await check("selecting an activity and saving persists activity_id onto the store row, atomically with the rest of the requirement, without touching planned_submission_date", async () => {
     var kickoffLabel = findLabelContaining(dom, "Kickoff Checklist");
     var activitySelect = Array.from(kickoffLabel.querySelectorAll("select"))[1];
-    activitySelect.value = testActivityId;
-    activitySelect.dispatchEvent(new win.Event("change"));
+    setReactValue(win, activitySelect, testActivityId);
+    await flush();
     findButtonByText(dom, "Save Changes").click();
+    await flush();
 
     var data = win.PCC.store.get();
     var kickoffType = data.document_types.find((t) => t.name === "Kickoff Checklist");
@@ -459,17 +509,17 @@ function findFieldByLabel(dom, labelText) {
     assert.strictEqual(row.planned_submission_date, null, "linking an activity must not fabricate a due date — that's gate 8's job, not this gate's");
   });
 
-  await check("Edit Requirements pre-fills the stored activity link back into the form's select", () => {
+  await check("Edit Requirements pre-fills the stored activity link back into the form's select", async () => {
     ensureCardExpanded(dom, "Vendor Register Test Project");
-    win.PCC.router.render();
+    await flush();
     findButtonByText(dom, "Edit Requirements").click();
-    win.PCC.router.render();
+    await flush();
 
     var kickoffLabel = findLabelContaining(dom, "Kickoff Checklist");
     var activitySelect = Array.from(kickoffLabel.querySelectorAll("select"))[1];
     assert.strictEqual(activitySelect.value, testActivityId, "re-opening Edit must show the previously-linked activity, not blank");
     findButtonByText(dom, "Cancel").click();
-    win.PCC.router.render();
+    await flush();
   });
 
   await check("the Details summary shows the linked activity's schedule and name inline", () => {
@@ -494,17 +544,17 @@ function findFieldByLabel(dom, labelText) {
     assert.strictEqual(win.PCC.store.get().activities.find((a) => a.id === testActivityId).planned_start, "2026-10-01");
   });
 
-  await check("entering a lead time next to the linked activity shows a 'Suggested: <date>' affordance (activity start minus lead time)", () => {
+  await check("entering a lead time next to the linked activity shows a 'Suggested: <date>' affordance (activity start minus lead time)", async () => {
     ensureCardExpanded(dom, "Vendor Register Test Project");
-    win.PCC.router.render();
+    await flush();
     findButtonByText(dom, "Edit Requirements").click();
-    win.PCC.router.render();
+    await flush();
 
     var kickoffLabel = findLabelContaining(dom, "Kickoff Checklist");
     var leadTimeInput = kickoffLabel.querySelector('input[type="number"]');
     assert.ok(leadTimeInput, "a checked, activity-linked requirement must show a lead-time number input");
-    leadTimeInput.value = "10";
-    leadTimeInput.dispatchEvent(new win.Event("change"));
+    setReactValue(win, leadTimeInput, "10");
+    await flush();
 
     kickoffLabel = findLabelContaining(dom, "Kickoff Checklist");
     assert.ok(kickoffLabel.textContent.indexOf("Suggested: 2026-09-21") !== -1, "10 days before 2026-10-01 is 2026-09-21");
@@ -514,8 +564,9 @@ function findFieldByLabel(dom, labelText) {
     assert.strictEqual(dueInputBeforeUse.value, "", "the suggestion must not have written to the due-date field on its own");
   });
 
-  await check("clicking 'Use' applies the suggested date to the due-date field, and it disappears once applied (nothing left to suggest)", () => {
+  await check("clicking 'Use' applies the suggested date to the due-date field, and it disappears once applied (nothing left to suggest)", async () => {
     findButtonByText(dom, "Use").click();
+    await flush();
 
     var kickoffLabel = findLabelContaining(dom, "Kickoff Checklist");
     var dueInput = kickoffLabel.querySelector('input[type="date"]');
@@ -523,8 +574,9 @@ function findFieldByLabel(dom, labelText) {
     assert.ok(kickoffLabel.textContent.indexOf("Suggested:") === -1, "no more suggestion once the due date already matches it");
   });
 
-  await check("Save persists lead_time_days and the applied planned_submission_date together, atomically with the rest of the requirement", () => {
+  await check("Save persists lead_time_days and the applied planned_submission_date together, atomically with the rest of the requirement", async () => {
     findButtonByText(dom, "Save Changes").click();
+    await flush();
 
     var data = win.PCC.store.get();
     var kickoffType = data.document_types.find((t) => t.name === "Kickoff Checklist");
@@ -537,17 +589,17 @@ function findFieldByLabel(dom, labelText) {
     assert.strictEqual(row.activity_id, testActivityId, "the previously-linked activity must be untouched by this save");
   });
 
-  await check("Edit Requirements pre-fills the stored lead time back into the form's input", () => {
+  await check("Edit Requirements pre-fills the stored lead time back into the form's input", async () => {
     ensureCardExpanded(dom, "Vendor Register Test Project");
-    win.PCC.router.render();
+    await flush();
     findButtonByText(dom, "Edit Requirements").click();
-    win.PCC.router.render();
+    await flush();
 
     var kickoffLabel = findLabelContaining(dom, "Kickoff Checklist");
     var leadTimeInput = kickoffLabel.querySelector('input[type="number"]');
     assert.strictEqual(leadTimeInput.value, "10", "re-opening Edit must show the previously-saved lead time, not blank");
     findButtonByText(dom, "Cancel").click();
-    win.PCC.router.render();
+    await flush();
   });
 
   await check("the Details summary shows the lead time alongside the linked activity", () => {
@@ -555,7 +607,7 @@ function findFieldByLabel(dom, labelText) {
     assert.ok(bodyText.indexOf("10d lead time") !== -1, "the read-only summary must show the lead time inline with the linked activity");
   });
 
-  await check("deactivating a document type hides it from the Edit form's checklist but the Details summary still shows its existing requirement", () => {
+  await check("deactivating a document type hides it from the Edit form's checklist but the Details summary still shows its existing requirement", async () => {
     var data = win.PCC.store.get();
     var kickoffType = data.document_types.find((t) => t.name === "Kickoff Checklist");
 
@@ -564,17 +616,19 @@ function findFieldByLabel(dom, labelText) {
       t.active = false;
     });
 
+    // A raw external store.update() doesn't auto-refresh a React page — re-arm the
+    // pending-prop so this fresh mount lands already expanded on Vendor Register Test
+    // Project, matching what a real user would see (see the earlier "attaching a
+    // document..." check's comment for the full reasoning).
+    win.PCC.portfolio.viewProject(vendorProjectId);
     win.PCC.router.go("portfolio");
-    win.PCC.router.render();
-    // The Details panel is already expanded from an earlier step in this test file
-    // (view-local uiState.expandedId persists across navigations within the page
-    // module), so it's showing again without needing another click here.
+    await flush();
 
     var summaryBody = win.document.getElementById("page-outlet").textContent;
     assert.ok(summaryBody.indexOf("Kickoff Checklist") !== -1, "an existing requirement must keep showing in the read-only summary even after its type is deactivated");
 
     findButtonByText(dom, "Edit Requirements").click();
-    win.PCC.router.render();
+    await flush();
     assert.ok(!findLabelContaining(dom, "Kickoff Checklist"), "a deactivated type must disappear from the Edit form's selectable checklist");
   });
 

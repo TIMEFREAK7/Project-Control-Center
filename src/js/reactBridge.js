@@ -36,7 +36,16 @@
     unmount();
     var root = window.PCC.ReactDOM.createRoot(container);
     activeRoot = root;
-    root.render(window.PCC.React.createElement(Component, props || {}));
+    // flushSync forces this initial commit to happen synchronously, before mount()
+    // returns — React 18's createRoot().render() is asynchronous by default (confirmed
+    // real behavior, not a jsdom quirk; see CLAUDE.md's React migration notes), which
+    // would otherwise mean every existing and future test needs to know a given route is
+    // React-backed and await a flush before reading its DOM. Forcing sync here instead
+    // keeps every page's contract identical from a caller's perspective: content is in
+    // the DOM the moment router.render() returns, exactly like every vanilla page.
+    window.PCC.ReactDOM.flushSync(function () {
+      root.render(window.PCC.React.createElement(Component, props || {}));
+    });
   }
 
   window.PCC.reactBridge = {

@@ -231,47 +231,76 @@ function addDaysIso(days) {
     win.PCC.router.render();
   });
 
-  await check("waiting_on_party (\"Waiting On\") is editable and round-trips on RFI/TQ, Change Order, and Decision forms", () => {
+  await check("waiting_on_party (\"Waiting On\") is editable and round-trips on RFI/TQ, Change Order, and Decision forms", async () => {
     win.PCC.router.go("rfis");
     win.PCC.router.render();
+    // rfis.js is a React-migrated page — flush before interacting (a hashchange-
+    // triggered render can still land asynchronously after this go()+render() pair)
+    // and after the click (its state update commits asynchronously) — see CLAUDE.md's
+    // React migration notes.
+    await flush();
     var rfiEdit = Array.from(outlet().querySelectorAll("button")).find((b) => b.textContent.trim() === "Edit");
     assert.ok(rfiEdit, "no Edit button found on the seeded RFI");
     rfiEdit.click();
+    await flush();
     var rfiSelect = win.document.getElementById("rfifield-waiting_on_party");
     assert.ok(rfiSelect, "Waiting On select not found on RFI form");
     assert.strictEqual(rfiSelect.value, "client", "must reflect the seeded value");
 
     win.PCC.router.go("changeOrders");
     win.PCC.router.render();
+    // changeOrders.js is a React-migrated page — flush before interacting (a
+    // hashchange-triggered render can still land asynchronously after this go()+
+    // render() pair) and after the click (its state update commits asynchronously) —
+    // see CLAUDE.md's React migration notes.
+    await flush();
     var coEdit = Array.from(outlet().querySelectorAll("button")).find((b) => b.textContent.trim() === "Edit");
     assert.ok(coEdit, "no Edit button found on a seeded Change Order");
     coEdit.click();
+    await flush();
     var coSelect = win.document.getElementById("cofield-waiting_on_party");
     assert.ok(coSelect, "Waiting On select not found on Change Order form");
 
     win.PCC.router.go("decisionRegister");
     win.PCC.router.render();
+    // decisionRegister is a React-migrated page — flush before interacting (a
+    // hashchange-triggered render can still land asynchronously after this go()+
+    // render() pair) and again after the click (its state update commits
+    // asynchronously) — see CLAUDE.md's React migration notes.
+    await flush();
     var decEdit = Array.from(outlet().querySelectorAll("button")).find((b) => b.textContent.trim() === "Edit");
     assert.ok(decEdit, "no Edit button found on the seeded Decision");
     decEdit.click();
+    await flush();
     var decSelect = win.document.getElementById("decfield-waiting_on_party");
     assert.ok(decSelect, "Waiting On select not found on Decision form");
     assert.strictEqual(decSelect.value, "consultant", "must reflect the seeded value");
   });
 
-  await check("Vendor's Next Follow-up Date round-trips and Portfolio's edit form has a Review Cadence field", () => {
+  await check("Vendor's Next Follow-up Date round-trips and Portfolio's edit form has a Review Cadence field", async () => {
     win.PCC.router.go("vendors");
     win.PCC.router.render();
+    // router.js's suppressNextHashRender is a single flag, not a queue — flush after
+    // every go(), even to a still-vanilla route, so a queued hashchange never leaks
+    // into a later check that touches a React-migrated route (see CLAUDE.md's React
+    // migration notes on this cross-check-block race).
+    await flush();
     findButtonByText(dom, "Vendor List").click();
+    await flush();
     var vendorEdit = Array.from(outlet().querySelectorAll("button")).find((b) => b.textContent.trim() === "Edit");
     assert.ok(vendorEdit, "no Edit button found on the seeded vendor");
     vendorEdit.click();
+    await flush();
     var followUpInput = win.document.getElementById("vendorfield-next_follow_up_date");
     assert.ok(followUpInput, "Next Follow-up Date field not found on the vendor form");
     assert.strictEqual(followUpInput.value, addDaysIso(3), "must reflect the seeded value");
 
     win.PCC.router.go("portfolio");
     win.PCC.router.render();
+    // portfolio.js is a React-migrated page — flush before interacting and after every
+    // click whose state update commits asynchronously (see CLAUDE.md's React
+    // migration notes).
+    await flush();
     // Gate 3 (UI/UX Overhaul, Portfolio): Edit/Archive moved behind each card's "..."
     // contextual menu — open the first card's menu before looking for Edit.
     var menuButtons = Array.from(outlet().querySelectorAll("button.icon-btn")).filter(
@@ -279,17 +308,20 @@ function addDaysIso(days) {
     );
     assert.ok(menuButtons.length > 0, "no card contextual menu button found");
     menuButtons[0].click();
+    await flush();
     var editButtons = Array.from(outlet().querySelectorAll("button")).filter((b) => b.textContent.trim() === "Edit");
     assert.ok(editButtons.length > 0);
     editButtons[0].click();
+    await flush();
     var cadenceSelect = win.document.getElementById("field-review_cadence_days");
     assert.ok(cadenceSelect, "Review Cadence field not found on the project edit form");
     assert.strictEqual(cadenceSelect.value, "7", "must default to weekly (7 days)");
   });
 
-  await check("this gate writes nothing back beyond what was seeded — record counts unchanged", () => {
+  await check("this gate writes nothing back beyond what was seeded — record counts unchanged", async () => {
     win.PCC.router.go("myWork");
     win.PCC.router.render();
+    await flush();
     var data = win.PCC.store.get();
     assert.strictEqual(data.projects.length, 1);
     assert.strictEqual(data.activities.length, 2);

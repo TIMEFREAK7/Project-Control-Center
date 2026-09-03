@@ -49,6 +49,14 @@ function findFieldByLabel(dom, labelText) {
   const match = labels.find((l) => l.textContent.trim() === labelText);
   return match ? match.parentElement.querySelector("input, select, textarea") : null;
 }
+// documents.js is React-migrated: a raw `.value =` assignment doesn't reliably reach a
+// controlled <select>'s onChange (React patches the native setter to track "last known
+// value" — see CLAUDE.md's React migration notes), so bypass it via the native
+// prototype descriptor before dispatching the change event.
+function setReactSelectValue(dom, select, value) {
+  Object.getOwnPropertyDescriptor(dom.window.HTMLSelectElement.prototype, "value").set.call(select, value);
+  select.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+}
 
 (async () => {
   const html = fs.readFileSync(INDEX_PATH, "utf8");
@@ -111,8 +119,9 @@ function findFieldByLabel(dom, labelText) {
     assert.ok(!findAllButtonsByText(dom, "History (1)").length, "a single-revision document has no History button");
   });
 
-  await check("'New Revision' opens the upload form pre-filled from the latest revision, status reset to Draft", () => {
+  await check("'New Revision' opens the upload form pre-filled from the latest revision, status reset to Draft", async () => {
     findButtonByText(dom, "New Revision").click();
+    await flush();
     var outletText = win.document.getElementById("page-outlet").textContent;
     assert.ok(outletText.indexOf("Upload New Revision") !== -1);
     assert.strictEqual(findFieldByLabel(dom, "Discipline").value, "ELE");
@@ -121,6 +130,7 @@ function findFieldByLabel(dom, labelText) {
     // Cancel back out — the actual file-driven Save is covered by real-browser
     // verification (see README); this jsdom test can't pick a real file.
     findButtonByText(dom, "Cancel").click();
+    await flush();
   });
 
   var doc2Id;
@@ -150,14 +160,14 @@ function findFieldByLabel(dom, labelText) {
     assert.ok(findButtonByText(dom, "History (2)"), "History button must show the correct revision count");
   });
 
-  await check("History expands to show the older revision with an Open File action", () => {
+  await check("History expands to show the older revision with an Open File action", async () => {
     findButtonByText(dom, "History (2)").click();
-    win.PCC.router.render();
+    await flush();
     var outletText = win.document.getElementById("page-outlet").textContent;
     assert.ok(outletText.indexOf("Rev 1") !== -1 && outletText.indexOf("spec-rev00.pdf") !== -1, "the History panel must list the older revision");
   });
 
-  await check("changing the Status select on the row updates the store immediately, no separate save step", () => {
+  await check("changing the Status select on the row updates the store immediately, no separate save step", async () => {
     // UI/UX Overhaul Gate 6: the per-document Status editor now lives in the preview
     // pane, not the row itself — and the new filter toolbar's own "All statuses" select
     // shares the same option values, so this must be scoped to .doc-register-preview
@@ -167,18 +177,24 @@ function findFieldByLabel(dom, labelText) {
     });
     assert.ok(statusSelects.length > 0, "the preview pane's Status quick-change select must be present");
     var rowStatusSelect = statusSelects[0];
-    rowStatusSelect.value = "under_review";
-    rowStatusSelect.dispatchEvent(new win.Event("change"));
+    setReactSelectValue(dom, rowStatusSelect, "under_review");
+    await flush();
 
     var updated = win.PCC.store.get().documents.find(function (d) { return d.id === doc2Id; });
     assert.strictEqual(updated.status, "under_review");
   });
 
-  await check("Portfolio's ATTACHMENTS section also shows only the latest revision, not one row per revision", () => {
+  await check("Portfolio's ATTACHMENTS section also shows only the latest revision, not one row per revision", async () => {
     win.PCC.router.go("portfolio");
     win.PCC.router.render();
+    // portfolio.js is a React-migrated page — flush before interacting and after every
+    // click whose state update commits asynchronously (see CLAUDE.md's React
+    // migration notes). Deliberately no extra win.PCC.router.render() call after the
+    // click — that would trigger a second, fresh remount losing the expanded state
+    // (see CLAUDE.md's React migration notes on this general class of bug).
+    await flush();
     findButtonByText(dom, "Details").click();
-    win.PCC.router.render();
+    await flush();
     var outletText = win.document.getElementById("page-outlet").textContent;
     assert.ok(outletText.indexOf("spec-rev01.pdf") !== -1);
     assert.ok(outletText.indexOf("spec-rev00.pdf") === -1, "Portfolio's ATTACHMENTS must collapse to latest-only, matching Documents' own list");

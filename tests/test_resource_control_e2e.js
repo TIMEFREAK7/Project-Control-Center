@@ -113,10 +113,16 @@ function findButtonByText(dom, text) {
     assert.ok(projectId && activityId && resourceId && vendorId && assignmentId);
   });
 
-  await check("the Leveling tab shows NO over-allocation yet (demand 5 exactly matches capacity 5)", () => {
+  await check("the Leveling tab shows NO over-allocation yet (demand 5 exactly matches capacity 5)", async () => {
     win.PCC.router.go("resources");
     win.PCC.router.render();
+    // resources.js is a React-migrated page — go() already renders its INITIAL mount
+    // synchronously (reactBridge.js wraps it in flushSync), but await flush() anyway
+    // before interacting, and after every click whose state update commits
+    // asynchronously (see CLAUDE.md's React migration notes).
+    await flush();
     findButtonByText(dom, "Leveling").click();
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("Skilled Electricians") !== -1);
     assert.ok(text.indexOf("Over-Allocated Days") !== -1);
@@ -125,11 +131,14 @@ function findButtonByText(dom, text) {
     assert.ok(overAllocCard && overAllocCard.querySelector(".kpi-card__value").textContent === "0");
   });
 
-  await check("adding a leave period that reduces capacity below demand triggers over-allocation on exactly those days", () => {
+  await check("adding a leave period that reduces capacity below demand triggers over-allocation on exactly those days", async () => {
     win.PCC.router.go("resources");
     win.PCC.router.render();
+    await flush();
     findButtonByText(dom, "Unavailability").click();
+    await flush();
     findButtonByText(dom, "+ Add Period").click();
+    await flush();
 
     win.document.getElementById("unavfield-resource_id").value = resourceId;
     win.document.getElementById("unavfield-start_date").value = "2020-01-03";
@@ -137,12 +146,14 @@ function findButtonByText(dom, text) {
     win.document.getElementById("unavfield-quantity").value = "2";
     win.document.getElementById("unavfield-reason").value = "Training Course";
     findButtonByText(dom, "Add Period").click();
+    await flush();
 
     var text = outlet().textContent;
     assert.ok(text.indexOf("2020-01-03 to 2020-01-04") !== -1, "the new period should be listed");
     assert.ok(text.indexOf("Training Course") !== -1);
 
     findButtonByText(dom, "Leveling").click();
+    await flush();
     var levelingText = outlet().textContent;
     var overAllocCard = Array.from(outlet().querySelectorAll(".kpi-card")).find((c) => c.textContent.indexOf("Over-Allocated Days") !== -1);
     assert.strictEqual(overAllocCard.querySelector(".kpi-card__value").textContent, "2", "exactly the 2 leave-overlapping days should now be over-allocated");
@@ -160,13 +171,16 @@ function findButtonByText(dom, text) {
     assert.ok(outlet().textContent.indexOf("Shortfall: 4 unit-day(s)") !== -1, "2 over-allocated days * 2 shortfall each = 4 unit-days");
   });
 
-  await check("the Assignment form round-trips actual quantity, planned/overtime hours, and the sourcing vendor", () => {
+  await check("the Assignment form round-trips actual quantity, planned/overtime hours, and the sourcing vendor", async () => {
     win.PCC.router.go("resources");
     win.PCC.router.render();
+    await flush();
     findButtonByText(dom, "Assignments").click();
+    await flush();
     var editBtn = Array.from(outlet().querySelectorAll("button")).find((b) => b.textContent.trim() === "Edit");
     assert.ok(editBtn, "no Edit button found on the seeded assignment");
     editBtn.click();
+    await flush();
 
     assert.strictEqual(win.document.getElementById("asgfield-actual_quantity").value, "4");
     assert.strictEqual(win.document.getElementById("asgfield-planned_hours_per_day").value, "8");
@@ -179,23 +193,28 @@ function findButtonByText(dom, text) {
     assert.ok(listText.indexOf("Voltage Crew Co") !== -1, "sourcing vendor should be shown");
   });
 
-  await check("the expanded resource type list is offered on the Register form, including a legacy value", () => {
+  await check("the expanded resource type list is offered on the Register form, including a legacy value", async () => {
     win.PCC.router.go("resources");
     win.PCC.router.render();
+    await flush();
     findButtonByText(dom, "Register").click();
+    await flush();
     findButtonByText(dom, "+ Add Resource").click();
+    await flush();
     var typeSelect = win.document.getElementById("resfield-type");
     var optionValues = Array.from(typeSelect.options).map((o) => o.value);
     ["employee", "engineer", "supervisor", "skilled_labor", "unskilled_labor", "contractor", "subcontractor", "equipment", "machinery", "material", "labor"].forEach((t) => {
       assert.ok(optionValues.indexOf(t) !== -1, "missing resource type option: " + t);
     });
     findButtonByText(dom, "Cancel").click();
+    await flush();
   });
 
-  await check("Schedule's Activity Detail Panel shows an Over-Allocated badge for the resource on this activity's own dates", () => {
+  await check("Schedule's Activity Detail Panel shows an Over-Allocated badge for the resource on this activity's own dates", async () => {
     win.PCC.schedule.viewActivity(projectId, scheduleId, activityId);
     win.PCC.router.go("schedule");
     win.PCC.router.render();
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("Skilled Electricians") !== -1, "resource assignment must still be listed as a linked record");
     // Redesign Gate 10: retrofitted onto .attention-list/.attention-item — availability is

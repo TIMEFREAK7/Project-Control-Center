@@ -87,10 +87,15 @@ function findButtonByText(dom, text) {
   // ---- Field-level coverage: every register's Add form offers "Linked Activity"
   // and persists activity_id on submit. ----
 
-  await check("Risk Register: the Add form offers a Linked Activity select that persists activity_id", () => {
+  await check("Risk Register: the Add form offers a Linked Activity select that persists activity_id", async () => {
     win.PCC.router.go("risks");
     win.PCC.router.render();
+    // risks.js is a React-migrated page — a click's state update commits
+    // asynchronously (see CLAUDE.md's React migration notes), so await flush() before
+    // reading the resulting DOM.
+    await flush();
     findButtonByText(dom, "+ Add Entry").click();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     var titleInput = outlet.querySelector("#riskfield-title");
     titleInput.value = "Ground Conditions";
@@ -101,16 +106,22 @@ function findButtonByText(dom, text) {
     activitySelect.value = option.value;
     var form = outlet.querySelector("form");
     form.dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
     var saved = win.PCC.store.get().risks.find((r) => r.title === "Ground Conditions");
     assert.ok(saved, "risk should have been saved");
     assert.strictEqual(saved.activity_id, activityId);
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("RFI/TQ: the Add form persists activity_id", () => {
+  await check("RFI/TQ: the Add form persists activity_id", async () => {
     win.PCC.router.go("rfis");
     win.PCC.router.render();
+    // rfis.js is a React-migrated page — a click's state update commits asynchronously
+    // (see CLAUDE.md's React migration notes), so await flush() before reading the
+    // resulting DOM.
+    await flush();
     findButtonByText(dom, "+ Add RFI / TQ").click();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     outlet.querySelector("#rfifield-subject").value = "Beam Spec";
     outlet.querySelector("#rfifield-question").value = "Which spec applies?";
@@ -118,42 +129,60 @@ function findButtonByText(dom, text) {
     assert.ok(activitySelect);
     activitySelect.value = activityId;
     outlet.querySelector("form").dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
     var saved = win.PCC.store.get().rfis.find((r) => r.subject === "Beam Spec");
     assert.ok(saved && saved.activity_id === activityId);
   });
 
-  await check("Meetings: the Add form persists activity_id", () => {
+  await check("Meetings: the Add form persists activity_id", async () => {
     win.PCC.router.go("meetings");
     win.PCC.router.render();
+    // meetings.js is a React-migrated page — a click's state update commits
+    // asynchronously (see CLAUDE.md's React migration notes), so await flush() before
+    // interacting and after every click/submit.
+    await flush();
     findButtonByText(dom, "+ Add Meeting").click();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     outlet.querySelector("#meetingfield-title").value = "Site Coordination";
+    var dateInput = outlet.querySelector("#meetingfield-meeting_date");
+    if (!dateInput.value) dateInput.value = "2026-01-01";
     var activitySelect = outlet.querySelector("#meetingfield-activity_id");
     assert.ok(activitySelect);
     activitySelect.value = activityId;
     outlet.querySelector("form").dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
     var saved = win.PCC.store.get().meetings.find((m) => m.title === "Site Coordination");
     assert.ok(saved && saved.activity_id === activityId);
   });
 
-  await check("Daily Log: the Add form persists activity_id", () => {
+  await check("Daily Log: the Add form persists activity_id", async () => {
     win.PCC.router.go("dailylog");
     win.PCC.router.render();
+    await flush();
     findButtonByText(dom, "+ Add Daily Log").click();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
+    outlet.querySelector("#dlfield-log_date").value = "2026-01-01";
     var activitySelect = outlet.querySelector("#dlfield-activity_id");
     assert.ok(activitySelect);
     activitySelect.value = activityId;
     outlet.querySelector("form").dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
     var logs = win.PCC.store.get().daily_logs;
     var saved = logs[logs.length - 1];
     assert.ok(saved && saved.activity_id === activityId);
   });
 
-  await check("Change Orders: the Add form persists activity_id", () => {
+  await check("Change Orders: the Add form persists activity_id", async () => {
     win.PCC.router.go("changeOrders");
     win.PCC.router.render();
+    // changeOrders.js is a React-migrated page — a click's state update commits
+    // asynchronously (see CLAUDE.md's React migration notes), so await flush() before
+    // reading the resulting DOM.
+    await flush();
     findButtonByText(dom, "+ Add Change Order").click();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     outlet.querySelector("#cofield-title").value = "Extra Excavation";
     outlet.querySelector("#cofield-description").value = "Rock encountered";
@@ -161,6 +190,7 @@ function findButtonByText(dom, text) {
     assert.ok(activitySelect);
     activitySelect.value = activityId;
     outlet.querySelector("form").dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
     var saved = win.PCC.store.get().change_orders.find((co) => co.title === "Extra Excavation");
     assert.ok(saved && saved.activity_id === activityId);
   });
@@ -182,12 +212,17 @@ function findButtonByText(dom, text) {
   // ---- Deep bidirectional round trip #1: Risk Register -> View in Gantt -> lands on
   // the activity's detail panel with that risk listed under Linked Records. ----
 
-  await check("Risk's 'View in Gantt' button opens the activity's own detail panel", () => {
+  await check("Risk's 'View in Gantt' button opens the activity's own detail panel", async () => {
     win.PCC.router.go("risks");
     win.PCC.router.render();
+    // Flush here, BEFORE interacting — router.js's suppressNextHashRender is a single
+    // flag, so a hashchange-triggered render can still land asynchronously after this
+    // go()+render() pair (see CLAUDE.md's React migration notes on this race).
+    await flush();
     var detailsBtn = findButtonByText(dom, "Details");
     assert.ok(detailsBtn, "Details button not found on the risk card");
     detailsBtn.click();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     assert.ok(outlet.textContent.indexOf("LINKED ACTIVITY") !== -1, "risk details should show the linked activity");
     // Redesign Gate 10: retrofitted onto .attention-list/.attention-item — the whole
@@ -196,6 +231,14 @@ function findButtonByText(dom, text) {
     assert.ok(viewRow, "linked-activity row not found");
     viewRow.click();
     win.PCC.router.render();
+    // Flush here, before this check ends — router.js's suppressNextHashRender is a
+    // single flag, and jsdom fires "hashchange" asynchronously (confirmed: a full
+    // macrotask later, not synchronously with the hash assignment). Leaving this
+    // go("schedule")'s hashchange un-flushed lets it linger into the NEXT check, where
+    // it fires during that check's own await flush() and incorrectly consumes the flag
+    // meant for that check's own navigation — see CLAUDE.md's React migration notes on
+    // this exact race.
+    await flush();
     assert.strictEqual(win.PCC.router.currentRouteName(), "schedule");
     var outlet2 = win.document.getElementById("page-outlet");
     assert.ok(outlet2.textContent.indexOf("Pour Foundation") !== -1, "should land on the Gantt tab showing the linked activity");
@@ -208,7 +251,7 @@ function findButtonByText(dom, text) {
   // linked record (risk/RFI/meeting/document/change order) is listed, and clicking
   // "View" on one navigates to and expands that specific record. ----
 
-  await check("the Linked Records section lists every type linked to this activity, and each 'View' button navigates to and expands that record", () => {
+  await check("the Linked Records section lists every type linked to this activity, and each 'View' button navigates to and expands that record", async () => {
     var outlet = win.document.getElementById("page-outlet");
     var text = outlet.textContent;
     assert.ok(text.indexOf("Ground Conditions") !== -1, "risk should be listed");
@@ -223,7 +266,13 @@ function findButtonByText(dom, text) {
     var rfiRow = Array.from(outlet.querySelectorAll(".attention-item--clickable")).find((r) => r.textContent.indexOf("Beam Spec") !== -1);
     assert.ok(rfiRow, "RFI's row not found in Linked Records");
     rfiRow.click();
-    win.PCC.router.render();
+    // Deliberately no extra win.PCC.router.render() call here — the row's onclick
+    // already calls window.PCC.rfis.expandRfi() + router.go("rfis"), and go() already
+    // renders. rfis.js is a React-migrated page whose expandRfi() is a one-shot
+    // pending-prop consumed on that exact mount (see CLAUDE.md's React migration
+    // notes) — a redundant extra render() call here would trigger a second, fresh
+    // remount that no longer has the prop to consume, silently losing it.
+    await flush();
     assert.strictEqual(win.PCC.router.currentRouteName(), "rfis");
     var outlet2 = win.document.getElementById("page-outlet");
     assert.ok(outlet2.textContent.indexOf("Beam Spec") !== -1);

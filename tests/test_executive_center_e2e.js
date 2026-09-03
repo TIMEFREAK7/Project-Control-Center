@@ -132,13 +132,13 @@ function findButtonByText(dom, text) {
     assert.ok(result.results[criticalActId].total_float <= 0, "Critical Path Task should have zero/negative float given it's fully behind schedule");
   });
 
-  await check("navigate to Executive Center via Portfolio's 'Executive Center' button", () => {
+  await check("navigate to Executive Center via Portfolio's 'Executive Center' button", async () => {
     win.PCC.router.go("portfolio");
-    win.PCC.router.render();
+    await flush();
     var btn = findButtonByText(dom, "Executive Center");
     assert.ok(btn, "Executive Center button not found on a project card");
     btn.click();
-    win.PCC.router.render();
+    await flush();
     assert.strictEqual(win.PCC.router.currentRouteName(), "executiveCenter");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
     var outlet = win.document.getElementById("page-outlet");
@@ -152,34 +152,40 @@ function findButtonByText(dom, text) {
   // afterward since every check below this point through "editing and saving an
   // Executive Summary section..." depends on Summary-tab content (Health Score,
   // Diagnostics, Executive Summary, Management Action List).
-  await check("KPI cards reflect real seeded numbers, not fabricated ones", () => {
+  await check("KPI cards reflect real seeded numbers, not fabricated ones", async () => {
     var outlet = win.document.getElementById("page-outlet");
     assert.ok(outlet.textContent.indexOf("Acme Client") !== -1, "client should appear in the hero header");
 
     findButtonByText(dom, "Schedule").click();
+    await flush();
     outlet = win.document.getElementById("page-outlet");
     assert.ok(outlet.textContent.indexOf("Critical Activities") !== -1);
 
     findButtonByText(dom, "Risk & Compliance").click();
+    await flush();
     outlet = win.document.getElementById("page-outlet");
     assert.ok(outlet.textContent.indexOf("Open Risks") !== -1);
     assert.ok(outlet.textContent.indexOf("Open RFIs") !== -1);
 
     findButtonByText(dom, "Cost & Commitments").click();
+    await flush();
     outlet = win.document.getElementById("page-outlet");
     // Cost KPI: budget item total (60000) + nothing else should be the budgeted figure
     // since a real Cost Tracking line item exists (no Portfolio-budget fallback).
     assert.ok(outlet.textContent.indexOf("60,000") !== -1, "budgeted amount should reflect the real Cost Tracking line item, got: " + outlet.textContent.slice(0, 200));
 
     findButtonByText(dom, "Summary").click();
+    await flush();
   });
 
-  await check("EVM section renders because this project has real Cost Tracking budget items linked to an activity", () => {
+  await check("EVM section renders because this project has real Cost Tracking budget items linked to an activity", async () => {
     findButtonByText(dom, "Cost & Commitments").click();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     assert.ok(outlet.textContent.indexOf("EVM") !== -1, "EVM KPI section should render since budget items exist");
     assert.ok(outlet.textContent.indexOf("SPI") !== -1 && outlet.textContent.indexOf("CPI") !== -1);
     findButtonByText(dom, "Summary").click();
+    await flush();
   });
 
   await check("Project Health Score panel renders a numeric score, RAG badge, and a full breakdown", () => {
@@ -188,18 +194,24 @@ function findButtonByText(dom, text) {
     assert.ok(outlet.textContent.indexOf("Schedule") !== -1 && outlet.textContent.indexOf("Cost") !== -1 && outlet.textContent.indexOf("RFI") !== -1);
   });
 
-  await check("Configure Weights lets a weight be edited and the score recomputes", () => {
+  await check("Configure Weights lets a weight be edited and the score recomputes", async () => {
     var configureBtn = findButtonByText(dom, "Configure Weights");
     assert.ok(configureBtn, "Configure Weights button not found");
     configureBtn.click();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     var weightInputs = outlet.querySelectorAll("input[type=number]");
     assert.ok(weightInputs.length > 0, "weight inputs should appear when editing");
-    weightInputs[0].value = "50";
+    // A raw `.value =` assignment doesn't reliably reach a React-tracked input's
+    // onChange (React patches the native setter even for an uncontrolled input) —
+    // bypass via the native prototype descriptor before dispatching the event.
+    Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, "value").set.call(weightInputs[0], "50");
     weightInputs[0].dispatchEvent(new win.Event("change", { bubbles: true }));
+    await flush();
     assert.strictEqual(win.PCC.store.get().settings.health_score_weights.schedule, 50, "editing the first (schedule) weight should persist to settings");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
     findButtonByText(dom, "Done").click();
+    await flush();
   });
 
   await check("Project Health Diagnostics lists real alerts (critical activity, high risk, overdue RFI, pending CO, overdue meeting action)", () => {
@@ -230,7 +242,7 @@ function findButtonByText(dom, text) {
     assert.ok(outlet.textContent.indexOf("No document requirements have been assigned to this project yet.") !== -1);
   });
 
-  await check("Gate 27: assigning an overdue document requirement updates the Document Control Status auto-text", () => {
+  await check("Gate 27: assigning an overdue document requirement updates the Document Control Status auto-text", async () => {
     var boqType = win.PCC.store.get().document_types.find((t) => t.name === "BOQ");
     win.PCC.store.update(function (d) {
       d.project_document_requirements.push(
@@ -244,16 +256,22 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("editing and saving an Executive Summary section persists an override that replaces the auto text", () => {
+  await check("editing and saving an Executive Summary section persists an override that replaces the auto text", async () => {
     var editButtons = Array.from(win.document.querySelectorAll("button")).filter((b) => b.textContent.trim() === "Edit");
     assert.ok(editButtons.length > 0, "no Edit buttons found in Executive Summary");
     editButtons[0].click();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     var textarea = outlet.querySelector("textarea");
     assert.ok(textarea, "textarea should appear after clicking Edit");
-    textarea.value = "Custom status override text.";
-    var saveBtn = Array.from(outlet.querySelectorAll("button")).find((b) => b.textContent.trim() === "Save");
+    // Executive Summary's textarea is React-controlled (value={draft}), so a raw
+    // `.value =` assignment doesn't reach onChange — bypass via the native setter.
+    Object.getOwnPropertyDescriptor(win.HTMLTextAreaElement.prototype, "value").set.call(textarea, "Custom status override text.");
+    textarea.dispatchEvent(new win.Event("input", { bubbles: true }));
+    await flush();
+    var saveBtn = Array.from(win.document.querySelectorAll("button")).find((b) => b.textContent.trim() === "Save");
     saveBtn.click();
+    await flush();
     var rec = win.PCC.store.get().executive_summaries.find((s) => s.project_id === projectId);
     assert.ok(rec && rec.status_override === "Custom status override text.", "override should be saved to the store");
     var outlet2 = win.document.getElementById("page-outlet");
@@ -261,27 +279,31 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("Charts render without throwing (S-Curve, Critical vs Non-Critical, Float Distribution, Risk Heat Map, RFI, Change Orders)", () => {
+  await check("Charts render without throwing (S-Curve, Critical vs Non-Critical, Float Distribution, Risk Heat Map, RFI, Change Orders)", async () => {
     // UI/UX Overhaul Gate 5: charts are now split across the Schedule sub-tab
     // (S-Curve/Critical vs Non-Critical/Float/Milestone Timeline) and the Risk &
     // Compliance sub-tab (Risk Heat Map/RFI/Change Orders) instead of one combined
     // "Charts" section — check each sub-tab has its own real SVGs.
     findButtonByText(dom, "Schedule").click();
+    await flush();
     var scheduleSvgs = win.document.getElementById("page-outlet").querySelectorAll("svg");
     assert.ok(scheduleSvgs.length >= 2, "expected multiple chart SVGs on the Schedule sub-tab, found " + scheduleSvgs.length);
 
     findButtonByText(dom, "Risk & Compliance").click();
+    await flush();
     var riskSvgs = win.document.getElementById("page-outlet").querySelectorAll("svg");
     assert.ok(riskSvgs.length >= 1, "expected a chart SVG on the Risk & Compliance sub-tab, found " + riskSvgs.length);
 
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
     findButtonByText(dom, "Summary").click();
+    await flush();
   });
 
-  await check("switching to 'Snapshot & Management Pack' renders the one-page Project Snapshot with real numbers", () => {
+  await check("switching to 'Snapshot & Management Pack' renders the one-page Project Snapshot with real numbers", async () => {
     var tabBtn = findButtonByText(dom, "Snapshot & Management Pack");
     assert.ok(tabBtn, "output tab button not found");
     tabBtn.click();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     assert.ok(outlet.querySelector(".snapshot-doc"), "snapshot-doc should render by default");
     assert.ok(outlet.textContent.indexOf("Exec Center Tower") !== -1);
@@ -299,15 +321,16 @@ function findButtonByText(dom, text) {
     win.print = originalPrint;
   });
 
-  await check("switching to Management Pack mode shows section checkboxes and assembles a multi-section doc", () => {
+  await check("switching to Management Pack mode shows section checkboxes and assembles a multi-section doc", async () => {
     var outlet = win.document.getElementById("page-outlet");
     var modeSelect = Array.from(outlet.querySelectorAll("select")).find((s) =>
       Array.from(s.options).some((o) => o.textContent.indexOf("Management Pack") !== -1)
     );
     assert.ok(modeSelect, "output mode select not found");
     var packOption = Array.from(modeSelect.options).find((o) => o.textContent.indexOf("Management Pack") !== -1);
-    modeSelect.value = packOption.value;
-    modeSelect.dispatchEvent(new win.Event("change"));
+    Object.getOwnPropertyDescriptor(win.HTMLSelectElement.prototype, "value").set.call(modeSelect, packOption.value);
+    modeSelect.dispatchEvent(new win.Event("change", { bubbles: true }));
+    await flush();
 
     var outlet2 = win.document.getElementById("page-outlet");
     var checkboxes = outlet2.querySelectorAll('input[type="checkbox"]');
@@ -318,13 +341,15 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("unchecking a Management Pack section removes it from the assembled document", () => {
+  await check("unchecking a Management Pack section removes it from the assembled document", async () => {
     var outlet = win.document.getElementById("page-outlet");
     var labels = Array.from(outlet.querySelectorAll("label")).filter((l) => l.textContent.trim() === "Cost Summary");
     assert.ok(labels.length > 0, "Cost Summary checkbox label not found");
     var cb = labels[0].querySelector('input[type="checkbox"]');
-    cb.checked = false;
-    cb.dispatchEvent(new win.Event("change", { bubbles: true }));
+    // Checkboxes are React-controlled — use the real click interaction, not a raw
+    // .checked assignment (see CLAUDE.md's React migration notes).
+    cb.click();
+    await flush();
     var outlet2 = win.document.getElementById("page-outlet");
     // "Cost Summary" as a section heading should be gone from the printed doc (the
     // checkbox label itself still exists in the no-print controls panel, so check the
@@ -334,16 +359,16 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("a project with zero Cost Tracking budget items shows no EVM section (never fabricated)", () => {
+  await check("a project with zero Cost Tracking budget items shows no EVM section (never fabricated)", async () => {
     win.PCC.store.update(function (data) {
       var project = win.PCC.store.newProject({ name: "No-Cost Project", status: "on_track" });
       data.projects.push(project);
     });
     win.PCC.router.go("portfolio");
-    win.PCC.router.render();
+    await flush();
     var btns = Array.from(win.document.querySelectorAll("button")).filter((b) => b.textContent.trim() === "Executive Center");
     btns[btns.length - 1].click();
-    win.PCC.router.render();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     assert.ok(outlet.textContent.indexOf("No-Cost Project") !== -1);
     assert.ok(outlet.textContent.indexOf("SPI") === -1, "EVM tiles must not render for a project with no budget items");

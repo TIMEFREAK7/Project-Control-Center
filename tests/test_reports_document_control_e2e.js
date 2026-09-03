@@ -57,14 +57,23 @@ async function check(label, fn) {
   const win = dom.window;
   const outlet = () => win.document.getElementById("page-outlet");
 
-  function switchToPortfolioReport() {
+  // reports.js is a React-migrated page: a raw `.value =` assignment doesn't reliably
+  // reach a controlled <select>'s onChange, so bypass it via the native prototype
+  // descriptor — and flush both before interacting (router.js's suppressNextHashRender
+  // is a single flag; a hashchange-triggered render can land asynchronously after this
+  // go()+render() pair) and after (the section select's onChange, and the assembled
+  // report's own non-initial effect, both commit asynchronously) — see CLAUDE.md's
+  // React migration notes.
+  async function switchToPortfolioReport() {
     win.PCC.router.go("reports");
     win.PCC.router.render();
+    await flush();
     var select = Array.from(outlet().querySelectorAll("select")).find((s) =>
       Array.from(s.options).some((o) => o.textContent === "Portfolio Summary Report")
     );
-    select.value = "portfolio";
-    select.dispatchEvent(new win.Event("change"));
+    Object.getOwnPropertyDescriptor(win.HTMLSelectElement.prototype, "value").set.call(select, "portfolio");
+    select.dispatchEvent(new win.Event("change", { bubbles: true }));
+    await flush();
   }
   // Scoped to just the "Document Control Compliance" section's own subtree — the page
   // also has a hidden (display:none, but still in the DOM/textContent) project-status
@@ -80,8 +89,8 @@ async function check(label, fn) {
     assert.ok(win.PCC.pages.reports, "reports page module must be bundled");
   });
 
-  await check("Portfolio Summary Report shows the Document Control Compliance section's empty state before any requirement exists", () => {
-    switchToPortfolioReport();
+  await check("Portfolio Summary Report shows the Document Control Compliance section's empty state before any requirement exists", async () => {
+    await switchToPortfolioReport();
     var text = outlet().textContent;
     assert.ok(text.indexOf("Document Control Compliance") !== -1, "the new section must render");
     assert.ok(text.indexOf("No document requirements assigned across the active portfolio.") !== -1);
@@ -106,7 +115,7 @@ async function check(label, fn) {
     assert.ok(projA && projB && archivedProj && boqTypeId && itpTypeId);
   });
 
-  await check("seed requirements: Project A gets 1 available + 1 overdue, Project B gets 1 required (not overdue), archived project gets 1 (must be excluded)", () => {
+  await check("seed requirements: Project A gets 1 available + 1 overdue, Project B gets 1 required (not overdue), archived project gets 1 (must be excluded)", async () => {
     win.PCC.store.update(function (d) {
       d.project_document_requirements.push(win.PCC.store.newProjectDocumentRequirement({ project_id: projA, document_type_id: boqTypeId }));
       d.documents.push(win.PCC.store.newDocument({ project_id: projA, filename: "a-boq.pdf", document_type_id: boqTypeId }));
@@ -118,7 +127,7 @@ async function check(label, fn) {
       );
       d.project_document_requirements.push(win.PCC.store.newProjectDocumentRequirement({ project_id: archivedProj, document_type_id: boqTypeId }));
     });
-    switchToPortfolioReport();
+    await switchToPortfolioReport();
   });
 
   await check("the section header shows the correct portfolio-wide %, total, and overdue count, excluding the archived project's requirement", () => {

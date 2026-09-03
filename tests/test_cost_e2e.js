@@ -74,9 +74,13 @@ function findButtonByText(win, text) {
     assert.ok(projectId);
   });
 
-  await check("navigate to the cost route and it renders without throwing", () => {
+  await check("navigate to the cost route and it renders without throwing", async () => {
     win.PCC.router.go("cost");
     win.PCC.router.render();
+    // cost.js is a React-migrated page — go() already renders its INITIAL mount
+    // synchronously (reactBridge.js wraps it in flushSync), but await flush() anyway
+    // before the next check interacts with it, per CLAUDE.md's React migration notes.
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     assert.ok(outlet.innerHTML.length > 0, "cost route should render content");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
@@ -88,17 +92,19 @@ function findButtonByText(win, text) {
   });
 
   let budgetItemId;
-  await check("'+ Add Budget Item' opens the real form and submitting it creates a budget item", () => {
+  await check("'+ Add Budget Item' opens the real form and submitting it creates a budget item", async () => {
     var addBtn = findButtonByText(win, "+ Add Budget Item");
     assert.ok(addBtn, "Add Budget Item button not found");
     assert.strictEqual(addBtn.disabled, false, "should be enabled with an active project present");
     addBtn.click();
+    await flush();
 
     win.document.querySelector("#costbudgetfield-name").value = "Rebar Supply";
     win.document.querySelector("#costbudgetfield-category").value = "materials";
     win.document.querySelector("#costbudgetfield-planned_amount").value = "50000";
     var form = win.document.querySelector("#costbudgetfield-name").closest("form");
     form.dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.cost_budget_items.length, 1);
@@ -119,14 +125,16 @@ function findButtonByText(win, text) {
     assert.ok(outlet.textContent.indexOf("50,000") !== -1, "expected the formatted planned amount");
   });
 
-  await check("editing a budget item through the real form updates the store", () => {
+  await check("editing a budget item through the real form updates the store", async () => {
     var editBtn = findButtonByText(win, "Edit");
     assert.ok(editBtn, "Edit button not found on the budget item card");
     editBtn.click();
+    await flush();
     var amountField = win.document.querySelector("#costbudgetfield-planned_amount");
     amountField.value = "60000";
     var form = amountField.closest("form");
     form.dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
 
     var data = win.PCC.store.get();
     var item = data.cost_budget_items.find((b) => b.id === budgetItemId);
@@ -135,14 +143,16 @@ function findButtonByText(win, text) {
   });
 
   let linkedActualId, unlinkedActualId;
-  await check("'+ Log Actual Cost' offers the budget item in its dropdown and submitting links them", () => {
+  await check("'+ Log Actual Cost' offers the budget item in its dropdown and submitting links them", async () => {
     var actualsTabBtn = findButtonByText(win, "Actuals");
     actualsTabBtn.click();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     assert.ok(outlet.textContent.indexOf("No actual costs logged yet") !== -1);
 
     var logBtn = findButtonByText(win, "+ Log Actual Cost");
     logBtn.click();
+    await flush();
 
     var budgetSelect = win.document.querySelector("#costactualfield-budget_item_id");
     var options = Array.from(budgetSelect.options).map((o) => o.textContent);
@@ -155,6 +165,7 @@ function findButtonByText(win, text) {
     win.document.querySelector("#costactualfield-vendor").value = "ACME Steel";
     var form = win.document.querySelector("#costactualfield-description").closest("form");
     form.dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.cost_actuals.length, 1);
@@ -169,9 +180,10 @@ function findButtonByText(win, text) {
     assert.ok(outlet.textContent.indexOf("against") !== -1 && outlet.textContent.indexOf("Rebar Supply") !== -1);
   });
 
-  await check("logging a second, unlinked actual cost leaves budget_item_id empty", () => {
+  await check("logging a second, unlinked actual cost leaves budget_item_id empty", async () => {
     var logBtn = findButtonByText(win, "+ Log Actual Cost");
     logBtn.click();
+    await flush();
     // Leave "Against Budget Item" at its default "(none — unbudgeted)".
     win.document.querySelector("#costactualfield-description").value = "Site fencing";
     win.document.querySelector("#costactualfield-category").value = "other";
@@ -179,6 +191,7 @@ function findButtonByText(win, text) {
     win.document.querySelector("#costactualfield-date").value = "2026-03-05";
     var form = win.document.querySelector("#costactualfield-description").closest("form");
     form.dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.cost_actuals.length, 2);
@@ -188,9 +201,10 @@ function findButtonByText(win, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("the Summary tab totals budgeted/actual/variance correctly across both actuals", () => {
+  await check("the Summary tab totals budgeted/actual/variance correctly across both actuals", async () => {
     var summaryTabBtn = findButtonByText(win, "Summary");
     summaryTabBtn.click();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     // Budgeted: 60,000 (after the edit). Actual: 12,000 + 3,000 = 15,000. Variance: +45,000.
     assert.ok(outlet.textContent.indexOf("60,000") !== -1, "expected total budgeted, got: " + outlet.textContent.slice(0, 500));
@@ -199,15 +213,17 @@ function findButtonByText(win, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("deleting the linked budget item unlinks (not deletes) its actual cost entries", () => {
+  await check("deleting the linked budget item unlinks (not deletes) its actual cost entries", async () => {
     var budgetTabBtn = findButtonByText(win, "Budget");
     budgetTabBtn.click();
+    await flush();
     var deleteBtn = findButtonByText(win, "Delete");
     assert.ok(deleteBtn, "Delete button not found on budget item card");
     var originalConfirm = win.confirm;
     win.confirm = () => true;
     deleteBtn.click();
     win.confirm = originalConfirm;
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.cost_budget_items.length, 0, "budget item should be deleted");
@@ -217,39 +233,52 @@ function findButtonByText(win, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("deleting an actual cost entry removes only that entry", () => {
+  await check("deleting an actual cost entry removes only that entry", async () => {
     var actualsTabBtn = findButtonByText(win, "Actuals");
     actualsTabBtn.click();
+    await flush();
     var deleteButtons = Array.from(win.document.querySelectorAll("button")).filter((b) => b.textContent.trim() === "Delete");
     assert.ok(deleteButtons.length >= 1, "expected at least one Delete button on the Actuals tab");
     var originalConfirm = win.confirm;
     win.confirm = () => true;
     deleteButtons[0].click();
     win.confirm = originalConfirm;
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.cost_actuals.length, 1, "exactly one actual cost entry should remain");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("Portfolio's Details panel shows the project's Cost Tracking summary", () => {
+  await check("Portfolio's Details panel shows the project's Cost Tracking summary", async () => {
     win.PCC.router.go("portfolio");
     win.PCC.router.render();
+    // portfolio.js is a React-migrated page — flush before interacting and after every
+    // click whose state update commits asynchronously (see CLAUDE.md's React
+    // migration notes).
+    await flush();
     var detailsBtn = findButtonByText(win, "Details");
     assert.ok(detailsBtn, "Details button not found on the project card");
     detailsBtn.click();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     assert.ok(outlet.textContent.indexOf("COST TRACKING") !== -1, "expected a Cost Tracking section in project details");
     assert.ok(outlet.textContent.indexOf("Budgeted") !== -1 && outlet.textContent.indexOf("variance") !== -1);
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("'View All' from the Cost Tracking section jumps to the Cost page filtered to this project", () => {
+  await check("'View All' from the Cost Tracking section jumps to the Cost page filtered to this project", async () => {
     var viewAllBtns = Array.from(win.document.querySelectorAll("button")).filter((b) => b.textContent.trim() === "View All");
     var costViewAllBtn = viewAllBtns[viewAllBtns.length - 1];
     assert.ok(costViewAllBtn, "Cost Tracking's View All button not found");
     costViewAllBtn.click();
-    win.PCC.router.render();
+    // cost.js is a React-migrated page — portfolio.js's click handler already calls
+    // window.PCC.cost.filterByProject() + router.go("cost") itself, and go() already
+    // renders synchronously. Deliberately no extra win.PCC.router.render() call here,
+    // since that would trigger a second, fresh remount that no longer has the
+    // pendingProjectFilter prop to consume, silently losing it (see CLAUDE.md's React
+    // migration notes).
+    await flush();
     assert.strictEqual(win.PCC.router.currentRouteName(), "cost");
     var outlet = win.document.getElementById("page-outlet");
     // filterByProject() forces the Budget tab; the budget item was deleted earlier, so
@@ -260,7 +289,7 @@ function findButtonByText(win, text) {
   });
 
   let fallbackProjectId;
-  await check("a project with a Portfolio Budget field but no Cost Tracking line items falls back to it", () => {
+  await check("a project with a Portfolio Budget field but no Cost Tracking line items falls back to it", async () => {
     win.PCC.store.update(function (data) {
       var project = { id: "proj_cost_fallback", name: "Fallback Test Project", archived: false, status: "on_track", progress: 0, budget: 75000, attachments: [] };
       data.projects.push(project);
@@ -273,8 +302,10 @@ function findButtonByText(win, text) {
 
     win.PCC.router.go("cost");
     win.PCC.router.render();
+    await flush();
     var summaryTabBtn = findButtonByText(win, "Summary");
     summaryTabBtn.click();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     assert.ok(outlet.textContent.indexOf("Fallback Test Project") !== -1);
     assert.ok(outlet.textContent.indexOf("75,000") !== -1, "expected the Portfolio Budget figure on the Summary tab");
@@ -285,9 +316,10 @@ function findButtonByText(win, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("Portfolio's Details panel shows the same fallback figure and note for that project", () => {
+  await check("Portfolio's Details panel shows the same fallback figure and note for that project", async () => {
     win.PCC.router.go("portfolio");
     win.PCC.router.render();
+    await flush();
     // Two projects now exist; find the card containing "Fallback Test Project" specifically,
     // rather than assuming array-index alignment with any other button list.
     var cards = Array.from(win.document.querySelectorAll(".project-card"));
@@ -296,6 +328,7 @@ function findButtonByText(win, text) {
     var detailsBtn = Array.from(fallbackCard.querySelectorAll("button")).find((b) => b.textContent.trim() === "Details");
     assert.ok(detailsBtn, "Details button not found within the Fallback Test Project card");
     detailsBtn.click();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     assert.ok(outlet.textContent.indexOf("75,000") !== -1, "expected the fallback figure in Portfolio's Details panel");
     assert.ok(
@@ -316,7 +349,7 @@ function findButtonByText(win, text) {
     assert.strictEqual(summary.budgeted, 9000, "budgeted should now be the line-item sum, not the Portfolio Budget field (75,000)");
   });
 
-  await check("with no active projects, '+ Add Budget Item' and '+ Log Actual Cost' are disabled", () => {
+  await check("with no active projects, '+ Add Budget Item' and '+ Log Actual Cost' are disabled", async () => {
     win.PCC.store.update(function (data) {
       data.projects.forEach(function (p) {
         p.archived = true;
@@ -324,13 +357,16 @@ function findButtonByText(win, text) {
     });
     win.PCC.router.go("cost");
     win.PCC.router.render();
+    await flush();
     var budgetTabBtn = findButtonByText(win, "Budget");
     budgetTabBtn.click();
+    await flush();
     var addBtn = findButtonByText(win, "+ Add Budget Item");
     assert.strictEqual(addBtn.disabled, true, "Add Budget Item should be disabled with zero active projects");
 
     var actualsTabBtn = findButtonByText(win, "Actuals");
     actualsTabBtn.click();
+    await flush();
     var logBtn = findButtonByText(win, "+ Log Actual Cost");
     assert.strictEqual(logBtn.disabled, true, "Log Actual Cost should be disabled with zero active projects");
 

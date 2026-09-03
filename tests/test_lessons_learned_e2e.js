@@ -105,8 +105,9 @@ function findButtonByText(dom, text) {
     assert.ok(projectId && scheduleId && activityId);
   });
 
-  await check("'+ Add Lesson Learned' opens a form requiring Title and Project, defaulting category to Other and impact to Negative", () => {
+  await check("'+ Add Lesson Learned' opens a form requiring Title and Project, defaulting category to Other and impact to Negative", async () => {
     findButtonByText(dom, "+ Add Lesson Learned").click();
+    await flush();
     var categorySelect = outlet().querySelector("#lsnfield-category");
     var impactSelect = outlet().querySelector("#lsnfield-impact_type");
     assert.ok(categorySelect && impactSelect, "category/impact fields not found");
@@ -114,12 +115,13 @@ function findButtonByText(dom, text) {
     assert.strictEqual(impactSelect.value, "negative");
     var form = outlet().querySelector("form");
     form.dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
     assert.ok(outlet().textContent.indexOf("Title and Project are required.") !== -1);
     assert.strictEqual(win.PCC.store.get().lessons_learned.length, 0, "nothing should be saved when validation fails");
   });
 
   var lessonId;
-  await check("filling in the form (negative impact) and linking the activity persists a new lesson learned", () => {
+  await check("filling in the form (negative impact) and linking the activity persists a new lesson learned", async () => {
     outlet().querySelector("#lsnfield-title").value = "Rebar supplier missed delivery window";
     outlet().querySelector("#lsnfield-category").value = "procurement_vendor";
     outlet().querySelector("#lsnfield-impact_type").value = "negative";
@@ -131,6 +133,7 @@ function findButtonByText(dom, text) {
     activitySelect.value = activityId;
     var form = outlet().querySelector("form");
     form.dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.lessons_learned.length, 1);
@@ -152,8 +155,9 @@ function findButtonByText(dom, text) {
     assert.ok(badges.indexOf("Negative") !== -1, "expected a Negative badge; got: " + badges.join(", "));
   });
 
-  await check("Details shows the linked activity and clicking its row navigates to the Schedule module", () => {
+  await check("Details shows the linked activity and clicking its row navigates to the Schedule module", async () => {
     findButtonByText(dom, "Details").click();
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("LINKED ACTIVITY") !== -1);
     assert.ok(text.indexOf("Rebar Procurement") !== -1);
@@ -163,21 +167,24 @@ function findButtonByText(dom, text) {
     var row = Array.from(outlet().querySelectorAll(".attention-item--clickable")).find((r) => r.textContent.indexOf("Rebar Procurement") !== -1);
     assert.ok(row, "clickable row for the linked activity not found");
     row.click();
+    await flush();
     assert.strictEqual(win.PCC.router.currentRouteName(), "schedule");
     assert.ok(outlet().textContent.indexOf("Rebar Procurement") !== -1, "must land with the linked activity's own Detail Panel open");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("adding a second, POSITIVE lesson (no activity link) persists correctly and both show in the list", () => {
+  await check("adding a second, POSITIVE lesson (no activity link) persists correctly and both show in the list", async () => {
     win.PCC.router.go("lessonsLearned");
     win.PCC.router.render();
     findButtonByText(dom, "+ Add Lesson Learned").click();
+    await flush();
     outlet().querySelector("#lsnfield-title").value = "Precast sequencing shaved a week off schedule";
     outlet().querySelector("#lsnfield-category").value = "schedule";
     outlet().querySelector("#lsnfield-impact_type").value = "positive";
     outlet().querySelector("#lsnfield-recommendation").value = "Reuse precast sequencing on similar future projects.";
     var form = outlet().querySelector("form");
     form.dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.lessons_learned.length, 2);
@@ -189,26 +196,30 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("category/impact/project filters narrow the list correctly", () => {
+  await check("category/impact/project filters narrow the list correctly", async () => {
     var selects = outlet().querySelectorAll("select");
     var categorySelect = selects[0];
     var impactSelect = selects[1];
 
     categorySelect.value = "schedule";
     categorySelect.dispatchEvent(new win.Event("change", { bubbles: true }));
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("Precast sequencing shaved a week off schedule") !== -1);
     assert.ok(text.indexOf("Rebar supplier missed delivery window") === -1, "the procurement lesson must be filtered out");
     categorySelect.value = "";
     categorySelect.dispatchEvent(new win.Event("change", { bubbles: true }));
+    await flush();
 
     impactSelect.value = "negative";
     impactSelect.dispatchEvent(new win.Event("change", { bubbles: true }));
+    await flush();
     text = outlet().textContent;
     assert.ok(text.indexOf("Rebar supplier missed delivery window") !== -1);
     assert.ok(text.indexOf("Precast sequencing shaved a week off schedule") === -1, "the positive lesson must be filtered out");
     impactSelect.value = "";
     impactSelect.dispatchEvent(new win.Event("change", { bubbles: true }));
+    await flush();
   });
 
   var meetingId;
@@ -221,11 +232,21 @@ function findButtonByText(dom, text) {
     assert.ok(meetingId);
   });
 
-  await check("the Meeting's '+ Add Lesson Learned' button opens a prefilled form linked to that meeting", () => {
+  await check("the Meeting's '+ Add Lesson Learned' button opens a prefilled form linked to that meeting", async () => {
     win.PCC.meetings.expandMeeting(meetingId);
     win.PCC.router.go("meetings");
-    win.PCC.router.render();
+    // meetings.js is a React-migrated page — go() already renders synchronously;
+    // deliberately no extra win.PCC.router.render() call here, since that would trigger
+    // a second, fresh remount that no longer has the pendingExpandedId prop to consume,
+    // silently losing it (see CLAUDE.md's React migration notes). Then let the
+    // "meetings" navigation's own (async) hashchange event settle before firing a second
+    // go() from this button's click — router.js's suppressNextHashRender is a single
+    // flag, not a queue, so two go() calls issued back-to-back (no tick between them,
+    // unlike any real user's click-then-click) can leave the second navigation's
+    // hashchange unsuppressed, triggering an extra render().
+    await flush();
     findButtonByText(dom, "+ Add Lesson Learned").click();
+    await flush();
 
     assert.strictEqual(win.PCC.router.currentRouteName(), "lessonsLearned");
     var text = outlet().textContent;
@@ -235,10 +256,11 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("saving that prefilled form persists source_meeting_id", () => {
+  await check("saving that prefilled form persists source_meeting_id", async () => {
     outlet().querySelector("#lsnfield-title").value = "Retrospective identified a formwork rework issue";
     var form = outlet().querySelector("form");
     form.dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
 
     var data = win.PCC.store.get();
     var meetingLesson = data.lessons_learned.find((l) => l.title === "Retrospective identified a formwork rework issue");
@@ -248,13 +270,14 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("'Delete' removes a lesson learned", () => {
+  await check("'Delete' removes a lesson learned", async () => {
     win.PCC.router.go("lessonsLearned");
     win.PCC.router.render();
     var origConfirm = win.confirm;
     win.confirm = () => true;
     var deleteButtons = Array.from(outlet().querySelectorAll("button")).filter((b) => b.textContent.trim() === "Delete");
     deleteButtons[0].click();
+    await flush();
     win.confirm = origConfirm;
 
     var data = win.PCC.store.get();

@@ -44,6 +44,15 @@ function findButtonByText(dom, text, root) {
   const buttons = Array.from(scope.querySelectorAll("button"));
   return buttons.find((b) => b.textContent.trim() === text);
 }
+// projectWorkspace is a React-migrated page: a raw `.value =` assignment doesn't
+// reliably reach a controlled <select>'s onChange (React patches the native setter to
+// track "last known value" — see CLAUDE.md's React migration notes), so bypass it via
+// the native prototype descriptor before dispatching the change event.
+function setReactSelectValue(win, select, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLSelectElement.prototype, "value").set.call(select, value);
+  select.dispatchEvent(new win.Event("change", { bubbles: true }));
+}
+
 function kpiValue(container, label) {
   const cards = Array.from(container.querySelectorAll(".kpi-card"));
   const card = cards.find((c) => c.textContent.indexOf(label) !== -1);
@@ -268,10 +277,14 @@ function kpiValue(container, label) {
     win.PCC.projectWorkspace.viewProject(projA);
     win.PCC.router.go("projectWorkspace");
     win.PCC.router.render();
+    // Flush here, BEFORE interacting — router.js's suppressNextHashRender is a single
+    // flag, so a hashchange-triggered render can still land asynchronously after this
+    // go()+render() pair and wipe a just-made state change (see CLAUDE.md's React
+    // migration notes on this race).
+    await flush();
     const select = outlet().querySelector("select");
     assert.ok(select);
-    select.value = projB;
-    select.dispatchEvent(new win.Event("change"));
+    setReactSelectValue(win, select, projB);
     await flush();
     assert.ok(outlet().textContent.indexOf("Harbor Bridge") !== -1);
     assert.strictEqual(kpiValue(outlet(), "OPEN RISKS / ISSUES"), "0", "Harbor Bridge has no seeded risks");
