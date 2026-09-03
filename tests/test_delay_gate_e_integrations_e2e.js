@@ -37,6 +37,20 @@ function findButtonByText(dom, text) {
   const buttons = Array.from(dom.window.document.querySelectorAll("button"));
   return buttons.find((b) => b.textContent.trim() === text);
 }
+// schedule.js/dailylog.js are React-migrated: form fields are React-controlled, so a raw
+// `.value =` assignment doesn't reliably reach onChange — see CLAUDE.md's React notes.
+function setReactSelectValue(win, el, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLSelectElement.prototype, "value").set.call(el, value);
+  el.dispatchEvent(new win.Event("change", { bubbles: true }));
+}
+function setReactInputValue(win, el, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, "value").set.call(el, value);
+  el.dispatchEvent(new win.Event("input", { bubbles: true }));
+}
+function setReactTextareaValue(win, el, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLTextAreaElement.prototype, "value").set.call(el, value);
+  el.dispatchEvent(new win.Event("input", { bubbles: true }));
+}
 
 (async () => {
   const html = fs.readFileSync(INDEX_PATH, "utf8");
@@ -117,22 +131,25 @@ function findButtonByText(dom, text) {
   });
 
   var delayId;
-  await check("the Delay Record form's Related Records pickers offer and correctly link every existing record — never creating a duplicate", () => {
+  await check("the Delay Record form's Related Records pickers offer and correctly link every existing record — never creating a duplicate", async () => {
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
+    await flush();
     win.PCC.schedule.viewActivity(projectId, scheduleId, activityId);
     win.PCC.router.render();
+    await flush();
     findButtonByText(dom, "+ Add Delay Record").click();
+    await flush();
 
-    outlet().querySelector("#delayfield-risk_id").value = riskId;
-    outlet().querySelector("#delayfield-issue_id").value = issueId;
-    outlet().querySelector("#delayfield-rfi_id").value = rfiId;
-    outlet().querySelector("#delayfield-daily_log_id").value = dailyLogForPickerLink;
-    outlet().querySelector("#delayfield-meeting_id").value = meetingId;
-    outlet().querySelector("#delayfield-vendor_id").value = vendorId;
-    outlet().querySelector("#delayfield-change_order_id").value = changeOrderId;
-    outlet().querySelector("#delayfield-description").value = "Late transformer delivery.";
+    setReactSelectValue(win, outlet().querySelector("#delayfield-risk_id"), riskId);
+    setReactSelectValue(win, outlet().querySelector("#delayfield-issue_id"), issueId);
+    setReactSelectValue(win, outlet().querySelector("#delayfield-rfi_id"), rfiId);
+    setReactSelectValue(win, outlet().querySelector("#delayfield-daily_log_id"), dailyLogForPickerLink);
+    setReactSelectValue(win, outlet().querySelector("#delayfield-meeting_id"), meetingId);
+    setReactSelectValue(win, outlet().querySelector("#delayfield-vendor_id"), vendorId);
+    setReactSelectValue(win, outlet().querySelector("#delayfield-change_order_id"), changeOrderId);
+    setReactTextareaValue(win, outlet().querySelector("#delayfield-description"), "Late transformer delivery.");
     findButtonByText(dom, "Add Delay Record").click();
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.delay_records.length, 1, "linking related records must never create a second Delay");
@@ -160,15 +177,15 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("spec point 24 (Vendor Integration): the vendor's Overview shows Delay Analysis — Delay Events/Open/Critical/Total Delay Days/Recovery Actions, no invented performance score", () => {
+  await check("spec point 24 (Vendor Integration): the vendor's Overview shows Delay Analysis — Delay Events/Open/Critical/Total Delay Days/Recovery Actions, no invented performance score", async () => {
     win.PCC.store.update(function (data) {
       var rec = data.delay_records.find((r) => r.id === delayId);
       rec.delay_days = 6;
       data.recovery_actions.push(win.PCC.store.newRecoveryAction({ activity_id: activityId, project_id: projectId, delay_id: delayId, description: "Expedite delivery" }));
     });
-    win.PCC.router.go("vendors");
     win.PCC.vendors.openProfile(vendorId);
-    win.PCC.router.render();
+    win.PCC.router.go("vendors");
+    await flush();
 
     var text = outlet().textContent;
     assert.ok(text.indexOf("DELAY ANALYSIS") !== -1);
@@ -248,12 +265,12 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("this gate's changes don't break the rest of the app — every route still renders cleanly", () => {
-    ["dashboard", "portfolio", "schedule", "delayRecoveryDashboard", "vendors", "dailylog", "risks", "rfis", "meetings", "changeOrders", "executiveCenter", "reports", "settings"].forEach((route) => {
+  await check("this gate's changes don't break the rest of the app — every route still renders cleanly", async () => {
+    for (const route of ["dashboard", "portfolio", "schedule", "delayRecoveryDashboard", "vendors", "dailylog", "risks", "rfis", "meetings", "changeOrders", "executiveCenter", "reports", "settings"]) {
       win.PCC.router.go(route);
-      win.PCC.router.render();
+      await flush();
       assert.strictEqual(thrownErrors.length, 0, "route '" + route + "' threw: " + thrownErrors.join(" | "));
-    });
+    }
   });
 
   console.log("\n" + passed + " passed, " + failed + " failed");

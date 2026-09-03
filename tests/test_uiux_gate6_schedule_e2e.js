@@ -40,6 +40,17 @@ function findButtonByText(dom, text, root) {
   const scope = root || dom.window.document;
   return Array.from(scope.querySelectorAll("button")).find((b) => b.textContent.trim() === text);
 }
+// schedule.js is React-migrated: form fields are React-controlled, so a raw `.value =`
+// / `.checked =` assignment doesn't reliably reach onChange — see CLAUDE.md's React
+// migration notes.
+function setReactSelectValue(win, el, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLSelectElement.prototype, "value").set.call(el, value);
+  el.dispatchEvent(new win.Event("change", { bubbles: true }));
+}
+function setReactInputValue(win, el, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, "value").set.call(el, value);
+  el.dispatchEvent(new win.Event("input", { bubbles: true }));
+}
 
 (async () => {
   const html = fs.readFileSync(INDEX_PATH, "utf8");
@@ -72,7 +83,7 @@ function findButtonByText(dom, text, root) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("seed a project/schedule with activities spanning WBS/status/critical-float", () => {
+  await check("seed a project/schedule with activities spanning WBS/status/critical-float", async () => {
     win.PCC.store.update(function (d) {
       var p = win.PCC.store.newProject({ name: "Riverside Tower", status: "at_risk" });
       d.projects.push(p);
@@ -96,10 +107,11 @@ function findButtonByText(dom, text, root) {
     });
     win.PCC.schedule.viewProject(projId);
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
+    await flush();
     var actBtn = Array.from(outlet().querySelectorAll(".tab-btn")).find((b) => b.textContent.trim() === "Activities");
     assert.ok(actBtn);
     actBtn.click();
+    await flush();
     assert.ok(projId && schedId && wbsFoundationId && wbsStructureId);
   });
 
@@ -113,9 +125,11 @@ function findButtonByText(dom, text, root) {
   });
 
   await check("'Clear Filters' is hidden with no filters active", () => {
+    // schedule.js is React-migrated: unlike vanilla (always in the DOM, toggled via
+    // style.display), the React port conditionally renders the button at all — same
+    // user-visible "hidden with no filters active" behavior, different DOM mechanism.
     var clearBtn = findButtonByText(dom, "Clear Filters", actToolbar());
-    assert.ok(clearBtn, "Clear Filters button must exist in the DOM even when hidden");
-    assert.strictEqual(clearBtn.style.display, "none");
+    assert.strictEqual(clearBtn, undefined, "Clear Filters must not be in the DOM when no filter is active");
   });
 
   await check("all four activities show with no filter applied", () => {
@@ -123,13 +137,13 @@ function findButtonByText(dom, text, root) {
     assert.strictEqual(rows.length, 4);
   });
 
-  await check("filtering by WBS narrows the list to that WBS item's activities, and 'Clear Filters' appears", () => {
+  await check("filtering by WBS narrows the list to that WBS item's activities, and 'Clear Filters' appears", async () => {
     var wbsSelect = Array.from(actToolbar().querySelectorAll("select")).find((s) =>
       Array.from(s.options).some((o) => o.textContent.indexOf("Structure") !== -1)
     );
     assert.ok(wbsSelect, "WBS filter select not found");
-    wbsSelect.value = wbsStructureId;
-    wbsSelect.dispatchEvent(new win.Event("change"));
+    setReactSelectValue(win, wbsSelect, wbsStructureId);
+    await flush();
 
     var rows = outlet().querySelectorAll(".data-table tbody tr");
     assert.strictEqual(rows.length, 2);
@@ -142,17 +156,17 @@ function findButtonByText(dom, text, root) {
     wbsSelect = Array.from(actToolbar().querySelectorAll("select")).find((s) =>
       Array.from(s.options).some((o) => o.textContent.indexOf("Structure") !== -1)
     );
-    wbsSelect.value = "";
-    wbsSelect.dispatchEvent(new win.Event("change"));
+    setReactSelectValue(win, wbsSelect, "");
+    await flush();
   });
 
-  await check("filtering by status narrows the list correctly", () => {
+  await check("filtering by status narrows the list correctly", async () => {
     var statusSelect = Array.from(actToolbar().querySelectorAll("select")).find((s) =>
       Array.from(s.options).some((o) => o.textContent === "In Progress")
     );
     assert.ok(statusSelect, "status filter select not found");
-    statusSelect.value = "in_progress";
-    statusSelect.dispatchEvent(new win.Event("change"));
+    setReactSelectValue(win, statusSelect, "in_progress");
+    await flush();
 
     var rows = outlet().querySelectorAll(".data-table tbody tr");
     assert.strictEqual(rows.length, 1);
@@ -161,15 +175,15 @@ function findButtonByText(dom, text, root) {
     statusSelect = Array.from(actToolbar().querySelectorAll("select")).find((s) =>
       Array.from(s.options).some((o) => o.textContent === "In Progress")
     );
-    statusSelect.value = "";
-    statusSelect.dispatchEvent(new win.Event("change"));
+    setReactSelectValue(win, statusSelect, "");
+    await flush();
   });
 
-  await check("the 'Critical only' checkbox narrows to activities with total_float <= 0", () => {
+  await check("the 'Critical only' checkbox narrows to activities with total_float <= 0", async () => {
     var checkbox = actToolbar().querySelector("input[type=checkbox]");
     assert.ok(checkbox);
-    checkbox.checked = true;
-    checkbox.dispatchEvent(new win.Event("change"));
+    checkbox.click();
+    await flush();
 
     var rows = outlet().querySelectorAll(".data-table tbody tr");
     // Excavation (float 0) and Foundation Pour (float 0) are critical; Steel Erection
@@ -180,14 +194,14 @@ function findButtonByText(dom, text, root) {
     assert.ok(outlet().textContent.indexOf("Steel Erection") === -1);
 
     checkbox = actToolbar().querySelector("input[type=checkbox]");
-    checkbox.checked = false;
-    checkbox.dispatchEvent(new win.Event("change"));
+    checkbox.click();
+    await flush();
   });
 
-  await check("typing in search alone also makes 'Clear Filters' appear (the exact staleness bug this gate caught before shipping)", () => {
+  await check("typing in search alone also makes 'Clear Filters' appear (the exact staleness bug this gate caught before shipping)", async () => {
     var searchInput = actToolbar().querySelector("input[type=text]");
-    searchInput.value = "Steel";
-    searchInput.dispatchEvent(new win.Event("input"));
+    setReactInputValue(win, searchInput, "Steel");
+    await flush();
 
     var rows = outlet().querySelectorAll(".data-table tbody tr");
     assert.strictEqual(rows.length, 1);
@@ -197,30 +211,32 @@ function findButtonByText(dom, text, root) {
     assert.notStrictEqual(clearBtn.style.display, "none", "Clear Filters must appear from a search-only change, without a full toolbar rebuild");
   });
 
-  await check("a search/filter with zero matches shows the correct empty state, not a crash", () => {
+  await check("a search/filter with zero matches shows the correct empty state, not a crash", async () => {
     var searchInput = actToolbar().querySelector("input[type=text]");
-    searchInput.value = "nonexistent-activity-xyz";
-    searchInput.dispatchEvent(new win.Event("input"));
+    setReactInputValue(win, searchInput, "nonexistent-activity-xyz");
+    await flush();
     assert.ok(outlet().textContent.indexOf("No activities match this search/filter.") !== -1);
   });
 
-  await check("clicking 'Clear Filters' resets search/WBS/status/critical together and hides the button again", () => {
+  await check("clicking 'Clear Filters' resets search/WBS/status/critical together and hides the button again", async () => {
     var clearBtn = findButtonByText(dom, "Clear Filters", actToolbar());
     clearBtn.click();
+    await flush();
 
     var rows = outlet().querySelectorAll(".data-table tbody tr");
     assert.strictEqual(rows.length, 4, "all activities must show again after clearing");
 
     var freshClearBtn = findButtonByText(dom, "Clear Filters", actToolbar());
-    assert.strictEqual(freshClearBtn.style.display, "none");
+    assert.strictEqual(freshClearBtn, undefined, "Clear Filters must not be in the DOM once cleared");
     assert.strictEqual(actToolbar().querySelector("input[type=text]").value, "");
     assert.strictEqual(actToolbar().querySelector("input[type=checkbox]").checked, false);
   });
 
-  await check("the Gantt tab's own filtering/legend/Today+Data Date markers still render without throwing", () => {
+  await check("the Gantt tab's own filtering/legend/Today+Data Date markers still render without throwing", async () => {
     thrownErrors.length = 0;
     var ganttBtn = Array.from(outlet().querySelectorAll(".tab-btn")).find((b) => b.textContent.trim() === "Gantt");
     ganttBtn.click();
+    await flush();
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
     assert.ok(outlet().querySelector("svg"), "Gantt chart must still render");
   });
@@ -241,10 +257,10 @@ function findButtonByText(dom, text, root) {
     "cost", "commitments", "resources", "reports", "settings",
   ];
   for (var i = 0; i < routes.length; i++) {
-    await check("route '" + routes[i] + "' renders without throwing after the Schedule Activities filter addition", () => {
+    await check("route '" + routes[i] + "' renders without throwing after the Schedule Activities filter addition", async () => {
       thrownErrors.length = 0;
       win.PCC.router.go(routes[i]);
-      win.PCC.router.render();
+      await flush();
       assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
     });
   }

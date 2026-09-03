@@ -229,8 +229,13 @@ function findButtonByText(dom, text) {
     // row is the click target now, no separate "View in Gantt" button.
     var viewRow = Array.from(outlet.querySelectorAll(".attention-item--clickable")).find((r) => r.textContent.indexOf("LINKED ACTIVITY") !== -1);
     assert.ok(viewRow, "linked-activity row not found");
+    // Deliberately no extra win.PCC.router.render() call here — the row's onclick
+    // already calls window.PCC.schedule.viewActivity() + router.go("schedule"), and
+    // go() already renders. schedule.js is a React-migrated page whose viewActivity()
+    // is a one-shot pending prop consumed on that exact mount — a redundant extra
+    // render() call here would trigger a second, fresh remount that no longer has the
+    // prop to consume, silently losing it (see CLAUDE.md's React migration notes).
     viewRow.click();
-    win.PCC.router.render();
     // Flush here, before this check ends — router.js's suppressNextHashRender is a
     // single flag, and jsdom fires "hashchange" asynchronously (confirmed: a full
     // macrotask later, not synchronously with the hash assignment). Leaving this
@@ -284,7 +289,6 @@ function findButtonByText(dom, text) {
   await check("an activity with no linked records shows the empty state, not fabricated content", () => {
     win.PCC.schedule.viewActivity(projectId, scheduleId, activity2Id);
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
     var outlet = win.document.getElementById("page-outlet");
     assert.ok(outlet.textContent.indexOf("Erect Steel") !== -1, "should be showing the second, unlinked activity");
     assert.ok(outlet.textContent.indexOf("LINKED RECORDS (0)") !== -1, "should show zero linked records");

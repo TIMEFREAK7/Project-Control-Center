@@ -38,6 +38,13 @@ function findButtonByText(dom, text) {
   const buttons = Array.from(dom.window.document.querySelectorAll("button"));
   return buttons.find((b) => b.textContent.trim() === text);
 }
+// schedule.js is React-migrated: form fields are React-controlled, so a raw `.value =`
+// assignment doesn't reliably reach onChange (React patches the native setter to track
+// "last known value" — see CLAUDE.md's React migration notes).
+function setReactInputValue(win, el, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, "value").set.call(el, value);
+  el.dispatchEvent(new win.Event("input", { bubbles: true }));
+}
 
 (async () => {
   const html = fs.readFileSync(INDEX_PATH, "utf8");
@@ -93,7 +100,6 @@ function findButtonByText(dom, text) {
   await check("physical_progress defaults to 0 and the Detail Panel shows it distinctly from % Complete", () => {
     win.PCC.schedule.viewActivity(projectId, scheduleId, activityId);
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
     var pctLabel = Array.from(outlet().querySelectorAll(".detail-item__label")).find((l) => l.textContent === "% Complete");
     var physLabel = Array.from(outlet().querySelectorAll(".detail-item__label")).find((l) => l.textContent === "Physical Progress");
     assert.ok(pctLabel && physLabel, "both % Complete and Physical Progress detail items must be present");
@@ -119,11 +125,11 @@ function findButtonByText(dom, text) {
     assert.ok(kpiValues.some((t) => t.indexOf("Physical Progress") !== -1 && t.indexOf("0%") !== -1), "expected Physical Progress KPI at 0%, got: " + kpiValues.join(" | "));
   });
 
-  await check("the Activity form offers a Physical Progress (%) field, separate from % Complete", () => {
+  await check("the Activity form offers a Physical Progress (%) field, separate from % Complete", async () => {
     win.PCC.schedule.viewActivity(projectId, scheduleId, activityId);
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
     findButtonByText(dom, "Edit").click();
+    await flush();
     var pctInput = outlet().querySelector("#actfield-percent_complete");
     var physInput = outlet().querySelector("#actfield-physical_progress");
     assert.ok(pctInput, "percent_complete input not found");
@@ -132,11 +138,12 @@ function findButtonByText(dom, text) {
     assert.strictEqual(physInput.value, "0");
   });
 
-  await check("entering 65 in Physical Progress and saving persists physical_progress independently of percent_complete", () => {
+  await check("entering 65 in Physical Progress and saving persists physical_progress independently of percent_complete", async () => {
     var physInput = outlet().querySelector("#actfield-physical_progress");
-    physInput.value = "65";
+    setReactInputValue(win, physInput, "65");
     var form = outlet().querySelector("form");
     form.dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
 
     var data = win.PCC.store.get();
     var activity = data.activities.find((a) => a.id === activityId);
@@ -167,10 +174,10 @@ function findButtonByText(dom, text) {
     assert.ok(kpiValues.some((t) => t.indexOf("Physical Progress") !== -1 && t.indexOf("65%") !== -1), "expected Physical Progress at 65%, got: " + kpiValues.join(" | "));
   });
 
-  await check("the activities list row shows both % complete and % physical", () => {
+  await check("the activities list row shows both % complete and % physical", async () => {
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
     findButtonByText(dom, "Activities").click();
+    await flush();
     // UI/UX Overhaul Gate 7 (Better Data Grids) split this row into real <table> cells —
     // "% Complete" and "% Physical" are now separate cell contents ("40%" / "65%
     // physical"), not one "40% complete" sentence.

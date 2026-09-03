@@ -48,6 +48,20 @@ function findButtonByText(dom, text) {
   const buttons = Array.from(dom.window.document.querySelectorAll("button"));
   return buttons.find((b) => b.textContent.trim() === text);
 }
+// schedule.js is React-migrated: form fields are React-controlled, so a raw `.value =`
+// assignment doesn't reliably reach onChange — see CLAUDE.md's React migration notes.
+function setReactSelectValue(win, el, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLSelectElement.prototype, "value").set.call(el, value);
+  el.dispatchEvent(new win.Event("change", { bubbles: true }));
+}
+function setReactInputValue(win, el, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, "value").set.call(el, value);
+  el.dispatchEvent(new win.Event("input", { bubbles: true }));
+}
+function setReactTextareaValue(win, el, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLTextAreaElement.prototype, "value").set.call(el, value);
+  el.dispatchEvent(new win.Event("input", { bubbles: true }));
+}
 
 (async () => {
   const html = fs.readFileSync(INDEX_PATH, "utf8");
@@ -108,23 +122,25 @@ function findButtonByText(dom, text) {
     assert.ok(projectId && scheduleId && activityAId && activityBId && activityCId);
   });
 
-  await check("navigate to the schedule route and the What-If tab exists", () => {
+  await check("navigate to the schedule route and the What-If tab exists", async () => {
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
+    await flush();
     var whatIfTabBtn = findButtonByText(dom, "What-If");
     assert.ok(whatIfTabBtn, "What-If tab button not found");
     whatIfTabBtn.click();
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("Explore “what if we recover N days") !== -1);
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("running a what-if on the NON-critical Foundation (float 10d), reducing by only 3 days, shows no project-finish change", () => {
+  await check("running a what-if on the NON-critical Foundation (float 10d), reducing by only 3 days, shows no project-finish change", async () => {
     var activitySelect = outlet().querySelector("#whatiffield-activity");
     var daysInput = outlet().querySelector("#whatiffield-days");
-    activitySelect.value = activityBId;
-    daysInput.value = "3";
+    setReactSelectValue(win, activitySelect, activityBId);
+    setReactInputValue(win, daysInput, "3");
     findButtonByText(dom, "Run What-If").click();
+    await flush();
 
     var text = outlet().textContent;
     assert.ok(text.indexOf("What-If Result — Foundation") !== -1);
@@ -138,12 +154,13 @@ function findButtonByText(dom, text) {
     assert.strictEqual(b.duration, 5, "the what-if must never write back to the real activity");
   });
 
-  await check("running a what-if that exceeds the activity's own duration clamps at 0 and reports the clamp", () => {
+  await check("running a what-if that exceeds the activity's own duration clamps at 0 and reports the clamp", async () => {
     var activitySelect = outlet().querySelector("#whatiffield-activity");
     var daysInput = outlet().querySelector("#whatiffield-days");
-    activitySelect.value = activityBId;
-    daysInput.value = "100"; // Foundation only has 5 days of duration to give
+    setReactSelectValue(win, activitySelect, activityBId);
+    setReactInputValue(win, daysInput, "100"); // Foundation only has 5 days of duration to give
     findButtonByText(dom, "Run What-If").click();
+    await flush();
 
     var text = outlet().textContent;
     assert.ok(text.indexOf("Requested 100d, but this activity only had 5d") !== -1, "got: " + text.slice(0, 400));
@@ -154,12 +171,13 @@ function findButtonByText(dom, text) {
     assert.strictEqual(b.duration, 5, "still never persisted, even for a clamped scenario");
   });
 
-  await check("running a what-if on Long Lead Procurement (the critical path itself) shows the project finish actually moving earlier", () => {
+  await check("running a what-if on Long Lead Procurement (the critical path itself) shows the project finish actually moving earlier", async () => {
     var activitySelect = outlet().querySelector("#whatiffield-activity");
     var daysInput = outlet().querySelector("#whatiffield-days");
-    activitySelect.value = activityCId;
-    daysInput.value = "5";
+    setReactSelectValue(win, activitySelect, activityCId);
+    setReactInputValue(win, daysInput, "5");
     findButtonByText(dom, "Run What-If").click();
+    await flush();
 
     var text = outlet().textContent;
     assert.ok(text.indexOf("What-If Result — Long Lead Procurement") !== -1);
@@ -168,12 +186,14 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("selecting no activity, or a non-positive day count, shows a validation error and no result (regression: the error must survive rerender(), not live only on a discarded local DOM node)", () => {
+  await check("selecting no activity, or a non-positive day count, shows a validation error and no result (regression: the error must survive rerender(), not live only on a discarded local DOM node)", async () => {
     var resetBtn = findButtonByText(dom, "Reset");
     assert.ok(resetBtn, "Reset button not found");
     resetBtn.click();
+    await flush();
 
     findButtonByText(dom, "Run What-If").click();
+    await flush();
     // rerender() fully rebuilds this tab on every click — an error message assigned
     // only to a local variable's .style.display, rather than stored in uiState and
     // re-read on the next build, would be silently thrown away right here.
@@ -181,26 +201,30 @@ function findButtonByText(dom, text) {
 
     var activitySelect = outlet().querySelector("#whatiffield-activity");
     var daysInput = outlet().querySelector("#whatiffield-days");
-    activitySelect.value = activityBId;
-    daysInput.value = "0";
+    setReactSelectValue(win, activitySelect, activityBId);
+    setReactInputValue(win, daysInput, "0");
     findButtonByText(dom, "Run What-If").click();
+    await flush();
     assert.ok(outlet().textContent.indexOf("Enter a positive number of days") !== -1);
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("adding a Recovery Action with estimated days/cost persists both and shows them on the Activity Detail Panel row", () => {
+  await check("adding a Recovery Action with estimated days/cost persists both and shows them on the Activity Detail Panel row", async () => {
     win.PCC.schedule.viewActivity(projectId, scheduleId, activityBId);
     win.PCC.router.render();
+    await flush();
 
     var addBtn = findButtonByText(dom, "+ Add Recovery Action");
     assert.ok(addBtn, "+ Add Recovery Action button not found");
     addBtn.click();
+    await flush();
 
-    outlet().querySelector("#recactionfield-description").value = "Add a second crew to Foundation.";
-    outlet().querySelector("#recactionfield-responsible_person").value = "Site Super";
-    outlet().querySelector("#recactionfield-estimated_recovery_days").value = "3";
-    outlet().querySelector("#recactionfield-estimated_cost").value = "15000";
+    setReactTextareaValue(win, outlet().querySelector("#recactionfield-description"), "Add a second crew to Foundation.");
+    setReactInputValue(win, outlet().querySelector("#recactionfield-responsible_person"), "Site Super");
+    setReactInputValue(win, outlet().querySelector("#recactionfield-estimated_recovery_days"), "3");
+    setReactInputValue(win, outlet().querySelector("#recactionfield-estimated_cost"), "15000");
     findButtonByText(dom, "Add Recovery Action").click();
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.recovery_actions.length, 1);
@@ -214,9 +238,9 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("the Delay & Recovery Dashboard rolls up the open recovery action's estimated days/cost", () => {
+  await check("the Delay & Recovery Dashboard rolls up the open recovery action's estimated days/cost", async () => {
     win.PCC.router.go("delayRecoveryDashboard");
-    win.PCC.router.render();
+    await flush();
 
     var kpiCards = Array.from(outlet().querySelectorAll(".kpi-card"));
     function kpiValue(label) {
@@ -260,10 +284,10 @@ function findButtonByText(dom, text) {
     "changeOrders", "decisionRegister", "cost", "commitments", "resources", "reports", "settings",
   ];
   for (var i = 0; i < routes.length; i++) {
-    await check("route '" + routes[i] + "' renders without throwing after Gate 24 (Recovery & Mitigation Planning)", () => {
+    await check("route '" + routes[i] + "' renders without throwing after Gate 24 (Recovery & Mitigation Planning)", async () => {
       thrownErrors.length = 0;
       win.PCC.router.go(routes[i]);
-      win.PCC.router.render();
+      await flush();
       assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
     });
   }

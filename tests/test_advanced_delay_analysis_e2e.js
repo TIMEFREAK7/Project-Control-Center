@@ -49,6 +49,21 @@ function findButtonByText(dom, text) {
   const buttons = Array.from(dom.window.document.querySelectorAll("button"));
   return buttons.find((b) => b.textContent.trim() === text);
 }
+// schedule.js is React-migrated: form fields are React-controlled, so a raw `.value =`
+// / `.checked =` assignment doesn't reliably reach onChange (React patches the native
+// setter to track "last known value" — see CLAUDE.md's React migration notes).
+function setReactSelectValue(win, el, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLSelectElement.prototype, "value").set.call(el, value);
+  el.dispatchEvent(new win.Event("change", { bubbles: true }));
+}
+function setReactInputValue(win, el, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, "value").set.call(el, value);
+  el.dispatchEvent(new win.Event("input", { bubbles: true }));
+}
+function setReactTextareaValue(win, el, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLTextAreaElement.prototype, "value").set.call(el, value);
+  el.dispatchEvent(new win.Event("input", { bubbles: true }));
+}
 
 (async () => {
   const html = fs.readFileSync(INDEX_PATH, "utf8");
@@ -112,12 +127,11 @@ function findButtonByText(dom, text) {
     assert.ok(projectId && scheduleId && activityAId && activityBId && activityCId);
   });
 
-  await check("navigate to the schedule route, calculate, and confirm Foundation starts with 10 days of float", () => {
+  await check("navigate to the schedule route, calculate, and confirm Foundation starts with 10 days of float", async () => {
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
     var calcBtn = findButtonByText(dom, "Calculate Schedule");
     calcBtn.click();
-    win.PCC.router.render();
+    await flush();
 
     var data = win.PCC.store.get();
     var b = data.activities.find((x) => x.id === activityBId);
@@ -134,25 +148,27 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("adding a Delay Record from the Activity Detail Panel persists cause/days/excusable and shows the Non-Excusable badge by default", () => {
+  await check("adding a Delay Record from the Activity Detail Panel persists cause/days/excusable and shows the Non-Excusable badge by default", async () => {
     win.PCC.schedule.viewActivity(projectId, scheduleId, activityBId);
     win.PCC.router.render();
 
     var addBtn = findButtonByText(dom, "+ Add Delay Record");
     assert.ok(addBtn, "+ Add Delay Record button not found");
     addBtn.click();
+    await flush();
 
     var causeSelect = outlet().querySelector("#delayfield-delay_cause");
     var daysInput = outlet().querySelector("#delayfield-delay_days");
     var respInput = outlet().querySelector("#delayfield-responsible_party");
     var descInput = outlet().querySelector("#delayfield-description");
-    causeSelect.value = "contractor_caused";
-    daysInput.value = "10";
-    respInput.value = "ACME Contracting";
-    descInput.value = "Foundation subcontractor mobilized 10 days late.";
+    setReactSelectValue(win, causeSelect, "contractor_caused");
+    setReactInputValue(win, daysInput, "10");
+    setReactInputValue(win, respInput, "ACME Contracting");
+    setReactTextareaValue(win, descInput, "Foundation subcontractor mobilized 10 days late.");
 
     var saveBtn = findButtonByText(dom, "Add Delay Record");
     saveBtn.click();
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.delay_records.length, 1);
@@ -169,16 +185,18 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("editing the Delay Record to mark it Excusable flips the badge", () => {
+  await check("editing the Delay Record to mark it Excusable flips the badge", async () => {
     var editBtn = findButtonByText(dom, "Edit");
     assert.ok(editBtn, "Edit button for the delay record not found");
     editBtn.click();
+    await flush();
 
     var excusableCheckbox = outlet().querySelector("#delayfield-is_excusable");
     assert.ok(excusableCheckbox, "excusable checkbox not found");
-    excusableCheckbox.checked = true;
+    excusableCheckbox.click();
     var saveBtn = findButtonByText(dom, "Save Changes");
     saveBtn.click();
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.delay_records[0].is_excusable, true);
@@ -193,7 +211,7 @@ function findButtonByText(dom, text) {
     });
     var calcBtn = findButtonByText(dom, "Calculate Schedule");
     calcBtn.click();
-    win.PCC.router.render();
+    await flush();
 
     var data = win.PCC.store.get();
     var b = data.activities.find((x) => x.id === activityBId);
@@ -201,6 +219,7 @@ function findButtonByText(dom, text) {
 
     var baselinesTabBtn = Array.from(win.document.querySelectorAll("button")).find((btn) => btn.textContent.trim() === "Baselines");
     baselinesTabBtn.click();
+    await flush();
     var compareBtn = findButtonByText(dom, "Compare to Current");
     compareBtn.click();
     await flush();

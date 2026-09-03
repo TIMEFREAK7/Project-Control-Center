@@ -84,7 +84,11 @@ const SAMPLE_XML = `<?xml version="1.0" encoding="UTF-8"?>
 function uploadXmlFile(win, fileInput, xmlText, filename) {
   const file = new win.File([xmlText], filename, { type: "application/xml" });
   Object.defineProperty(fileInput, "files", { value: [file], configurable: true });
-  fileInput.dispatchEvent(new win.Event("change"));
+  // schedule.js is React-migrated: React's synthetic "change" listener is delegated at
+  // the root and relies on the native event actually bubbling — a dispatched event
+  // without bubbles:true never reaches it (see CLAUDE.md's React migration notes on the
+  // same pattern for select/input onChange).
+  fileInput.dispatchEvent(new win.Event("change", { bubbles: true }));
 }
 
 (async () => {
@@ -124,11 +128,12 @@ function uploadXmlFile(win, fileInput, xmlText, filename) {
     });
     win.PCC.projectContext.set(projectId);
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
+    await flush();
 
     var importBtn = findButtonByText(win, "Import Schedule");
     assert.ok(importBtn, "'Import Schedule' button not found");
     importBtn.click();
+    await flush();
 
     var fileInput = outlet().querySelector('input[type="file"]');
     assert.ok(fileInput, "file input not found on the 'pick' step");
@@ -192,7 +197,6 @@ function uploadXmlFile(win, fileInput, xmlText, filename) {
   await check("'Edit Excel' stays disabled for an MSP-XML-imported schedule, even though it has a source_file_name", async () => {
     win.PCC.projectContext.set(projectId);
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
     await flush();
 
     // The schedule picker defaults to the most recent schedule for the active project.
@@ -207,11 +211,10 @@ function uploadXmlFile(win, fileInput, xmlText, filename) {
       "documents", "dailylog", "schedule", "projectLookahead", "risks", "meetings", "rfis",
       "changeOrders", "cost", "resources", "reports", "settings", "delayRecoveryDashboard",
     ];
-    routes.forEach(function (r) {
+    for (const r of routes) {
       win.PCC.router.go(r);
-      win.PCC.router.render();
-    });
-    await flush();
+      await flush();
+    }
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 

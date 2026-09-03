@@ -42,6 +42,12 @@ function findButtonByText(dom, text) {
 function pointerEvent(win, type, clientX) {
   return new win.MouseEvent(type, { clientX: clientX, bubbles: true, cancelable: true, button: 0 });
 }
+// schedule.js is React-migrated: form fields are React-controlled, so a raw `.value =`
+// assignment doesn't reliably reach onChange — see CLAUDE.md's React migration notes.
+function setReactInputValue(win, el, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, "value").set.call(el, value);
+  el.dispatchEvent(new win.Event("input", { bubbles: true }));
+}
 
 (async () => {
   const html = fs.readFileSync(INDEX_PATH, "utf8");
@@ -107,15 +113,17 @@ function pointerEvent(win, type, clientX) {
     assert.ok(projectId && scheduleId && designId && buildId && milestoneId);
   });
 
-  await check("navigate to Schedule > Gantt and switch zoom to Daily (deterministic 32px/day)", () => {
+  await check("navigate to Schedule > Gantt and switch zoom to Daily (deterministic 32px/day)", async () => {
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
+    await flush();
     var ganttBtn = findButtonByText(dom, "Gantt");
     assert.ok(ganttBtn, "Gantt tab button not found");
     ganttBtn.click();
+    await flush();
     var dailyBtn = findButtonByText(dom, "Daily");
     assert.ok(dailyBtn, "Daily zoom button not found");
     dailyBtn.click();
+    await flush();
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
     var outlet = win.document.getElementById("page-outlet");
     assert.ok(outlet.querySelector("svg"), "Gantt chart should render");
@@ -140,7 +148,7 @@ function pointerEvent(win, type, clientX) {
     assert.strictEqual(design.duration, 10, "duration must be unchanged by a move");
   });
 
-  await check("a plain click (no movement) on a bar opens the Activity Detail Panel instead of editing dates", () => {
+  await check("a plain click (no movement) on a bar opens the Activity Detail Panel instead of editing dates", async () => {
     var outlet = win.document.getElementById("page-outlet");
     var bar = outlet.querySelector('svg rect[data-activity-id="' + buildId + '"]');
     assert.ok(bar, "Build bar not found");
@@ -148,6 +156,7 @@ function pointerEvent(win, type, clientX) {
 
     bar.dispatchEvent(pointerEvent(win, "pointerdown", 500));
     win.dispatchEvent(pointerEvent(win, "pointerup", 500));
+    await flush();
 
     var after = win.PCC.store.get().activities.find((a) => a.id === buildId);
     assert.strictEqual(after.planned_start, before.planned_start, "a plain click must not change dates");
@@ -202,12 +211,12 @@ function pointerEvent(win, type, clientX) {
     assert.ok(design.early_start != null, "recalculation should have run automatically after the drag edits above");
   });
 
-  await check("search filter narrows the chart to matching activities only", () => {
+  await check("search filter narrows the chart to matching activities only", async () => {
     var outlet = win.document.getElementById("page-outlet");
     var searchInput = outlet.querySelector('input[placeholder^="Search"]');
     assert.ok(searchInput, "Gantt search input not found");
-    searchInput.value = "Handover";
-    searchInput.dispatchEvent(new win.Event("input", { bubbles: true }));
+    setReactInputValue(win, searchInput, "Handover");
+    await flush();
 
     var outlet2 = win.document.getElementById("page-outlet");
     var svg = outlet2.querySelector("svg");
@@ -217,13 +226,15 @@ function pointerEvent(win, type, clientX) {
     var clearBtn = findButtonByText(dom, "Clear Filters");
     assert.ok(clearBtn, "Clear Filters button should appear once a filter is active");
     clearBtn.click();
+    await flush();
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("'+ Add Milestone' jumps to the Activities tab with Type pre-set to Milestone", () => {
+  await check("'+ Add Milestone' jumps to the Activities tab with Type pre-set to Milestone", async () => {
     var addMilestoneBtn = findButtonByText(dom, "+ Add Milestone");
     assert.ok(addMilestoneBtn, "+ Add Milestone button not found");
     addMilestoneBtn.click();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     var typeSelect = outlet.querySelector("#actfield-activity_type");
     assert.ok(typeSelect, "activity_type select not found on the Add Activity form");
@@ -231,16 +242,19 @@ function pointerEvent(win, type, clientX) {
     // Cancel back out so later checks start from a clean Gantt tab.
     var cancelBtn = Array.from(outlet.querySelectorAll("button")).find((b) => b.textContent.trim() === "Cancel");
     if (cancelBtn) cancelBtn.click();
+    await flush();
   });
 
-  await check("deleting an activity from the Gantt detail panel removes it and its relationships", () => {
+  await check("deleting an activity from the Gantt detail panel removes it and its relationships", async () => {
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
+    await flush();
     findButtonByText(dom, "Gantt").click();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     var bar = outlet.querySelector('svg rect[data-activity-id="' + designId + '"]');
     bar.dispatchEvent(pointerEvent(win, "pointerdown", 300));
     win.dispatchEvent(pointerEvent(win, "pointerup", 300));
+    await flush();
 
     var originalConfirm = win.confirm;
     win.confirm = () => true;
@@ -248,6 +262,7 @@ function pointerEvent(win, type, clientX) {
     var deleteBtn = Array.from(outlet2.querySelectorAll("button")).find((b) => b.textContent.trim() === "Delete");
     assert.ok(deleteBtn, "Delete button not found in detail panel");
     deleteBtn.click();
+    await flush();
     win.confirm = originalConfirm;
 
     var data = win.PCC.store.get();
@@ -259,10 +274,10 @@ function pointerEvent(win, type, clientX) {
   // ---- Route smoke test across every other page ----
   var routes = ["dashboard", "portfolio", "documents", "dailylog", "schedule", "risks", "meetings", "rfis", "changeOrders", "cost", "reports", "settings"];
   for (var i = 0; i < routes.length; i++) {
-    await check("route '" + routes[i] + "' renders without throwing after the Gate 8 changes", () => {
+    await check("route '" + routes[i] + "' renders without throwing after the Gate 8 changes", async () => {
       thrownErrors.length = 0;
       win.PCC.router.go(routes[i]);
-      win.PCC.router.render();
+      await flush();
       assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
     });
   }

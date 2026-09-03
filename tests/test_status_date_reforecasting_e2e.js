@@ -107,18 +107,24 @@ function findButtonByText(dom, text) {
     assert.ok(projectId && scheduleId && activityAId && activityBId);
   });
 
-  await check("Calculate Schedule (progress_override, the default) flags Framing out of sequence but keeps its actual-dates forecast", () => {
+  await check("Calculate Schedule (progress_override, the default) flags Framing out of sequence but keeps its actual-dates forecast", async () => {
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
+    await flush();
     // Land directly on this schedule/activity via the same navigation hook Executive
     // Center's own "View Activity" links already use.
     win.PCC.schedule.viewActivity(projectId, scheduleId, activityBId);
     win.PCC.router.render();
+    await flush();
 
     var calcBtn = findButtonByText(dom, "Calculate Schedule");
     assert.ok(calcBtn, "Calculate Schedule button not found");
     calcBtn.click();
-    win.PCC.router.render();
+    // Deliberately NOT calling win.PCC.router.render() again here: that would force a
+    // fresh remount (reactBridge.js mounts a new root on every render()), discarding the
+    // Activity Detail Panel the viewActivity() above just opened — a one-shot pending
+    // prop, unlike vanilla's persistent uiState. The Calculate Schedule click's own local
+    // state update re-renders the already-mounted page in place, keeping the panel open.
+    await flush();
 
     var data = win.PCC.store.get();
     var b = data.activities.find((a) => a.id === activityBId);
@@ -132,14 +138,15 @@ function findButtonByText(dom, text) {
     assert.ok(text.indexOf("Out of Sequence") !== -1);
   });
 
-  await check("the Activity Detail Panel reports Out of Sequence: Yes for Framing", () => {
+  await check("the Activity Detail Panel reports Out of Sequence: Yes for Framing", async () => {
     win.PCC.schedule.viewActivity(projectId, scheduleId, activityBId);
     win.PCC.router.render();
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("Yes — actual progress preceded predecessor logic") !== -1);
   });
 
-  await check("switching the schedule to Retained Logic mode and recalculating pushes Framing's forecast to respect Foundation's logic", () => {
+  await check("switching the schedule to Retained Logic mode and recalculating pushes Framing's forecast to respect Foundation's logic", async () => {
     // Written directly via the store rather than driving the schedule-edit form's DOM,
     // since the calculation_mode <select>'s own render/submit wiring is simple enough
     // (same pattern as every other <select> field on this form) that this test's value is
@@ -149,11 +156,15 @@ function findButtonByText(dom, text) {
       var schedule = d.schedules.find((s) => s.id === scheduleId);
       schedule.calculation_mode = "retained_logic";
     });
+    // A bare render() after a store mutation remounts the page — re-call the pending-prop
+    // setter so the detail panel opened above stays open (see CLAUDE.md's React notes).
+    win.PCC.schedule.viewActivity(projectId, scheduleId, activityBId);
     win.PCC.router.render();
+    await flush();
 
     var calcBtn = findButtonByText(dom, "Calculate Schedule");
     calcBtn.click();
-    win.PCC.router.render();
+    await flush();
 
     var data = win.PCC.store.get();
     var a = data.activities.find((x) => x.id === activityAId);
@@ -219,10 +230,10 @@ function findButtonByText(dom, text) {
     "changeOrders", "decisionRegister", "cost", "commitments", "resources", "reports", "settings",
   ];
   for (var i = 0; i < routes.length; i++) {
-    await check("route '" + routes[i] + "' renders without throwing after Gate 21 (Status-Date Reforecasting)", () => {
+    await check("route '" + routes[i] + "' renders without throwing after Gate 21 (Status-Date Reforecasting)", async () => {
       thrownErrors.length = 0;
       win.PCC.router.go(routes[i]);
-      win.PCC.router.render();
+      await flush();
       assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
     });
   }

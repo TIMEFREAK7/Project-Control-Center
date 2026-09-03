@@ -39,6 +39,20 @@ function findButtonByText(dom, text) {
   const buttons = Array.from(dom.window.document.querySelectorAll("button"));
   return buttons.find((b) => b.textContent.trim() === text);
 }
+// schedule.js is React-migrated: form fields are React-controlled, so a raw `.value =`
+// assignment doesn't reliably reach onChange — see CLAUDE.md's React migration notes.
+function setReactSelectValue(win, el, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLSelectElement.prototype, "value").set.call(el, value);
+  el.dispatchEvent(new win.Event("change", { bubbles: true }));
+}
+function setReactInputValue(win, el, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, "value").set.call(el, value);
+  el.dispatchEvent(new win.Event("input", { bubbles: true }));
+}
+function setReactTextareaValue(win, el, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLTextAreaElement.prototype, "value").set.call(el, value);
+  el.dispatchEvent(new win.Event("input", { bubbles: true }));
+}
 
 (async () => {
   const html = fs.readFileSync(INDEX_PATH, "utf8");
@@ -74,7 +88,7 @@ function findButtonByText(dom, text) {
   // Same A -> B (FS) + unrelated longer C setup test_advanced_delay_analysis_e2e.js uses,
   // giving B (Foundation) 10 days of real float once calculated.
   let projectId, scheduleId, activityAId, activityBId, activityCId;
-  await check("seed a project/schedule with A -> B (FS) and an unrelated longer C giving B 10 days of float, then calculate", () => {
+  await check("seed a project/schedule with A -> B (FS) and an unrelated longer C giving B 10 days of float, then calculate", async () => {
     win.PCC.store.update(function (data) {
       var project = win.PCC.store.newProject({ name: "Gate A/B Test Tower", status: "on_track" });
       data.projects.push(project);
@@ -94,28 +108,32 @@ function findButtonByText(dom, text) {
       data.relationships.push(win.PCC.store.newRelationship({ schedule_id: scheduleId, predecessor_id: activityAId, successor_id: activityBId, type: "FS", lag: 0 }));
     });
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
+    await flush();
     findButtonByText(dom, "Calculate Schedule").click();
+    await flush();
     var b = win.PCC.store.get().activities.find((x) => x.id === activityBId);
     assert.strictEqual(b.total_float, 10);
   });
 
   var delayId;
-  await check("Add Delay Record from the Activity Detail Panel: the enriched fields (status/category/responsibility/cause structure) all persist, and status_history seeds one entry", () => {
+  await check("Add Delay Record from the Activity Detail Panel: the enriched fields (status/category/responsibility/cause structure) all persist, and status_history seeds one entry", async () => {
     win.PCC.schedule.viewActivity(projectId, scheduleId, activityBId);
     win.PCC.router.render();
+    await flush();
     findButtonByText(dom, "+ Add Delay Record").click();
+    await flush();
 
-    outlet().querySelector("#delayfield-status").value = "investigating";
-    outlet().querySelector("#delayfield-delay_category").value = "late_material";
-    outlet().querySelector("#delayfield-responsibility_classification").value = "vendor";
-    outlet().querySelector("#delayfield-delay_cause").value = "contractor_caused";
-    outlet().querySelector("#delayfield-delay_days").value = "6";
-    outlet().querySelector("#delayfield-immediate_cause").value = "Rebar delivery late";
-    outlet().querySelector("#delayfield-underlying_cause").value = "Supplier capacity shortfall";
-    outlet().querySelector("#delayfield-description").value = "Late rebar delivery delaying Foundation.";
+    setReactSelectValue(win, outlet().querySelector("#delayfield-status"), "investigating");
+    setReactSelectValue(win, outlet().querySelector("#delayfield-delay_category"), "late_material");
+    setReactSelectValue(win, outlet().querySelector("#delayfield-responsibility_classification"), "vendor");
+    setReactSelectValue(win, outlet().querySelector("#delayfield-delay_cause"), "contractor_caused");
+    setReactInputValue(win, outlet().querySelector("#delayfield-delay_days"), "6");
+    setReactInputValue(win, outlet().querySelector("#delayfield-immediate_cause"), "Rebar delivery late");
+    setReactInputValue(win, outlet().querySelector("#delayfield-underlying_cause"), "Supplier capacity shortfall");
+    setReactTextareaValue(win, outlet().querySelector("#delayfield-description"), "Late rebar delivery delaying Foundation.");
 
     findButtonByText(dom, "Add Delay Record").click();
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.delay_records.length, 1);
@@ -150,15 +168,16 @@ function findButtonByText(dom, text) {
     assert.ok(text.indexOf("Foundation") !== -1);
   });
 
-  await check("spec point 9 ('one Delay, many Activities'): '+ Link Another Activity' adds a second affected activity to the SAME delay, not a duplicate delay", () => {
+  await check("spec point 9 ('one Delay, many Activities'): '+ Link Another Activity' adds a second affected activity to the SAME delay, not a duplicate delay", async () => {
     findButtonByText(dom, "+ Link Another Activity").click();
+    await flush();
     var selects = Array.from(outlet().querySelectorAll("select"));
     var pickerSelect = selects.find((s) => Array.from(s.options).some((o) => o.textContent === "Long Lead Procurement"));
     assert.ok(pickerSelect, "the activity picker should offer 'Long Lead Procurement' (same schedule, not yet linked)");
-    pickerSelect.value = activityCId;
-    pickerSelect.dispatchEvent(new win.Event("change"));
+    setReactSelectValue(win, pickerSelect, activityCId);
 
     findButtonByText(dom, "Link").click();
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.delay_records.length, 1, "still exactly one Delay record — not a second one for the second activity");
@@ -176,13 +195,15 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("spec point 20 (Delay Timeline): editing the delay's Status appends a new status_history entry, not just silently overwriting the old one", () => {
+  await check("spec point 20 (Delay Timeline): editing the delay's Status appends a new status_history entry, not just silently overwriting the old one", async () => {
     var editBtns = Array.from(outlet().querySelectorAll("button")).filter((b) => b.textContent.trim() === "Edit");
     editBtns[0].click(); // the Delay Record's own Edit (Recovery Actions section not present here yet)
+    await flush();
     var statusSelect = outlet().querySelector("#delayfield-status");
     assert.ok(statusSelect, "expected the Delay Record edit form to be open");
-    statusSelect.value = "recovery_in_progress";
+    setReactSelectValue(win, statusSelect, "recovery_in_progress");
     findButtonByText(dom, "Save Changes").click();
+    await flush();
 
     var data = win.PCC.store.get();
     var rec = data.delay_records.find((r) => r.id === delayId);
@@ -192,20 +213,22 @@ function findButtonByText(dom, text) {
     assert.ok(outlet().textContent.indexOf("Recovery in Progress") !== -1);
   });
 
-  await check("Recovery Action can link to this specific Delay (not just the activity), with its own Actual Recovery (days) field", () => {
+  await check("Recovery Action can link to this specific Delay (not just the activity), with its own Actual Recovery (days) field", async () => {
     findButtonByText(dom, "+ Add Recovery Action").click();
-    outlet().querySelector("#recactionfield-description").value = "Expedite rebar via air freight.";
-    outlet().querySelector("#recactionfield-responsible_person").value = "Site Manager";
-    outlet().querySelector("#recactionfield-status").value = "in_progress";
-    outlet().querySelector("#recactionfield-estimated_recovery_days").value = "4";
-    outlet().querySelector("#recactionfield-actual_recovery_days").value = "3";
+    await flush();
+    setReactTextareaValue(win, outlet().querySelector("#recactionfield-description"), "Expedite rebar via air freight.");
+    setReactInputValue(win, outlet().querySelector("#recactionfield-responsible_person"), "Site Manager");
+    setReactSelectValue(win, outlet().querySelector("#recactionfield-status"), "in_progress");
+    setReactInputValue(win, outlet().querySelector("#recactionfield-estimated_recovery_days"), "4");
+    setReactInputValue(win, outlet().querySelector("#recactionfield-actual_recovery_days"), "3");
     var delaySelect = outlet().querySelector("#recactionfield-delay_id");
     assert.ok(delaySelect, "expected a 'Responds to Delay' picker on the Recovery Action form");
     var delayOption = Array.from(delaySelect.options).find((o) => o.value === delayId);
     assert.ok(delayOption, "the Delay Record just created should be selectable here");
-    delaySelect.value = delayId;
+    setReactSelectValue(win, delaySelect, delayId);
 
     findButtonByText(dom, "Add Recovery Action").click();
+    await flush();
 
     var data = win.PCC.store.get();
     var action = data.recovery_actions.find((r) => r.activity_id === activityBId);
@@ -217,7 +240,7 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("removing a Delay Record cleans up its delay_activity_links and un-links (not deletes) any Recovery Action that pointed to it", () => {
+  await check("removing a Delay Record cleans up its delay_activity_links and un-links (not deletes) any Recovery Action that pointed to it", async () => {
     // Both the Recovery Actions section and the Delay Records section render their own
     // "Remove" button with identical text — scope to the DELAY RECORDS section's own
     // container specifically (found via its own heading) rather than assuming DOM order.
@@ -227,6 +250,7 @@ function findButtonByText(dom, text) {
     var removeBtn = Array.from(delaySection.querySelectorAll("button")).find((b) => b.textContent.trim() === "Remove");
     assert.ok(removeBtn, "the Delay Record's own Remove button not found within its section");
     removeBtn.click();
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.delay_records.length, 0);
@@ -236,12 +260,12 @@ function findButtonByText(dom, text) {
     assert.strictEqual(action.delay_id, "", "the dangling delay_id reference must be cleared, not left pointing at a deleted record");
   });
 
-  await check("this gate's changes don't break the rest of the Schedule module — every route still renders cleanly", () => {
-    ["dashboard", "portfolio", "projectWorkspace", "executiveCenter", "schedule", "delayRecoveryDashboard", "risks", "reports", "settings"].forEach((route) => {
+  await check("this gate's changes don't break the rest of the Schedule module — every route still renders cleanly", async () => {
+    for (const route of ["dashboard", "portfolio", "projectWorkspace", "executiveCenter", "schedule", "delayRecoveryDashboard", "risks", "reports", "settings"]) {
       win.PCC.router.go(route);
-      win.PCC.router.render();
+      await flush();
       assert.strictEqual(thrownErrors.length, 0, "route '" + route + "' threw: " + thrownErrors.join(" | "));
-    });
+    }
   });
 
   console.log("\n" + passed + " passed, " + failed + " failed");

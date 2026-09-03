@@ -213,7 +213,6 @@ function findButtonByText(dom, text) {
   await check("Schedule's Activity Detail Panel shows an Over-Allocated badge for the resource on this activity's own dates", async () => {
     win.PCC.schedule.viewActivity(projectId, scheduleId, activityId);
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
     await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("Skilled Electricians") !== -1, "resource assignment must still be listed as a linked record");
@@ -225,7 +224,7 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("a resource with no over-allocation shows an Available badge instead", () => {
+  await check("a resource with no over-allocation shows an Available badge instead", async () => {
     var okActivityId, okAssignmentId;
     win.PCC.store.update(function (data) {
       var okActivity = win.PCC.store.newActivity({
@@ -242,7 +241,7 @@ function findButtonByText(dom, text) {
     });
     win.PCC.schedule.viewActivity(projectId, scheduleId, okActivityId);
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
+    await flush();
     var resourceRow = Array.from(outlet().querySelectorAll(".attention-item")).find((r) => r.textContent.indexOf("Test Technician") !== -1);
     assert.ok(resourceRow, "no linked-record row found for the resource assignment");
     assert.ok(resourceRow.querySelector(".attention-item__icon--on_track"), "a non-over-allocated resource should show the on_track icon");

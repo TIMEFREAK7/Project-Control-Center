@@ -42,6 +42,20 @@ function findButtonByText(dom, text) {
   const buttons = Array.from(dom.window.document.querySelectorAll("button"));
   return buttons.find((b) => b.textContent.trim() === text);
 }
+// schedule.js is React-migrated: form fields are React-controlled, so a raw `.value =`
+// assignment doesn't reliably reach onChange — see CLAUDE.md's React migration notes.
+function setReactSelectValue(win, el, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLSelectElement.prototype, "value").set.call(el, value);
+  el.dispatchEvent(new win.Event("change", { bubbles: true }));
+}
+function setReactInputValue(win, el, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, "value").set.call(el, value);
+  el.dispatchEvent(new win.Event("input", { bubbles: true }));
+}
+function setReactTextareaValue(win, el, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLTextAreaElement.prototype, "value").set.call(el, value);
+  el.dispatchEvent(new win.Event("input", { bubbles: true }));
+}
 
 (async () => {
   const html = fs.readFileSync(INDEX_PATH, "utf8");
@@ -90,21 +104,23 @@ function findButtonByText(dom, text) {
     assert.ok(projectId && scheduleId && activityId && activity2Id);
   });
 
-  await check("the Activity Detail Panel shows 'RECOVERY ACTIONS (0)' and the empty state before any action is logged", () => {
+  await check("the Activity Detail Panel shows 'RECOVERY ACTIONS (0)' and the empty state before any action is logged", async () => {
     win.PCC.schedule.viewActivity(projectId, scheduleId, activityId);
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("RECOVERY ACTIONS (0)") !== -1, "got: " + text.match(/RECOVERY ACTIONS \(\d+\)/));
     assert.ok(text.indexOf("No recovery actions logged against this activity yet.") !== -1);
   });
 
-  await check("'+ Add Recovery Action' opens a form requiring a description", () => {
+  await check("'+ Add Recovery Action' opens a form requiring a description", async () => {
     findButtonByText(dom, "+ Add Recovery Action").click();
+    await flush();
     var descInput = outlet().querySelector("#recactionfield-description");
     assert.ok(descInput, "description field not found");
     var form = Array.from(outlet().querySelectorAll("form")).find((f) => f.querySelector("#recactionfield-description"));
     form.dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("Description is required.") !== -1);
     var data = win.PCC.store.get();
@@ -112,13 +128,14 @@ function findButtonByText(dom, text) {
   });
 
   var overdueId;
-  await check("filling in and submitting the form persists a new, overdue recovery action (target date in the past, status open)", () => {
-    outlet().querySelector("#recactionfield-description").value = "Add night shift crew to catch up structural steel";
-    outlet().querySelector("#recactionfield-responsible_person").value = "Site Manager";
-    outlet().querySelector("#recactionfield-target_recovery_date").value = "2020-01-01";
-    outlet().querySelector("#recactionfield-status").value = "open";
+  await check("filling in and submitting the form persists a new, overdue recovery action (target date in the past, status open)", async () => {
+    setReactTextareaValue(win, outlet().querySelector("#recactionfield-description"), "Add night shift crew to catch up structural steel");
+    setReactInputValue(win, outlet().querySelector("#recactionfield-responsible_person"), "Site Manager");
+    setReactInputValue(win, outlet().querySelector("#recactionfield-target_recovery_date"), "2020-01-01");
+    setReactSelectValue(win, outlet().querySelector("#recactionfield-status"), "open");
     var form = Array.from(outlet().querySelectorAll("form")).find((f) => f.querySelector("#recactionfield-description"));
     form.dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.recovery_actions.length, 1);
@@ -139,11 +156,13 @@ function findButtonByText(dom, text) {
     assert.ok(badges.indexOf("Overdue") !== -1, "expected an Overdue badge; got: " + badges.join(", "));
   });
 
-  await check("editing the action to status 'completed' clears the Overdue badge even though the target date is still in the past", () => {
+  await check("editing the action to status 'completed' clears the Overdue badge even though the target date is still in the past", async () => {
     findButtonByText(dom, "Edit").click();
-    outlet().querySelector("#recactionfield-status").value = "completed";
+    await flush();
+    setReactSelectValue(win, outlet().querySelector("#recactionfield-status"), "completed");
     var form = Array.from(outlet().querySelectorAll("form")).find((f) => f.querySelector("#recactionfield-description"));
     form.dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.recovery_actions.find((r) => r.id === overdueId).status, "completed");
@@ -152,8 +171,9 @@ function findButtonByText(dom, text) {
     assert.ok(badges.indexOf("Completed") !== -1);
   });
 
-  await check("'Remove' deletes the recovery action and the panel returns to the empty state", () => {
+  await check("'Remove' deletes the recovery action and the panel returns to the empty state", async () => {
     findButtonByText(dom, "Remove").click();
+    await flush();
     var data = win.PCC.store.get();
     assert.strictEqual(data.recovery_actions.length, 0);
     var text = outlet().textContent;
@@ -161,25 +181,32 @@ function findButtonByText(dom, text) {
     assert.ok(text.indexOf("No recovery actions logged against this activity yet.") !== -1);
   });
 
-  await check("recovery actions on a different activity never show up on this one — no cross-contamination", () => {
+  await check("recovery actions on a different activity never show up on this one — no cross-contamination", async () => {
     win.PCC.store.update(function (d) {
       d.recovery_actions.push(win.PCC.store.newRecoveryAction({ activity_id: activity2Id, project_id: projectId, description: "Belongs to the other activity" }));
     });
+    // A bare render() after a store mutation remounts the page (reactBridge.js mounts a
+    // fresh root every render()) — re-call the pending-prop setter so the detail panel
+    // stays open on the same activity, matching CLAUDE.md's React migration notes.
+    win.PCC.schedule.viewActivity(projectId, scheduleId, activityId);
     win.PCC.router.render();
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("RECOVERY ACTIONS (0)") !== -1, "Structural Steel Erection's panel must still show 0");
     assert.ok(text.indexOf("Belongs to the other activity") === -1);
   });
 
-  await check("deleting an activity cascades its recovery actions, unlike risks/rfis/meetings whose activity_id link is left stale", () => {
+  await check("deleting an activity cascades its recovery actions, unlike risks/rfis/meetings whose activity_id link is left stale", async () => {
     win.PCC.schedule.viewActivity(projectId, scheduleId, activity2Id);
     win.PCC.router.render();
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("RECOVERY ACTIONS (1)") !== -1, "Doomed Activity must show its own recovery action before deletion");
 
     var origConfirm = win.confirm;
     win.confirm = () => true;
     findButtonByText(dom, "Delete").click();
+    await flush();
     win.confirm = origConfirm;
 
     var data = win.PCC.store.get();
@@ -203,10 +230,10 @@ function findButtonByText(dom, text) {
     "changeOrders", "cost", "resources", "reports", "settings",
   ];
   for (var i = 0; i < routes.length; i++) {
-    await check("route '" + routes[i] + "' renders without throwing after adding Recovery Actions", () => {
+    await check("route '" + routes[i] + "' renders without throwing after adding Recovery Actions", async () => {
       thrownErrors.length = 0;
       win.PCC.router.go(routes[i]);
-      win.PCC.router.render();
+      await flush();
       assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
     });
   }

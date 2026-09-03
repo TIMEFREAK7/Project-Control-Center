@@ -40,6 +40,12 @@ function findButtonByText(dom, text) {
   const buttons = Array.from(dom.window.document.querySelectorAll("button"));
   return buttons.find((b) => b.textContent.trim() === text);
 }
+// schedule.js is React-migrated: form fields are React-controlled, so a raw `.value =`
+// assignment doesn't reliably reach onChange — see CLAUDE.md's React migration notes.
+function setReactInputValue(win, el, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, "value").set.call(el, value);
+  el.dispatchEvent(new win.Event("input", { bubbles: true }));
+}
 
 (async () => {
   const html = fs.readFileSync(INDEX_PATH, "utf8");
@@ -124,10 +130,10 @@ function findButtonByText(dom, text) {
     assert.ok(projectId && scheduleId && act1Id && act2Id);
   });
 
-  await check("navigate to the schedule route and select the seeded schedule", () => {
+  await check("navigate to the schedule route and select the seeded schedule", async () => {
+    win.PCC.projectContext.set(projectId);
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
-    win.PCC.pages.schedule(win.document.getElementById("page-outlet")); // ensure uiState.scheduleId picks up the seeded one
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     assert.ok(outlet.innerHTML.length > 0, "schedule route should render content");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
@@ -139,9 +145,10 @@ function findButtonByText(dom, text) {
     assert.strictEqual(btn.disabled, false, "Edit Excel should be enabled once an imported schedule is selected");
   });
 
-  await check("clicking 'Edit Excel' opens a grid pre-populated from current Activities/WBS/Relationships", () => {
+  await check("clicking 'Edit Excel' opens a grid pre-populated from current Activities/WBS/Relationships", async () => {
     var btn = findButtonByText(dom, "Edit Excel");
     btn.click();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     var idInput0 = win.document.getElementById("excelgrid-0-external_id");
     var idInput1 = win.document.getElementById("excelgrid-1-external_id");
@@ -158,20 +165,22 @@ function findButtonByText(dom, text) {
 
   await check("editing a cell, adding a row, reviewing, and applying updates the store in place", async () => {
     var nameInput0 = win.document.getElementById("excelgrid-0-name");
-    nameInput0.value = "Excavate (Revised)";
+    setReactInputValue(win, nameInput0, "Excavate (Revised)");
 
     var addRowBtn = findButtonByText(dom, "+ Add Row");
     addRowBtn.click();
+    await flush();
 
     var newIdInput = win.document.getElementById("excelgrid-2-external_id");
     assert.ok(newIdInput, "expected a third row after Add Row");
     assert.strictEqual(newIdInput.value, "NEW-1");
-    newIdInput.value = "A030";
-    win.document.getElementById("excelgrid-2-name").value = "Third Activity";
-    win.document.getElementById("excelgrid-2-duration").value = "2";
+    setReactInputValue(win, newIdInput, "A030");
+    setReactInputValue(win, win.document.getElementById("excelgrid-2-name"), "Third Activity");
+    setReactInputValue(win, win.document.getElementById("excelgrid-2-duration"), "2");
 
     var reviewBtn = findButtonByText(dom, "Review Changes");
     reviewBtn.click();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     assert.ok(outlet.textContent.indexOf("3 activities will be applied") !== -1, "expected review summary for 3 activities, got: " + outlet.textContent.slice(0, 300));
 
@@ -217,11 +226,13 @@ function findButtonByText(dom, text) {
     assert.ok(data.activities.some((a) => a.id === handAddedId && !a.external_id));
   });
 
-  await check("re-opening Edit Excel and reviewing shows the hand-added-activity warning and blocks Apply", () => {
+  await check("re-opening Edit Excel and reviewing shows the hand-added-activity warning and blocks Apply", async () => {
     var editBtn = findButtonByText(dom, "Edit Excel");
     editBtn.click();
+    await flush();
     var reviewBtn = findButtonByText(dom, "Review Changes");
     reviewBtn.click();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     assert.ok(outlet.textContent.indexOf("isn’t from the Excel file") !== -1, "expected the hand-added warning, got: " + outlet.textContent.slice(0, 400));
     var applyBtn = Array.from(win.document.querySelectorAll("button")).find((b) => b.textContent.trim().indexOf("Apply to Schedule") === 0);
@@ -232,6 +243,7 @@ function findButtonByText(dom, text) {
     var ackBtn = findButtonByText(dom, "Delete Them and Continue");
     assert.ok(ackBtn, "acknowledge button not found");
     ackBtn.click();
+    await flush();
 
     var applyBtn = Array.from(win.document.querySelectorAll("button")).find((b) => b.textContent.trim().indexOf("Apply to Schedule") === 0);
     assert.strictEqual(applyBtn.disabled, false, "Apply should be enabled after acknowledging");
@@ -248,10 +260,10 @@ function findButtonByText(dom, text) {
   // every page's route render can transitively depend on via store.get(). ----
   var routes = ["dashboard", "portfolio", "documents", "dailylog", "schedule", "risks", "meetings", "rfis", "changeOrders", "cost", "reports", "settings"];
   for (var i = 0; i < routes.length; i++) {
-    await check("route '" + routes[i] + "' renders without throwing after the Excel-editor gate", () => {
+    await check("route '" + routes[i] + "' renders without throwing after the Excel-editor gate", async () => {
       thrownErrors.length = 0;
       win.PCC.router.go(routes[i]);
-      win.PCC.router.render();
+      await flush();
       assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
     });
   }

@@ -45,6 +45,13 @@ function findButtonsByText(dom, text) {
   const buttons = Array.from(dom.window.document.querySelectorAll("button"));
   return buttons.filter((b) => b.textContent.trim() === text);
 }
+// schedule.js is React-migrated: an inline rename input is React-controlled, so a raw
+// `.value =` assignment doesn't reliably reach onChange (React patches the native
+// setter to track "last known value" — see CLAUDE.md's React migration notes).
+function setReactInputValue(win, el, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, "value").set.call(el, value);
+  el.dispatchEvent(new win.Event("input", { bubbles: true }));
+}
 
 (async () => {
   const html = fs.readFileSync(INDEX_PATH, "utf8");
@@ -115,24 +122,27 @@ function findButtonsByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("the Baselines tab shows the captured project finish in the row's meta line", () => {
+  await check("the Baselines tab shows the captured project finish in the row's meta line", async () => {
     var baselinesTabBtn = Array.from(win.document.querySelectorAll("button")).find((b) => b.textContent.trim() === "Baselines");
     baselinesTabBtn.click();
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("project finish at capture") !== -1);
   });
 
-  await check("renaming a baseline through the inline Rename control persists the new name and escapes it against HTML injection", () => {
+  await check("renaming a baseline through the inline Rename control persists the new name and escapes it against HTML injection", async () => {
     var renameBtn = findButtonByText(dom, "Rename");
     assert.ok(renameBtn, "Rename button not found");
     renameBtn.click();
+    await flush();
 
     var input = outlet().querySelector("input[type='text']");
     assert.ok(input, "expected an inline rename text input");
-    input.value = "<img src=x onerror=alert(1)>Rev 0 Baseline";
+    setReactInputValue(win, input, "<img src=x onerror=alert(1)>Rev 0 Baseline");
     var saveBtn = findButtonByText(dom, "Save");
     assert.ok(saveBtn, "inline rename Save button not found");
     saveBtn.click();
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.schedule_baselines[0].name, "<img src=x onerror=alert(1)>Rev 0 Baseline", "the raw name is stored as typed");
@@ -141,10 +151,11 @@ function findButtonsByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("marking a baseline Official shows the badge, flips the button, disables Delete, and toasts the correct (non-inverted) message", () => {
+  await check("marking a baseline Official shows the badge, flips the button, disables Delete, and toasts the correct (non-inverted) message", async () => {
     var officialBtn = findButtonByText(dom, "Mark Official");
     assert.ok(officialBtn, "Mark Official button not found");
     officialBtn.click();
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.schedule_baselines[0].is_official, true);
@@ -164,14 +175,16 @@ function findButtonsByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("unmarking Official toasts the correct message too (not stuck on 'marked')", () => {
+  await check("unmarking Official toasts the correct message too (not stuck on 'marked')", async () => {
     var unmarkBtn = findButtonByText(dom, "Unmark Official");
     unmarkBtn.click();
+    await flush();
     var toastText = win.document.getElementById("toast-stack").textContent;
     assert.ok(toastText.indexOf("Baseline unmarked as Official") !== -1, "expected the 'unmarked' toast; got: " + toastText);
 
     // Restore Official for the subsequent checks, which assume it's set.
     findButtonByText(dom, "Mark Official").click();
+    await flush();
     assert.strictEqual(win.PCC.store.get().schedule_baselines[0].is_official, true);
   });
 
@@ -213,13 +226,13 @@ function findButtonsByText(dom, text) {
 
   await check("capturing and marking a second baseline Official un-marks the first (at most one Official per project)", async () => {
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
     var saveBtn = findButtonByText(dom, "Save Baseline");
     saveBtn.click();
     await flush();
 
     var baselinesTabBtn = Array.from(win.document.querySelectorAll("button")).find((b) => b.textContent.trim() === "Baselines");
     baselinesTabBtn.click();
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.schedule_baselines.length, 2);
@@ -228,6 +241,7 @@ function findButtonsByText(dom, text) {
     var markOfficialBtns = findButtonsByText(dom, "Mark Official");
     assert.strictEqual(markOfficialBtns.length, 1, "exactly one baseline should still be markable (the non-official second one)");
     markOfficialBtns[0].click();
+    await flush();
 
     data = win.PCC.store.get();
     var first = data.schedule_baselines.find((b) => b.id !== secondBaselineId);

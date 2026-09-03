@@ -122,10 +122,10 @@ function addDaysIso(days) {
     assert.ok(projectId && imminentActivityId && farActivityId && riskyCommitmentId && safeCommitmentId);
   });
 
-  await check("Schedule's Activity Detail Panel lists the linked commitment as a Linked Record", () => {
+  await check("Schedule's Activity Detail Panel lists the linked commitment as a Linked Record", async () => {
     win.PCC.schedule.viewActivity(projectId, scheduleId, imminentActivityId);
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("Commitment: PO-RISKY") !== -1, "commitment must be listed as a linked record");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
@@ -148,10 +148,10 @@ function addDaysIso(days) {
     assert.strictEqual(row.textContent.indexOf("Procurement Risk"), -1, "an activity 90 days out shouldn't be flagged yet");
   });
 
-  await check("the Commitments page shows a Procurement Risk badge and an AT RISK KPI of 1", () => {
+  await check("the Commitments page shows a Procurement Risk badge and an AT RISK KPI of 1", async () => {
     win.PCC.commitments.filterByProject(projectId);
     win.PCC.router.go("commitments");
-    win.PCC.router.render();
+    await flush();
 
     var text = outlet().textContent;
     assert.ok(text.indexOf("Procurement Risk") !== -1);
@@ -178,14 +178,14 @@ function addDaysIso(days) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("approving the risky commitment clears the Procurement Risk badge and KPI everywhere", () => {
+  await check("approving the risky commitment clears the Procurement Risk badge and KPI everywhere", async () => {
     win.PCC.store.update(function (d) {
       var c = d.commitments.find(function (x) { return x.id === riskyCommitmentId; });
       c.status = "approved";
     });
 
     win.PCC.router.go("commitments");
-    win.PCC.router.render();
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("Procurement Risk") === -1, "no commitment should still be flagged");
     var kpiCards = Array.from(outlet().querySelectorAll(".kpi-card"));
@@ -194,7 +194,7 @@ function addDaysIso(days) {
 
     win.PCC.schedule.viewActivity(projectId, scheduleId, imminentActivityId);
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
+    await flush();
     var row = Array.from(outlet().querySelectorAll(".attention-item")).find((el) => el.textContent.indexOf("PO-RISKY") !== -1);
     assert.ok(row, "no linked-record row found for the commitment");
     assert.ok(row.textContent.indexOf("Approved") !== -1);
@@ -216,10 +216,10 @@ function addDaysIso(days) {
     "changeOrders", "decisionRegister", "cost", "commitments", "resources", "reports", "settings",
   ];
   for (var i = 0; i < routes.length; i++) {
-    await check("route '" + routes[i] + "' renders without throwing after Schedule<->Commitment integration", () => {
+    await check("route '" + routes[i] + "' renders without throwing after Schedule<->Commitment integration", async () => {
       thrownErrors.length = 0;
       win.PCC.router.go(routes[i]);
-      win.PCC.router.render();
+      await flush();
       assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
     });
   }

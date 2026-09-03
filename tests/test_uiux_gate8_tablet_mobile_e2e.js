@@ -102,12 +102,13 @@ async function check(label, fn) {
   // Schedule Activities: mobile card fallback (CSS-driven, structure/content check)
   // ============================================================================
 
-  await check("both the data grid table and the mobile card fallback are built for the same filtered activities", () => {
+  await check("both the data grid table and the mobile card fallback are built for the same filtered activities", async () => {
     win.PCC.schedule.viewProject(projId);
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
+    await flush();
     var actBtn = Array.from(outlet().querySelectorAll(".tab-btn")).find((b) => b.textContent.trim() === "Activities");
     actBtn.click();
+    await flush();
 
     var tableRows = outlet().querySelectorAll(".activities-table-wrap tbody tr");
     var mobileCards = outlet().querySelectorAll(".activities-mobile-cards .project-card");
@@ -129,11 +130,12 @@ async function check(label, fn) {
     assert.ok(card.querySelector('.icon-btn[aria-label="More actions"]'), "mobile card must have the same row-menu Edit/Delete access as the table row");
   });
 
-  await check("the mobile card's '⋯' menu opens the same Edit/Clone/Delete actions as the table row's menu (shared buildActivityRowMenu)", () => {
+  await check("the mobile card's '⋯' menu opens the same Edit/Clone/Delete actions as the table row's menu (shared buildActivityRowMenu)", async () => {
     var card = Array.from(outlet().querySelectorAll(".activities-mobile-cards .project-card")).find(
       (c) => c.textContent.indexOf("Excavation") !== -1
     );
     card.querySelector('.icon-btn[aria-label="More actions"]').click();
+    await flush();
 
     var refreshedCard = Array.from(outlet().querySelectorAll(".activities-mobile-cards .project-card")).find(
       (c) => c.textContent.indexOf("Excavation") !== -1
@@ -144,6 +146,7 @@ async function check(label, fn) {
     assert.deepStrictEqual(items, ["Edit", "Clone", "Delete"]);
     // Close it so later checks aren't affected by a leftover open menu.
     win.document.querySelector(".card-menu__overlay").click();
+    await flush();
   });
 
   await check("the CSS bundle actually contains the table/mobile-card breakpoint swap (jsdom can't evaluate @media, so this checks the shipped rule text directly)", () => {
@@ -157,18 +160,25 @@ async function check(label, fn) {
   // Gantt: mobile timeline alternative (genuine JS conditional — fully testable)
   // ============================================================================
 
-  await check("at a desktop width, the Gantt tab renders the interactive chart and NOT the mobile timeline", () => {
+  await check("at a desktop width, the Gantt tab renders the interactive chart and NOT the mobile timeline", async () => {
     win.innerWidth = 1024;
-    var ganttBtn = Array.from(outlet().querySelectorAll(".tab-btn")).find((b) => b.textContent.trim() === "Gantt");
-    ganttBtn.click();
+    // schedule.js is React-migrated: switchTab("gantt") while already on the Gantt tab
+    // is a same-value setState (a no-op React bails on), so it would NOT force a
+    // re-render to pick up the new window.innerWidth (read directly in the component
+    // body, not stored in state). Force a fresh mount instead, via the same pending-prop
+    // hand-off every other cross-page "land on this tab" link already uses.
+    win.PCC.schedule.viewProject(projId);
+    win.PCC.router.render();
+    await flush();
     assert.ok(outlet().querySelector("svg"), "interactive chart must render at desktop width");
     assert.strictEqual(outlet().querySelector(".gantt-mobile-timeline"), null, "mobile timeline must not even be built at desktop width — it isn't virtualized, so it must not exist in the DOM when not needed");
   });
 
-  await check("at a phone width, the Gantt tab builds the mobile timeline instead, sorted by planned start", () => {
+  await check("at a phone width, the Gantt tab builds the mobile timeline instead, sorted by planned start", async () => {
     win.innerWidth = 390;
-    var ganttBtn = Array.from(outlet().querySelectorAll(".tab-btn")).find((b) => b.textContent.trim() === "Gantt");
-    ganttBtn.click();
+    win.PCC.schedule.viewProject(projId);
+    win.PCC.router.render();
+    await flush();
 
     var timeline = outlet().querySelector(".gantt-mobile-timeline");
     assert.ok(timeline, "mobile timeline must be built at phone width");
@@ -183,21 +193,24 @@ async function check(label, fn) {
     assert.ok(outlet().querySelector(".gantt-chart-panel"), "chart panel must carry the class the mobile breakpoint hides");
   });
 
-  await check("tapping a mobile timeline card opens the same Activity Detail Panel the chart itself uses", () => {
+  await check("tapping a mobile timeline card opens the same Activity Detail Panel the chart itself uses", async () => {
     var card = Array.from(outlet().querySelectorAll(".gantt-mobile-timeline .project-card")).find(
       (c) => c.textContent.indexOf("Excavation") !== -1
     );
     card.click();
+    await flush();
     assert.ok(outlet().textContent.indexOf("Activity ID") !== -1, "detail panel must open");
     assert.ok(outlet().textContent.indexOf("Excavation") !== -1);
     var closeBtn = Array.from(outlet().querySelectorAll("button")).find((b) => b.textContent.trim() === "Close");
     closeBtn.click();
+    await flush();
   });
 
-  await check("switching back to a desktop width and rerendering removes the mobile timeline and shows zoom/jump controls again", () => {
+  await check("switching back to a desktop width and rerendering removes the mobile timeline and shows zoom/jump controls again", async () => {
     win.innerWidth = 1024;
-    var ganttBtn = Array.from(outlet().querySelectorAll(".tab-btn")).find((b) => b.textContent.trim() === "Gantt");
-    ganttBtn.click();
+    win.PCC.schedule.viewProject(projId);
+    win.PCC.router.render();
+    await flush();
     assert.strictEqual(outlet().querySelector(".gantt-mobile-timeline"), null);
     assert.ok(Array.from(outlet().querySelectorAll("button")).some((b) => b.textContent.trim() === "Daily"), "zoom buttons must be present again");
   });
@@ -243,10 +256,10 @@ async function check(label, fn) {
     "cost", "commitments", "resources", "reports", "settings",
   ];
   for (var i = 0; i < routes.length; i++) {
-    await check("route '" + routes[i] + "' renders without throwing after the Gate 8 tablet/mobile changes", () => {
+    await check("route '" + routes[i] + "' renders without throwing after the Gate 8 tablet/mobile changes", async () => {
       thrownErrors.length = 0;
       win.PCC.router.go(routes[i]);
-      win.PCC.router.render();
+      await flush();
       assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
     });
   }

@@ -124,12 +124,13 @@ function mouseEvent(win, type, clientX) {
     assert.ok(btn.classList.contains("icon-btn--active"));
   });
 
-  await check("on Schedule, focus mode hides the heading/description/schedule-picker bar but keeps the tab bar, filter toolbar, and chart", () => {
+  await check("on Schedule, focus mode hides the heading/description/schedule-picker bar but keeps the tab bar, filter toolbar, and chart", async () => {
     win.PCC.schedule.viewProject(projId);
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
+    await flush();
     var ganttBtn = Array.from(outlet().querySelectorAll(".tab-btn")).find((b) => b.textContent.trim() === "Gantt");
     ganttBtn.click();
+    await flush();
 
     var hiddenEls = Array.from(outlet().querySelectorAll(".focus-mode-hide"));
     assert.ok(hiddenEls.length > 0, "at least one .focus-mode-hide element expected on Schedule");
@@ -256,19 +257,21 @@ function mouseEvent(win, type, clientX) {
   // ============================================================================
 
   var activityId;
-  await check("with no activity selected, the Gantt tab renders the chart alone (no side-by-side row)", () => {
+  await check("with no activity selected, the Gantt tab renders the chart alone (no side-by-side row)", async () => {
     win.PCC.router.go("schedule");
-    win.PCC.router.render();
+    await flush();
     var ganttBtn = Array.from(outlet().querySelectorAll(".tab-btn")).find((b) => b.textContent.trim() === "Gantt");
     ganttBtn.click();
+    await flush();
     assert.ok(outlet().querySelector("svg"), "chart must render");
     assert.strictEqual(outlet().querySelector(".gantt-layout-row"), null, "no side-by-side row without a selected activity");
     activityId = win.PCC.store.get().activities[0].id;
   });
 
-  await check("opening the Activity Detail Panel puts it side-by-side with the chart, not above it", () => {
+  await check("opening the Activity Detail Panel puts it side-by-side with the chart, not above it", async () => {
     win.PCC.schedule.viewActivity(projId, win.PCC.store.get().schedules[0].id, activityId);
     win.PCC.router.render();
+    await flush();
 
     var row = outlet().querySelector(".gantt-layout-row");
     assert.ok(row, "expected a .gantt-layout-row once an activity is selected");
@@ -289,8 +292,9 @@ function mouseEvent(win, type, clientX) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("closing the detail panel returns the chart to its own full-width panel, no leftover side-by-side row", () => {
+  await check("closing the detail panel returns the chart to its own full-width panel, no leftover side-by-side row", async () => {
     findButtonByText(dom, "Close").click();
+    await flush();
     assert.strictEqual(outlet().querySelector(".gantt-layout-row"), null);
     assert.ok(outlet().querySelector("svg"), "chart must still render on its own");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
@@ -312,10 +316,10 @@ function mouseEvent(win, type, clientX) {
     "cost", "commitments", "resources", "reports", "settings",
   ];
   for (var i = 0; i < routes.length; i++) {
-    await check("route '" + routes[i] + "' renders without throwing after Focus Mode/Resizable Panels/Side-by-Side Views", () => {
+    await check("route '" + routes[i] + "' renders without throwing after Focus Mode/Resizable Panels/Side-by-Side Views", async () => {
       thrownErrors.length = 0;
       win.PCC.router.go(routes[i]);
-      win.PCC.router.render();
+      await flush();
       assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
     });
   }
