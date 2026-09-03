@@ -42,6 +42,14 @@ function findButtonByText(dom, text) {
   const buttons = Array.from(dom.window.document.querySelectorAll("button"));
   return buttons.find((b) => b.textContent.trim() === text);
 }
+// commitments.js is a React-migrated page: a raw `.value =` assignment doesn't reliably
+// reach a controlled <select>'s onChange (React patches the native setter to track "last
+// known value" — see CLAUDE.md's React migration notes), so bypass it via the native
+// prototype descriptor before dispatching the change event.
+function setReactSelectValue(win, select, value) {
+  Object.getOwnPropertyDescriptor(win.HTMLSelectElement.prototype, "value").set.call(select, value);
+  select.dispatchEvent(new win.Event("change", { bubbles: true }));
+}
 
 (async () => {
   const html = fs.readFileSync(INDEX_PATH, "utf8");
@@ -97,15 +105,22 @@ function findButtonByText(dom, text) {
     assert.ok(projectId && vendorId && budgetItemId && activityId);
   });
 
-  await check("add a Package through the real Packages tab form", () => {
+  await check("add a Package through the real Packages tab form", async () => {
     win.PCC.router.go("commitments");
     win.PCC.router.render();
+    // commitments.js is a React-migrated page — a click's state update commits
+    // asynchronously (see CLAUDE.md's React migration notes), so await flush() before
+    // reading the resulting DOM.
+    await flush();
     findButtonByText(dom, "Packages").click();
+    await flush();
     findButtonByText(dom, "+ Add Package").click();
+    await flush();
 
     win.document.getElementById("pkgfield-name").value = "Structural Steel Package";
     win.document.getElementById("pkgfield-code").value = "PKG-STL";
     findButtonByText(dom, "Add Package").click();
+    await flush();
 
     var text = outlet().textContent;
     assert.ok(text.indexOf("Structural Steel Package") !== -1);
@@ -114,11 +129,14 @@ function findButtonByText(dom, text) {
   });
 
   let commitmentId;
-  await check("add a Commitment through the real Commitments tab form, linking project/vendor/package/budget item/activity", () => {
+  await check("add a Commitment through the real Commitments tab form, linking project/vendor/package/budget item/activity", async () => {
     findButtonByText(dom, "Commitments").click();
+    await flush();
     findButtonByText(dom, "+ Add Commitment").click();
+    await flush();
 
-    win.document.getElementById("cmtfield-project_id").value = projectId;
+    setReactSelectValue(win, win.document.getElementById("cmtfield-project_id"), projectId);
+    await flush();
     win.document.getElementById("cmtfield-vendor_id").value = vendorId;
     var pkgSelect = win.document.getElementById("cmtfield-package_id");
     var pkgOption = Array.from(pkgSelect.options).find((o) => o.textContent.indexOf("Structural Steel Package") !== -1);
@@ -132,6 +150,7 @@ function findButtonByText(dom, text) {
     win.document.getElementById("cmtfield-budget_item_id").value = budgetItemId;
     win.document.getElementById("cmtfield-activity_id").value = activityId;
     findButtonByText(dom, "Add Commitment").click();
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.commitments.length, 1);
@@ -151,7 +170,7 @@ function findButtonByText(dom, text) {
     assert.ok(text.indexOf("Remaining $50,000") !== -1, "remaining = committed - 0 actual");
   });
 
-  await check("logging an Actual Cost in Cost Tracking against this commitment updates its computed Actual Value", () => {
+  await check("logging an Actual Cost in Cost Tracking against this commitment updates its computed Actual Value", async () => {
     win.PCC.router.go("cost");
     win.PCC.router.render();
     findButtonByText(dom, "Actuals").click();
@@ -174,12 +193,13 @@ function findButtonByText(dom, text) {
 
     win.PCC.router.go("commitments");
     win.PCC.router.render();
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("Actual $15,000") !== -1, "commitment's Actual Value must reflect the newly-logged cost");
     assert.ok(text.indexOf("Remaining $35,000") !== -1, "50000 committed - 15000 actual = 35000 remaining");
   });
 
-  await check("a second Actual Cost against the same commitment accumulates into the sum", () => {
+  await check("a second Actual Cost against the same commitment accumulates into the sum", async () => {
     win.PCC.router.go("cost");
     win.PCC.router.render();
     findButtonByText(dom, "+ Log Actual Cost").click();
@@ -193,6 +213,7 @@ function findButtonByText(dom, text) {
 
     win.PCC.router.go("commitments");
     win.PCC.router.render();
+    await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("Actual $25,000") !== -1, "15000 + 10000 = 25000");
     assert.ok(text.indexOf("Remaining $25,000") !== -1);
@@ -248,16 +269,22 @@ function findButtonByText(dom, text) {
     assert.ok(opt.textContent.indexOf("PKG-STL") !== -1, "option label should include the package code");
   });
 
-  await check("deleting the Commitment unlinks (does not delete) the cost_actuals rows logged against it", () => {
+  await check("deleting the Commitment unlinks (does not delete) the cost_actuals rows logged against it", async () => {
     win.PCC.router.go("commitments");
     win.PCC.router.render();
+    // Flush here, BEFORE interacting — router.js's suppressNextHashRender is a single
+    // flag, so a hashchange-triggered render can still land asynchronously after this
+    // go()+render() pair (see CLAUDE.md's React migration notes on this race).
+    await flush();
     findButtonByText(dom, "Commitments").click();
+    await flush();
     var deleteBtn = findButtonByText(dom, "Delete");
     assert.ok(deleteBtn, "no Delete button found on the commitment row");
     var originalConfirm = win.confirm;
     win.confirm = () => true;
     deleteBtn.click();
     win.confirm = originalConfirm;
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.commitments.length, 0);
@@ -265,13 +292,15 @@ function findButtonByText(dom, text) {
     assert.ok(data.cost_actuals.every((a) => a.commitment_id === ""), "cost actuals must be unlinked, not left dangling");
   });
 
-  await check("deleting the Package unlinks documents referencing it", () => {
+  await check("deleting the Package unlinks documents referencing it", async () => {
     findButtonByText(dom, "Packages").click();
+    await flush();
     var deleteBtn = findButtonByText(dom, "Delete");
     var originalConfirm = win.confirm;
     win.confirm = () => true;
     deleteBtn.click();
     win.confirm = originalConfirm;
+    await flush();
 
     var data = win.PCC.store.get();
     assert.strictEqual(data.packages.length, 0);
