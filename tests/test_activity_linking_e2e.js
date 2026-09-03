@@ -87,10 +87,15 @@ function findButtonByText(dom, text) {
   // ---- Field-level coverage: every register's Add form offers "Linked Activity"
   // and persists activity_id on submit. ----
 
-  await check("Risk Register: the Add form offers a Linked Activity select that persists activity_id", () => {
+  await check("Risk Register: the Add form offers a Linked Activity select that persists activity_id", async () => {
     win.PCC.router.go("risks");
     win.PCC.router.render();
+    // risks.js is a React-migrated page — a click's state update commits
+    // asynchronously (see CLAUDE.md's React migration notes), so await flush() before
+    // reading the resulting DOM.
+    await flush();
     findButtonByText(dom, "+ Add Entry").click();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     var titleInput = outlet.querySelector("#riskfield-title");
     titleInput.value = "Ground Conditions";
@@ -101,6 +106,7 @@ function findButtonByText(dom, text) {
     activitySelect.value = option.value;
     var form = outlet.querySelector("form");
     form.dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
     var saved = win.PCC.store.get().risks.find((r) => r.title === "Ground Conditions");
     assert.ok(saved, "risk should have been saved");
     assert.strictEqual(saved.activity_id, activityId);
@@ -182,12 +188,17 @@ function findButtonByText(dom, text) {
   // ---- Deep bidirectional round trip #1: Risk Register -> View in Gantt -> lands on
   // the activity's detail panel with that risk listed under Linked Records. ----
 
-  await check("Risk's 'View in Gantt' button opens the activity's own detail panel", () => {
+  await check("Risk's 'View in Gantt' button opens the activity's own detail panel", async () => {
     win.PCC.router.go("risks");
     win.PCC.router.render();
+    // Flush here, BEFORE interacting — router.js's suppressNextHashRender is a single
+    // flag, so a hashchange-triggered render can still land asynchronously after this
+    // go()+render() pair (see CLAUDE.md's React migration notes on this race).
+    await flush();
     var detailsBtn = findButtonByText(dom, "Details");
     assert.ok(detailsBtn, "Details button not found on the risk card");
     detailsBtn.click();
+    await flush();
     var outlet = win.document.getElementById("page-outlet");
     assert.ok(outlet.textContent.indexOf("LINKED ACTIVITY") !== -1, "risk details should show the linked activity");
     // Redesign Gate 10: retrofitted onto .attention-list/.attention-item — the whole

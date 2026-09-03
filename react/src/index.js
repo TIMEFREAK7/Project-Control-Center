@@ -33,6 +33,7 @@ import DecisionRegisterPage from "./pages/DecisionRegister.jsx";
 import DashboardPage from "./pages/Dashboard.jsx";
 import ProjectWorkspacePage from "./pages/ProjectWorkspace.jsx";
 import ReportsPage from "./pages/Reports.jsx";
+import RisksPage from "./pages/Risks.jsx";
 
 window.PCC = window.PCC || {};
 window.PCC.React = React;
@@ -61,3 +62,4 @@ window.PCC.reactPages.decisionRegister = DecisionRegisterPage;
 window.PCC.reactPages.dashboard = DashboardPage;
 window.PCC.reactPages.projectWorkspace = ProjectWorkspacePage;
 window.PCC.reactPages.reports = ReportsPage;
+window.PCC.reactPages.risks = RisksPage;
