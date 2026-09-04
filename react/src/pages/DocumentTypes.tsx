@@ -25,9 +25,20 @@ import {
   updateDocumentType,
   toggleDocumentTypeActive,
   deleteDocumentType,
-} from "../services/documentTypesService.js";
+} from "../services/documentTypesService";
+import type { PCCDocumentType } from "../types/pcc";
 
-function DocumentTypeForm({ isNew, documentType, onCancel, onSaved }) {
+function DocumentTypeForm({
+  isNew,
+  documentType,
+  onCancel,
+  onSaved,
+}: {
+  isNew: boolean;
+  documentType: PCCDocumentType;
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
   const [name, setName] = useState(documentType.name || "");
   const [code, setCode] = useState(documentType.code || "");
   const [category, setCategory] = useState(documentType.category || "");
@@ -35,7 +46,7 @@ function DocumentTypeForm({ isNew, documentType, onCancel, onSaved }) {
   const [description, setDescription] = useState(documentType.description || "");
   const [showError, setShowError] = useState(false);
 
-  function handleSubmit(e) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const trimmedName = name.trim();
     if (!trimmedName) {
@@ -113,7 +124,17 @@ function DocumentTypeForm({ isNew, documentType, onCancel, onSaved }) {
   );
 }
 
-function DocumentTypeRow({ t, onEdit, onToggleActive, onDelete }) {
+function DocumentTypeRow({
+  t,
+  onEdit,
+  onToggleActive,
+  onDelete,
+}: {
+  t: PCCDocumentType;
+  onEdit: () => void;
+  onToggleActive: () => void;
+  onDelete: () => void;
+}) {
   return (
     <div
       className="detail-card"
@@ -140,7 +161,7 @@ function DocumentTypeRow({ t, onEdit, onToggleActive, onDelete }) {
         <br />
         <span className="text-secondary" style={{ fontSize: 12 }}>
           {t.category ? t.category + " · " : ""}
-          {CRITICALITY_LABELS[t.default_criticality] || t.default_criticality}
+          {CRITICALITY_LABELS[t.default_criticality || ""] || t.default_criticality}
           {t.active ? "" : " · INACTIVE"}
         </span>
         {t.description ? (
@@ -169,7 +190,7 @@ function DocumentTypeRow({ t, onEdit, onToggleActive, onDelete }) {
 
 export default function DocumentTypesPage() {
   const [data, setData] = useState(() => getData());
-  const [editingTypeId, setEditingTypeId] = useState(null); // a document_type id, "new", or null
+  const [editingTypeId, setEditingTypeId] = useState<string | null>(null); // a document_type id, "new", or null
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [showInactive, setShowInactive] = useState(false);
@@ -190,7 +211,7 @@ export default function DocumentTypesPage() {
     setEditingTypeId("new");
   }
 
-  function handleEdit(id) {
+  function handleEdit(id: string) {
     setEditingTypeId(id);
   }
 
@@ -203,13 +224,13 @@ export default function DocumentTypesPage() {
     refresh();
   }
 
-  function handleToggleActive(t) {
+  function handleToggleActive(t: PCCDocumentType) {
     toggleDocumentTypeActive(t.id);
     window.PCC.notify(t.active ? "Document type deactivated." : "Document type reactivated.", "info");
     refresh();
   }
 
-  function handleDelete(t) {
+  function handleDelete(t: PCCDocumentType) {
     if (!window.confirm('Delete document type "' + t.name + '"? This can\'t be undone.')) return;
     deleteDocumentType(t.id);
     window.PCC.notify("Document type deleted.", "success");

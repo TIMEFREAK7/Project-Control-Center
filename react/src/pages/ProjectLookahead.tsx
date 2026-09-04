@@ -30,9 +30,11 @@ import {
   getProjectContext,
   setProjectContext,
   collectItems,
-} from "../services/projectLookaheadService.js";
+} from "../services/projectLookaheadService";
+import type { Item } from "../services/projectLookaheadService";
+import type { PCCProject } from "../types/pcc";
 
-function ItemRow({ item, project }) {
+function ItemRow({ item, project }: { item: Item; project: PCCProject | undefined }) {
   const meta =
     item.date +
     " · " +
@@ -53,12 +55,12 @@ function ItemRow({ item, project }) {
 }
 
 export default function ProjectLookaheadPage() {
-  const [windowDays, setWindowDays] = useState(DEFAULT_WINDOW_DAYS);
+  const [windowDays, setWindowDays] = useState<number>(DEFAULT_WINDOW_DAYS);
 
   // Daily-Use Audit Phase 2: seeded once per mount from the shared Global Project Context
   // (Redesign Gate 6) — see the file header comment above for why a lazy initializer here
   // is the faithful equivalent of the vanilla page's per-render "live sync" check.
-  const [projectFilter, setProjectFilterState] = useState(() => {
+  const [projectFilter, setProjectFilterState] = useState<string>(() => {
     const seedSnapshot = getSnapshot();
     const ctxProjectId = getProjectContext();
     return ctxProjectId && seedSnapshot.allActiveProjects.some((p) => p.id === ctxProjectId) ? ctxProjectId : "";
@@ -72,7 +74,7 @@ export default function ProjectLookaheadPage() {
   const validProjectFilter = projectFilter && allActiveProjects.some((p) => p.id === projectFilter) ? projectFilter : "";
 
   const activeProjects = validProjectFilter ? allActiveProjects.filter((p) => p.id === validProjectFilter) : allActiveProjects;
-  const activeProjectIds = {};
+  const activeProjectIds: { [projectId: string]: boolean } = {};
   activeProjects.forEach((p) => {
     activeProjectIds[p.id] = true;
   });
@@ -80,7 +82,7 @@ export default function ProjectLookaheadPage() {
   const items = collectItems(data, activeProjectIds, windowDays);
   items.sort((a, b) => a.date.localeCompare(b.date) || a.kind.localeCompare(b.kind) || a.title.localeCompare(b.title));
 
-  function handleProjectFilterChange(e) {
+  function handleProjectFilterChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const value = e.target.value;
     setProjectFilterState(value);
     setProjectContext(value);

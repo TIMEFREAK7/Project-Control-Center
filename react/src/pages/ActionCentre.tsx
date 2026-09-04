@@ -28,9 +28,11 @@ import {
   upcomingWindowDays,
   collectItems,
   buildBuckets,
-} from "../services/actionCentreService.js";
+} from "../services/actionCentreService";
+import type { Item, Bucket, BucketDef } from "../services/actionCentreService";
+import type { PCCProject, PCCStoreData } from "../types/pcc";
 
-function KpiCard({ label, value, colorVar }) {
+function KpiCard({ label, value, colorVar }: { label: string; value: number; colorVar: string | null }) {
   return (
     <div className="kpi-card">
       <span className="kpi-card__label">{label}</span>
@@ -46,12 +48,20 @@ function KpiCard({ label, value, colorVar }) {
 // panels, Dashboard's Management Attention panel) — same "whole row is the click target"
 // behavior, only when a linked project still exists (a deleted project's items stay
 // listed but non-clickable, same as before this gate).
-function ItemRow({ item, badgeClass, projectsById }) {
+function ItemRow({
+  item,
+  badgeClass,
+  projectsById,
+}: {
+  item: Item;
+  badgeClass: string;
+  projectsById: { [id: string]: PCCProject };
+}) {
   const project = projectsById[item.projectId];
   const clickable = !!(project && item.view);
 
   return (
-    <div className={"attention-item" + (clickable ? " attention-item--clickable" : "")} onClick={clickable ? item.view : undefined}>
+    <div className={"attention-item" + (clickable ? " attention-item--clickable" : "")} onClick={clickable ? item.view! : undefined}>
       <span className={"attention-item__icon attention-item__icon--" + badgeClass} />
       <div className="attention-item__body">
         <div className="attention-item__text">
@@ -68,7 +78,15 @@ function ItemRow({ item, badgeClass, projectsById }) {
   );
 }
 
-function BucketPanel({ bucketDef, items, projectsById }) {
+function BucketPanel({
+  bucketDef,
+  items,
+  projectsById,
+}: {
+  bucketDef: BucketDef;
+  items: Item[];
+  projectsById: { [id: string]: PCCProject };
+}) {
   return (
     <div className="panel" style={{ marginBottom: 16 }}>
       <h3 style={{ marginBottom: 8 }}>
@@ -91,11 +109,11 @@ function BucketPanel({ bucketDef, items, projectsById }) {
 
 export default function ActionCentrePage() {
   const [projectFilter, setProjectFilter] = useState("");
-  const [lastSyncedContextId, setLastSyncedContextId] = useState(undefined);
+  const [lastSyncedContextId, setLastSyncedContextId] = useState<string | undefined>(undefined);
 
   const data = getData();
   const allActiveProjects = data.projects.filter((p) => !p.archived);
-  const projectsById = {};
+  const projectsById: { [id: string]: PCCProject } = {};
   allActiveProjects.forEach((p) => {
     projectsById[p.id] = p;
   });
@@ -118,14 +136,14 @@ export default function ActionCentrePage() {
   }
 
   const activeProjects = effectiveFilter ? allActiveProjects.filter((p) => p.id === effectiveFilter) : allActiveProjects;
-  const activeProjectIds = {};
+  const activeProjectIds: { [id: string]: boolean } = {};
   activeProjects.forEach((p) => {
     activeProjectIds[p.id] = true;
   });
 
   const items = collectItems(data, activeProjectIds);
 
-  function handleProjectFilterChange(e) {
+  function handleProjectFilterChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const value = e.target.value;
     setProjectFilter(value);
     setLastSyncedContextId(value);
@@ -178,19 +196,27 @@ export default function ActionCentrePage() {
   );
 }
 
-function ActionCentreResults({ data, items, projectsById }) {
+function ActionCentreResults({
+  data,
+  items,
+  projectsById,
+}: {
+  data: PCCStoreData;
+  items: Item[];
+  projectsById: { [id: string]: PCCProject };
+}) {
   const windowDays = upcomingWindowDays(data);
   const buckets = buildBuckets(windowDays);
 
-  const byBucket = {};
+  const byBucket: { [key in Bucket]?: Item[] } = {};
   buckets.forEach((b) => {
     byBucket[b.key] = [];
   });
   items.forEach((i) => {
-    byBucket[i.bucket].push(i);
+    byBucket[i.bucket]!.push(i);
   });
-  Object.keys(byBucket).forEach((key) => {
-    byBucket[key].sort((a, b) => {
+  (Object.keys(byBucket) as Bucket[]).forEach((key) => {
+    byBucket[key]!.sort((a, b) => {
       if (a.dueDate && b.dueDate) return a.dueDate.localeCompare(b.dueDate);
       if (a.dueDate) return -1;
       if (b.dueDate) return 1;
@@ -205,14 +231,14 @@ function ActionCentreResults({ data, items, projectsById }) {
   return (
     <>
       <div className="kpi-grid">
-        <KpiCard label="OVERDUE" value={byBucket.overdue.length} colorVar={byBucket.overdue.length > 0 ? "--status-critical" : null} />
-        <KpiCard label="DUE TODAY" value={byBucket.today.length} colorVar={byBucket.today.length > 0 ? "--status-at-risk" : null} />
-        <KpiCard label="DUE THIS WEEK" value={byBucket.week.length} colorVar={byBucket.week.length > 0 ? "--status-at-risk" : null} />
-        <KpiCard label="NO DUE DATE" value={byBucket.waiting.length} colorVar={null} />
+        <KpiCard label="OVERDUE" value={byBucket.overdue!.length} colorVar={byBucket.overdue!.length > 0 ? "--status-critical" : null} />
+        <KpiCard label="DUE TODAY" value={byBucket.today!.length} colorVar={byBucket.today!.length > 0 ? "--status-at-risk" : null} />
+        <KpiCard label="DUE THIS WEEK" value={byBucket.week!.length} colorVar={byBucket.week!.length > 0 ? "--status-at-risk" : null} />
+        <KpiCard label="NO DUE DATE" value={byBucket.waiting!.length} colorVar={null} />
       </div>
 
       {buckets.map((b) => (
-        <BucketPanel key={b.key} bucketDef={b} items={byBucket[b.key]} projectsById={projectsById} />
+        <BucketPanel key={b.key} bucketDef={b} items={byBucket[b.key]!} projectsById={projectsById} />
       ))}
     </>
   );

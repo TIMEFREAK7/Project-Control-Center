@@ -16,14 +16,26 @@
  * window.PCC.portfolio.viewProject) — wrapped here per item kind, same calls the vanilla
  * page made, so the component never reaches into window.PCC.* itself.
  */
+import type { PCCStoreData, PCCSchedule, PCCDelayRecord, PCCProject } from "../types/pcc";
+
+export interface Item {
+  kind: string;
+  title: string;
+  projectId: string;
+  owner: string;
+  date: string;
+  badgeClass: string;
+  openDelayCount?: number;
+  view: () => void;
+}
 
 export var WINDOW_OPTIONS = [7, 14, 30, 60];
 export var DEFAULT_WINDOW_DAYS = 7;
 
-function todayIso() {
+function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
-function addDaysIso(isoDateStr, days) {
+function addDaysIso(isoDateStr: string, days: number): string {
   var d = new Date(isoDateStr + "T00:00:00Z");
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
@@ -33,7 +45,7 @@ function addDaysIso(isoDateStr, days) {
 // dashboard.js/documentControlDashboard.js/executiveCenter.js/actionCentre.js's own
 // copies — duplicated here per this app's per-module-helpers convention (unchanged from
 // the vanilla page).
-function computeRequirementStatus(data, projectId, documentTypeId, plannedDate) {
+function computeRequirementStatus(data: PCCStoreData, projectId: string, documentTypeId: string, plannedDate: string | undefined): "available" | "overdue" | "required" {
   var available = data.documents.some(function (d) {
     return d.project_id === projectId && d.document_type_id === documentTypeId && !d.trashed_at;
   });
@@ -45,7 +57,7 @@ function computeRequirementStatus(data, projectId, documentTypeId, plannedDate) 
 // Same primary-schedule selection as executiveCenter.js's own pickPrimarySchedule() —
 // prefer an active schedule, highest revision number, most recently updated as the
 // tiebreak. Unchanged from the vanilla page.
-function pickPrimarySchedule(schedules) {
+function pickPrimarySchedule(schedules: PCCSchedule[]): PCCSchedule | null {
   if (schedules.length === 0) return null;
   var active = schedules.filter(function (s) {
     return s.status === "active";
@@ -53,20 +65,20 @@ function pickPrimarySchedule(schedules) {
   var pool = active.length ? active : schedules;
   return pool.slice().sort(function (a, b) {
     if (a.revision_number !== b.revision_number) return b.revision_number - a.revision_number;
-    return new Date(b.updated_at) - new Date(a.updated_at);
+    return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
   })[0];
 }
 
 // Planning & Scheduling-Centric Delay Management, Gate G: activityId -> count of Delay
 // Records still being tracked (status not recovered/closed) linked via
 // delay_activity_links. Unchanged from the vanilla page.
-function activeDelayCountsByActivity(data) {
-  var delayRecordsById = {};
+function activeDelayCountsByActivity(data: PCCStoreData): { [activityId: string]: number } {
+  var delayRecordsById: { [id: string]: PCCDelayRecord } = {};
   data.delay_records.forEach(function (r) {
     if (r.status === "recovered" || r.status === "closed") return;
     delayRecordsById[r.id] = r;
   });
-  var counts = {};
+  var counts: { [activityId: string]: number } = {};
   data.delay_activity_links.forEach(function (link) {
     if (!delayRecordsById[link.delay_id]) return;
     counts[link.activity_id] = (counts[link.activity_id] || 0) + 1;
@@ -77,12 +89,12 @@ function activeDelayCountsByActivity(data) {
 /** Reads the current store snapshot plus the active (non-archived) project list/lookup —
  * synchronous, since store.get() is synchronous/pure, same as storageService's
  * getStorageSnapshot(). */
-export function getSnapshot() {
+export function getSnapshot(): { data: PCCStoreData; allActiveProjects: PCCProject[]; projectsById: { [id: string]: PCCProject } } {
   var data = window.PCC.store.get();
   var allActiveProjects = data.projects.filter(function (p) {
     return !p.archived;
   });
-  var projectsById = {};
+  var projectsById: { [id: string]: PCCProject } = {};
   allActiveProjects.forEach(function (p) {
     projectsById[p.id] = p;
   });
@@ -92,28 +104,28 @@ export function getSnapshot() {
 /** Global Project Context (Redesign Gate 6) read/write — thin wrapper around
  * window.PCC.projectContext, same as every other page's own local filter select syncs
  * with it. */
-export function getProjectContext() {
+export function getProjectContext(): string {
   return window.PCC.projectContext.get();
 }
-export function setProjectContext(projectId) {
+export function setProjectContext(projectId: string): void {
   window.PCC.projectContext.set(projectId);
 }
 
 // Navigation side effects, one per item kind — exactly the window.PCC.* calls the vanilla
 // page made from each item's own `view` closure.
-function navigateToActivity(projectId, scheduleId, activityId) {
+function navigateToActivity(projectId: string, scheduleId: string, activityId: string): void {
   window.PCC.schedule.viewActivity(projectId, scheduleId, activityId);
   window.PCC.router.go("schedule");
 }
-function navigateToMeeting(meetingId) {
+function navigateToMeeting(meetingId: string): void {
   window.PCC.meetings.expandMeeting(meetingId);
   window.PCC.router.go("meetings");
 }
-function navigateToRfi(rfiId) {
+function navigateToRfi(rfiId: string): void {
   window.PCC.rfis.expandRfi(rfiId);
   window.PCC.router.go("rfis");
 }
-function navigateToProjectDetail(projectId) {
+function navigateToProjectDetail(projectId: string): void {
   window.PCC.portfolio.viewProject(projectId);
   window.PCC.router.go("portfolio");
 }
@@ -125,20 +137,21 @@ function navigateToProjectDetail(projectId) {
  * window.PCC.* directly. Pure given (data, activeProjectIds, windowDays); the caller is
  * responsible for sorting the result (the vanilla page sorted in render(), not here, and
  * the component keeps that same split). */
-export function collectItems(data, activeProjectIds, windowDays) {
+export function collectItems(data: PCCStoreData, activeProjectIds: { [projectId: string]: boolean }, windowDays: number): Item[] {
   var today = todayIso();
   var windowEnd = addDaysIso(today, windowDays);
-  var items = [];
+  var items: Item[] = [];
   var delayCounts = activeDelayCountsByActivity(data);
 
-  var schedulesByProject = {};
+  var schedulesByProject: { [projectId: string]: PCCSchedule[] } = {};
   data.schedules.forEach(function (s) {
     if (!activeProjectIds[s.project_id]) return;
     (schedulesByProject[s.project_id] = schedulesByProject[s.project_id] || []).push(s);
   });
   Object.keys(schedulesByProject).forEach(function (projectId) {
-    var schedule = pickPrimarySchedule(schedulesByProject[projectId]);
-    if (!schedule) return;
+    var pickedSchedule = pickPrimarySchedule(schedulesByProject[projectId]);
+    if (!pickedSchedule) return;
+    var schedule: PCCSchedule = pickedSchedule;
     var thresholdDays = schedule.near_critical_threshold_days || 5;
     data.activities.forEach(function (a) {
       if (a.schedule_id !== schedule.id) return;
@@ -222,11 +235,11 @@ export function collectItems(data, activeProjectIds, windowDays) {
     });
   });
 
-  var typesById = {};
+  var typesById: { [id: string]: (typeof data.document_types)[number] } = {};
   data.document_types.forEach(function (t) {
     typesById[t.id] = t;
   });
-  var vendorsById = {};
+  var vendorsById: { [id: string]: (typeof data.vendors)[number] } = {};
   data.vendors.forEach(function (v) {
     vendorsById[v.id] = v;
   });

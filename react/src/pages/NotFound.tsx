@@ -6,7 +6,7 @@
  */
 import React from "react";
 
-export default function ComingSoonPage({ title, note }) {
+export default function ComingSoonPage({ title, note }: { title: string; note: string }) {
   return (
     <div>
       <h2 style={{ marginBottom: 20 }}>{title}</h2>
