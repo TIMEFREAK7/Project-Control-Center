@@ -7,83 +7,92 @@
  * filter/navigation, exactly the React -> Service -> (data) chain every other migrated
  * page uses. Purely computed at render time — writes nothing back to the store.
  */
+import type { PCCStoreData, PCCProject } from "../types/pcc";
+
+export interface Item {
+  kind: string;
+  title: string;
+  projectId: string | null;
+  extra: string;
+  view: () => void;
+}
 
 export var WEEK_WINDOW_DAYS = 7;
 export var RECENT_LIMIT = 5;
 
-export var WAITING_ON_LABELS = { vendor: "Vendor", client: "Client", consultant: "Consultant", management: "Management" };
+export var WAITING_ON_LABELS: { [party: string]: string } = { vendor: "Vendor", client: "Client", consultant: "Consultant", management: "Management" };
 
-function todayIso() {
+function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
-function addDaysIso(isoDateStr, days) {
+function addDaysIso(isoDateStr: string, days: number): string {
   var d = new Date(isoDateStr + "T00:00:00Z");
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
-export function fmtDate(d) {
+export function fmtDate(d: string | undefined): string {
   return d ? new Date(d).toLocaleDateString() : "";
 }
 
-function navigateToMeeting(id) {
+function navigateToMeeting(id: string): () => void {
   return function () {
     window.PCC.meetings.expandMeeting(id);
     window.PCC.router.go("meetings");
   };
 }
-function navigateToRfi(id) {
+function navigateToRfi(id: string): () => void {
   return function () {
     window.PCC.rfis.expandRfi(id);
     window.PCC.router.go("rfis");
   };
 }
-function navigateToChangeOrder(id) {
+function navigateToChangeOrder(id: string): () => void {
   return function () {
     window.PCC.changeOrders.expandChangeOrder(id);
     window.PCC.router.go("changeOrders");
   };
 }
-function navigateToDecision(id) {
+function navigateToDecision(id: string): () => void {
   return function () {
     window.PCC.decisionRegister.expandDecision(id);
     window.PCC.router.go("decisionRegister");
   };
 }
-function navigateToActivity(projectId, scheduleId, activityId) {
+function navigateToActivity(projectId: string, scheduleId: string, activityId: string): () => void {
   return function () {
     window.PCC.schedule.viewActivity(projectId, scheduleId, activityId);
     window.PCC.router.go("schedule");
   };
 }
-function navigateToVendor(id) {
+function navigateToVendor(id: string): () => void {
   return function () {
     window.PCC.vendors.openProfile(id);
     window.PCC.router.go("vendors");
   };
 }
-function navigateToReview(projectId) {
+function navigateToReview(projectId: string): () => void {
   return function () {
     window.PCC.executiveCenter.viewProject(projectId, "weeklyReviews");
     window.PCC.router.go("executiveCenter");
   };
 }
-function navigateToProjectExecutiveCenter(projectId) {
+function navigateToProjectExecutiveCenter(projectId: string): () => void {
   return function () {
     window.PCC.executiveCenter.viewProject(projectId);
     window.PCC.router.go("executiveCenter");
   };
 }
-function navigateToRisk(id) {
+function navigateToRisk(id: string): () => void {
   return function () {
     window.PCC.risks.expandRisk(id);
     window.PCC.router.go("risks");
   };
 }
 
-export function getProjectContext() {
+export function getProjectContext(): string {
   return window.PCC.projectContext.get();
 }
-export function setProjectContext(projectId) {
+export function setProjectContext(projectId: string): void {
   window.PCC.projectContext.set(projectId);
 }
 
@@ -91,9 +100,9 @@ export function setProjectContext(projectId) {
 
 /** Same definition Action Centre's own OVERDUE bucket uses (Meeting Actions + RFI/TQ past
  * due) — duplicated here per this app's per-module-helpers convention. */
-export function collectOverdueActions(data, activeProjectIds) {
+export function collectOverdueActions(data: PCCStoreData, activeProjectIds: { [projectId: string]: boolean }): Item[] {
   var today = todayIso();
-  var items = [];
+  var items: Item[] = [];
   data.meetings.forEach(function (m) {
     if (!activeProjectIds[m.project_id]) return;
     (m.actions || []).forEach(function (a) {
@@ -112,7 +121,7 @@ export function collectOverdueActions(data, activeProjectIds) {
   return items;
 }
 
-export function collectTodaysMeetings(data, activeProjectIds) {
+export function collectTodaysMeetings(data: PCCStoreData, activeProjectIds: { [projectId: string]: boolean }): Item[] {
   var today = todayIso();
   return data.meetings
     .filter(function (m) {
@@ -123,8 +132,8 @@ export function collectTodaysMeetings(data, activeProjectIds) {
     });
 }
 
-export function collectApprovals(data, activeProjectIds) {
-  var items = [];
+export function collectApprovals(data: PCCStoreData, activeProjectIds: { [projectId: string]: boolean }): Item[] {
+  var items: Item[] = [];
   data.change_orders.forEach(function (co) {
     if (!activeProjectIds[co.project_id]) return;
     if (co.status !== "pending") return;
@@ -142,9 +151,9 @@ export function collectApprovals(data, activeProjectIds) {
  * status/actuals update" when it's still not_started after its planned_start has passed,
  * or still in_progress after its planned_finish has passed. Uses raw planned dates
  * directly, not the CPM engine's computed dates. */
-export function collectActivitiesToUpdate(data, activeProjectIds) {
+export function collectActivitiesToUpdate(data: PCCStoreData, activeProjectIds: { [projectId: string]: boolean }): Item[] {
   var today = todayIso();
-  var items = [];
+  var items: Item[] = [];
   data.activities.forEach(function (a) {
     if (!activeProjectIds[a.project_id]) return;
     if (a.activity_type !== "task" && a.activity_type !== "milestone") return;
@@ -164,15 +173,15 @@ export function collectActivitiesToUpdate(data, activeProjectIds) {
 // ---- THIS WEEK --------------------------------------------------------------------
 
 /** Deliberately excludes today — the window is tomorrow through +7 days. */
-export function collectWeekMeetings(data, activeProjectIds) {
+export function collectWeekMeetings(data: PCCStoreData, activeProjectIds: { [projectId: string]: boolean }): Item[] {
   var today = todayIso();
   var end = addDaysIso(today, WEEK_WINDOW_DAYS);
-  var items = data.meetings
+  var items: Item[] = data.meetings
     .filter(function (m) {
-      return activeProjectIds[m.project_id] && m.meeting_date > today && m.meeting_date <= end;
+      return activeProjectIds[m.project_id] && (m.meeting_date || "") > today && (m.meeting_date || "") <= end;
     })
     .map(function (m) {
-      return { kind: "Meeting", title: m.title || "(untitled meeting)", projectId: m.project_id, extra: m.meeting_date, view: navigateToMeeting(m.id) };
+      return { kind: "Meeting", title: m.title || "(untitled meeting)", projectId: m.project_id, extra: m.meeting_date || "", view: navigateToMeeting(m.id) };
     });
   items.sort(function (a, b) {
     return a.extra.localeCompare(b.extra);
@@ -182,10 +191,10 @@ export function collectWeekMeetings(data, activeProjectIds) {
 
 /** Same activity_type==="milestone"/early_start-precedence/exclude-complete convention
  * Project Lookahead's own milestone rows already use. Window is today through +7 days. */
-export function collectWeekMilestones(data, activeProjectIds) {
+export function collectWeekMilestones(data: PCCStoreData, activeProjectIds: { [projectId: string]: boolean }): Item[] {
   var today = todayIso();
   var end = addDaysIso(today, WEEK_WINDOW_DAYS);
-  var items = [];
+  var items: Item[] = [];
   data.activities.forEach(function (a) {
     if (!activeProjectIds[a.project_id]) return;
     if (a.activity_type !== "milestone") return;
@@ -201,10 +210,10 @@ export function collectWeekMilestones(data, activeProjectIds) {
 }
 
 /** A single soonest-first list, overdue and due-this-week together. */
-export function collectVendorFollowups(data) {
+export function collectVendorFollowups(data: PCCStoreData): Item[] {
   var today = todayIso();
   var end = addDaysIso(today, WEEK_WINDOW_DAYS);
-  var items = [];
+  var items: Item[] = [];
   data.vendors.forEach(function (v) {
     if (!v.next_follow_up_date || v.next_follow_up_date > end) return;
     items.push({ kind: v.next_follow_up_date < today ? "Overdue" : "Vendor", title: v.vendor_name || "(unnamed vendor)", projectId: null, extra: "follow up by " + v.next_follow_up_date, view: navigateToVendor(v.id) });
@@ -218,9 +227,9 @@ export function collectVendorFollowups(data) {
 /** Cadence-based, per project.review_cadence_days (null = not configured, excluded
  * entirely rather than guessed). Next due = last review's review_date + cadence, or the
  * project's own start_date/created_at if it's never been reviewed yet. */
-function computeNextReviewDue(project, weeklyReviews) {
+function computeNextReviewDue(project: PCCProject, weeklyReviews: PCCStoreData["weekly_reviews"]): string | null {
   if (project.review_cadence_days == null) return null;
-  var lastDate = null;
+  var lastDate: string | null = null;
   weeklyReviews.forEach(function (r) {
     if (r.project_id !== project.id) return;
     if (!lastDate || r.review_date > lastDate) lastDate = r.review_date;
@@ -230,10 +239,10 @@ function computeNextReviewDue(project, weeklyReviews) {
   return addDaysIso(base, project.review_cadence_days);
 }
 
-export function collectReviewsDue(data, activeProjects) {
+export function collectReviewsDue(data: PCCStoreData, activeProjects: PCCProject[]): Item[] {
   var today = todayIso();
   var end = addDaysIso(today, WEEK_WINDOW_DAYS);
-  var items = [];
+  var items: Item[] = [];
   activeProjects.forEach(function (p) {
     var due = computeNextReviewDue(p, data.weekly_reviews);
     if (!due || due > end) return;
@@ -247,9 +256,9 @@ export function collectReviewsDue(data, activeProjects) {
 
 // ---- WAITING FOR --------------------------------------------------------------------
 
-export function collectWaitingFor(data, activeProjectIds) {
-  var byParty = { vendor: [], client: [], consultant: [], management: [] };
-  function push(party, item) {
+export function collectWaitingFor(data: PCCStoreData, activeProjectIds: { [projectId: string]: boolean }): { [party: string]: Item[] } {
+  var byParty: { [party: string]: Item[] } = { vendor: [], client: [], consultant: [], management: [] };
+  function push(party: string, item: Item) {
     if (byParty[party]) byParty[party].push(item);
   }
 
@@ -270,16 +279,28 @@ export function collectWaitingFor(data, activeProjectIds) {
 
 // ---- RECENTLY UPDATED ---------------------------------------------------------------
 
-function topRecentlyUpdated(records) {
+function topRecentlyUpdated<T extends { updated_at?: string }>(records: T[]): T[] {
   return records
     .slice()
     .sort(function (a, b) {
-      return new Date(b.updated_at) - new Date(a.updated_at);
+      return new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime();
     })
     .slice(0, RECENT_LIMIT);
 }
 
-export function collectRecentlyUpdated(data, activeProjectIds, activeProjects) {
+export interface RecentlyUpdated {
+  projects: Item[];
+  activities: Item[];
+  rfis: Item[];
+  risks: Item[];
+  meetings: Item[];
+}
+
+export function collectRecentlyUpdated(
+  data: PCCStoreData,
+  activeProjectIds: { [projectId: string]: boolean },
+  activeProjects: PCCProject[]
+): RecentlyUpdated {
   return {
     projects: topRecentlyUpdated(activeProjects).map(function (p) {
       return { kind: "Project", title: p.name || "(unnamed project)", projectId: p.id, extra: "updated " + fmtDate(p.updated_at), view: navigateToProjectExecutiveCenter(p.id) };

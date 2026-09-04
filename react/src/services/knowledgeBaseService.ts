@@ -7,8 +7,16 @@
  * window.PCC.store.get() returns the SAME mutable object every call, which would
  * otherwise make React silently skip the re-render (see CLAUDE.md's React migration notes).
  */
+import type { PCCStoreData, PCCProject, PCCKnowledgeBaseArticle } from "../types/pcc";
 
-export var CATEGORY_LABELS = {
+export interface PendingFile {
+  name: string;
+  size: number;
+  type: string;
+  dataUri: string;
+}
+
+export var CATEGORY_LABELS: { [category: string]: string } = {
   standard_procedure: "Standard Procedure",
   checklist_template: "Checklist / Template",
   reference_material: "Reference Material",
@@ -17,21 +25,21 @@ export var CATEGORY_LABELS = {
   other: "Other",
 };
 
-export function getData() {
+export function getData(): PCCStoreData {
   return Object.assign({}, window.PCC.store.get());
 }
 
-export function categoryOptions() {
+export function categoryOptions(): string[] {
   return window.PCC.store.KNOWLEDGE_BASE_CATEGORIES;
 }
 
-export function fmtSize(bytes) {
+export function fmtSize(bytes: number | undefined): string {
   if (!bytes) return "";
   if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + " KB";
   return (bytes / (1024 * 1024)).toFixed(1) + " MB";
 }
 
-export function projectName(projects, projectId) {
+export function projectName(projects: PCCProject[], projectId: string | undefined): string {
   if (!projectId) return "General (no project)";
   var p = projects.find(function (proj) {
     return proj.id === projectId;
@@ -39,19 +47,19 @@ export function projectName(projects, projectId) {
   return p ? p.name || "(unnamed project)" : "General (no project)";
 }
 
-export function newArticle(prefill) {
+export function newArticle(prefill?: Partial<PCCKnowledgeBaseArticle>): PCCKnowledgeBaseArticle {
   return window.PCC.store.newKnowledgeBaseArticle(prefill || {});
 }
 
 /** Reads a File via FileReader, resolving { name, size, type, dataUri }. */
-export function readFile(file) {
+export function readFile(file: File): Promise<PendingFile> {
   return new Promise(function (resolve, reject) {
     var reader = new FileReader();
     reader.onerror = function () {
       reject(new Error("Could not read that file."));
     };
     reader.onload = function () {
-      resolve({ name: file.name, size: file.size, type: file.type || "application/octet-stream", dataUri: reader.result });
+      resolve({ name: file.name, size: file.size, type: file.type || "application/octet-stream", dataUri: reader.result as string });
     };
     reader.readAsDataURL(file);
   });
@@ -59,7 +67,7 @@ export function readFile(file) {
 
 /** Generic "open any stored file" — same Blob + object URL pattern documents.js's
  * openStoredFile() uses. */
-export function openArticleFile(article) {
+export function openArticleFile(article: PCCKnowledgeBaseArticle): void {
   window.PCC.blobStore
     .getBlob(article.id)
     .then(function (fileData) {
@@ -82,7 +90,7 @@ export function openArticleFile(article) {
         URL.revokeObjectURL(url);
       }, 30000);
     })
-    .catch(function (e) {
+    .catch(function (e: Error) {
       window.PCC.notify("Could not open this file: " + e.message, "error");
     });
 }
@@ -94,11 +102,18 @@ export function openArticleFile(article) {
  * BEFORE this is called (so the SAME id is used both as the blobStore key here and as
  * the record pushed to the store — never two independently-generated ids for one
  * article, same invariant the vanilla page's own comment on this exact point kept). */
-export function saveArticle(isNew, articleId, values, pendingFile, removeExistingFile, newRecord) {
+export function saveArticle(
+  isNew: boolean,
+  articleId: string,
+  values: Partial<PCCKnowledgeBaseArticle>,
+  pendingFile: PendingFile | null,
+  removeExistingFile: boolean,
+  newRecord: PCCKnowledgeBaseArticle | null
+): Promise<void> {
   function commit() {
     window.PCC.store.update(function (data) {
       if (isNew) {
-        var record = newRecord;
+        var record = newRecord!;
         if (pendingFile) {
           record.filename = pendingFile.name;
           record.file_size = pendingFile.size;
@@ -137,7 +152,7 @@ export function saveArticle(isNew, articleId, values, pendingFile, removeExistin
   return Promise.resolve();
 }
 
-export function deleteArticle(id) {
+export function deleteArticle(id: string): Promise<void> {
   return window.PCC.blobStore.deleteBlob(id).finally(function () {
     window.PCC.store.update(function (data) {
       data.knowledge_base_articles = data.knowledge_base_articles.filter(function (item) {
@@ -147,13 +162,13 @@ export function deleteArticle(id) {
   });
 }
 
-export function getProjectContext() {
+export function getProjectContext(): string {
   return window.PCC.projectContext.get();
 }
-export function setProjectContext(projectId) {
+export function setProjectContext(projectId: string): void {
   window.PCC.projectContext.set(projectId);
 }
 
-export function notify(message, level) {
+export function notify(message: string, level: string): void {
   window.PCC.notify(message, level);
 }

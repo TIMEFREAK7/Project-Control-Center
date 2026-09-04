@@ -23,9 +23,19 @@ import {
   collectWaitingFor,
   collectRecentlyUpdated,
   WEEK_WINDOW_DAYS,
-} from "../services/myWorkService.js";
+} from "../services/myWorkService";
+import type { Item } from "../services/myWorkService";
+import type { PCCProject } from "../types/pcc";
 
-function ItemRow({ item, badgeClass, projectsById }) {
+function ItemRow({
+  item,
+  badgeClass,
+  projectsById,
+}: {
+  item: Item;
+  badgeClass: string;
+  projectsById: { [id: string]: PCCProject };
+}) {
   const project = item.projectId ? projectsById[item.projectId] : null;
   return (
     <div className="attention-item attention-item--clickable" onClick={item.view}>
@@ -40,7 +50,19 @@ function ItemRow({ item, badgeClass, projectsById }) {
   );
 }
 
-function ListPanel({ heading, items, emptyText, projectsById, badgeClass }) {
+function ListPanel({
+  heading,
+  items,
+  emptyText,
+  projectsById,
+  badgeClass,
+}: {
+  heading: string;
+  items: Item[];
+  emptyText: string;
+  projectsById: { [id: string]: PCCProject };
+  badgeClass: string;
+}) {
   return (
     <div className="panel">
       <h3 style={{ marginBottom: 8 }}>
@@ -61,7 +83,7 @@ function ListPanel({ heading, items, emptyText, projectsById, badgeClass }) {
   );
 }
 
-function SectionHeading({ children }) {
+function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
     <p className="text-secondary" style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.04em", margin: "24px 0 10px" }}>
       {children}
@@ -69,7 +91,7 @@ function SectionHeading({ children }) {
   );
 }
 
-function Grid({ children }) {
+function Grid({ children }: { children: React.ReactNode }) {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>{children}</div>
   );
@@ -77,11 +99,11 @@ function Grid({ children }) {
 
 export default function MyWorkPage() {
   const [projectFilter, setProjectFilterState] = useState("");
-  const [lastSyncedContextId, setLastSyncedContextId] = useState(undefined);
+  const [lastSyncedContextId, setLastSyncedContextId] = useState<string | undefined>(undefined);
 
   const data = window.PCC.store.get();
   const allActiveProjects = data.projects.filter((p) => !p.archived);
-  const projectsById = {};
+  const projectsById: { [id: string]: PCCProject } = {};
   allActiveProjects.forEach((p) => {
     projectsById[p.id] = p;
   });
@@ -100,12 +122,12 @@ export default function MyWorkPage() {
   }
 
   const activeProjects = effectiveFilter ? allActiveProjects.filter((p) => p.id === effectiveFilter) : allActiveProjects;
-  const activeProjectIds = {};
+  const activeProjectIds: { [id: string]: boolean } = {};
   activeProjects.forEach((p) => {
     activeProjectIds[p.id] = true;
   });
 
-  function handleProjectFilterChange(e) {
+  function handleProjectFilterChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const value = e.target.value;
     setProjectFilterState(value);
     setLastSyncedContextId(value);

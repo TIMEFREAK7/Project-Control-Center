@@ -31,14 +31,25 @@ import {
   toggleClientArchived,
   openProjectWorkspace,
   newProjectHandoff,
-} from "../services/organizationsService.js";
+} from "../services/organizationsService";
+import type { PCCCompany, PCCClient, PCCProject, PCCStoreData } from "../types/pcc";
 
-function CompanyForm({ isNew, company, onCancel, onSaved }) {
+function CompanyForm({
+  isNew,
+  company,
+  onCancel,
+  onSaved,
+}: {
+  isNew: boolean;
+  company: PCCCompany;
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
   const [name, setName] = useState(company.name || "");
   const [notes, setNotes] = useState(company.notes || "");
   const [showError, setShowError] = useState(false);
 
-  function handleSubmit(e) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const trimmedName = name.trim();
     if (!trimmedName) {
@@ -78,12 +89,24 @@ function CompanyForm({ isNew, company, onCancel, onSaved }) {
   );
 }
 
-function ClientForm({ isNew, client, company, onCancel, onSaved }) {
+function ClientForm({
+  isNew,
+  client,
+  company,
+  onCancel,
+  onSaved,
+}: {
+  isNew: boolean;
+  client: PCCClient;
+  company: PCCCompany;
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
   const [name, setName] = useState(client.name || "");
   const [notes, setNotes] = useState(client.notes || "");
   const [showError, setShowError] = useState(false);
 
-  function handleSubmit(e) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const trimmedName = name.trim();
     if (!trimmedName) {
@@ -126,7 +149,7 @@ function ClientForm({ isNew, client, company, onCancel, onSaved }) {
   );
 }
 
-function ProjectRow({ p, onOpen }) {
+function ProjectRow({ p, onOpen }: { p: PCCProject; onOpen: () => void }) {
   return (
     <div
       className="detail-card"
@@ -142,8 +165,8 @@ function ProjectRow({ p, onOpen }) {
         ) : null}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <span className={"status-badge status-badge--" + (STATUS_BADGE_CLASS[p.status] || "info")}>
-          {STATUS_LABELS[p.status] || p.status}
+        <span className={"status-badge status-badge--" + (STATUS_BADGE_CLASS[p.status || ""] || "info")}>
+          {STATUS_LABELS[p.status || ""] || p.status}
         </span>
         <button type="button" className="btn btn--ghost" onClick={onOpen}>
           Open
@@ -153,7 +176,21 @@ function ProjectRow({ p, onOpen }) {
   );
 }
 
-function ClientCard({ client, company, data, onEdit, onToggleArchive, onNewProject }) {
+function ClientCard({
+  client,
+  company,
+  data,
+  onEdit,
+  onToggleArchive,
+  onNewProject,
+}: {
+  client: PCCClient;
+  company: PCCCompany;
+  data: PCCStoreData;
+  onEdit: () => void;
+  onToggleArchive: () => void;
+  onNewProject: () => void;
+}) {
   const projects = projectsOf(data, company.id, client.id);
   const activeProjectCount = projects.filter((p) => !p.archived).length;
 
@@ -197,7 +234,37 @@ function ClientCard({ client, company, data, onEdit, onToggleArchive, onNewProje
   );
 }
 
-function CompanyCard({ company, data, expanded, showArchived, editingClient, onToggleExpand, onAddClient, onEditCompany, onToggleCompanyArchive, onEditClient, onToggleClientArchive, onCancelClientForm, onClientSaved, onNewProject }) {
+function CompanyCard({
+  company,
+  data,
+  expanded,
+  showArchived,
+  editingClient,
+  onToggleExpand,
+  onAddClient,
+  onEditCompany,
+  onToggleCompanyArchive,
+  onEditClient,
+  onToggleClientArchive,
+  onCancelClientForm,
+  onClientSaved,
+  onNewProject,
+}: {
+  company: PCCCompany;
+  data: PCCStoreData;
+  expanded: boolean;
+  showArchived: boolean;
+  editingClient: { companyId: string; id: string } | null;
+  onToggleExpand: () => void;
+  onAddClient: () => void;
+  onEditCompany: () => void;
+  onToggleCompanyArchive: () => void;
+  onEditClient: (companyId: string, clientId: string) => void;
+  onToggleClientArchive: (clientId: string, wasArchived: boolean | undefined) => void;
+  onCancelClientForm: () => void;
+  onClientSaved: () => void;
+  onNewProject: (companyId: string, clientId: string) => void;
+}) {
   const clients = clientsOf(data, company.id);
   const activeClientCount = clients.filter((c) => !c.archived).length;
   const visibleClients = showArchived ? clients : clients.filter((c) => !c.archived);
@@ -234,7 +301,7 @@ function CompanyCard({ company, data, expanded, showArchived, editingClient, onT
         </div>
       </div>
 
-      {clientBeingEdited ? (
+      {clientBeingEdited && editingClient ? (
         <ClientForm
           key={editingClient.id}
           isNew={editingClient.id === "new"}
@@ -270,7 +337,7 @@ function CompanyCard({ company, data, expanded, showArchived, editingClient, onT
   );
 }
 
-function UnassignedSection({ data }) {
+function UnassignedSection({ data }: { data: PCCStoreData }) {
   const unassigned = data.projects.filter((p) => !p.company_id && !p.archived);
   if (unassigned.length === 0) return null;
   return (
@@ -288,9 +355,9 @@ function UnassignedSection({ data }) {
 
 export default function OrganizationsPage() {
   const [data, setData] = useState(() => getData());
-  const [editingCompanyId, setEditingCompanyId] = useState(null); // company id, "new", or null
-  const [editingClient, setEditingClient] = useState(null); // { companyId, id } or null
-  const [expandedCompanyIds, setExpandedCompanyIds] = useState({});
+  const [editingCompanyId, setEditingCompanyId] = useState<string | null>(null); // company id, "new", or null
+  const [editingClient, setEditingClient] = useState<{ companyId: string; id: string } | null>(null); // { companyId, id } or null
+  const [expandedCompanyIds, setExpandedCompanyIds] = useState<{ [companyId: string]: boolean }>({});
   const [search, setSearch] = useState("");
   const [showArchived, setShowArchived] = useState(false);
 
@@ -304,25 +371,25 @@ export default function OrganizationsPage() {
     ? newCompany({})
     : data.companies.find((c) => c.id === editingCompanyId);
 
-  function handleToggleExpand(companyId) {
+  function handleToggleExpand(companyId: string) {
     setExpandedCompanyIds((prev) => Object.assign({}, prev, { [companyId]: !prev[companyId] }));
   }
 
-  function handleAddClient(companyId) {
+  function handleAddClient(companyId: string) {
     setEditingClient({ companyId: companyId, id: "new" });
     setExpandedCompanyIds((prev) => Object.assign({}, prev, { [companyId]: true }));
   }
 
-  function handleEditClient(companyId, clientId) {
+  function handleEditClient(companyId: string, clientId: string) {
     setEditingClient({ companyId: companyId, id: clientId });
   }
 
-  function handleToggleCompanyArchive(companyId, wasArchived) {
+  function handleToggleCompanyArchive(companyId: string, wasArchived: boolean | undefined) {
     toggleCompanyArchived(companyId, wasArchived);
     refresh();
   }
 
-  function handleToggleClientArchive(clientId, wasArchived) {
+  function handleToggleClientArchive(clientId: string, wasArchived: boolean | undefined) {
     toggleClientArchived(clientId, wasArchived);
     refresh();
   }

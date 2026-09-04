@@ -32,9 +32,10 @@ import {
   fmtMoney,
   viewActivityInSchedule,
   viewProjectInPortfolio,
-} from "../services/delayRecoveryDashboardService.js";
+} from "../services/delayRecoveryDashboardService";
+import type { PCCActivity, PCCProject, PCCRecoveryAction, PCCDelayRecord, PCCStoreData } from "../types/pcc";
 
-function KpiCard({ label, value, colorVar }) {
+function KpiCard({ label, value, colorVar }: { label: string; value: number | string; colorVar?: string | null }) {
   return (
     <div className="kpi-card">
       <span className="kpi-card__label">{label}</span>
@@ -45,7 +46,7 @@ function KpiCard({ label, value, colorVar }) {
   );
 }
 
-function ViewInScheduleBtn({ activity }) {
+function ViewInScheduleBtn({ activity }: { activity: PCCActivity }) {
   return (
     <button className="btn btn--ghost" onClick={() => viewActivityInSchedule(activity)}>
       View in Schedule
@@ -53,7 +54,17 @@ function ViewInScheduleBtn({ activity }) {
   );
 }
 
-function ActionRow({ r, activity, project, showBadge }) {
+function ActionRow({
+  r,
+  activity,
+  project,
+  showBadge,
+}: {
+  r: PCCRecoveryAction;
+  activity: PCCActivity | null | undefined;
+  project: PCCProject | null | undefined;
+  showBadge?: boolean;
+}) {
   const overdue = recoveryActionOverdue(r);
   return (
     <div
@@ -97,7 +108,19 @@ function ActionRow({ r, activity, project, showBadge }) {
   );
 }
 
-function AnalyticsLine({ label, orderedKeys, counts, labelMap, noBottomMargin }) {
+function AnalyticsLine({
+  label,
+  orderedKeys,
+  counts,
+  labelMap,
+  noBottomMargin,
+}: {
+  label: string;
+  orderedKeys: string[];
+  counts: { [key: string]: number };
+  labelMap: { [key: string]: string };
+  noBottomMargin?: boolean;
+}) {
   return (
     <p style={{ fontSize: "var(--text-sm)", marginBottom: noBottomMargin ? 0 : 8 }}>
       <strong>{label}:</strong>{" "}
@@ -109,7 +132,17 @@ function AnalyticsLine({ label, orderedKeys, counts, labelMap, noBottomMargin })
   );
 }
 
-function DelayRegisterRow({ r, data, activitiesById, projectsById }) {
+function DelayRegisterRow({
+  r,
+  data,
+  activitiesById,
+  projectsById,
+}: {
+  r: PCCDelayRecord;
+  data: PCCStoreData;
+  activitiesById: { [id: string]: PCCActivity };
+  projectsById: { [id: string]: PCCProject };
+}) {
   const activity = r.activity_id ? activitiesById[r.activity_id] : null;
   const project = projectsById[r.project_id];
   const activityLine = !r.activity_id ? "Schedule Impact Not Yet Assessed" : activity ? activity.name : "(deleted activity)";
@@ -133,12 +166,12 @@ function DelayRegisterRow({ r, data, activitiesById, projectsById }) {
           {activityLine} — {project ? project.name || "(unnamed project)" : "(deleted project)"}
         </p>
         <p className="text-secondary" style={{ fontSize: 12, margin: "4px 0 0" }}>
-          {DELAY_CAUSE_LABELS[r.delay_cause]}
+          {DELAY_CAUSE_LABELS[r.delay_cause || ""]}
           {r.delay_days != null ? " · " + r.delay_days + "d (" + delaySeverityBucket(r.delay_days) + ")" : ""}
         </p>
         <p className="text-secondary" style={{ fontSize: 12, margin: "4px 0 0" }}>
-          {DELAY_STATUS_LABELS[r.status] || r.status} · {DELAY_CATEGORY_LABELS[r.delay_category] || r.delay_category || "Other"} ·{" "}
-          {DELAY_RESPONSIBILITY_LABELS[r.responsibility_classification] || "Unconfirmed"}
+          {DELAY_STATUS_LABELS[r.status] || r.status} · {DELAY_CATEGORY_LABELS[r.delay_category || ""] || r.delay_category || "Other"} ·{" "}
+          {DELAY_RESPONSIBILITY_LABELS[r.responsibility_classification || ""] || "Unconfirmed"}
           {criticality ? " · " + DELAY_CRITICALITY_LABELS[criticality] : ""}
         </p>
       </div>
@@ -166,7 +199,15 @@ function DelayRegisterRow({ r, data, activitiesById, projectsById }) {
   );
 }
 
-function GapRow({ g }) {
+interface GapActivity {
+  activity: PCCActivity | null | undefined;
+  project: PCCProject | null | undefined;
+  delayDays: number;
+  recoveryDays: number;
+  gapDays: number;
+}
+
+function GapRow({ g }: { g: GapActivity }) {
   return (
     <div
       style={{
@@ -201,15 +242,15 @@ export default function DelayRecoveryDashboardPage() {
   const [data] = useState(() => getData());
   const [registerStatusFilter, setRegisterStatusFilter] = useState("");
 
-  const activeProjectIds = {};
+  const activeProjectIds: { [id: string]: boolean } = {};
   data.projects.forEach((p) => {
     if (!p.archived) activeProjectIds[p.id] = true;
   });
-  const projectsById = {};
+  const projectsById: { [id: string]: PCCProject } = {};
   data.projects.forEach((p) => {
     projectsById[p.id] = p;
   });
-  const activitiesById = {};
+  const activitiesById: { [id: string]: PCCActivity } = {};
   data.activities.forEach((a) => {
     activitiesById[a.id] = a;
   });
@@ -240,8 +281,8 @@ export default function DelayRecoveryDashboardPage() {
     const totalDelayDays = delayRecords.reduce((sum, r) => sum + (r.delay_days || 0), 0);
     const excusableCount = delayRecords.filter((r) => r.is_excusable).length;
 
-    const byCause = {};
-    const bySeverity = {};
+    const byCause: { [key: string]: number } = {};
+    const bySeverity: { [key: string]: number } = {};
     delayRecords.forEach((r) => {
       const cause = r.delay_cause || "other";
       byCause[cause] = (byCause[cause] || 0) + 1;
@@ -250,10 +291,10 @@ export default function DelayRecoveryDashboardPage() {
     });
     const severityOrder = ["Severe (>15d)", "Moderate (5-15d)", "Minor (<5d)", "Unspecified"];
 
-    const byStatus = {};
-    const byCategory = {};
-    const byResponsibility = {};
-    const byCriticality = {};
+    const byStatus: { [key: string]: number } = {};
+    const byCategory: { [key: string]: number } = {};
+    const byResponsibility: { [key: string]: number } = {};
+    const byCriticality: { [key: string]: number } = {};
     delayRecords.forEach((r) => {
       const status = r.status || "open";
       byStatus[status] = (byStatus[status] || 0) + 1;
@@ -269,15 +310,17 @@ export default function DelayRecoveryDashboardPage() {
     const sortedRegisterRecords = registerRecords.slice().sort((a, b) => (b.delay_days || 0) - (a.delay_days || 0));
 
     const openActionsForGap = actions.filter((r) => r.status === "open" || r.status === "in_progress");
-    const gapDelayByActivity = {};
+    const gapDelayByActivity: { [activityId: string]: number } = {};
     delayRecords.forEach((r) => {
-      gapDelayByActivity[r.activity_id] = (gapDelayByActivity[r.activity_id] || 0) + (r.delay_days || 0);
+      const activityId = r.activity_id || "";
+      gapDelayByActivity[activityId] = (gapDelayByActivity[activityId] || 0) + (r.delay_days || 0);
     });
-    const gapRecoveryByActivity = {};
+    const gapRecoveryByActivity: { [activityId: string]: number } = {};
     openActionsForGap.forEach((r) => {
-      gapRecoveryByActivity[r.activity_id] = (gapRecoveryByActivity[r.activity_id] || 0) + (r.estimated_recovery_days || 0);
+      const activityId = r.activity_id || "";
+      gapRecoveryByActivity[activityId] = (gapRecoveryByActivity[activityId] || 0) + (r.estimated_recovery_days || 0);
     });
-    const gapActivities = [];
+    const gapActivities: GapActivity[] = [];
     let totalUnaddressedGapDays = 0;
     Object.keys(gapDelayByActivity).forEach((activityId) => {
       const gapDelayDays = gapDelayByActivity[activityId];
@@ -443,7 +486,7 @@ export default function DelayRecoveryDashboardPage() {
           </p>
         ) : (
           openSorted.map((r) => (
-            <ActionRow key={r.id} r={r} activity={activitiesById[r.activity_id]} project={projectsById[r.project_id]} showBadge />
+            <ActionRow key={r.id} r={r} activity={activitiesById[r.activity_id || ""]} project={projectsById[r.project_id]} showBadge />
           ))
         )}
       </div>
@@ -456,7 +499,7 @@ export default function DelayRecoveryDashboardPage() {
           </p>
         ) : (
           closedSorted.map((r) => (
-            <ActionRow key={r.id} r={r} activity={activitiesById[r.activity_id]} project={projectsById[r.project_id]} showBadge />
+            <ActionRow key={r.id} r={r} activity={activitiesById[r.activity_id || ""]} project={projectsById[r.project_id]} showBadge />
           ))
         )}
       </div>

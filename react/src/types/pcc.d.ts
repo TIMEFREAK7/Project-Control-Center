@@ -28,6 +28,13 @@ export interface PCCProject {
   id: string;
   name?: string;
   archived?: boolean;
+  review_cadence_days?: number | null;
+  start_date?: string;
+  created_at?: string;
+  updated_at?: string;
+  company_id?: string;
+  client_id?: string;
+  status?: string;
 }
 
 export interface PCCDocument {
@@ -40,10 +47,56 @@ export interface PCCDocument {
 export interface PCCSchedule {
   id: string;
   project_id: string;
+  name?: string;
   status?: string;
   revision_number: number;
   updated_at: string;
   near_critical_threshold_days?: number | null;
+}
+
+export interface PCCCompany {
+  id: string;
+  name?: string;
+  notes?: string;
+  archived?: boolean;
+  updated_at?: string;
+}
+
+export interface PCCClient {
+  id: string;
+  company_id: string;
+  name?: string;
+  notes?: string;
+  archived?: boolean;
+  updated_at?: string;
+}
+
+export interface PCCKnowledgeBaseArticle {
+  id: string;
+  project_id?: string;
+  title?: string;
+  category?: string;
+  tags?: string;
+  body?: string;
+  filename?: string;
+  file_size?: number;
+  mime_type?: string;
+  updated_at?: string;
+}
+
+export interface PCCLessonLearned {
+  id: string;
+  project_id: string;
+  title?: string;
+  category?: string;
+  impact_type?: string;
+  date_identified?: string;
+  identified_by?: string;
+  description?: string;
+  recommendation?: string;
+  activity_id?: string;
+  source_meeting_id?: string;
+  updated_at?: string;
 }
 
 export interface PCCActivity {
@@ -55,9 +108,11 @@ export interface PCCActivity {
   name?: string;
   early_start?: string | null;
   planned_start?: string | null;
+  planned_finish?: string | null;
   total_float?: number | null;
   responsible_person?: string;
   contractor?: string;
+  updated_at?: string;
 }
 
 export interface PCCDelayRecord {
@@ -68,6 +123,10 @@ export interface PCCDelayRecord {
   delay_category?: string;
   description?: string;
   responsible_party?: string;
+  delay_days?: number | null;
+  is_excusable?: boolean;
+  delay_cause?: string;
+  responsibility_classification?: string;
 }
 
 export interface PCCDelayActivityLink {
@@ -92,6 +151,9 @@ export interface PCCRecoveryAction {
   activity_id?: string;
   description?: string;
   responsible_person?: string;
+  estimated_recovery_days?: number | null;
+  estimated_cost?: number | null;
+  updated_at?: string;
 }
 
 export interface PCCChangeOrder {
@@ -101,10 +163,44 @@ export interface PCCChangeOrder {
   number?: string;
   title?: string;
   requested_by?: string;
+  waiting_on_party?: string;
+}
+
+export interface PCCDecision {
+  id: string;
+  project_id: string;
+  status: string;
+  title?: string;
+  waiting_on_party?: string;
+}
+
+export interface PCCRisk {
+  id: string;
+  project_id: string;
+  type?: string;
+  title?: string;
+  updated_at?: string;
+}
+
+export interface PCCWeeklyReview {
+  project_id: string;
+  review_date: string;
 }
 
 export interface PCCSettings {
   action_centre_upcoming_days?: number | null;
+  company_name?: string;
+  company_logo_filename?: string;
+  company_logo_mime_type?: string;
+  document_reminder_due_soon_days?: number | null;
+  document_nomenclature_enabled?: boolean;
+  document_nomenclature_pattern?: string;
+  backup_reminder_days?: number | null;
+}
+
+export interface PCCMeta {
+  last_saved_at?: string | null;
+  last_exported_at?: string | null;
 }
 
 export interface PCCMeeting {
@@ -113,6 +209,7 @@ export interface PCCMeeting {
   title?: string;
   meeting_date?: string;
   actions?: PCCMeetingAction[];
+  updated_at?: string;
 }
 
 export interface PCCRfi {
@@ -124,6 +221,8 @@ export interface PCCRfi {
   subject?: string;
   date_required?: string;
   assigned_to?: string;
+  waiting_on_party?: string;
+  updated_at?: string;
 }
 
 export interface PCCDocumentType {
@@ -148,6 +247,7 @@ export interface PCCDocumentTypeValues {
 export interface PCCVendor {
   id: string;
   vendor_name?: string;
+  next_follow_up_date?: string;
 }
 
 export interface PCCProjectDocumentRequirement {
@@ -168,7 +268,15 @@ export interface PCCStoreData {
   rfis: PCCRfi[];
   recovery_actions: PCCRecoveryAction[];
   change_orders: PCCChangeOrder[];
+  decisions: PCCDecision[];
+  risks: PCCRisk[];
+  weekly_reviews: PCCWeeklyReview[];
   settings: PCCSettings;
+  meta: PCCMeta;
+  lessons_learned: PCCLessonLearned[];
+  knowledge_base_articles: PCCKnowledgeBaseArticle[];
+  companies: PCCCompany[];
+  clients: PCCClient[];
   document_types: PCCDocumentType[];
   vendors: PCCVendor[];
   project_document_requirements: PCCProjectDocumentRequirement[];
@@ -221,11 +329,55 @@ declare global {
         update(mutator: (data: PCCStoreData) => void): void;
         newDocumentType(values: Partial<PCCDocumentTypeValues>): PCCDocumentType;
         DOCUMENT_TYPE_CRITICALITY_LEVELS: string[];
+        exportToFile(): Promise<void>;
+        resetAll(): void;
+        listRecoveryBackups?(): string[];
+        downloadRecoveryBackup(key: string): void;
+        deleteRecoveryBackup(key: string): void;
+        newLessonLearned(prefill: Partial<PCCLessonLearned>): PCCLessonLearned;
+        rememberLastUsedName(key: string, value: string | undefined): void;
+        getLastUsedName(key: string): string;
+        LESSON_LEARNED_CATEGORIES: string[];
+        LESSON_LEARNED_IMPACT_TYPES: string[];
+        KNOWLEDGE_BASE_CATEGORIES: string[];
+        newKnowledgeBaseArticle(prefill: Partial<PCCKnowledgeBaseArticle>): PCCKnowledgeBaseArticle;
+        newCompany(prefill: Partial<PCCCompany>): PCCCompany;
+        newClient(prefill: Partial<PCCClient>): PCCClient;
+        DELAY_RECORD_STATUSES: string[];
+        DELAY_CATEGORIES: string[];
+        DELAY_RESPONSIBILITY_CLASSIFICATIONS: string[];
+        DELAY_RECORD_CAUSES: string[];
+      };
+      pendingProjectPrefill?: { company_id?: string; client_id?: string };
+      delayImpactEngine: {
+        computeDelayImpact(
+          delayRecord: PCCDelayRecord,
+          links: PCCDelayActivityLink[],
+          data: PCCStoreData
+        ): { overall_criticality: string };
       };
       blobStore: {
         listBlobIds(): Promise<string[]>;
         getBlob(id: string): Promise<string | null>;
+        putBlob(id: string, dataUri: string): Promise<void>;
         deleteBlob(id: string): Promise<void>;
+      };
+      layout: {
+        refreshTitleBlock(): void;
+        refreshBackupNudge?(): void;
+      };
+      archive: {
+        exportAll(projects: PCCProject[], documents: PCCDocument[]): void;
+      };
+      sqliteMigrationEngine: {
+        initSqlJsBrowser(): Promise<any>;
+      };
+      sqliteBackupService: {
+        createFullBackup(SQL: any, data: PCCStoreData): Promise<{ blob: Blob; fileCount: number; skipped: number }>;
+        restoreFullBackup(SQL: any, file: File): Promise<{ restoredFileCount: number }>;
+      };
+      nativeFile: {
+        save(blob: Blob, filename: string): Promise<void>;
       };
       storageAnalyticsEngine: {
         collectFileRecords(data: PCCStoreData): FileRecord[];
@@ -256,6 +408,18 @@ declare global {
       };
       changeOrders: {
         expandChangeOrder(changeOrderId: string): void;
+      };
+      decisionRegister: {
+        expandDecision(decisionId: string): void;
+      };
+      vendors: {
+        openProfile(vendorId: string): void;
+      };
+      risks: {
+        expandRisk(riskId: string): void;
+      };
+      executiveCenter: {
+        viewProject(projectId: string, tab?: string): void;
       };
     };
   }

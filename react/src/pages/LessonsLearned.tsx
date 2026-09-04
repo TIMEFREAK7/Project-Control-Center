@@ -30,21 +30,25 @@ import {
   deleteLessonLearned,
   getLastIdentifiedBy,
   getProjectContext,
+  setProjectContext,
   notify,
   navigateToMeeting,
   navigateToActivity,
-} from "../services/lessonsLearnedService.js";
+} from "../services/lessonsLearnedService";
+import type { FieldConfig, ActivityOption } from "../services/lessonsLearnedService";
+import type { PCCLessonLearned, PCCProject, PCCStoreData } from "../types/pcc";
 
-function FormField({ cfg, lesson }) {
+function FormField({ cfg, lesson }: { cfg: FieldConfig; lesson: PCCLessonLearned }) {
   const id = "lsnfield-" + cfg.key;
+  const value = (lesson as any)[cfg.key] || "";
   if (cfg.type === "select") {
     return (
-      <div className="field" style={cfg.type === "textarea" ? { gridColumn: "1 / -1" } : undefined}>
+      <div className="field">
         <label htmlFor={id}>{cfg.label + (cfg.required ? " *" : "")}</label>
-        <select id={id} name={cfg.key} defaultValue={lesson[cfg.key] || ""} key={id + "-" + (lesson.id || "new")}>
-          {optionsFor(cfg.options).map((val) => (
+        <select id={id} name={cfg.key} defaultValue={value} key={id + "-" + (lesson.id || "new")}>
+          {optionsFor(cfg.options!).map((val) => (
             <option key={val} value={val}>
-              {cfg.labels[val] || val}
+              {(cfg.labels && cfg.labels[val]) || val}
             </option>
           ))}
         </select>
@@ -55,7 +59,7 @@ function FormField({ cfg, lesson }) {
     return (
       <div className="field" style={{ gridColumn: "1 / -1" }}>
         <label htmlFor={id}>{cfg.label + (cfg.required ? " *" : "")}</label>
-        <textarea id={id} name={cfg.key} rows={3} defaultValue={lesson[cfg.key] || ""} key={id + "-" + (lesson.id || "new")} />
+        <textarea id={id} name={cfg.key} rows={3} defaultValue={value} key={id + "-" + (lesson.id || "new")} />
       </div>
     );
   }
@@ -67,31 +71,45 @@ function FormField({ cfg, lesson }) {
         name={cfg.key}
         type={cfg.type}
         required={!!cfg.required}
-        defaultValue={lesson[cfg.key] || ""}
+        defaultValue={value}
         key={id + "-" + (lesson.id || "new")}
       />
     </div>
   );
 }
 
-function LessonForm({ lesson, isNew, projects, data, onCancel, onSaved }) {
+function LessonForm({
+  lesson,
+  isNew,
+  projects,
+  data,
+  onCancel,
+  onSaved,
+}: {
+  lesson: PCCLessonLearned;
+  isNew: boolean;
+  projects: PCCProject[];
+  data: PCCStoreData;
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
   const [showError, setShowError] = useState(false);
   const activeProjects = projects.filter((p) => !p.archived);
   const [selectedProjectId, setSelectedProjectId] = useState(lesson.project_id || (activeProjects[0] ? activeProjects[0].id : ""));
 
   const sourceMeeting = lesson.source_meeting_id ? data.meetings.find((m) => m.id === lesson.source_meeting_id) : null;
-  const activityOptions = activityOptionsFor(data, selectedProjectId);
+  const activityOptions: ActivityOption[] = activityOptionsFor(data, selectedProjectId);
 
-  function handleSubmit(e) {
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const form = e.target;
-    const values = {};
+    const form = e.target as HTMLFormElement;
+    const values: { [key: string]: string } = {};
     FIELD_CONFIG.forEach((cfg) => {
-      const el = form.querySelector("#lsnfield-" + cfg.key);
+      const el = form.querySelector("#lsnfield-" + cfg.key) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null;
       if (el) values[cfg.key] = el.value;
     });
-    values.project_id = form.querySelector("#lsnfield-project_id").value;
-    values.activity_id = form.querySelector("#lsnfield-activity_id").value;
+    values.project_id = (form.querySelector("#lsnfield-project_id") as HTMLSelectElement).value;
+    values.activity_id = (form.querySelector("#lsnfield-activity_id") as HTMLSelectElement).value;
     if (isNew) values.source_meeting_id = lesson.source_meeting_id || "";
 
     if (!values.title || !values.title.trim() || !values.project_id) {
@@ -170,14 +188,14 @@ function LessonForm({ lesson, isNew, projects, data, onCancel, onSaved }) {
   );
 }
 
-function LessonDetails({ l }) {
+function LessonDetails({ l }: { l: PCCLessonLearned }) {
   const data = getData();
   const sourceMeeting = l.source_meeting_id ? data.meetings.find((m) => m.id === l.source_meeting_id) : null;
   const linkedActivity = l.activity_id ? data.activities.find((a) => a.id === l.activity_id) : null;
 
   const fields = [
-    { label: "CATEGORY", value: CATEGORY_LABELS[l.category] },
-    { label: "IMPACT", value: IMPACT_LABELS[l.impact_type] },
+    { label: "CATEGORY", value: CATEGORY_LABELS[l.category || ""] },
+    { label: "IMPACT", value: IMPACT_LABELS[l.impact_type || ""] },
     { label: "DATE IDENTIFIED", value: l.date_identified || "—" },
     { label: "IDENTIFIED BY", value: l.identified_by || "—" },
     { label: "WHAT HAPPENED", value: l.description || "—", wide: true },
@@ -222,18 +240,34 @@ function LessonDetails({ l }) {
   );
 }
 
-function LessonEntry({ l, projects, expanded, onToggleDetails, onEdit, onClone, onDelete }) {
+function LessonEntry({
+  l,
+  projects,
+  expanded,
+  onToggleDetails,
+  onEdit,
+  onClone,
+  onDelete,
+}: {
+  l: PCCLessonLearned;
+  projects: PCCProject[];
+  expanded: boolean;
+  onToggleDetails: () => void;
+  onEdit: () => void;
+  onClone: () => void;
+  onDelete: () => void;
+}) {
   return (
     <div className="project-entry">
       <div className="project-card">
         <div className="project-card__main">
           <div className="project-card__name">{l.title || "(untitled)"}</div>
           <div className="project-card__meta">
-            {projectName(projects, l.project_id) + " · " + CATEGORY_LABELS[l.category] + (l.identified_by ? " · " + l.identified_by : "") + (l.date_identified ? " · " + l.date_identified : "")}
+            {projectName(projects, l.project_id) + " · " + CATEGORY_LABELS[l.category || ""] + (l.identified_by ? " · " + l.identified_by : "") + (l.date_identified ? " · " + l.date_identified : "")}
           </div>
         </div>
         <div style={{ display: "flex", gap: 6 }}>
-          <span className={"status-badge status-badge--" + (l.impact_type === "positive" ? "on_track" : "critical")}>{IMPACT_LABELS[l.impact_type]}</span>
+          <span className={"status-badge status-badge--" + (l.impact_type === "positive" ? "on_track" : "critical")}>{IMPACT_LABELS[l.impact_type || ""]}</span>
         </div>
         <div className="project-card__actions">
           <button className="btn btn--ghost" onClick={onToggleDetails}>
@@ -255,7 +289,13 @@ function LessonEntry({ l, projects, expanded, onToggleDetails, onEdit, onClone, 
   );
 }
 
-export default function LessonsLearnedPage({ initialPrefill, initialExpandedId }) {
+export default function LessonsLearnedPage({
+  initialPrefill,
+  initialExpandedId,
+}: {
+  initialPrefill?: Partial<PCCLessonLearned> | null;
+  initialExpandedId?: string | null;
+}) {
   const [data, setData] = useState(() => getData());
   // Opening the prefilled form is folded into the initial state itself, not a useEffect —
   // flushSync (reactBridge.js) only forces the INITIAL render synchronous; an effect runs
@@ -263,9 +303,9 @@ export default function LessonsLearnedPage({ initialPrefill, initialExpandedId }
   // (meetings.js's "+ Add Lesson Learned" button, via createFromMeeting()) seeing a blank
   // form for a tick before the prefill applies. Doing it here means it's simultaneous with
   // the synchronous initial commit, no separate async step at all.
-  const [editingId, setEditingId] = useState(() => (initialPrefill ? "new" : null));
-  const [pendingPrefill, setPendingPrefill] = useState(initialPrefill || null);
-  const [expandedId, setExpandedId] = useState(initialExpandedId || null);
+  const [editingId, setEditingId] = useState<string | null>(() => (initialPrefill ? "new" : null));
+  const [pendingPrefill, setPendingPrefill] = useState<Partial<PCCLessonLearned> | null>(initialPrefill || null);
+  const [expandedId, setExpandedId] = useState<string | null>(initialExpandedId || null);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [impactFilter, setImpactFilter] = useState("");
@@ -295,14 +335,14 @@ export default function LessonsLearnedPage({ initialPrefill, initialExpandedId }
     refresh();
   }
 
-  function handleDelete(l) {
+  function handleDelete(l: PCCLessonLearned) {
     if (!window.confirm("Delete this lesson learned? This can't be undone.")) return;
     deleteLessonLearned(l.id);
     notify("Lesson Learned deleted.", "info");
     refresh();
   }
 
-  function handleClone(l) {
+  function handleClone(l: PCCLessonLearned) {
     setPendingPrefill({
       project_id: l.project_id,
       category: l.category,
@@ -315,14 +355,15 @@ export default function LessonsLearnedPage({ initialPrefill, initialExpandedId }
     setEditingId("new");
   }
 
-  const lessonBeingEdited = !editingId ? null : editingId === "new" ? newLessonLearned(pendingPrefill || {}) : data.lessons_learned.find((l) => l.id === editingId);
+  const lessonBeingEdited: PCCLessonLearned | null =
+    !editingId ? null : editingId === "new" ? newLessonLearned(pendingPrefill || {}) : data.lessons_learned.find((l) => l.id === editingId) || null;
 
-  function matchesFilters(l) {
+  function matchesFilters(l: PCCLessonLearned): boolean {
     if (categoryFilter && l.category !== categoryFilter) return false;
     if (impactFilter && l.impact_type !== impactFilter) return false;
     if (projectFilter && l.project_id !== projectFilter) return false;
     if (search) {
-      const haystack = (l.title + " " + l.description + " " + l.recommendation + " " + l.identified_by).toLowerCase();
+      const haystack = ((l.title || "") + " " + (l.description || "") + " " + (l.recommendation || "") + " " + (l.identified_by || "")).toLowerCase();
       if (haystack.indexOf(search.toLowerCase()) === -1) return false;
     }
     return true;
@@ -335,7 +376,7 @@ export default function LessonsLearnedPage({ initialPrefill, initialExpandedId }
     <div>
       <h2 style={{ marginBottom: 16 }}>Lessons Learned</h2>
 
-      {editingId ? (
+      {editingId && lessonBeingEdited ? (
         <LessonForm
           lesson={lessonBeingEdited}
           isNew={editingId === "new"}

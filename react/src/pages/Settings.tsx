@@ -34,11 +34,11 @@ import {
   listRecoveryBackups,
   downloadRecoveryBackup,
   deleteRecoveryBackup,
-} from "../services/settingsService.js";
+} from "../services/settingsService";
 
 var BLANK_IMG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1' height='1'%3E%3C/svg%3E";
 
-function LogoPreview({ filename }) {
+function LogoPreview({ filename }: { filename: string | undefined }) {
   const [src, setSrc] = useState(BLANK_IMG);
   React.useEffect(() => {
     let cancelled = false;
@@ -65,14 +65,14 @@ export default function SettingsPage() {
     setData(getData());
   }
 
-  function handleCompanyNameInput(e) {
+  function handleCompanyNameInput(e: React.ChangeEvent<HTMLInputElement>) {
     updateSettings((s) => {
       s.company_name = e.target.value;
     });
     refreshTitleBlock();
   }
 
-  function handleLogoChange(e) {
+  function handleLogoChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files && e.target.files[0];
     e.target.value = "";
     if (!file) return;
@@ -81,7 +81,7 @@ export default function SettingsPage() {
         notify("Logo saved.", "success");
         refresh();
       })
-      .catch((err) => {
+      .catch((err: Error) => {
         notify("Could not save the logo: " + err.message, "error");
       });
   }
@@ -90,7 +90,7 @@ export default function SettingsPage() {
     removeLogo().then(refresh);
   }
 
-  function handleDueSoonChange(e) {
+  function handleDueSoonChange(e: React.ChangeEvent<HTMLInputElement>) {
     let n = parseInt(e.target.value, 10);
     if (isNaN(n) || n < 1) n = 14;
     updateSettings((s) => {
@@ -99,7 +99,7 @@ export default function SettingsPage() {
     refresh();
   }
 
-  function handleUpcomingChange(e) {
+  function handleUpcomingChange(e: React.ChangeEvent<HTMLInputElement>) {
     let n = parseInt(e.target.value, 10);
     if (isNaN(n) || n < 8) n = 30;
     updateSettings((s) => {
@@ -108,14 +108,14 @@ export default function SettingsPage() {
     refresh();
   }
 
-  function handleNomenEnabledChange(e) {
+  function handleNomenEnabledChange(e: React.ChangeEvent<HTMLInputElement>) {
     updateSettings((s) => {
       s.document_nomenclature_enabled = e.target.checked;
     });
     refresh();
   }
 
-  function handlePatternChange(e) {
+  function handlePatternChange(e: React.ChangeEvent<HTMLInputElement>) {
     updateSettings((s) => {
       s.document_nomenclature_pattern = e.target.value.trim() || "PROJECT-DISCIPLINE-DOCUMENTTYPE-NUMBER-REV";
     });
@@ -130,7 +130,7 @@ export default function SettingsPage() {
         refreshBackupNudge();
         refresh();
       })
-      .catch((e) => {
+      .catch((e: Error) => {
         notify("Export failed: " + e.message, "error");
       })
       .then(() => setExporting(false));
@@ -154,13 +154,13 @@ export default function SettingsPage() {
           refreshBackupNudge();
         });
       })
-      .catch((e) => {
+      .catch((e: Error) => {
         notify("Full backup failed: " + e.message, "error");
       })
       .then(() => setBackingUp(false));
   }
 
-  function handleRestoreFileChange(e) {
+  function handleRestoreFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
     const confirmed = window.confirm(
@@ -178,7 +178,7 @@ export default function SettingsPage() {
         refreshBackupNudge();
         rerenderApp();
       })
-      .catch((err) => {
+      .catch((err: Error) => {
         notify("Restore failed: " + err.message, "error");
       })
       .then(() => {
@@ -196,7 +196,7 @@ export default function SettingsPage() {
     notify("All data cleared.", "warning");
   }
 
-  function handleReminderDaysChange(e) {
+  function handleReminderDaysChange(e: React.ChangeEvent<HTMLInputElement>) {
     let n = parseInt(e.target.value, 10);
     if (isNaN(n) || n < 0) n = 0;
     updateSettings((s) => {
@@ -206,7 +206,7 @@ export default function SettingsPage() {
     refresh();
   }
 
-  function handleDeleteRecovery(key) {
+  function handleDeleteRecovery(key: string) {
     if (!window.confirm("Delete this recovery snapshot? Make sure you've downloaded it if you might need it. This can't be undone.")) return;
     deleteRecoveryBackup(key);
     notify("Recovery snapshot deleted.", "info");
@@ -329,7 +329,7 @@ export default function SettingsPage() {
             className="btn btn--ghost"
             disabled={restoring}
             title="Restore a Full Backup .zip created by this app, replacing all current data."
-            onClick={() => document.getElementById("settings-restore-input").click()}
+            onClick={() => document.getElementById("settings-restore-input")?.click()}
           >
             {restoring ? "Restoring…" : "Restore from Full Backup"}
           </button>

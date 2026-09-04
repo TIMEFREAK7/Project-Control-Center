@@ -29,16 +29,30 @@ import {
   getProjectContext,
   setProjectContext,
   notify,
-} from "../services/knowledgeBaseService.js";
+} from "../services/knowledgeBaseService";
+import type { PendingFile } from "../services/knowledgeBaseService";
+import type { PCCKnowledgeBaseArticle, PCCProject } from "../types/pcc";
 
-function ArticleForm({ article, isNew, projects, onCancel, onSaved }) {
-  const [pendingFile, setPendingFile] = useState(null);
+function ArticleForm({
+  article,
+  isNew,
+  projects,
+  onCancel,
+  onSaved,
+}: {
+  article: PCCKnowledgeBaseArticle;
+  isNew: boolean;
+  projects: PCCProject[];
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
+  const [pendingFile, setPendingFile] = useState<PendingFile | null>(null);
   const [removeExistingFile, setRemoveExistingFile] = useState(false);
-  const [readError, setReadError] = useState(null);
+  const [readError, setReadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [showError, setShowError] = useState(false);
 
-  function handleFileChange(e) {
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
     setReadError(null);
@@ -47,29 +61,29 @@ function ArticleForm({ article, isNew, projects, onCancel, onSaved }) {
         setPendingFile(f);
         setRemoveExistingFile(false);
       })
-      .catch((err) => setReadError(err.message));
+      .catch((err: Error) => setReadError(err.message));
   }
 
-  function handleSubmit(e) {
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const form = e.target;
-    const title = form.querySelector("#kbfield-title").value.trim();
+    const form = e.target as HTMLFormElement;
+    const title = (form.querySelector("#kbfield-title") as HTMLInputElement).value.trim();
     if (!title) {
       setShowError(true);
       return;
     }
     setShowError(false);
 
-    const values = {
+    const values: Partial<PCCKnowledgeBaseArticle> = {
       title: title,
-      category: form.querySelector("#kbfield-category").value,
-      project_id: form.querySelector("#kbfield-project_id").value,
-      tags: form.querySelector("#kbfield-tags").value,
-      body: form.querySelector("#kbfield-body").value,
+      category: (form.querySelector("#kbfield-category") as HTMLSelectElement).value,
+      project_id: (form.querySelector("#kbfield-project_id") as HTMLSelectElement).value,
+      tags: (form.querySelector("#kbfield-tags") as HTMLInputElement).value,
+      body: (form.querySelector("#kbfield-body") as HTMLTextAreaElement).value,
     };
 
     const newRecord = isNew ? newArticle(values) : null;
-    const articleId = isNew ? newRecord.id : article.id;
+    const articleId = isNew ? newRecord!.id : article.id;
 
     setSaving(true);
     saveArticle(isNew, articleId, values, pendingFile, removeExistingFile, newRecord)
@@ -77,7 +91,7 @@ function ArticleForm({ article, isNew, projects, onCancel, onSaved }) {
         notify(isNew ? "Article added." : "Article updated.", "success");
         onSaved();
       })
-      .catch((err) => {
+      .catch((err: Error) => {
         setSaving(false);
         notify("Could not save the attached file: " + err.message, "error");
       });
@@ -168,9 +182,9 @@ function ArticleForm({ article, isNew, projects, onCancel, onSaved }) {
   );
 }
 
-function ArticleDetails({ a }) {
+function ArticleDetails({ a }: { a: PCCKnowledgeBaseArticle }) {
   const fields = [
-    { label: "CATEGORY", value: CATEGORY_LABELS[a.category] },
+    { label: "CATEGORY", value: CATEGORY_LABELS[a.category || ""] },
     { label: "TAGS", value: a.tags || "—" },
     { label: "BODY", value: a.body || "—", wide: true, pre: true },
   ];
@@ -203,14 +217,28 @@ function ArticleDetails({ a }) {
   );
 }
 
-function ArticleEntry({ a, projects, expanded, onToggleDetails, onEdit, onDelete }) {
+function ArticleEntry({
+  a,
+  projects,
+  expanded,
+  onToggleDetails,
+  onEdit,
+  onDelete,
+}: {
+  a: PCCKnowledgeBaseArticle;
+  projects: PCCProject[];
+  expanded: boolean;
+  onToggleDetails: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
   return (
     <div className="project-entry">
       <div className="project-card">
         <div className="project-card__main">
           <div className="project-card__name">{a.title || "(untitled)"}</div>
           <div className="project-card__meta">
-            {CATEGORY_LABELS[a.category] + " · " + projectName(projects, a.project_id) + (a.tags ? " · " + a.tags : "")}
+            {CATEGORY_LABELS[a.category || ""] + " · " + projectName(projects, a.project_id) + (a.tags ? " · " + a.tags : "")}
           </div>
         </div>
         <div>{a.filename ? <span className="status-badge status-badge--info">File Attached</span> : null}</div>
@@ -233,8 +261,8 @@ function ArticleEntry({ a, projects, expanded, onToggleDetails, onEdit, onDelete
 
 export default function KnowledgeBasePage() {
   const [data, setData] = useState(() => getData());
-  const [editingId, setEditingId] = useState(null);
-  const [expandedId, setExpandedId] = useState(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   // Global Project Context: read once on mount, same one-time-init the vanilla page's
@@ -252,7 +280,7 @@ export default function KnowledgeBasePage() {
 
   const projects = data.projects;
 
-  function handleDelete(a) {
+  function handleDelete(a: PCCKnowledgeBaseArticle) {
     if (!window.confirm("Delete this article? This can't be undone.")) return;
     deleteArticle(a.id).then(() => {
       notify("Article deleted.", "info");
@@ -260,16 +288,17 @@ export default function KnowledgeBasePage() {
     });
   }
 
-  const articleBeingEdited = !editingId ? null : editingId === "new" ? newArticle({}) : data.knowledge_base_articles.find((a) => a.id === editingId);
+  const articleBeingEdited: PCCKnowledgeBaseArticle | null =
+    !editingId ? null : editingId === "new" ? newArticle({}) : data.knowledge_base_articles.find((a) => a.id === editingId) || null;
 
-  function matchesFilters(a) {
+  function matchesFilters(a: PCCKnowledgeBaseArticle): boolean {
     if (categoryFilter && a.category !== categoryFilter) return false;
     // "__general__" is a synthetic filter value (not a real project id) meaning
     // "articles with no project tag at all" — distinct from "" (no filter applied).
     if (projectFilter === "__general__" && a.project_id) return false;
     if (projectFilter && projectFilter !== "__general__" && a.project_id !== projectFilter) return false;
     if (search) {
-      const haystack = (a.title + " " + a.body + " " + a.tags).toLowerCase();
+      const haystack = ((a.title || "") + " " + (a.body || "") + " " + (a.tags || "")).toLowerCase();
       if (haystack.indexOf(search.toLowerCase()) === -1) return false;
     }
     return true;
@@ -284,7 +313,7 @@ export default function KnowledgeBasePage() {
         Reusable standard procedures, checklists, and reference material — portfolio-wide, optionally tagged to one project.
       </p>
 
-      {editingId ? (
+      {editingId && articleBeingEdited ? (
         <ArticleForm
           key={editingId}
           article={articleBeingEdited}
