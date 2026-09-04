@@ -33,9 +33,11 @@ import {
   buildUpcomingItems,
   buildRecentActivity,
   navigateToModule,
-} from "../services/projectWorkspaceService.js";
+} from "../services/projectWorkspaceService";
+import type { NavGroup, ProjectStats, AttentionItem, DatedItem } from "../services/projectWorkspaceService";
+import type { PCCProject, PCCStoreData } from "../types/pcc";
 
-function VitalChip({ label, value, colorVar }) {
+function VitalChip({ label, value, colorVar }: { label: string; value: string; colorVar?: string | null }) {
   return (
     <div className="card-stat">
       <span className="card-stat__label">{label}</span>
@@ -46,7 +48,7 @@ function VitalChip({ label, value, colorVar }) {
   );
 }
 
-function Header({ project, data }) {
+function Header({ project, data }: { project: PCCProject; data: PCCStoreData }) {
   const scheduleStatus = computeScheduleStatus(data, project.id);
   const keyMilestone = computeKeyMilestone(data, project.id);
 
@@ -59,7 +61,7 @@ function Header({ project, data }) {
             {[project.client, project.company, project.country].filter(Boolean).join(" · ")}
           </div>
         </div>
-        <span className={"status-badge status-badge--" + project.status}>{STATUS_LABELS[project.status] || project.status}</span>
+        <span className={"status-badge status-badge--" + project.status}>{STATUS_LABELS[project.status || ""] || project.status}</span>
       </div>
 
       <div className="project-card__stats" style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--divider)" }}>
@@ -75,7 +77,7 @@ function Header({ project, data }) {
         />
         <VitalChip
           label="CURRENT HEALTH"
-          value={STATUS_LABELS[project.status] || project.status}
+          value={STATUS_LABELS[project.status || ""] || project.status || ""}
           colorVar={
             project.status === "critical"
               ? "--status-critical"
@@ -91,7 +93,7 @@ function Header({ project, data }) {
   );
 }
 
-function Nav({ projectId }) {
+function Nav({ projectId }: { projectId: string }) {
   return (
     <div className="no-print" style={{ marginBottom: 16 }}>
       <div className="toolbar" style={{ marginBottom: 12 }}>
@@ -126,7 +128,7 @@ function Nav({ projectId }) {
   );
 }
 
-function KpiCard({ label, value, colorVar }) {
+function KpiCard({ label, value, colorVar }: { label: string; value: string | number; colorVar?: string | null }) {
   return (
     <div className="kpi-card">
       <span className="kpi-card__label">{label}</span>
@@ -137,7 +139,7 @@ function KpiCard({ label, value, colorVar }) {
   );
 }
 
-function AttentionPanel({ items, projectId }) {
+function AttentionPanel({ items, projectId }: { items: AttentionItem[]; projectId: string }) {
   return (
     <div className="panel" style={{ marginTop: 16 }}>
       <h3 style={{ marginBottom: 10 }}>Management Attention ({items.length})</h3>
@@ -161,7 +163,7 @@ function AttentionPanel({ items, projectId }) {
   );
 }
 
-function ListPanel({ title, items, dateMono }) {
+function ListPanel({ title, items, dateMono }: { title: string; items: DatedItem[]; dateMono: boolean }) {
   return (
     <div className="panel" style={{ flex: "1 1 320px", minWidth: 280 }}>
       <h4 style={{ marginBottom: 10 }}>{title}</h4>
@@ -187,7 +189,7 @@ function ListPanel({ title, items, dateMono }) {
   );
 }
 
-function Overview({ data, project }) {
+function Overview({ data, project }: { data: PCCStoreData; project: PCCProject }) {
   const stats = projectStats(data, project.id);
   const attentionItems = buildAttentionItems(stats);
   const windowDays = (data.settings && data.settings.action_centre_upcoming_days) || 30;
@@ -214,9 +216,9 @@ function Overview({ data, project }) {
   );
 }
 
-export default function ProjectWorkspacePage({ initialProjectId }) {
+export default function ProjectWorkspacePage({ initialProjectId }: { initialProjectId?: string | null }) {
   const [data] = useState(() => getData());
-  const [projectId, setProjectId] = useState(initialProjectId || null);
+  const [projectId, setProjectId] = useState<string | null>(initialProjectId || null);
 
   const activeProjects = data.projects.filter((p) => !p.archived);
 
@@ -248,7 +250,7 @@ export default function ProjectWorkspacePage({ initialProjectId }) {
 
       <div className="toolbar no-print" style={{ marginBottom: 10 }}>
         <select
-          value={effectiveProjectId}
+          value={effectiveProjectId || ""}
           onChange={(e) => {
             setProjectId(e.target.value);
             setProjectContext(e.target.value);

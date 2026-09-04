@@ -31,25 +31,43 @@ import {
   setProjectContext,
   viewMeeting,
   viewActivityInSchedule,
-} from "../services/decisionRegisterService.js";
+} from "../services/decisionRegisterService";
+import type { FieldConfig, ActivityOption } from "../services/decisionRegisterService";
+import type { PCCDecision, PCCProject, PCCStoreData, PCCMeeting } from "../types/pcc";
 
-function DecisionForm({ isNew, decision, projects, data, sourceMeeting, onCancel, onSaved }) {
+function DecisionForm({
+  isNew,
+  decision,
+  projects,
+  data,
+  sourceMeeting,
+  onCancel,
+  onSaved,
+}: {
+  isNew: boolean;
+  decision: PCCDecision;
+  projects: PCCProject[];
+  data: PCCStoreData;
+  sourceMeeting: PCCMeeting | null | undefined;
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
   const activeProjects = projects.filter((p) => !p.archived);
   const [selectedProjectId, setSelectedProjectId] = useState(decision.project_id || (activeProjects[0] ? activeProjects[0].id : ""));
   const [showError, setShowError] = useState(false);
 
-  const activityOptions = activitiesForProject(data, selectedProjectId);
+  const activityOptions: ActivityOption[] = activitiesForProject(data, selectedProjectId);
 
-  function handleSubmit(e) {
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const form = e.target;
-    const values = {};
+    const form = e.target as HTMLFormElement;
+    const values: { [key: string]: string } = {};
     FIELD_CONFIG.forEach((cfg) => {
-      const el = form.querySelector("#decfield-" + cfg.key);
+      const el = form.querySelector("#decfield-" + cfg.key) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null;
       if (el) values[cfg.key] = el.value;
     });
     values.project_id = selectedProjectId;
-    const activityEl = form.querySelector("#decfield-activity_id");
+    const activityEl = form.querySelector("#decfield-activity_id") as HTMLSelectElement | null;
     values.activity_id = activityEl ? activityEl.value : "";
 
     if (!values.title || !values.title.trim() || !values.project_id) {
@@ -107,18 +125,18 @@ function DecisionForm({ isNew, decision, projects, data, sourceMeeting, onCancel
                 {cfg.required ? " *" : ""}
               </label>
               {cfg.type === "select" ? (
-                <select id={"decfield-" + cfg.key} name={cfg.key} defaultValue={decision[cfg.key] || ""}>
+                <select id={"decfield-" + cfg.key} name={cfg.key} defaultValue={(decision as any)[cfg.key] || ""}>
                   {cfg.optional ? <option value="">Not set</option> : null}
-                  {window.PCC.store[cfg.options].map((val) => (
+                  {window.PCC.store[cfg.options!].map((val) => (
                     <option key={val} value={val}>
-                      {cfg.labels[val] || val}
+                      {(cfg.labels && cfg.labels[val]) || val}
                     </option>
                   ))}
                 </select>
               ) : cfg.type === "textarea" ? (
-                <textarea id={"decfield-" + cfg.key} name={cfg.key} rows={3} defaultValue={decision[cfg.key] || ""} />
+                <textarea id={"decfield-" + cfg.key} name={cfg.key} rows={3} defaultValue={(decision as any)[cfg.key] || ""} />
               ) : (
-                <input id={"decfield-" + cfg.key} name={cfg.key} type={cfg.type} defaultValue={decision[cfg.key] || ""} required={cfg.required} />
+                <input id={"decfield-" + cfg.key} name={cfg.key} type={cfg.type} defaultValue={(decision as any)[cfg.key] || ""} required={cfg.required} />
               )}
             </div>
           ))}
@@ -139,7 +157,7 @@ function DecisionForm({ isNew, decision, projects, data, sourceMeeting, onCancel
   );
 }
 
-function DecisionDetails({ d, data }) {
+function DecisionDetails({ d, data }: { d: PCCDecision; data: PCCStoreData }) {
   const fields = [
     { label: "STATUS", value: STATUS_LABELS[d.status] },
     { label: "DECISION DATE", value: d.decision_date || "—" },
@@ -194,7 +212,15 @@ function DecisionDetails({ d, data }) {
   );
 }
 
-export default function DecisionRegisterPage({ initialProjectFilter, initialPrefill, initialExpandedId }) {
+export default function DecisionRegisterPage({
+  initialProjectFilter,
+  initialPrefill,
+  initialExpandedId,
+}: {
+  initialProjectFilter?: string | null;
+  initialPrefill?: Partial<PCCDecision> | null;
+  initialExpandedId?: string | null;
+}) {
   const [data, setData] = useState(() => getData());
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -203,10 +229,10 @@ export default function DecisionRegisterPage({ initialProjectFilter, initialPref
     const ctxProjectId = getProjectContext();
     return ctxProjectId && data.projects.some((p) => p.id === ctxProjectId) ? ctxProjectId : "";
   });
-  const [editingId, setEditingId] = useState(() => (initialPrefill ? "new" : null));
-  const [pendingPrefill, setPendingPrefill] = useState(initialPrefill || null);
-  const [expandedId, setExpandedId] = useState(initialExpandedId || null);
-  const [selectedIds, setSelectedIds] = useState({});
+  const [editingId, setEditingId] = useState<string | null>(() => (initialPrefill ? "new" : null));
+  const [pendingPrefill, setPendingPrefill] = useState<Partial<PCCDecision> | null>(initialPrefill || null);
+  const [expandedId, setExpandedId] = useState<string | null>(initialExpandedId || null);
+  const [selectedIds, setSelectedIds] = useState<{ [id: string]: boolean }>({});
 
   function refresh() {
     setData(getData());
@@ -214,28 +240,28 @@ export default function DecisionRegisterPage({ initialProjectFilter, initialPref
 
   const projects = data.projects;
 
-  function decisionMatchesFilters(d) {
+  function decisionMatchesFilters(d: PCCDecision): boolean {
     if (statusFilter && d.status !== statusFilter) return false;
     if (projectFilter && d.project_id !== projectFilter) return false;
     if (search) {
-      const haystack = (d.title + " " + d.description + " " + d.decision + " " + d.decided_by).toLowerCase();
+      const haystack = ((d.title || "") + " " + (d.description || "") + " " + (d.decision || "") + " " + (d.decided_by || "")).toLowerCase();
       if (haystack.indexOf(search.toLowerCase()) === -1) return false;
     }
     return true;
   }
 
-  const decisionBeingEdited = !editingId
+  const decisionBeingEdited: PCCDecision | null = !editingId
     ? null
     : editingId === "new"
     ? newDecision(pendingPrefill || {})
-    : data.decisions.find((d) => d.id === editingId);
+    : data.decisions.find((d) => d.id === editingId) || null;
 
   const sourceMeeting =
     decisionBeingEdited && decisionBeingEdited.source_meeting_id
-      ? data.meetings.find((m) => m.id === decisionBeingEdited.source_meeting_id)
+      ? data.meetings.find((m) => m.id === decisionBeingEdited!.source_meeting_id)
       : null;
 
-  function handleToggleSelect(id) {
+  function handleToggleSelect(id: string) {
     setSelectedIds((prev) => {
       const next = Object.assign({}, prev);
       if (next[id]) delete next[id];
@@ -244,13 +270,13 @@ export default function DecisionRegisterPage({ initialProjectFilter, initialPref
     });
   }
 
-  function handleDelete(d) {
+  function handleDelete(d: PCCDecision) {
     if (!window.confirm("Delete this decision? This can't be undone.")) return;
     deleteDecision(d.id);
     refresh();
   }
 
-  function handleClone(d) {
+  function handleClone(d: PCCDecision) {
     setPendingPrefill({
       project_id: d.project_id,
       title: d.title,
@@ -387,7 +413,29 @@ export default function DecisionRegisterPage({ initialProjectFilter, initialPref
   );
 }
 
-function DecisionEntry({ d, data, projects, expanded, selected, onToggleSelect, onToggleDetails, onEdit, onClone, onDelete }) {
+function DecisionEntry({
+  d,
+  data,
+  projects,
+  expanded,
+  selected,
+  onToggleSelect,
+  onToggleDetails,
+  onEdit,
+  onClone,
+  onDelete,
+}: {
+  d: PCCDecision;
+  data: PCCStoreData;
+  projects: PCCProject[];
+  expanded: boolean;
+  selected: boolean;
+  onToggleSelect: () => void;
+  onToggleDetails: () => void;
+  onEdit: () => void;
+  onClone: () => void;
+  onDelete: () => void;
+}) {
   return (
     <div className="project-entry">
       <div className="project-card">

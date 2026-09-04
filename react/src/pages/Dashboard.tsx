@@ -37,12 +37,14 @@ import {
   viewProjectInPortfolio,
   goToKpiRoute,
   buildContextSwitcher,
-} from "../services/dashboardService.js";
+} from "../services/dashboardService";
+import type { Reminder, PortfolioExceptions, AttentionGroup } from "../services/dashboardService";
+import type { PCCProject, PCCStoreData } from "../types/pcc";
 
 function ContextSwitcherPanel() {
-  const containerRef = useRef(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    containerRef.current.appendChild(buildContextSwitcher("dashboard-context"));
+    containerRef.current!.appendChild(buildContextSwitcher("dashboard-context"));
   }, []);
   return (
     <div className="panel no-print" style={{ marginBottom: 16 }}>
@@ -54,7 +56,17 @@ function ContextSwitcherPanel() {
   );
 }
 
-function KpiCard({ label, value, colorVar, onClick }) {
+function KpiCard({
+  label,
+  value,
+  colorVar,
+  onClick,
+}: {
+  label: string;
+  value: number;
+  colorVar?: string | null;
+  onClick: () => void;
+}) {
   return (
     <button type="button" className="kpi-card kpi-card--link" onClick={onClick}>
       <span className="kpi-card__label">{label}</span>
@@ -65,7 +77,7 @@ function KpiCard({ label, value, colorVar, onClick }) {
   );
 }
 
-function PortfolioExceptionsPanel({ exceptions }) {
+function PortfolioExceptionsPanel({ exceptions }: { exceptions: PortfolioExceptions }) {
   const stats = [
     { label: "Open Risks", value: exceptions.openRisks, route: "risks" },
     { label: "Open Issues", value: exceptions.openIssues, route: "risks" },
@@ -98,7 +110,7 @@ function PortfolioExceptionsPanel({ exceptions }) {
   );
 }
 
-function ManagementAttentionPanel({ groups }) {
+function ManagementAttentionPanel({ groups }: { groups: AttentionGroup[] }) {
   const totalAlerts = groups.reduce((sum, g) => sum + g.alerts.length, 0);
   return (
     <div className="panel" style={{ marginBottom: 16, borderColor: totalAlerts > 0 ? "var(--status-critical)" : undefined }}>
@@ -133,16 +145,16 @@ function ManagementAttentionPanel({ groups }) {
   );
 }
 
-function RemindersPanel({ reminders, data }) {
-  const typesById = {};
+function RemindersPanel({ reminders, data }: { reminders: Reminder[]; data: PCCStoreData }) {
+  const typesById: { [id: string]: (typeof data.document_types)[number] } = {};
   data.document_types.forEach((t) => {
     typesById[t.id] = t;
   });
-  const vendorsById = {};
+  const vendorsById: { [id: string]: (typeof data.vendors)[number] } = {};
   data.vendors.forEach((v) => {
     vendorsById[v.id] = v;
   });
-  const projectsById = {};
+  const projectsById: { [id: string]: PCCProject } = {};
   data.projects.forEach((p) => {
     projectsById[p.id] = p;
   });
@@ -158,7 +170,7 @@ function RemindersPanel({ reminders, data }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {reminders.map((x, i) => {
             const r = x.row;
-            const t = typesById[r.document_type_id];
+            const t = typesById[r.document_type_id]!;
             const project = projectsById[r.project_id];
             const vendor = r.vendor_id ? vendorsById[r.vendor_id] : null;
             const badgeInfo = REQUIREMENT_STATUS_BADGE[x.status];
@@ -188,7 +200,17 @@ function RemindersPanel({ reminders, data }) {
   );
 }
 
-function FilterSelect({ label, value, options, onChange }) {
+function FilterSelect({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+}) {
   return (
     <select value={value} onChange={(e) => onChange(e.target.value)}>
       <option value="">All {label}</option>
@@ -211,7 +233,7 @@ export default function DashboardPage() {
   const [typeFilter, setTypeFilter] = useState("");
   const [yearFilter, setYearFilter] = useState("");
   const [projectFilter, setProjectFilter] = useState("");
-  const [lastSyncedContextId, setLastSyncedContextId] = useState(undefined);
+  const [lastSyncedContextId, setLastSyncedContextId] = useState<string | undefined>(undefined);
 
   const allActive = data.projects.filter((p) => !p.archived);
 
@@ -228,7 +250,7 @@ export default function DashboardPage() {
 
   const active = effectiveProjectFilter ? allActive.filter((p) => p.id === effectiveProjectFilter) : allActive;
 
-  function projectMatchesFilters(p) {
+  function projectMatchesFilters(p: PCCProject): boolean {
     if (clientFilter && p.client !== clientFilter) return false;
     if (countryFilter && p.country !== countryFilter) return false;
     if (sectorFilter && p.sector !== sectorFilter) return false;
@@ -240,7 +262,7 @@ export default function DashboardPage() {
   }
   const filtered = active.filter(projectMatchesFilters);
 
-  function countByStatus(status) {
+  function countByStatus(status: string): number {
     return filtered.filter((p) => p.status === status).length;
   }
 
@@ -263,7 +285,7 @@ export default function DashboardPage() {
     },
   ];
 
-  const years = {};
+  const years: { [year: string]: boolean } = {};
   active.forEach((p) => {
     if (p.start_date) years[p.start_date.slice(0, 4)] = true;
   });
@@ -275,7 +297,7 @@ export default function DashboardPage() {
 
   const recentProjects = filtered
     .slice()
-    .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
+    .sort((a, b) => new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime())
     .slice(0, 5);
 
   return (
@@ -368,7 +390,7 @@ export default function DashboardPage() {
               {recentProjects.map((p) => (
                 <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 14 }}>
                   <span>{p.name || "(unnamed project)"}</span>
-                  <span className={"status-badge status-badge--" + p.status}>{STATUS_LABELS[p.status] || p.status}</span>
+                  <span className={"status-badge status-badge--" + p.status}>{STATUS_LABELS[p.status || ""] || p.status}</span>
                 </div>
               ))}
             </div>

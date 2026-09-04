@@ -35,6 +35,17 @@ export interface PCCProject {
   company_id?: string;
   client_id?: string;
   status?: string;
+  client?: string;
+  country?: string;
+  sector?: string;
+  project_manager?: string;
+  planner?: string;
+  project_type?: string;
+  company?: string;
+  progress?: number;
+  finish_date?: string;
+  budget?: number;
+  currency?: string;
 }
 
 export interface PCCDocument {
@@ -42,6 +53,16 @@ export interface PCCDocument {
   project_id: string;
   document_type_id: string;
   trashed_at?: string | null;
+  uploaded_at?: string;
+  filename?: string;
+}
+
+export interface PCCDailyLog {
+  id: string;
+  project_id: string;
+  log_date?: string;
+  updated_at?: string;
+  created_at?: string;
 }
 
 export interface PCCSchedule {
@@ -164,6 +185,7 @@ export interface PCCChangeOrder {
   title?: string;
   requested_by?: string;
   waiting_on_party?: string;
+  updated_at?: string;
 }
 
 export interface PCCDecision {
@@ -172,6 +194,13 @@ export interface PCCDecision {
   status: string;
   title?: string;
   waiting_on_party?: string;
+  decision_date?: string;
+  decided_by?: string;
+  description?: string;
+  decision?: string;
+  source_meeting_id?: string;
+  activity_id?: string;
+  updated_at?: string;
 }
 
 export interface PCCRisk {
@@ -179,6 +208,9 @@ export interface PCCRisk {
   project_id: string;
   type?: string;
   title?: string;
+  status?: string;
+  probability?: string;
+  impact?: string;
   updated_at?: string;
 }
 
@@ -251,6 +283,7 @@ export interface PCCVendor {
 }
 
 export interface PCCProjectDocumentRequirement {
+  id?: string;
   project_id: string;
   document_type_id: string;
   planned_submission_date?: string;
@@ -277,6 +310,7 @@ export interface PCCStoreData {
   knowledge_base_articles: PCCKnowledgeBaseArticle[];
   companies: PCCCompany[];
   clients: PCCClient[];
+  daily_logs: PCCDailyLog[];
   document_types: PCCDocumentType[];
   vendors: PCCVendor[];
   project_document_requirements: PCCProjectDocumentRequirement[];
@@ -347,6 +381,9 @@ declare global {
         DELAY_CATEGORIES: string[];
         DELAY_RESPONSIBILITY_CLASSIFICATIONS: string[];
         DELAY_RECORD_CAUSES: string[];
+        newDecision(prefill: Partial<PCCDecision>): PCCDecision;
+        DECISION_STATUSES: string[];
+        WAITING_ON_PARTIES: string[];
       };
       pendingProjectPrefill?: { company_id?: string; client_id?: string };
       delayImpactEngine: {
@@ -365,6 +402,7 @@ declare global {
       layout: {
         refreshTitleBlock(): void;
         refreshBackupNudge?(): void;
+        buildContextSwitcher(prefix: string): HTMLElement;
       };
       archive: {
         exportAll(projects: PCCProject[], documents: PCCDocument[]): void;
@@ -405,9 +443,19 @@ declare global {
       };
       portfolio: {
         viewProject(projectId: string): void;
+        filterByStatus?(status: string): void;
       };
       changeOrders: {
         expandChangeOrder(changeOrderId: string): void;
+      };
+      cost?: {
+        projectCostSummary(data: PCCStoreData, projectId: string): { budgeted: number; actual: number };
+      };
+      scheduleGanttLayout: {
+        addDays(isoDateStr: string, days: number): string;
+      };
+      files?: {
+        filterByProject(projectId: string): void;
       };
       decisionRegister: {
         expandDecision(decisionId: string): void;
@@ -420,6 +468,9 @@ declare global {
       };
       executiveCenter: {
         viewProject(projectId: string, tab?: string): void;
+        getSchedulePerformanceSummary?(projectId: string): { unaddressedDelayDays: number };
+        getDelayImpactSummary?(projectId: string): { openDelayCount: number; criticalDelayCount: number };
+        getDiagnostics?(projectId: string): { severity: string; description: string }[];
       };
     };
   }

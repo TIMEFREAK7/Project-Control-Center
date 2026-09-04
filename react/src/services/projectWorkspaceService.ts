@@ -4,16 +4,27 @@
  *
  * Deliberately CPM-engine-free, same as the vanilla page — see its own header comment.
  */
+import type { PCCStoreData, PCCProject, PCCActivity, PCCRisk, PCCRfi, PCCChangeOrder } from "../types/pcc";
 
-export var STATUS_LABELS = { on_track: "On Track", at_risk: "At Risk", critical: "Critical", complete: "Complete" };
+export var STATUS_LABELS: { [status: string]: string } = { on_track: "On Track", at_risk: "At Risk", critical: "Critical", complete: "Complete" };
 
-var SEVERITY_MATRIX = {
+var SEVERITY_MATRIX: { [probability: string]: { [impact: string]: string } } = {
   high: { low: "medium", medium: "high", high: "high" },
   medium: { low: "low", medium: "medium", high: "high" },
   low: { low: "low", medium: "low", high: "medium" },
 };
 
-export var NAV_GROUPS = [
+export interface NavItem {
+  key: string;
+  label: string;
+}
+
+export interface NavGroup {
+  label: string;
+  items: NavItem[];
+}
+
+export var NAV_GROUPS: NavGroup[] = [
   { label: "PLANNING & SCHEDULE", items: [{ key: "schedule", label: "Schedule" }] },
   {
     label: "PROJECT CONTROLS",
@@ -46,33 +57,33 @@ export var NAV_GROUPS = [
   { label: "REPORTING", items: [{ key: "reports", label: "Reports" }] },
 ];
 
-function today() {
+function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-function riskSeverity(r) {
-  return SEVERITY_MATRIX[r.probability] ? SEVERITY_MATRIX[r.probability][r.impact] : "medium";
+function riskSeverity(r: PCCRisk): string {
+  return r.probability && SEVERITY_MATRIX[r.probability] ? SEVERITY_MATRIX[r.probability][r.impact || ""] || "medium" : "medium";
 }
 
-export function getData() {
+export function getData(): PCCStoreData {
   return Object.assign({}, window.PCC.store.get());
 }
 
-export function getProjectContext() {
+export function getProjectContext(): string {
   return window.PCC.projectContext.get();
 }
-export function setProjectContext(projectId) {
+export function setProjectContext(projectId: string): void {
   window.PCC.projectContext.set(projectId);
 }
 
-export function fmtMoney(value, currency) {
+export function fmtMoney(value: number | string | null | undefined, currency: string | undefined): string {
   if (value === null || value === undefined || value === "") return "—";
   var num = Number(value);
   if (Number.isNaN(num)) return "—";
   return (currency ? currency + " " : "") + num.toLocaleString();
 }
 
-export function computeScheduleStatus(data, projectId) {
+export function computeScheduleStatus(data: PCCStoreData, projectId: string): string {
   var todayIso = today();
   var behind = data.activities.some(function (a) {
     if (a.project_id !== projectId) return false;
@@ -85,7 +96,12 @@ export function computeScheduleStatus(data, projectId) {
   return behind ? "Behind Schedule" : "On Schedule";
 }
 
-export function computeKeyMilestone(data, projectId) {
+export interface KeyMilestone {
+  activity: PCCActivity;
+  date: string;
+}
+
+export function computeKeyMilestone(data: PCCStoreData, projectId: string): KeyMilestone | null {
   var scheduleIds = data.schedules
     .filter(function (s) {
       return s.project_id === projectId;
@@ -93,12 +109,12 @@ export function computeKeyMilestone(data, projectId) {
     .map(function (s) {
       return s.id;
     });
-  var candidates = data.activities
+  var candidates: KeyMilestone[] = data.activities
     .filter(function (a) {
       return scheduleIds.indexOf(a.schedule_id) !== -1 && a.activity_type === "milestone" && a.status !== "complete";
     })
     .map(function (a) {
-      return { activity: a, date: a.early_start || a.planned_start };
+      return { activity: a, date: (a.early_start || a.planned_start) as string };
     })
     .filter(function (x) {
       return x.date;
@@ -109,7 +125,26 @@ export function computeKeyMilestone(data, projectId) {
   return candidates.length > 0 ? candidates[0] : null;
 }
 
-export function projectStats(data, projectId) {
+export interface OverdueMeetingAction {
+  meetingId: string;
+  meetingTitle: string;
+  description?: string;
+}
+
+export interface ProjectStats {
+  openRisks: number;
+  criticalRisks: PCCRisk[];
+  openRfis: number;
+  overdueRfis: PCCRfi[];
+  docsAvailable: number;
+  docsTotal: number;
+  overdueDocs: string[];
+  pendingChangeOrders: PCCChangeOrder[];
+  overdueMeetingActions: OverdueMeetingAction[];
+  costSummary: { budgeted: number; actual: number };
+}
+
+export function projectStats(data: PCCStoreData, projectId: string): ProjectStats {
   var todayIso = today();
   var projectRisks = data.risks.filter(function (r) {
     return r.project_id === projectId;
@@ -128,17 +163,17 @@ export function projectStats(data, projectId) {
     return r.status !== "closed";
   });
   var overdueRfis = openRfis.filter(function (r) {
-    return r.date_required && r.date_required < todayIso;
+    return !!(r.date_required && r.date_required < todayIso);
   });
 
-  var docTypesById = {};
+  var docTypesById: { [id: string]: (typeof data.document_types)[number] } = {};
   data.document_types.forEach(function (t) {
     docTypesById[t.id] = t;
   });
   var requirements = data.project_document_requirements.filter(function (r) {
     return r.project_id === projectId && docTypesById[r.document_type_id];
   });
-  var overdueDocs = [];
+  var overdueDocs: string[] = [];
   var docsAvailable = 0;
   requirements.forEach(function (r) {
     var available = data.documents.some(function (d) {
@@ -155,7 +190,7 @@ export function projectStats(data, projectId) {
     return co.project_id === projectId && co.status === "pending";
   });
 
-  var overdueMeetingActions = [];
+  var overdueMeetingActions: OverdueMeetingAction[] = [];
   data.meetings
     .filter(function (m) {
       return m.project_id === projectId;
@@ -184,8 +219,14 @@ export function projectStats(data, projectId) {
   };
 }
 
-export function buildAttentionItems(stats) {
-  var items = [];
+export interface AttentionItem {
+  severity: string;
+  text: string;
+  nav: string;
+}
+
+export function buildAttentionItems(stats: ProjectStats): AttentionItem[] {
+  var items: AttentionItem[] = [];
   stats.criticalRisks.forEach(function (r) {
     items.push({ severity: "critical", text: "Critical " + (r.type === "issue" ? "issue" : "risk") + ": " + r.title, nav: "risks" });
   });
@@ -211,10 +252,15 @@ export function buildAttentionItems(stats) {
   return items;
 }
 
-export function buildUpcomingItems(data, projectId, windowDays) {
+export interface DatedItem {
+  date: string;
+  text: string;
+}
+
+export function buildUpcomingItems(data: PCCStoreData, projectId: string, windowDays: number): DatedItem[] {
   var todayIso = today();
   var cutoff = window.PCC.scheduleGanttLayout.addDays(todayIso, windowDays);
-  var items = [];
+  var items: DatedItem[] = [];
 
   var projectSchedules = data.schedules.filter(function (s) {
     return s.project_id === projectId;
@@ -237,7 +283,7 @@ export function buildUpcomingItems(data, projectId, windowDays) {
       return m.project_id === projectId && m.meeting_date && m.meeting_date >= todayIso && m.meeting_date <= cutoff;
     })
     .forEach(function (m) {
-      items.push({ date: m.meeting_date, text: "Meeting: " + (m.title || "(untitled)") });
+      items.push({ date: m.meeting_date as string, text: "Meeting: " + (m.title || "(untitled)") });
     });
 
   data.rfis
@@ -245,7 +291,7 @@ export function buildUpcomingItems(data, projectId, windowDays) {
       return r.project_id === projectId && r.status !== "closed" && r.date_required && r.date_required >= todayIso && r.date_required <= cutoff;
     })
     .forEach(function (r) {
-      items.push({ date: r.date_required, text: "RFI Due: " + r.number + " " + r.subject });
+      items.push({ date: r.date_required as string, text: "RFI Due: " + r.number + " " + r.subject });
     });
 
   items.sort(function (a, b) {
@@ -254,8 +300,8 @@ export function buildUpcomingItems(data, projectId, windowDays) {
   return items;
 }
 
-export function buildRecentActivity(data, projectId) {
-  var items = [];
+export function buildRecentActivity(data: PCCStoreData, projectId: string): DatedItem[] {
+  var items: { date: string | undefined; text: string }[] = [];
   data.risks
     .filter(function (r) {
       return r.project_id === projectId;
@@ -302,27 +348,26 @@ export function buildRecentActivity(data, projectId) {
       items.push({ date: l.updated_at || l.created_at, text: "Daily Log entry for " + l.log_date });
     });
 
-  return items
-    .filter(function (i) {
-      return i.date;
-    })
+  return (items.filter(function (i) {
+    return i.date;
+  }) as DatedItem[])
     .sort(function (a, b) {
-      return new Date(b.date) - new Date(a.date);
+      return new Date(b.date).getTime() - new Date(a.date).getTime();
     })
     .slice(0, 10);
 }
 
-export function navigateToModule(key, projectId) {
+export function navigateToModule(key: string, projectId: string): void {
   if (key === "executiveCenter" && window.PCC.executiveCenter) {
     window.PCC.executiveCenter.viewProject(projectId);
   } else if (key === "documents" && window.PCC.files) {
     window.PCC.files.filterByProject(projectId);
   } else if (key === "reports") {
     window.PCC.projectContext.set(projectId);
-  } else if (window.PCC[key] && typeof window.PCC[key].filterByProject === "function") {
-    window.PCC[key].filterByProject(projectId);
-  } else if (window.PCC[key] && typeof window.PCC[key].viewProject === "function") {
-    window.PCC[key].viewProject(projectId);
+  } else if ((window.PCC as any)[key] && typeof (window.PCC as any)[key].filterByProject === "function") {
+    (window.PCC as any)[key].filterByProject(projectId);
+  } else if ((window.PCC as any)[key] && typeof (window.PCC as any)[key].viewProject === "function") {
+    (window.PCC as any)[key].viewProject(projectId);
   }
   window.PCC.router.go(key);
 }
