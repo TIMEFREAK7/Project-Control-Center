@@ -92,16 +92,392 @@ import {
   toggleOfficialBaseline,
   deleteBaseline,
   runWhatIf,
-} from "../services/scheduleService.js";
+  ActivityFieldConfig,
+  ActivitiesTabFilter,
+  GanttFilter,
+  ExcelEditorRow,
+  LinkedRecordRow,
+  WhatIfResult,
+} from "../services/scheduleService";
+import type {
+  PCCStoreData,
+  PCCSchedule,
+  PCCWbsItem,
+  PCCActivity,
+  PCCRelationship,
+  PCCCalendar,
+  PCCVendor,
+  PCCScheduleBaseline,
+  PCCRecoveryAction,
+  PCCDelayRecord,
+  PCCDelayActivityLink,
+  GanttLayout,
+  GanttLayoutRow,
+  BaselineSnapshotActivity,
+  BaselineComparisonResult,
+  ParsedScheduleImport,
+  ReadImportFileResult,
+  DuplicateFileMatch,
+  ImportFileInfo,
+  DelayActivityImpact,
+} from "../types/pcc";
+
+interface ScheduleFormProps {
+  schedule: PCCSchedule;
+  isNew: boolean;
+  projectId: string;
+  onDone: (newId: string | null) => void;
+}
+
+interface ScheduleBarProps {
+  data: PCCStoreData;
+  projectId: string;
+  scheduleId: string;
+  onProjectChange: (id: string) => void;
+  onScheduleChange: (id: string) => void;
+  onEditSchedule: () => void;
+  onNewSchedule: () => void;
+  onOpenImport: () => void;
+  onOpenExcelEditor: (schedule: PCCSchedule | undefined) => void;
+  onExportMsp: (schedule: PCCSchedule | undefined) => void;
+  onExportXer: (schedule: PCCSchedule | undefined) => void;
+  onCalculate: () => void;
+  baselineSaving: boolean;
+  onSaveBaseline: () => void;
+}
+
+interface WbsFormProps {
+  wbsItem: PCCWbsItem;
+  isNew: boolean;
+  wbsItems: PCCWbsItem[];
+  projectId: string;
+  scheduleId: string;
+  onDone: () => void;
+}
+
+interface WbsTabProps {
+  data: PCCStoreData;
+  projectId: string;
+  scheduleId: string;
+  refresh: () => void;
+}
+
+interface RelationshipFormProps {
+  relationship: PCCRelationship;
+  isNew: boolean;
+  activities: PCCActivity[];
+  scheduleId: string;
+  onDone: () => void;
+}
+
+interface RelationshipsTabProps {
+  data: PCCStoreData;
+  scheduleId: string;
+  initialPrefillPredecessorId: string | null;
+  refresh: () => void;
+}
+
+interface CalendarFormProps {
+  calendar: PCCCalendar;
+  isNew: boolean;
+  projectId: string;
+  onDone: () => void;
+}
+
+interface CalendarsTabProps {
+  data: PCCStoreData;
+  projectId: string;
+  refresh: () => void;
+}
+
+interface ActivityFieldProps {
+  cfg: ActivityFieldConfig;
+  value: any;
+  onChange: (v: string) => void;
+}
+
+interface ActivityFormProps {
+  activity: PCCActivity;
+  isNew: boolean;
+  wbsItems: PCCWbsItem[];
+  vendors: PCCVendor[];
+  calendars: PCCCalendar[];
+  projectId: string;
+  scheduleId: string;
+  onDone: () => void;
+}
+
+interface ActivityRowMenuProps {
+  activity: PCCActivity;
+  open: boolean;
+  onToggle: () => void;
+  onClose: () => void;
+  onEdit: () => void;
+  onClone: () => void;
+  onDelete: () => void;
+}
+
+interface ActivityMobileCardProps {
+  a: PCCActivity;
+  wbsItems: PCCWbsItem[];
+  selected: boolean;
+  onToggleSelect: () => void;
+  rowMenuOpen: boolean;
+  onToggleRowMenu: () => void;
+  onCloseRowMenu: () => void;
+  onEdit: () => void;
+  onClone: () => void;
+  onDelete: () => void;
+}
+
+interface InlineEditCellProps {
+  editing: boolean;
+  onBegin: () => void;
+  display: React.ReactNode;
+  title: string;
+  children: React.ReactNode;
+}
+
+interface ActivityRowProps {
+  a: PCCActivity;
+  wbsItems: PCCWbsItem[];
+  visibleColumns: { [key: string]: boolean };
+  selected: boolean;
+  onToggleSelect: () => void;
+  inlineEdit: { activityId: string | null; field: string | null };
+  onBeginInline: (field: string) => void;
+  onEndInline: () => void;
+  rowMenuOpen: boolean;
+  onToggleRowMenu: () => void;
+  onCloseRowMenu: () => void;
+  onEdit: () => void;
+  onClone: () => void;
+  onDelete: () => void;
+}
+
+interface ActivitiesTabProps {
+  data: PCCStoreData;
+  projectId: string;
+  scheduleId: string;
+  initialActivityTypeHint: string | null;
+  initialEditingActivityId: string | null;
+  refresh: () => void;
+}
+
+interface ParsedIssuesToggleProps {
+  parsed: ParsedScheduleImport;
+}
+
+interface ImportPanelProps {
+  data: PCCStoreData;
+  projectId: string;
+  onDone: () => void;
+  onImported: (scheduleId: string) => void;
+}
+
+interface ExcelCellControlProps {
+  rowIndex: number;
+  field: { key: string; label: string };
+  value: string;
+  onChange: (v: string) => void;
+}
+
+interface ExcelEditorPanelProps {
+  schedule: PCCSchedule;
+  data: PCCStoreData;
+  onDone: () => void;
+}
+
+interface GanttRowProps {
+  row: GanttLayoutRow;
+  activity: PCCActivity | undefined;
+  y: number;
+  rowHeight: number;
+  chartWidth: number;
+  pxPerDay: number;
+  xForDate: (iso: string) => number;
+  baselineRow: GanttLayoutRow | undefined;
+  notReady: boolean;
+  scheduleId: string;
+  onOpenDetail: (id: string) => void;
+  onCommitted: () => void;
+}
+
+interface GanttToolbarProps {
+  data: PCCStoreData;
+  projectId: string;
+  allActivities: PCCActivity[];
+  wbsItems: PCCWbsItem[];
+  filter: GanttFilter;
+  setFilter: React.Dispatch<React.SetStateAction<GanttFilter>>;
+  zoom: string;
+  setZoom: (z: string) => void;
+  onAddActivity: () => void;
+  onAddMilestone: () => void;
+  showBaseline: boolean;
+  baselineId: string;
+  baselineLoading: boolean;
+  onToggleBaseline: (checked: boolean, projectBaselines: PCCScheduleBaseline[]) => void;
+  onChangeBaselineId: (id: string) => void;
+}
+
+interface GanttBaselineSnapshot {
+  baselineId: string;
+  activities: BaselineSnapshotActivity[];
+}
+
+interface GanttChartProps {
+  data: PCCStoreData;
+  schedule: PCCSchedule | undefined;
+  allActivities: PCCActivity[];
+  wbsItems: PCCWbsItem[];
+  filter: GanttFilter;
+  zoom: string;
+  showBaseline: boolean;
+  baselineSnapshot: GanttBaselineSnapshot | null;
+  baselineId: string;
+  scheduleId: string;
+  onOpenDetail: (id: string) => void;
+  refresh: () => void;
+  detailPanel: React.ReactNode;
+}
+
+interface GanttTabProps {
+  data: PCCStoreData;
+  projectId: string;
+  scheduleId: string;
+  initialDetailActivityId: string | null;
+  onSwitchToActivities: (typeHint: string | null) => void;
+  onEditActivity: (id: string) => void;
+  onAddRelationship: (id: string) => void;
+  refresh: () => void;
+}
+
+interface ActivityDataProps {
+  activity: PCCActivity;
+  data: PCCStoreData;
+}
+
+interface RecoveryActionFormProps {
+  editing: PCCRecoveryAction;
+  isNew: boolean;
+  activity: PCCActivity;
+  data: PCCStoreData;
+  onDone: () => void;
+}
+
+interface RecoveryActionsSectionProps {
+  activity: PCCActivity;
+  data: PCCStoreData;
+  refresh: () => void;
+}
+
+interface ImpactSummaryRowProps {
+  label: string;
+  value: React.ReactNode;
+  colorVar?: string | null;
+}
+
+interface DelayScheduleImpactProps {
+  delayRecord: PCCDelayRecord;
+  links: PCCDelayActivityLink[];
+  data: PCCStoreData;
+  scheduleId: string;
+}
+
+interface RecoveryForecastProgressionProps {
+  delayRecord: PCCDelayRecord;
+  links: PCCDelayActivityLink[];
+  data: PCCStoreData;
+}
+
+interface DelayTimelineProps {
+  delayRecord: PCCDelayRecord;
+}
+
+interface DelayLinkActivityPickerProps {
+  delayRecord: PCCDelayRecord;
+  links: PCCDelayActivityLink[];
+  data: PCCStoreData;
+  scheduleId: string;
+  refresh: () => void;
+}
+
+interface RecordLinkFieldProps {
+  id: string;
+  label: string;
+  records: any[];
+  labelFn: (r: any) => string;
+  value: string;
+  onChange: (v: string) => void;
+}
+
+interface DelayRecordFormProps {
+  editing: PCCDelayRecord;
+  isNew: boolean;
+  activity: PCCActivity;
+  data: PCCStoreData;
+  onDone: () => void;
+}
+
+interface DelayRecordsSectionProps {
+  activity: PCCActivity;
+  data: PCCStoreData;
+  scheduleId: string;
+  refresh: () => void;
+}
+
+interface ActivityDetailPanelProps {
+  activity: PCCActivity;
+  data: PCCStoreData;
+  wbsItems: PCCWbsItem[];
+  scheduleActivities: PCCActivity[];
+  relationships: PCCRelationship[];
+  scheduleId: string;
+  onClose: () => void;
+  onEditActivity: (id: string) => void;
+  onAddRelationship: (id: string) => void;
+  refresh: () => void;
+}
+
+interface BaselineCompareResultProps {
+  result: BaselineComparisonResult;
+  currentScheduleName: string;
+}
+
+interface BaselineRowProps {
+  b: PCCScheduleBaseline;
+  scheduleId: string;
+  refresh: () => void;
+}
+
+interface BaselinesTabProps {
+  data: PCCStoreData;
+  projectId: string;
+  scheduleId: string;
+  refresh: () => void;
+}
+
+interface WhatIfTabProps {
+  data: PCCStoreData;
+  scheduleId: string;
+}
+
+interface SchedulePageProps {
+  initialProjectId?: string;
+  initialScheduleId?: string;
+  initialTab?: string;
+  initialGanttDetailActivityId?: string;
+}
 
 // ===== Schedule create/edit form =====
 
-function ScheduleForm({ schedule, isNew, projectId, onDone }) {
+function ScheduleForm({ schedule, isNew, projectId, onDone }: ScheduleFormProps) {
   const [name, setName] = useState(schedule.name || "");
-  const [revisionNumber, setRevisionNumber] = useState(schedule.revision_number || 0);
+  const [revisionNumber, setRevisionNumber] = useState<number | string>(schedule.revision_number || 0);
   const [version, setVersion] = useState(schedule.version || "");
   const [dataDate, setDataDate] = useState(schedule.data_date || "");
-  const [nearCriticalThresholdDays, setNearCriticalThresholdDays] = useState(schedule.near_critical_threshold_days || 0);
+  const [nearCriticalThresholdDays, setNearCriticalThresholdDays] = useState<number | string>(schedule.near_critical_threshold_days || 0);
   const [calculationMode, setCalculationMode] = useState(schedule.calculation_mode || "progress_override");
   const [calendarAware, setCalendarAware] = useState(!!schedule.calendar_aware);
   const [constraintsEnabled, setConstraintsEnabled] = useState(!!schedule.constraints_enabled);
@@ -111,7 +487,7 @@ function ScheduleForm({ schedule, isNew, projectId, onDone }) {
   const [description, setDescription] = useState(schedule.description || "");
   const [error, setError] = useState(false);
 
-  function handleSubmit(e) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) {
@@ -255,7 +631,7 @@ function ScheduleBar({
   onCalculate,
   baselineSaving,
   onSaveBaseline,
-}) {
+}: ScheduleBarProps) {
   const activeProjects = data.projects.filter((p) => !p.archived);
   const projectSchedules = data.schedules.filter((s) => s.project_id === projectId);
   const currentSchedule = data.schedules.find((s) => s.id === scheduleId);
@@ -340,14 +716,14 @@ function ScheduleBar({
 
 // ===== WBS tab =====
 
-function WbsForm({ wbsItem, isNew, wbsItems, projectId, scheduleId, onDone }) {
+function WbsForm({ wbsItem, isNew, wbsItems, projectId, scheduleId, onDone }: WbsFormProps) {
   const [code, setCode] = useState(wbsItem.code || "");
   const [name, setName] = useState(wbsItem.name || "");
   const [parentWbsId, setParentWbsId] = useState(wbsItem.parent_wbs_id || "");
   const [description, setDescription] = useState(wbsItem.description || "");
   const [error, setError] = useState(false);
 
-  function handleSubmit(e) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) {
@@ -409,8 +785,8 @@ function WbsForm({ wbsItem, isNew, wbsItems, projectId, scheduleId, onDone }) {
   );
 }
 
-function WbsTab({ data, projectId, scheduleId, refresh }) {
-  const [editingWbsId, setEditingWbsId] = useState(null);
+function WbsTab({ data, projectId, scheduleId, refresh }: WbsTabProps) {
+  const [editingWbsId, setEditingWbsId] = useState<string | null>(null);
   const wbsItems = data.wbs_items.filter((w) => w.schedule_id === scheduleId);
 
   let editingItem = null;
@@ -469,8 +845,8 @@ function WbsTab({ data, projectId, scheduleId, refresh }) {
                     title={prevSibling ? "Nest under “" + (prevSibling.code ? prevSibling.code + " — " : "") + prevSibling.name + "”" : "No previous item at this level to nest under"}
                     disabled={!prevSibling}
                     onClick={() => {
-                      indentWbsItem(w.id, prevSibling.id);
-                      window.PCC.notify("Indented under “" + (prevSibling.code ? prevSibling.code + " — " : "") + prevSibling.name + "”.", "success");
+                      indentWbsItem(w.id, prevSibling!.id);
+                      window.PCC.notify("Indented under “" + (prevSibling!.code ? prevSibling!.code + " — " : "") + prevSibling!.name + "”.", "success");
                       refresh();
                     }}
                   >
@@ -481,7 +857,7 @@ function WbsTab({ data, projectId, scheduleId, refresh }) {
                     title={currentParent ? "Promote to the same level as “" + (currentParent.code ? currentParent.code + " — " : "") + currentParent.name + "”" : "Already at the top level"}
                     disabled={!currentParent}
                     onClick={() => {
-                      const newParentId = currentParent.parent_wbs_id || null;
+                      const newParentId = currentParent!.parent_wbs_id || null;
                       outdentWbsItem(w.id, newParentId);
                       window.PCC.notify("Outdented “" + w.name + "”.", "success");
                       refresh();
@@ -512,11 +888,11 @@ function WbsTab({ data, projectId, scheduleId, refresh }) {
 
 // ===== Relationships tab =====
 
-function RelationshipForm({ relationship, isNew, activities, scheduleId, onDone }) {
+function RelationshipForm({ relationship, isNew, activities, scheduleId, onDone }: RelationshipFormProps) {
   const [predecessorId, setPredecessorId] = useState(relationship.predecessor_id || activities[0].id);
   const [successorId, setSuccessorId] = useState(relationship.successor_id || activities[1].id);
   const [type, setType] = useState(relationship.type || "FS");
-  const [lag, setLag] = useState(relationship.lag || 0);
+  const [lag, setLag] = useState<number | string>(relationship.lag || 0);
   const [error, setError] = useState("");
 
   if (activities.length < 2) {
@@ -531,7 +907,7 @@ function RelationshipForm({ relationship, isNew, activities, scheduleId, onDone 
     );
   }
 
-  function handleSubmit(e) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const err = saveRelationship(isNew, relationship, scheduleId, {
       predecessor_id: predecessorId,
@@ -601,7 +977,7 @@ function RelationshipForm({ relationship, isNew, activities, scheduleId, onDone 
   );
 }
 
-function RelationshipsTab({ data, scheduleId, initialPrefillPredecessorId, refresh }) {
+function RelationshipsTab({ data, scheduleId, initialPrefillPredecessorId, refresh }: RelationshipsTabProps) {
   // A prefill hand-off from the Activity Detail Panel's "+ Add Relationship" means
   // "open the new-relationship form already filled in" — not just arrive on this tab
   // with the value on standby, matching vanilla's own addRelBtn handler (which sets
@@ -676,14 +1052,14 @@ function RelationshipsTab({ data, scheduleId, initialPrefillPredecessorId, refre
 
 // ===== Calendars tab =====
 
-function CalendarForm({ calendar, isNew, projectId, onDone }) {
+function CalendarForm({ calendar, isNew, projectId, onDone }: CalendarFormProps) {
   const [name, setName] = useState(calendar.name || "");
   const [workingDays, setWorkingDays] = useState((calendar.working_days || []).slice());
   const [holidays, setHolidays] = useState((calendar.holidays || []).slice());
   const [newHoliday, setNewHoliday] = useState("");
   const [error, setError] = useState(false);
 
-  function handleSubmit(e) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) {
@@ -781,8 +1157,8 @@ function CalendarForm({ calendar, isNew, projectId, onDone }) {
   );
 }
 
-function CalendarsTab({ data, projectId, refresh }) {
-  const [editingCalendarId, setEditingCalendarId] = useState(null);
+function CalendarsTab({ data, projectId, refresh }: CalendarsTabProps) {
+  const [editingCalendarId, setEditingCalendarId] = useState<string | null>(null);
   const calendars = data.calendars.filter((c) => c.project_id === projectId);
 
   let editingItem = null;
@@ -833,7 +1209,7 @@ function CalendarsTab({ data, projectId, refresh }) {
                   ) : null}
                   <br />
                   <span className="text-secondary" style={{ fontSize: 12 }}>
-                    {formatWorkingDays(cal.working_days)} · {cal.holidays.length} holiday{cal.holidays.length === 1 ? "" : "s"} · used by {referencingCount} activit
+                    {formatWorkingDays(cal.working_days)} · {(cal.holidays || []).length} holiday{(cal.holidays || []).length === 1 ? "" : "s"} · used by {referencingCount} activit
                     {referencingCount === 1 ? "y" : "ies"}
                   </span>
                 </div>
@@ -872,17 +1248,17 @@ function CalendarsTab({ data, projectId, refresh }) {
 
 // ===== Activity form =====
 
-function ActivityField({ cfg, value, onChange }) {
+function ActivityField({ cfg, value, onChange }: ActivityFieldProps) {
   const id = "actfield-" + cfg.key;
   if (cfg.type === "select") {
-    const opts = cfg.options ? window.PCC.store[cfg.options] : cfg.staticOptions;
+    const opts: string[] = cfg.options ? (window.PCC.store as any)[cfg.options] : cfg.staticOptions || [];
     return (
       <div className="field">
         <label>{cfg.label + (cfg.required ? " *" : "")}</label>
         <select id={id} value={value == null ? "" : value} onChange={(e) => onChange(e.target.value)}>
           {opts.map((val) => (
             <option key={val} value={val}>
-              {cfg.labels[val] || val}
+              {(cfg.labels || {})[val] || val}
             </option>
           ))}
         </select>
@@ -911,25 +1287,25 @@ function ActivityField({ cfg, value, onChange }) {
   );
 }
 
-function ActivityForm({ activity, isNew, wbsItems, vendors, calendars, projectId, scheduleId, onDone }) {
+function ActivityForm({ activity, isNew, wbsItems, vendors, calendars, projectId, scheduleId, onDone }: ActivityFormProps) {
   const defaultCalendar = calendars.find((c) => c.is_default);
   const [wbsId, setWbsId] = useState(activity.wbs_id || "");
   const [vendorId, setVendorId] = useState(activity.vendor_id || "");
   const [calendarId, setCalendarId] = useState(activity.calendar_id || (isNew && defaultCalendar ? defaultCalendar.id : ""));
-  const [fields, setFields] = useState(() => {
-    const init = {};
+  const [fields, setFields] = useState<{ [key: string]: any }>(() => {
+    const init: { [key: string]: any } = {};
     ACTIVITY_FIELD_CONFIG.forEach((cfg) => {
-      init[cfg.key] = activity[cfg.key] == null ? "" : activity[cfg.key];
+      init[cfg.key] = (activity as any)[cfg.key] == null ? "" : (activity as any)[cfg.key];
     });
     return init;
   });
   const [error, setError] = useState("");
 
-  function setField(key, value) {
+  function setField(key: string, value: any) {
     setFields((prev) => Object.assign({}, prev, { [key]: value }));
   }
 
-  function handleSubmit(e) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const name = String(fields.name || "").trim();
     if (!name) {
@@ -942,7 +1318,7 @@ function ActivityForm({ activity, isNew, wbsItems, vendors, calendars, projectId
     }
     setError("");
 
-    const values = { wbs_id: wbsId || null, vendor_id: vendorId || "", calendar_id: calendarId || null };
+    const values: any = { wbs_id: wbsId || null, vendor_id: vendorId || "", calendar_id: calendarId || null };
     ACTIVITY_FIELD_CONFIG.forEach((cfg) => {
       const raw = fields[cfg.key];
       values[cfg.key] = cfg.type === "number" ? (raw === "" ? null : Number(raw)) : raw;
@@ -962,7 +1338,7 @@ function ActivityForm({ activity, isNew, wbsItems, vendors, calendars, projectId
         </div>
       );
     } else {
-      const floatLabel = activity.total_float <= 0 ? "Critical (0 float)" : activity.total_float + " day(s) float";
+      const floatLabel = activity.total_float! <= 0 ? "Critical (0 float)" : activity.total_float + " day(s) float";
       const data = window.PCC.store.get();
       const scheduleForStaleCheck = data.schedules.find((s) => s.id === activity.schedule_id);
       const stale = isCpmStale(scheduleForStaleCheck, data);
@@ -1043,7 +1419,7 @@ function ActivityForm({ activity, isNew, wbsItems, vendors, calendars, projectId
 
 // ===== Activities tab =====
 
-function ActivityRowMenu({ activity, open, onToggle, onClose, onEdit, onClone, onDelete }) {
+function ActivityRowMenu({ activity, open, onToggle, onClose, onEdit, onClone, onDelete }: ActivityRowMenuProps) {
   return (
     <div className="card-menu">
       <button className="icon-btn" aria-label="More actions" onClick={onToggle}>
@@ -1069,7 +1445,7 @@ function ActivityRowMenu({ activity, open, onToggle, onClose, onEdit, onClone, o
   );
 }
 
-function ActivityMobileCard({ a, wbsItems, selected, onToggleSelect, rowMenuOpen, onToggleRowMenu, onCloseRowMenu, onEdit, onClone, onDelete }) {
+function ActivityMobileCard({ a, wbsItems, selected, onToggleSelect, rowMenuOpen, onToggleRowMenu, onCloseRowMenu, onEdit, onClone, onDelete }: ActivityMobileCardProps) {
   const metaBits = [wbsName(wbsItems, a.wbs_id), ACTIVITY_TYPE_LABELS[a.activity_type]];
   if (a.planned_start || a.planned_finish) metaBits.push((a.planned_start || "—") + " → " + (a.planned_finish || "—"));
   metaBits.push((a.percent_complete || 0) + "% complete");
@@ -1086,7 +1462,7 @@ function ActivityMobileCard({ a, wbsItems, selected, onToggleSelect, rowMenuOpen
       </div>
       <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
         <span className={"status-badge " + (a.status === "complete" ? "status-badge--complete" : a.status === "on_hold" ? "status-badge--at_risk" : "status-badge--info")}>
-          {ACTIVITY_STATUS_LABELS[a.status]}
+          {ACTIVITY_STATUS_LABELS[a.status || ""]}
         </span>
         {a.total_float != null ? (
           <span className={"status-badge " + (a.total_float <= 0 ? "status-badge--critical" : "status-badge--info")}>
@@ -1101,7 +1477,7 @@ function ActivityMobileCard({ a, wbsItems, selected, onToggleSelect, rowMenuOpen
   );
 }
 
-function InlineEditCell({ editing, onBegin, display, title, children }) {
+function InlineEditCell({ editing, onBegin, display, title, children }: InlineEditCellProps) {
   if (editing) return <td>{children}</td>;
   return (
     <td style={{ cursor: "pointer" }} title={title} onClick={onBegin}>
@@ -1110,12 +1486,12 @@ function InlineEditCell({ editing, onBegin, display, title, children }) {
   );
 }
 
-function ActivityRow({ a, wbsItems, visibleColumns, selected, onToggleSelect, inlineEdit, onBeginInline, onEndInline, rowMenuOpen, onToggleRowMenu, onCloseRowMenu, onEdit, onClone, onDelete }) {
-  const isEditingField = (field) => inlineEdit.activityId === a.id && inlineEdit.field === field;
-  const focusSelectRef = (el) => {
+function ActivityRow({ a, wbsItems, visibleColumns, selected, onToggleSelect, inlineEdit, onBeginInline, onEndInline, rowMenuOpen, onToggleRowMenu, onCloseRowMenu, onEdit, onClone, onDelete }: ActivityRowProps) {
+  const isEditingField = (field: string) => inlineEdit.activityId === a.id && inlineEdit.field === field;
+  const focusSelectRef = (el: HTMLInputElement | HTMLSelectElement | null) => {
     if (el) {
       el.focus();
-      if (el.select) el.select();
+      if ((el as HTMLInputElement).select) (el as HTMLInputElement).select();
     }
   };
 
@@ -1144,7 +1520,7 @@ function ActivityRow({ a, wbsItems, visibleColumns, selected, onToggleSelect, in
               onEndInline();
             }}
             onKeyDown={(e) => {
-              if (e.key === "Enter") e.target.blur();
+              if (e.key === "Enter") e.currentTarget.blur();
               else if (e.key === "Escape") onEndInline();
             }}
           />
@@ -1162,7 +1538,7 @@ function ActivityRow({ a, wbsItems, visibleColumns, selected, onToggleSelect, in
               onEndInline();
             }}
             onKeyDown={(e) => {
-              if (e.key === "Enter") e.target.blur();
+              if (e.key === "Enter") e.currentTarget.blur();
               else if (e.key === "Escape") onEndInline();
             }}
           />
@@ -1197,7 +1573,7 @@ function ActivityRow({ a, wbsItems, visibleColumns, selected, onToggleSelect, in
               onEndInline();
             }}
             onKeyDown={(e) => {
-              if (e.key === "Enter") e.target.blur();
+              if (e.key === "Enter") e.currentTarget.blur();
               else if (e.key === "Escape") onEndInline();
             }}
           />
@@ -1240,7 +1616,7 @@ function ActivityRow({ a, wbsItems, visibleColumns, selected, onToggleSelect, in
         ) : (
           <td style={{ cursor: "pointer" }} title="Click to change status" onClick={() => onBeginInline("status")}>
             <span className={"status-badge " + (a.status === "complete" ? "status-badge--complete" : a.status === "on_hold" ? "status-badge--at_risk" : "status-badge--info")}>
-              {ACTIVITY_STATUS_LABELS[a.status]}
+              {ACTIVITY_STATUS_LABELS[a.status || ""]}
             </span>
           </td>
         )
@@ -1252,15 +1628,15 @@ function ActivityRow({ a, wbsItems, visibleColumns, selected, onToggleSelect, in
   );
 }
 
-function ActivitiesTab({ data, projectId, scheduleId, initialActivityTypeHint, initialEditingActivityId, refresh }) {
-  const [filter, setFilter] = useState({ search: "", wbsId: "", status: "", critical: false });
-  const [sortKey, setSortKey] = useState(null);
+function ActivitiesTab({ data, projectId, scheduleId, initialActivityTypeHint, initialEditingActivityId, refresh }: ActivitiesTabProps) {
+  const [filter, setFilter] = useState<ActivitiesTabFilter>({ search: "", wbsId: "", status: "", critical: false });
+  const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState("asc");
-  const [visibleColumns, setVisibleColumns] = useState({ wbs: true, type: true, start: true, finish: true, percent_complete: true, float: true, status: true });
+  const [visibleColumns, setVisibleColumns] = useState<{ [key: string]: boolean }>({ wbs: true, type: true, start: true, finish: true, percent_complete: true, float: true, status: true });
   const [columnsMenuOpen, setColumnsMenuOpen] = useState(false);
-  const [rowMenuId, setRowMenuId] = useState(null);
-  const [inlineEdit, setInlineEdit] = useState({ activityId: null, field: null });
-  const [selectedIds, setSelectedIds] = useState({});
+  const [rowMenuId, setRowMenuId] = useState<string | null>(null);
+  const [inlineEdit, setInlineEdit] = useState<{ activityId: string | null; field: string | null }>({ activityId: null, field: null });
+  const [selectedIds, setSelectedIds] = useState<{ [id: string]: boolean }>({});
   const [bulkShiftDays, setBulkShiftDays] = useState("");
   // "+ Add Milestone" on the Gantt tab (onSwitchToActivities("milestone")) hands off only
   // a type hint, not an editing id — the form must still open on first render, matching
@@ -1269,14 +1645,14 @@ function ActivitiesTab({ data, projectId, scheduleId, initialActivityTypeHint, i
   // notes: an effect runs in React's later passive-effects phase, even on first mount).
   const [editingActivityId, setEditingActivityId] = useState(() => initialEditingActivityId || (initialActivityTypeHint ? "new" : null));
   const [activityTypeHint, setActivityTypeHint] = useState(() => initialActivityTypeHint || null);
-  const [clonePrefill, setClonePrefill] = useState(null);
+  const [clonePrefill, setClonePrefill] = useState<Partial<PCCActivity> | null>(null);
   const [visibleRange, setVisibleRange] = useState({ start: 0, end: 0 });
-  const scrollRef = React.useRef(null);
+  const scrollRef = React.useRef<HTMLDivElement>(null);
 
   const scheduleActivities = data.activities.filter((a) => a.schedule_id === scheduleId);
   const wbsItems = data.wbs_items.filter((w) => w.schedule_id === scheduleId);
 
-  function toggleSelect(id) {
+  function toggleSelect(id: string) {
     setSelectedIds((prev) => {
       const next = Object.assign({}, prev);
       if (next[id]) delete next[id];
@@ -1285,7 +1661,7 @@ function ActivitiesTab({ data, projectId, scheduleId, initialActivityTypeHint, i
     });
   }
 
-  function beginInline(activityId, field) {
+  function beginInline(activityId: string, field: string) {
     setInlineEdit({ activityId: activityId, field: field });
   }
   function endInline() {
@@ -1303,7 +1679,7 @@ function ActivitiesTab({ data, projectId, scheduleId, initialActivityTypeHint, i
 
   const filtered = sortActivitiesForGrid(scheduleActivities.filter((a) => activityMatchesActivitiesTabFilter(a, filter)), wbsItems, sortKey, sortDir);
 
-  function sortButton(key, label) {
+  function sortButton(key: string, label: string) {
     return (
       <button
         type="button"
@@ -1342,7 +1718,7 @@ function ActivitiesTab({ data, projectId, scheduleId, initialActivityTypeHint, i
     function onScroll() {
       if (rafPending) return;
       rafPending = true;
-      (window.requestAnimationFrame || function (cb) { cb(); })(() => {
+      (window.requestAnimationFrame || function (cb: FrameRequestCallback) { cb(0); })(() => {
         rafPending = false;
         recompute();
       });
@@ -1566,7 +1942,7 @@ function ActivitiesTab({ data, projectId, scheduleId, initialActivityTypeHint, i
 
 // ===== Import panel =====
 
-function ParsedIssuesToggle({ parsed }) {
+function ParsedIssuesToggle({ parsed }: ParsedIssuesToggleProps) {
   const summary = parsed.summary;
   if (summary.warnings === 0 && summary.errors === 0) return null;
   return (
@@ -1588,21 +1964,21 @@ function ParsedIssuesToggle({ parsed }) {
   );
 }
 
-function ImportPanel({ data, projectId, onDone, onImported }) {
+function ImportPanel({ data, projectId, onDone, onImported }: ImportPanelProps) {
   const [step, setStep] = useState("pick");
-  const [error, setError] = useState(null);
-  const [importFile, setImportFile] = useState(null);
+  const [error, setError] = useState<string | null>(null);
+  const [importFile, setImportFile] = useState<ImportFileInfo | null>(null);
   const [scheduleName, setScheduleName] = useState("");
-  const [duplicateMatches, setDuplicateMatches] = useState([]);
+  const [duplicateMatches, setDuplicateMatches] = useState<DuplicateFileMatch<PCCSchedule>[]>([]);
   const [duplicateAcknowledged, setDuplicateAcknowledged] = useState(false);
-  const [headers, setHeaders] = useState([]);
-  const [rawRows, setRawRows] = useState([]);
-  const [columnMapping, setColumnMapping] = useState({});
-  const [parsed, setParsed] = useState(null);
-  const [sourceType, setSourceType] = useState(null);
+  const [headers, setHeaders] = useState<string[]>([]);
+  const [rawRows, setRawRows] = useState<any[][]>([]);
+  const [columnMapping, setColumnMapping] = useState<{ [colIndex: number]: string | undefined }>({});
+  const [parsed, setParsed] = useState<ParsedScheduleImport | null>(null);
+  const [sourceType, setSourceType] = useState<string | null>(null);
   const [committing, setCommitting] = useState(false);
 
-  function handleFileChange(e) {
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
     setError(null);
@@ -1614,27 +1990,27 @@ function ImportPanel({ data, projectId, onDone, onImported }) {
         setDuplicateMatches(result.duplicateMatches);
         setDuplicateAcknowledged(false);
         if (result.needsManualMapping) {
-          setHeaders(result.headers);
-          setRawRows(result.rawRows);
-          setColumnMapping(result.columnMapping);
+          setHeaders(result.headers || []);
+          setRawRows(result.rawRows || []);
+          setColumnMapping(result.columnMapping || {});
           setStep("mapping");
         } else {
           setParsed(result.parsed);
           setStep("reviewing");
         }
       })
-      .catch((err) => setError(err.message));
+      .catch((err: any) => setError(err.message));
   }
 
   function handleConfirmImport() {
     setCommitting(true);
     setError(null);
-    commitImport(projectId, parsed, scheduleName, importFile, sourceType)
+    commitImport(projectId, parsed!, scheduleName, importFile!, sourceType!)
       .then((newScheduleId) => {
         setCommitting(false);
         onImported(newScheduleId);
       })
-      .catch((err) => {
+      .catch((err: any) => {
         setCommitting(false);
         setError(err.message);
       });
@@ -1671,8 +2047,8 @@ function ImportPanel({ data, projectId, onDone, onImported }) {
 
   if (step === "mapping") {
     const mappingTargets = getImportMappingTargets();
-    const REQUIRED_MAPPING_KEYS = { external_id: true, name: true };
-    const targetCounts = {};
+    const REQUIRED_MAPPING_KEYS: { [key: string]: boolean } = { external_id: true, name: true };
+    const targetCounts: { [key: string]: number } = {};
     headers.forEach((h, i) => {
       const v = columnMapping[i];
       if (v) targetCounts[v] = (targetCounts[v] || 0) + 1;
@@ -1749,7 +2125,7 @@ function ImportPanel({ data, projectId, onDone, onImported }) {
   }
 
   // step === "reviewing"
-  const summary = parsed.summary;
+  const summary = parsed!.summary;
   return (
     <div className="panel" style={{ marginBottom: "var(--space-4)" }}>
       <h3 style={{ marginBottom: "var(--space-3)" }}>Import Schedule</h3>
@@ -1782,7 +2158,7 @@ function ImportPanel({ data, projectId, onDone, onImported }) {
           Rows with errors are excluded entirely — fix them in the source file and re-import if needed.
         </p>
       ) : null}
-      <ParsedIssuesToggle parsed={parsed} />
+      <ParsedIssuesToggle parsed={parsed!} />
 
       <div className="field" style={{ maxWidth: 360 }}>
         <label>Schedule Name</label>
@@ -1808,7 +2184,7 @@ function ImportPanel({ data, projectId, onDone, onImported }) {
 
 // ===== Excel Editor panel =====
 
-function ExcelCellControl({ rowIndex, field, value, onChange }) {
+function ExcelCellControl({ rowIndex, field, value, onChange }: ExcelCellControlProps) {
   const id = "excelgrid-" + rowIndex + "-" + field.key;
   if (field.key === "activity_type") {
     return (
@@ -1838,7 +2214,7 @@ function ExcelCellControl({ rowIndex, field, value, onChange }) {
   return <input id={id} type={type} step={type === "number" ? "any" : undefined} style={{ width: "100%", boxSizing: "border-box" }} value={value || ""} onChange={(e) => onChange(e.target.value)} />;
 }
 
-function ExcelEditorPanel({ schedule, data, onDone }) {
+function ExcelEditorPanel({ schedule, data, onDone }: ExcelEditorPanelProps) {
   const fields = getExcelGridFields();
   const rowIdCounter = React.useRef(0);
   // Separate from rowIdCounter (which keys every row, loaded or added): vanilla's own
@@ -1854,12 +2230,12 @@ function ExcelEditorPanel({ schedule, data, onDone }) {
     })
   );
   const [step, setStep] = useState("grid");
-  const [review, setReview] = useState(null);
+  const [review, setReview] = useState<ParsedScheduleImport | null>(null);
   const [handAddedAcknowledged, setHandAddedAcknowledged] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  function setCell(rowId, key, value) {
+  function setCell(rowId: string, key: string, value: string) {
     setRows((prev) => prev.map((r) => (r._rowId === rowId ? Object.assign({}, r, { [key]: value }) : r)));
   }
 
@@ -1890,7 +2266,7 @@ function ExcelEditorPanel({ schedule, data, onDone }) {
     );
   }
 
-  function deleteRow(rowId) {
+  function deleteRow(rowId: string) {
     setRows((prev) => prev.filter((r) => r._rowId !== rowId));
   }
 
@@ -1963,7 +2339,7 @@ function ExcelEditorPanel({ schedule, data, onDone }) {
   }
 
   // step === "review"
-  const summary = review.summary;
+  const summary = review!.summary;
   const handAdded = data.activities.filter((a) => a.schedule_id === schedule.id && !a.external_id);
   const blockedByHandAdded = handAdded.length > 0 && !handAddedAcknowledged;
 
@@ -1998,7 +2374,7 @@ function ExcelEditorPanel({ schedule, data, onDone }) {
           Rows with errors are excluded entirely — go back, fix them in the grid, and click Review Changes again.
         </p>
       ) : null}
-      <ParsedIssuesToggle parsed={review} />
+      <ParsedIssuesToggle parsed={review!} />
 
       <div style={{ display: "flex", gap: "var(--space-3)", marginTop: "var(--space-4)" }}>
         <button
@@ -2008,12 +2384,12 @@ function ExcelEditorPanel({ schedule, data, onDone }) {
           onClick={() => {
             setSaving(true);
             setError(null);
-            applyExcelEdits(schedule, rows, review)
+            applyExcelEdits(schedule, rows, review!)
               .then(() => {
                 setSaving(false);
                 onDone();
               })
-              .catch((e) => {
+              .catch((e: any) => {
                 setSaving(false);
                 setError("Could not save changes: " + e.message);
               });
@@ -2040,8 +2416,30 @@ var SVG_NS = "http://www.w3.org/2000/svg";
  * smooth 60fps drag — matching the vanilla implementation's own approach exactly).
  * pointermove/pointerup are attached to the event's own view (window) rather than
  * relying on setPointerCapture, same reasoning as the original. */
-function startGanttDrag(e, { barRef, progressRef, activity, mode, pxPerDay, scheduleId, onClickNoMove, onCommitted }) {
+function startGanttDrag(
+  e: React.PointerEvent,
+  {
+    barRef,
+    progressRef,
+    activity,
+    mode,
+    pxPerDay,
+    scheduleId,
+    onClickNoMove,
+    onCommitted,
+  }: {
+    barRef: React.RefObject<any>;
+    progressRef: React.RefObject<any> | null;
+    activity: PCCActivity | undefined;
+    mode: string;
+    pxPerDay: number;
+    scheduleId: string;
+    onClickNoMove: () => void;
+    onCommitted: () => void;
+  }
+) {
   if (typeof e.button === "number" && e.button !== 0) return;
+  if (!activity) return;
   const origStart = activity.planned_start || activity.early_start;
   const origFinish = activity.planned_finish || activity.early_finish;
   if (!origStart || !origFinish) return;
@@ -2053,9 +2451,9 @@ function startGanttDrag(e, { barRef, progressRef, activity, mode, pxPerDay, sche
   const startClientX = e.clientX;
   const baseWidth = Number(targetEl.getAttribute("data-base-width")) || Number(targetEl.getAttribute("width")) || 0;
   let moved = false;
-  const win = e.view || window;
+  const win: Window = (e.view as unknown as Window) || window;
 
-  function onMove(ev) {
+  function onMove(ev: PointerEvent) {
     const deltaPx = ev.clientX - startClientX;
     if (Math.abs(deltaPx) >= 4) moved = true;
     const dayDelta = window.PCC.scheduleGanttLayout.daysFromPixelDelta(deltaPx, pxPerDay);
@@ -2068,7 +2466,7 @@ function startGanttDrag(e, { barRef, progressRef, activity, mode, pxPerDay, sche
       if (progressEl) progressEl.style.display = "none";
     }
   }
-  function onUp(ev) {
+  function onUp(ev: PointerEvent) {
     win.removeEventListener("pointermove", onMove);
     win.removeEventListener("pointerup", onUp);
     targetEl.removeAttribute("transform");
@@ -2082,16 +2480,16 @@ function startGanttDrag(e, { barRef, progressRef, activity, mode, pxPerDay, sche
       onClickNoMove();
       return;
     }
-    commitGanttDrag(activity, mode, origStart, origFinish, dayDelta, scheduleId);
+    commitGanttDrag(activity!, mode, origStart!, origFinish!, dayDelta, scheduleId);
     onCommitted();
   }
   win.addEventListener("pointermove", onMove);
   win.addEventListener("pointerup", onUp);
 }
 
-function GanttRow({ row, activity, y, rowHeight, chartWidth, pxPerDay, xForDate, baselineRow, notReady, scheduleId, onOpenDetail, onCommitted }) {
-  const barRef = React.useRef(null);
-  const progressRef = React.useRef(null);
+function GanttRow({ row, activity, y, rowHeight, chartWidth, pxPerDay, xForDate, baselineRow, notReady, scheduleId, onOpenDetail, onCommitted }: GanttRowProps) {
+  const barRef = React.useRef<any>(null);
+  const progressRef = React.useRef<any>(null);
   const rowCenter = y + rowHeight / 2;
 
   const labelTitle = row.name;
@@ -2115,7 +2513,7 @@ function GanttRow({ row, activity, y, rowHeight, chartWidth, pxPerDay, xForDate,
   const baseColor = row.isCritical ? "var(--status-critical)" : row.dateSource === "calculated" ? "var(--status-info)" : "var(--text-secondary)";
 
   if (row.isMilestone) {
-    const cx = xForDate(row.start) + pxPerDay / 2;
+    const cx = xForDate(row.start!) + pxPerDay / 2;
     const size = 8;
     const d = "M " + cx + " " + (rowCenter - size) + " L " + (cx + size) + " " + rowCenter + " L " + cx + " " + (rowCenter + size) + " L " + (cx - size) + " " + rowCenter + " Z";
     return (
@@ -2142,7 +2540,7 @@ function GanttRow({ row, activity, y, rowHeight, chartWidth, pxPerDay, xForDate,
     );
   }
 
-  const barX = xForDate(row.start);
+  const barX = xForDate(row.start!);
   const barW = Math.max((row.durationDays || 0) * pxPerDay, 3);
   const barY = y + 5;
   const barH = rowHeight - 10;
@@ -2157,7 +2555,7 @@ function GanttRow({ row, activity, y, rowHeight, chartWidth, pxPerDay, xForDate,
       </text>
       {baselineRow && !baselineRow.isMilestone ? (
         <rect
-          x={xForDate(baselineRow.start)}
+          x={xForDate(baselineRow.start!)}
           y={y + rowHeight - 7}
           width={Math.max((baselineRow.durationDays || 0) * pxPerDay, 3)}
           height={4}
@@ -2207,12 +2605,12 @@ function GanttRow({ row, activity, y, rowHeight, chartWidth, pxPerDay, xForDate,
   );
 }
 
-function GanttToolbar({ data, projectId, allActivities, wbsItems, filter, setFilter, zoom, setZoom, onAddActivity, onAddMilestone, showBaseline, baselineId, baselineLoading, onToggleBaseline, onChangeBaselineId }) {
-  function uniqueValues(key) {
-    const seen = {};
-    const out = [];
+function GanttToolbar({ data, projectId, allActivities, wbsItems, filter, setFilter, zoom, setZoom, onAddActivity, onAddMilestone, showBaseline, baselineId, baselineLoading, onToggleBaseline, onChangeBaselineId }: GanttToolbarProps) {
+  function uniqueValues(key: string): string[] {
+    const seen: { [value: string]: boolean } = {};
+    const out: string[] = [];
     allActivities.forEach((a) => {
-      const v = a[key];
+      const v = (a as any)[key];
       if (v && !seen[v]) {
         seen[v] = true;
         out.push(v);
@@ -2327,8 +2725,8 @@ function GanttToolbar({ data, projectId, allActivities, wbsItems, filter, setFil
   );
 }
 
-function GanttChart({ data, schedule, allActivities, wbsItems, filter, zoom, showBaseline, baselineSnapshot, baselineId, scheduleId, onOpenDetail, refresh, detailPanel }) {
-  const wrapRef = React.useRef(null);
+function GanttChart({ data, schedule, allActivities, wbsItems, filter, zoom, showBaseline, baselineSnapshot, baselineId, scheduleId, onOpenDetail, refresh, detailPanel }: GanttChartProps) {
+  const wrapRef = React.useRef<HTMLDivElement>(null);
   const [visibleRange, setVisibleRange] = useState({ start: 0, end: 0 });
 
   const referenceDate = (schedule && schedule.data_date) || todayIso();
@@ -2352,7 +2750,7 @@ function GanttChart({ data, schedule, allActivities, wbsItems, filter, zoom, sho
     const el = wrapRef.current;
     if (!el) return;
     function recompute() {
-      const range = window.PCC.scheduleGanttLayout.visibleRowRange(layout.rows.length, el.scrollTop, el.clientHeight, rowHeight, headerHeight, GANTT_ROW_BUFFER);
+      const range = window.PCC.scheduleGanttLayout.visibleRowRange(layout.rows.length, el!.scrollTop, el!.clientHeight, rowHeight, headerHeight, GANTT_ROW_BUFFER);
       setVisibleRange((prev) => (prev.start === range.start && prev.end === range.end ? prev : range));
     }
     recompute();
@@ -2360,7 +2758,7 @@ function GanttChart({ data, schedule, allActivities, wbsItems, filter, zoom, sho
     function onScroll() {
       if (rafPending) return;
       rafPending = true;
-      (window.requestAnimationFrame || function (cb) { cb(); })(() => {
+      (window.requestAnimationFrame || function (cb: FrameRequestCallback) { cb(0); })(() => {
         rafPending = false;
         recompute();
       });
@@ -2387,47 +2785,49 @@ function GanttChart({ data, schedule, allActivities, wbsItems, filter, zoom, sho
 
   const diffDays = window.PCC.scheduleGanttLayout.diffDays;
   const bufferDays = 1;
-  const totalSpanDays = diffDays(layout.rangeStart, layout.rangeEnd) + 1 + bufferDays * 2;
+  const rangeStart: string = layout.rangeStart!;
+  const rangeEnd: string = layout.rangeEnd!;
+  const totalSpanDays = diffDays(rangeStart, rangeEnd) + 1 + bufferDays * 2;
   const pxPerDay = ganttPxPerDay(totalSpanDays, zoom === "auto" ? null : zoom);
   const labelWidth = 200;
   const chartWidth = labelWidth + totalSpanDays * pxPerDay;
   const chartHeight = headerHeight + layout.rows.length * rowHeight + 6;
 
-  function xForDate(iso) {
-    return labelWidth + (diffDays(layout.rangeStart, iso) + bufferDays) * pxPerDay;
+  function xForDate(iso: string): number {
+    return labelWidth + (diffDays(rangeStart, iso) + bufferDays) * pxPerDay;
   }
 
   const tickIntervalDays = ganttTickIntervalDays(totalSpanDays);
-  const ticks = [];
+  const ticks: { t: number; iso: string; x: number }[] = [];
   for (let t = 0; t <= totalSpanDays; t += tickIntervalDays) {
-    const tickIso = window.PCC.scheduleGanttLayout.addDays(layout.rangeStart, t - bufferDays);
+    const tickIso = window.PCC.scheduleGanttLayout.addDays(rangeStart, t - bufferDays);
     ticks.push({ t: t, iso: tickIso, x: labelWidth + t * pxPerDay });
   }
 
   const ddx = layout.dataDate ? xForDate(layout.dataDate) : null;
   const todayMarkerIso = todayIso();
-  const todayInRange = todayMarkerIso >= layout.rangeStart && todayMarkerIso <= layout.rangeEnd;
+  const todayInRange = todayMarkerIso >= rangeStart && todayMarkerIso <= rangeEnd;
   const tdx = todayInRange ? xForDate(todayMarkerIso) : null;
   const markersClose = ddx !== null && tdx !== null && Math.abs(ddx - tdx) < 60;
   const ddLabelY = markersClose ? headerHeight - 6 : headerHeight - 12;
   const tdLabelY = markersClose ? headerHeight - 18 : headerHeight - 12;
 
-  const baselineByMatchKey = {};
+  const baselineByMatchKey: { [key: string]: GanttLayoutRow } = {};
   if (showBaseline && baselineSnapshot && baselineSnapshot.baselineId === baselineId) {
-    const baselineLayout = computeGanttLayout(baselineSnapshot.activities, {});
+    const baselineLayout = computeGanttLayout(baselineSnapshot.activities as unknown as PCCActivity[], {});
     baselineLayout.rows.forEach((r) => {
       if (r.dateSource !== "none") baselineByMatchKey[matchKeyFor(r)] = r;
     });
   }
 
-  const activityById = {};
+  const activityById: { [id: string]: PCCActivity } = {};
   activities.forEach((a) => {
     activityById[a.id] = a;
   });
 
   const rowsToRender = layout.rows.slice(visibleRange.start, visibleRange.end);
 
-  function legendItem(colorCss, label, dashed) {
+  function legendItem(colorCss: string, label: string, dashed?: boolean) {
     return (
       <span key={label} style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}>
         <span
@@ -2455,21 +2855,21 @@ function GanttChart({ data, schedule, allActivities, wbsItems, filter, zoom, sho
       <div className="gantt-chart-only-control" style={{ display: "flex", gap: "var(--space-2)", marginTop: "var(--space-3)", marginBottom: -4, flexWrap: "wrap" }}>
         <button
           className="btn btn--ghost"
-          disabled={!(todayInRange && todayMarkerIso >= layout.rangeStart && todayMarkerIso <= layout.rangeEnd)}
+          disabled={!(todayInRange && todayMarkerIso >= rangeStart && todayMarkerIso <= rangeEnd)}
           onClick={() => {
-            wrapRef.current.scrollLeft = Math.max(0, xForDate(todayMarkerIso) - 80);
+            wrapRef.current!.scrollLeft = Math.max(0, xForDate(todayMarkerIso) - 80);
           }}
         >
           Today
         </button>
-        <button className="btn btn--ghost" onClick={() => (wrapRef.current.scrollLeft = Math.max(0, xForDate(layout.rangeStart) - 80))}>
+        <button className="btn btn--ghost" onClick={() => (wrapRef.current!.scrollLeft = Math.max(0, xForDate(rangeStart) - 80))}>
           Project Start
         </button>
-        <button className="btn btn--ghost" onClick={() => (wrapRef.current.scrollLeft = Math.max(0, xForDate(layout.rangeEnd) - 80))}>
+        <button className="btn btn--ghost" onClick={() => (wrapRef.current!.scrollLeft = Math.max(0, xForDate(rangeEnd) - 80))}>
           Project Finish
         </button>
         {layout.dataDate ? (
-          <button className="btn btn--ghost" onClick={() => (wrapRef.current.scrollLeft = Math.max(0, xForDate(layout.dataDate) - 80))}>
+          <button className="btn btn--ghost" onClick={() => (wrapRef.current!.scrollLeft = Math.max(0, xForDate(layout.dataDate!) - 80))}>
             Data Date
           </button>
         ) : null}
@@ -2585,7 +2985,7 @@ function GanttChart({ data, schedule, allActivities, wbsItems, filter, zoom, sho
                   </div>
                   <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
                     <span className={"status-badge " + (a.status === "complete" ? "status-badge--complete" : a.status === "on_hold" ? "status-badge--at_risk" : "status-badge--info")}>
-                      {ACTIVITY_STATUS_LABELS[a.status]}
+                      {ACTIVITY_STATUS_LABELS[a.status || ""]}
                     </span>
                     {a.total_float != null && a.total_float <= 0 ? <span className="status-badge status-badge--critical">Critical</span> : null}
                   </div>
@@ -2598,13 +2998,13 @@ function GanttChart({ data, schedule, allActivities, wbsItems, filter, zoom, sho
   );
 }
 
-function GanttTab({ data, projectId, scheduleId, initialDetailActivityId, onSwitchToActivities, onEditActivity, onAddRelationship, refresh }) {
+function GanttTab({ data, projectId, scheduleId, initialDetailActivityId, onSwitchToActivities, onEditActivity, onAddRelationship, refresh }: GanttTabProps) {
   const [filter, setFilter] = useState({ search: "", wbsId: "", discipline: "", contractor: "", responsiblePerson: "", quick: "" });
   const [zoom, setZoom] = useState("auto");
   const [detailActivityId, setDetailActivityId] = useState(() => initialDetailActivityId || null);
   const [showBaseline, setShowBaseline] = useState(false);
   const [baselineId, setBaselineId] = useState("");
-  const [baselineSnapshot, setBaselineSnapshot] = useState(null);
+  const [baselineSnapshot, setBaselineSnapshot] = useState<GanttBaselineSnapshot | null>(null);
   const [baselineLoading, setBaselineLoading] = useState(false);
 
   const schedule = data.schedules.find((s) => s.id === scheduleId);
@@ -2617,7 +3017,7 @@ function GanttTab({ data, projectId, scheduleId, initialDetailActivityId, onSwit
     detailActivity = allActivities.find((a) => a.id === detailActivityId);
   }
 
-  function handleToggleBaseline(checked, projectBaselines) {
+  function handleToggleBaseline(checked: boolean, projectBaselines: PCCScheduleBaseline[]) {
     setShowBaseline(checked);
     if (checked) {
       const useId = baselineId || projectBaselines[0].id;
@@ -2639,7 +3039,7 @@ function GanttTab({ data, projectId, scheduleId, initialDetailActivityId, onSwit
     }
   }
 
-  function handleChangeBaselineId(id) {
+  function handleChangeBaselineId(id: string) {
     setBaselineId(id);
     setBaselineLoading(true);
     loadBaselineOverlay(id)
@@ -2711,8 +3111,8 @@ function GanttTab({ data, projectId, scheduleId, initialDetailActivityId, onSwit
 
 // ===== Activity Detail Panel =====
 
-function DocumentReadinessSection({ activity, data }) {
-  const typesById = {};
+function DocumentReadinessSection({ activity, data }: ActivityDataProps) {
+  const typesById: { [id: string]: any } = {};
   data.document_types.forEach((t) => {
     typesById[t.id] = t;
   });
@@ -2758,7 +3158,7 @@ function DocumentReadinessSection({ activity, data }) {
   );
 }
 
-function LinkedRecordsSection({ activity, data }) {
+function LinkedRecordsSection({ activity, data }: ActivityDataProps) {
   const rows = getLinkedRecords(data, activity);
   return (
     <div style={{ marginTop: "var(--space-4)", paddingTop: "var(--space-3)", borderTop: "1px solid var(--divider)" }}>
@@ -2786,7 +3186,7 @@ function LinkedRecordsSection({ activity, data }) {
   );
 }
 
-function RecoveryActionForm({ editing, isNew, activity, data, onDone }) {
+function RecoveryActionForm({ editing, isNew, activity, data, onDone }: RecoveryActionFormProps) {
   const [description, setDescription] = useState(editing.description || "");
   const [responsiblePerson, setResponsiblePerson] = useState(editing.responsible_person || "");
   const [targetDate, setTargetDate] = useState(editing.target_recovery_date || "");
@@ -2799,7 +3199,7 @@ function RecoveryActionForm({ editing, isNew, activity, data, onDone }) {
   const [comments, setComments] = useState(editing.comments || "");
   const [error, setError] = useState("");
 
-  function handleSubmit(e) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!description.trim()) {
       setError("Description is required.");
@@ -2902,8 +3302,8 @@ function RecoveryActionForm({ editing, isNew, activity, data, onDone }) {
   );
 }
 
-function RecoveryActionsSection({ activity, data, refresh }) {
-  const [editingRecoveryActionId, setEditingRecoveryActionId] = useState(null);
+function RecoveryActionsSection({ activity, data, refresh }: RecoveryActionsSectionProps) {
+  const [editingRecoveryActionId, setEditingRecoveryActionId] = useState<string | null>(null);
   const rows = data.recovery_actions
     .filter((r) => r.activity_id === activity.id)
     .sort((a, b) => (a.target_recovery_date || "9999-99-99").localeCompare(b.target_recovery_date || "9999-99-99"));
@@ -2945,7 +3345,7 @@ function RecoveryActionsSection({ activity, data, refresh }) {
               <div>
                 <strong>{r.description}</strong>{" "}
                 <span className="text-secondary" style={{ fontSize: 12 }}>
-                  ({MITIGATION_TYPE_LABELS[r.mitigation_type]})
+                  ({MITIGATION_TYPE_LABELS[r.mitigation_type || ""]})
                 </span>
                 <p className="text-secondary" style={{ fontSize: 12, margin: "4px 0 0" }}>
                   {(r.responsible_person ? r.responsible_person + " · " : "") +
@@ -2986,7 +3386,7 @@ function RecoveryActionsSection({ activity, data, refresh }) {
   );
 }
 
-function ImpactSummaryRow({ label, value, colorVar }) {
+function ImpactSummaryRow({ label, value, colorVar }: ImpactSummaryRowProps) {
   return (
     <div style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-2)", fontSize: "var(--text-xs)", marginTop: 2 }}>
       <span className="text-secondary">{label}</span>
@@ -2995,7 +3395,7 @@ function ImpactSummaryRow({ label, value, colorVar }) {
   );
 }
 
-function DelayScheduleImpact({ delayRecord, links, data, scheduleId }) {
+function DelayScheduleImpact({ delayRecord, links, data, scheduleId }: DelayScheduleImpactProps) {
   const boxStyle = { marginTop: "var(--space-2)", padding: "var(--space-2) var(--space-3)", border: "1px solid var(--divider)", borderRadius: "var(--radius-md)", background: "var(--bg-default)" };
 
   if (links.length === 0) {
@@ -3023,15 +3423,15 @@ function DelayScheduleImpact({ delayRecord, links, data, scheduleId }) {
   }
 
   const worst =
-    impact.per_activity.reduce((best, a) => {
+    impact.per_activity.reduce<DelayActivityImpact | null>((best, a) => {
       if (a.float_consumed == null) return best;
-      if (!best || a.float_consumed > best.float_consumed) return a;
+      if (!best || a.float_consumed > (best.float_consumed as number)) return a;
       return best;
     }, null) || impact.per_activity[0];
 
   const milestoneSlippageDays = impact.milestone_impact ? impact.milestone_impact.finish_slippage_days : null;
 
-  let projectImpactDays = null;
+  let projectImpactDays: number | null | undefined = null;
   let projectImpactRow;
   if (impact.overall_criticality === "critical") {
     const sid = activityScheduleId(data, delayRecord, scheduleId);
@@ -3041,8 +3441,8 @@ function DelayScheduleImpact({ delayRecord, links, data, scheduleId }) {
       projectImpactRow = (
         <ImpactSummaryRow
           label="Project Finish Impact"
-          value={projectImpactDays === 0 ? "No current impact" : (projectImpactDays > 0 ? "+" : "") + projectImpactDays + "d"}
-          colorVar={projectImpactDays > 0 ? "--status-critical" : null}
+          value={projectImpactDays === 0 ? "No current impact" : ((projectImpactDays || 0) > 0 ? "+" : "") + projectImpactDays + "d"}
+          colorVar={(projectImpactDays || 0) > 0 ? "--status-critical" : null}
         />
       );
     } else {
@@ -3079,7 +3479,7 @@ function DelayScheduleImpact({ delayRecord, links, data, scheduleId }) {
         <ImpactSummaryRow
           label="Milestone Impact"
           value={(impact.milestone_impact.activity_name || "Milestone") + (milestoneSlippageDays != null ? ": " + (milestoneSlippageDays > 0 ? "+" : "") + milestoneSlippageDays + "d" : " — not yet calculated")}
-          colorVar={milestoneSlippageDays > 0 ? "--status-critical" : null}
+          colorVar={(milestoneSlippageDays || 0) > 0 ? "--status-critical" : null}
         />
       )}
       {projectImpactRow}
@@ -3105,7 +3505,7 @@ function DelayScheduleImpact({ delayRecord, links, data, scheduleId }) {
   );
 }
 
-function RecoveryForecastProgression({ delayRecord, links, data }) {
+function RecoveryForecastProgression({ delayRecord, links, data }: RecoveryForecastProgressionProps) {
   if (links.length === 0) return null;
   const forecast = computeRecoveryForecast(delayRecord, links, data.recovery_actions, data);
   if (!forecast.available) return null;
@@ -3119,7 +3519,7 @@ function RecoveryForecastProgression({ delayRecord, links, data }) {
       <ImpactSummaryRow label="Delay Forecast" value={forecast.delay_forecast || "—"} />
       <ImpactSummaryRow
         label="Recovery Forecast"
-        value={forecast.recovery_forecast ? forecast.recovery_forecast + (forecast.active_recovery_days_planned > 0 ? " (" + forecast.active_recovery_days_planned + "d planned recovery)" : "") : "—"}
+        value={forecast.recovery_forecast ? forecast.recovery_forecast + ((forecast.active_recovery_days_planned || 0) > 0 ? " (" + forecast.active_recovery_days_planned + "d planned recovery)" : "") : "—"}
       />
       <ImpactSummaryRow label="Latest Forecast" value={forecast.latest_forecast || "—"} />
       <ImpactSummaryRow label="Actual Finish" value={forecast.actual_finish || "Not yet finished"} />
@@ -3127,7 +3527,7 @@ function RecoveryForecastProgression({ delayRecord, links, data }) {
   );
 }
 
-function DelayTimeline({ delayRecord }) {
+function DelayTimeline({ delayRecord }: DelayTimelineProps) {
   const history = delayRecord.status_history || [];
   return (
     <details style={{ marginTop: "var(--space-2)" }}>
@@ -3148,7 +3548,7 @@ function DelayTimeline({ delayRecord }) {
   );
 }
 
-function DelayLinkActivityPicker({ delayRecord, links, data, scheduleId, refresh }) {
+function DelayLinkActivityPicker({ delayRecord, links, data, scheduleId, refresh }: DelayLinkActivityPickerProps) {
   const [linking, setLinking] = useState(false);
   const [selection, setSelection] = useState("");
 
@@ -3162,7 +3562,7 @@ function DelayLinkActivityPicker({ delayRecord, links, data, scheduleId, refresh
     );
   }
 
-  const linkedIds = {};
+  const linkedIds: { [id: string]: boolean } = {};
   links.forEach((l) => {
     linkedIds[l.activity_id] = true;
   });
@@ -3209,7 +3609,7 @@ function DelayLinkActivityPicker({ delayRecord, links, data, scheduleId, refresh
   );
 }
 
-function RecordLinkField({ id, label, records, labelFn, value, onChange }) {
+function RecordLinkField({ id, label, records, labelFn, value, onChange }: RecordLinkFieldProps) {
   return (
     <div className="field">
       <label>{label}</label>
@@ -3225,7 +3625,7 @@ function RecordLinkField({ id, label, records, labelFn, value, onChange }) {
   );
 }
 
-function DelayRecordForm({ editing, isNew, activity, data, onDone }) {
+function DelayRecordForm({ editing, isNew, activity, data, onDone }: DelayRecordFormProps) {
   const [status, setStatus] = useState(editing.status || "open");
   const [category, setCategory] = useState(editing.delay_category || "other");
   const [responsibility, setResponsibility] = useState(editing.responsibility_classification || "unconfirmed");
@@ -3248,7 +3648,7 @@ function DelayRecordForm({ editing, isNew, activity, data, onDone }) {
   const [description, setDescription] = useState(editing.description || "");
   const [error, setError] = useState("");
 
-  function handleSubmit(e) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!description.trim()) {
       setError("Description is required.");
@@ -3284,9 +3684,9 @@ function DelayRecordForm({ editing, isNew, activity, data, onDone }) {
   const milestones = data.activities
     .filter((a) => a.schedule_id === activity.schedule_id && a.activity_type === "milestone")
     .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
-  const projectVendorIds = {};
+  const projectVendorIds: { [id: string]: boolean } = {};
   data.vendor_project_links.filter((l) => l.project_id === activity.project_id).forEach((l) => {
-    projectVendorIds[l.vendor_id] = true;
+    projectVendorIds[l.vendor_id || ""] = true;
   });
 
   return (
@@ -3452,8 +3852,8 @@ function DelayRecordForm({ editing, isNew, activity, data, onDone }) {
   );
 }
 
-function DelayRecordsSection({ activity, data, scheduleId, refresh }) {
-  const [editingDelayRecordId, setEditingDelayRecordId] = useState(null);
+function DelayRecordsSection({ activity, data, scheduleId, refresh }: DelayRecordsSectionProps) {
+  const [editingDelayRecordId, setEditingDelayRecordId] = useState<string | null>(null);
   const rows = data.delay_records.filter((r) => r.activity_id === activity.id).sort((a, b) => (b.identified_date || "").localeCompare(a.identified_date || ""));
 
   let editing = null;
@@ -3494,11 +3894,11 @@ function DelayRecordsSection({ activity, data, scheduleId, refresh }) {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <strong>{r.description}</strong>
                 <p className="text-secondary" style={{ fontSize: 12, margin: "4px 0 0" }}>
-                  {DELAY_CATEGORY_LABELS[r.delay_category] +
+                  {DELAY_CATEGORY_LABELS[r.delay_category || ""] +
                     " · " +
-                    DELAY_RESPONSIBILITY_LABELS[r.responsibility_classification] +
+                    DELAY_RESPONSIBILITY_LABELS[r.responsibility_classification || ""] +
                     " · " +
-                    DELAY_CAUSE_LABELS[r.delay_cause] +
+                    DELAY_CAUSE_LABELS[r.delay_cause || ""] +
                     (r.responsible_party ? " (" + r.responsible_party + ")" : "") +
                     (r.delay_days != null ? " · est. " + r.delay_days + "d" : "") +
                     (r.actual_impact_days != null ? " · actual " + r.actual_impact_days + "d" : "") +
@@ -3516,8 +3916,8 @@ function DelayRecordsSection({ activity, data, scheduleId, refresh }) {
               </div>
               <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "var(--space-2)", flexShrink: 0 }}>
                 <div style={{ display: "flex", gap: 4 }}>
-                  <span className={"status-badge status-badge--" + DELAY_STATUS_BADGE_CLASS[r.status]} style={{ fontSize: "var(--text-xs)" }}>
-                    {DELAY_STATUS_LABELS[r.status]}
+                  <span className={"status-badge status-badge--" + DELAY_STATUS_BADGE_CLASS[r.status || ""]} style={{ fontSize: "var(--text-xs)" }}>
+                    {DELAY_STATUS_LABELS[r.status || ""]}
                   </span>
                   <span className={"status-badge status-badge--" + (r.is_excusable ? "complete" : "at_risk")} style={{ fontSize: "var(--text-xs)" }}>
                     {r.is_excusable ? "Excusable" : "Non-Excusable"}
@@ -3546,7 +3946,7 @@ function DelayRecordsSection({ activity, data, scheduleId, refresh }) {
   );
 }
 
-function DelayRecoveryGapNote({ activity, data }) {
+function DelayRecoveryGapNote({ activity, data }: ActivityDataProps) {
   const gap = delayRecoveryGap(activity, data);
   if (!gap) return null;
   return (
@@ -3558,8 +3958,8 @@ function DelayRecoveryGapNote({ activity, data }) {
   );
 }
 
-function ActivityDetailPanel({ activity, data, wbsItems, scheduleActivities, relationships, scheduleId, onClose, onEditActivity, onAddRelationship, refresh }) {
-  function detailItem(label, value) {
+function ActivityDetailPanel({ activity, data, wbsItems, scheduleActivities, relationships, scheduleId, onClose, onEditActivity, onAddRelationship, refresh }: ActivityDetailPanelProps) {
+  function detailItem(label: string, value: any) {
     return (
       <div key={label}>
         <span className="detail-item__label">{label}</span>
@@ -3585,7 +3985,7 @@ function ActivityDetailPanel({ activity, data, wbsItems, scheduleActivities, rel
         {detailItem("Activity ID", activity.external_id || activity.id)}
         {detailItem("WBS", wbsName(wbsItems, activity.wbs_id))}
         {detailItem("Type", ACTIVITY_TYPE_LABELS[activity.activity_type])}
-        {detailItem("Status", ACTIVITY_STATUS_LABELS[activity.status])}
+        {detailItem("Status", ACTIVITY_STATUS_LABELS[activity.status || ""])}
         {detailItem("Duration (days)", activity.duration)}
         {detailItem("Remaining Duration (days)", activity.remaining_duration)}
         {detailItem("Planned Start", activity.planned_start)}
@@ -3656,7 +4056,7 @@ function ActivityDetailPanel({ activity, data, wbsItems, scheduleActivities, rel
 
 // ===== Baselines tab =====
 
-function BaselineCompareResult({ result, currentScheduleName }) {
+function BaselineCompareResult({ result, currentScheduleName }: BaselineCompareResultProps) {
   const s = result.summary;
   const finishBit =
     s.project_finish_variance_days === null
@@ -3674,7 +4074,7 @@ function BaselineCompareResult({ result, currentScheduleName }) {
 
   const floatErosion = result.activities.matched
     .filter((m) => m.baseline.total_float != null && m.current.total_float != null && m.baseline.total_float - m.current.total_float > 0)
-    .map((m) => Object.assign({ erosion: m.baseline.total_float - m.current.total_float }, m))
+    .map((m) => Object.assign({ erosion: m.baseline.total_float! - m.current.total_float! }, m))
     .sort((a, b) => b.erosion - a.erosion);
 
   return (
@@ -3806,10 +4206,10 @@ function BaselineCompareResult({ result, currentScheduleName }) {
   );
 }
 
-function BaselineRow({ b, scheduleId, refresh }) {
+function BaselineRow({ b, scheduleId, refresh }: BaselineRowProps) {
   const [renaming, setRenaming] = useState(false);
-  const [renameValue, setRenameValue] = useState(b.name);
-  const [compareState, setCompareState] = useState({ open: false, pending: false, result: null, error: null });
+  const [renameValue, setRenameValue] = useState(b.name || "");
+  const [compareState, setCompareState] = useState<{ open: boolean; pending: boolean; result: BaselineComparisonResult | null; error: string | null }>({ open: false, pending: false, result: null, error: null });
 
   function handleCompareClick() {
     if (compareState.open && !compareState.pending) {
@@ -3856,7 +4256,7 @@ function BaselineRow({ b, scheduleId, refresh }) {
               {b.is_official ? <span className="status-badge status-badge--complete">Official</span> : null}
               <br />
               <span className="text-secondary" style={{ fontSize: 12 }}>
-                Captured {new Date(b.captured_at).toLocaleString()} · {b.activity_count} activities · from Rev {b.schedule_revision_number}
+                Captured {new Date(b.captured_at || "").toLocaleString()} · {b.activity_count} activities · from Rev {b.schedule_revision_number}
                 {b.baseline_project_finish ? " · project finish at capture " + b.baseline_project_finish : ""}
               </span>
             </React.Fragment>
@@ -3869,7 +4269,7 @@ function BaselineRow({ b, scheduleId, refresh }) {
           <button
             className="btn btn--ghost"
             onClick={() => {
-              setRenameValue(b.name);
+              setRenameValue(b.name || "");
               setRenaming(true);
             }}
           >
@@ -3911,8 +4311,8 @@ function BaselineRow({ b, scheduleId, refresh }) {
   );
 }
 
-function BaselinesTab({ data, projectId, scheduleId, refresh }) {
-  const baselines = data.schedule_baselines.filter((b) => b.project_id === projectId).sort((a, b) => new Date(b.captured_at) - new Date(a.captured_at));
+function BaselinesTab({ data, projectId, scheduleId, refresh }: BaselinesTabProps) {
+  const baselines = data.schedule_baselines.filter((b) => b.project_id === projectId).sort((a, b) => new Date(b.captured_at || "").getTime() - new Date(a.captured_at || "").getTime());
 
   if (baselines.length === 0) {
     return <div className="panel empty-state">No baselines saved for this project yet. Click "Save Baseline" above to freeze the currently selected schedule's dates and logic for later comparison.</div>;
@@ -3935,11 +4335,11 @@ function BaselinesTab({ data, projectId, scheduleId, refresh }) {
 
 // ===== What-If tab =====
 
-function WhatIfTab({ data, scheduleId }) {
+function WhatIfTab({ data, scheduleId }: WhatIfTabProps) {
   const [activityId, setActivityId] = useState("");
   const [reduceDaysInput, setReduceDaysInput] = useState("");
-  const [error, setError] = useState(null);
-  const [result, setResult] = useState(null);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<WhatIfResult | null>(null);
 
   const schedule = data.schedules.find((s) => s.id === scheduleId);
   const scheduleActivities = data.activities.filter((a) => a.schedule_id === scheduleId);
@@ -3959,13 +4359,13 @@ function WhatIfTab({ data, scheduleId }) {
 
   function handleRun() {
     const reduceDays = Number(reduceDaysInput);
-    const outcome = runWhatIf(schedule, scheduleActivities, scheduleRelationships, activityId, reduceDays);
+    const outcome = runWhatIf(schedule!, scheduleActivities, scheduleRelationships, activityId, reduceDays);
     if (outcome.error) {
       setError(outcome.error);
       setResult(null);
     } else {
       setError(null);
-      setResult(outcome.result);
+      setResult(outcome.result || null);
     }
   }
 
@@ -4055,19 +4455,19 @@ var TABS = [
   { key: "whatif", label: "What-If" },
 ];
 
-export default function SchedulePage({ initialProjectId, initialScheduleId, initialTab, initialGanttDetailActivityId }) {
+export default function SchedulePage({ initialProjectId, initialScheduleId, initialTab, initialGanttDetailActivityId }: SchedulePageProps) {
   const [nonce, setNonce] = useState(0);
   const refresh = () => setNonce((n) => n + 1);
   const data = getData();
 
   const [tab, setTab] = useState(() => initialTab || "activities");
-  const [editingScheduleId, setEditingScheduleId] = useState(null);
+  const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
   const [importPanelOpen, setImportPanelOpen] = useState(false);
-  const [excelEditorScheduleId, setExcelEditorScheduleId] = useState(null);
+  const [excelEditorScheduleId, setExcelEditorScheduleId] = useState<string | null>(null);
   const [baselineSaving, setBaselineSaving] = useState(false);
-  const [pendingRelationshipPrefillId, setPendingRelationshipPrefillId] = useState(null);
-  const [pendingActivityTypeHint, setPendingActivityTypeHint] = useState(null);
-  const [pendingEditActivityId, setPendingEditActivityId] = useState(null);
+  const [pendingRelationshipPrefillId, setPendingRelationshipPrefillId] = useState<string | null>(null);
+  const [pendingActivityTypeHint, setPendingActivityTypeHint] = useState<string | null>(null);
+  const [pendingEditActivityId, setPendingEditActivityId] = useState<string | null>(null);
   const [pendingGanttDetailActivityId] = useState(() => initialGanttDetailActivityId || null);
 
   const activeProjects = data.projects.filter((p) => !p.archived);
@@ -4083,14 +4483,14 @@ export default function SchedulePage({ initialProjectId, initialScheduleId, init
     return projectSchedules.length > 0 ? projectSchedules[0].id : "";
   });
 
-  function handleProjectChange(newProjectId) {
+  function handleProjectChange(newProjectId: string) {
     setProjectIdState(newProjectId);
     setProjectContext(newProjectId);
     const projectSchedules = data.schedules.filter((s) => s.project_id === newProjectId);
     setScheduleIdState(projectSchedules.length > 0 ? projectSchedules[0].id : "");
   }
 
-  function handleScheduleChange(newScheduleId) {
+  function handleScheduleChange(newScheduleId: string) {
     setScheduleIdState(newScheduleId);
   }
 
@@ -4105,7 +4505,7 @@ export default function SchedulePage({ initialProjectId, initialScheduleId, init
   }
   const currentScheduleId = effectiveScheduleId || scheduleId;
 
-  function switchTab(key) {
+  function switchTab(key: string) {
     setTab(key);
     setPendingRelationshipPrefillId(null);
     setPendingActivityTypeHint(null);
@@ -4115,13 +4515,13 @@ export default function SchedulePage({ initialProjectId, initialScheduleId, init
   function openImport() {
     setImportPanelOpen(true);
   }
-  function openExcelEditor(currentSchedule) {
+  function openExcelEditor(currentSchedule: PCCSchedule | undefined) {
     if (currentSchedule) setExcelEditorScheduleId(currentSchedule.id);
   }
-  function exportMsp(schedule) {
+  function exportMsp(schedule: PCCSchedule | undefined) {
     if (schedule) exportMspXml(schedule);
   }
-  function exportXer(schedule) {
+  function exportXer(schedule: PCCSchedule | undefined) {
     if (schedule) exportP6Xer(schedule);
   }
 

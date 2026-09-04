@@ -16,9 +16,9 @@
  * as the original).
  */
 import React from "react";
-import { getVendorPerformanceSnapshot, ratingText, ratingBand, openVendorProfile } from "../services/vendorPerformanceCentreService.js";
+import { getVendorPerformanceSnapshot, ratingText, ratingBand, openVendorProfile, VendorPerformanceStat } from "../services/vendorPerformanceCentreService";
 
-function KpiCard({ label, value, colorVar }) {
+function KpiCard({ label, value, colorVar }: { label: string; value: string | number; colorVar: string | null }) {
   return (
     <div className="kpi-card">
       <span className="kpi-card__label">{label}</span>
@@ -29,20 +29,20 @@ function KpiCard({ label, value, colorVar }) {
   );
 }
 
-function VendorRow({ stat, showDetail }) {
+function VendorRow({ stat, showDetail }: { stat: VendorPerformanceStat; showDetail: boolean }) {
   return (
     <div className="attention-item attention-item--clickable" onClick={() => openVendorProfile(stat.vendor.id, "performance")}>
-      <span className={"attention-item__icon attention-item__icon--" + (showDetail ? ratingBand(stat.overall) : "info")} />
+      <span className={"attention-item__icon attention-item__icon--" + (showDetail ? ratingBand(stat.overall || 0) : "info")} />
       <div className="attention-item__body">
         <div className="attention-item__text">
           {showDetail
-            ? `${stat.vendor.vendor_name || "(unnamed vendor)"} — ${ratingText(stat.overall)} overall (${stat.reviewCount} review${stat.reviewCount === 1 ? "" : "s"})`
+            ? `${stat.vendor.vendor_name || "(unnamed vendor)"} — ${ratingText(stat.overall || 0)} overall (${stat.reviewCount} review${stat.reviewCount === 1 ? "" : "s"})`
             : stat.vendor.vendor_name || "(unnamed vendor)"}
         </div>
         {showDetail ? (
           <div className="attention-item__meta">
-            Quality: {ratingText(stat.quality)} · Delivery: {ratingText(stat.delivery)} · Communication: {ratingText(stat.communication)} · Safety:{" "}
-            {ratingText(stat.safety)}
+            Quality: {ratingText(stat.quality || 0)} · Delivery: {ratingText(stat.delivery || 0)} · Communication: {ratingText(stat.communication || 0)} · Safety:{" "}
+            {ratingText(stat.safety || 0)}
           </div>
         ) : null}
       </div>

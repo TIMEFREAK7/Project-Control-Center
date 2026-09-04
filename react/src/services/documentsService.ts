@@ -13,8 +13,9 @@
  * (same convention as costService.js's projectCostSummary forwarding to
  * window.PCC.cost.projectCostSummary).
  */
+import type { PCCStoreData, PCCDocument, PCCDocumentExtraction } from "../types/pcc";
 
-export var CATEGORY_LABELS = {
+export var CATEGORY_LABELS: { [category: string]: string } = {
   contract: "Contract",
   drawing: "Drawing",
   photo: "Photo",
@@ -22,9 +23,9 @@ export var CATEGORY_LABELS = {
   other: "Other",
 };
 
-export var PRIORITY_LABELS = { low: "Low", medium: "Medium", high: "High" };
-export var CRITICALITY_LABELS = { critical: "Critical", major: "Major", normal: "Normal", informational: "Informational" };
-export var STATUS_LABELS = {
+export var PRIORITY_LABELS: { [priority: string]: string } = { low: "Low", medium: "Medium", high: "High" };
+export var CRITICALITY_LABELS: { [criticality: string]: string } = { critical: "Critical", major: "Major", normal: "Normal", informational: "Informational" };
+export var STATUS_LABELS: { [status: string]: string } = {
   draft: "Draft",
   submitted: "Submitted",
   under_review: "Under Review",
@@ -34,7 +35,7 @@ export var STATUS_LABELS = {
   superseded: "Superseded",
   archived: "Archived",
 };
-export var BULK_STATUS_LABELS = {
+export var BULK_STATUS_LABELS: { [status: string]: string } = {
   scanning: "Scanning…",
   ready: "Ready",
   duplicate: "Possible duplicate",
@@ -45,11 +46,11 @@ export var LARGE_FILE_WARNING_BYTES = 2 * 1024 * 1024; // 2MB raw (~2.7MB once b
 var TEXT_CHAR_CAP = 50000;
 var PDF_MAX_PAGES = 50;
 
-export function getData() {
+export function getData(): PCCStoreData {
   return Object.assign({}, window.PCC.store.get());
 }
 
-export function projectName(data, projectId) {
+export function projectName(data: PCCStoreData, projectId: string | undefined): string {
   if (!projectId) return "Unassigned";
   var p = data.projects.find(function (proj) {
     return proj.id === projectId;
@@ -60,41 +61,41 @@ export function projectName(data, projectId) {
 /** See this file's own header comment — the real implementation lives in the stub,
  * exposed as window.PCC.files.latestOnly, because portfolio.js's service already calls
  * it directly outside this page's render. */
-export function latestDocuments(documents) {
-  return window.PCC.files.latestOnly(documents);
+export function latestDocuments(documents: PCCDocument[]): PCCDocument[] {
+  return window.PCC.files!.latestOnly(documents);
 }
 
-export function activeDocuments(documents) {
+export function activeDocuments(documents: PCCDocument[]): PCCDocument[] {
   return documents.filter(function (d) {
     return !d.trashed_at;
   });
 }
 
-export function revisionsFor(documents, groupId) {
+export function revisionsFor(documents: PCCDocument[], groupId: string | undefined): PCCDocument[] {
   return documents
     .filter(function (d) {
       return d.document_group_id === groupId;
     })
     .sort(function (a, b) {
-      return b.revision_number - a.revision_number;
+      return (b.revision_number || 0) - (a.revision_number || 0);
     });
 }
 
-export function formatBytes(bytes) {
+export function formatBytes(bytes: number | undefined): string {
   if (!bytes) return "0 KB";
   var kb = bytes / 1024;
   if (kb < 1024) return Math.round(kb) + " KB";
   return (kb / 1024).toFixed(1) + " MB";
 }
 
-export function extensionOf(filename) {
+export function extensionOf(filename: string | undefined): string {
   var m = /\.([a-z0-9]+)$/i.exec(filename || "");
   return m ? m[1].toLowerCase() : "";
 }
 
 /** Gate 16 (Document Control 3: Nomenclature). "REV" + a zero-padded 2-digit number for
  * a purely numeric revision, or "REV" + whatever was typed for anything else. */
-export function formatRevisionToken(revision) {
+export function formatRevisionToken(revision: string | undefined): string {
   var trimmed = (revision || "").trim();
   if (!trimmed) return "";
   if (/^\d+$/.test(trimmed)) {
@@ -103,25 +104,32 @@ export function formatRevisionToken(revision) {
   return "REV" + trimmed;
 }
 
-export function extractionSummary(extraction) {
-  return window.PCC.files.summary(extraction);
+export function extractionSummary(extraction: PCCDocumentExtraction | null | undefined): string {
+  return window.PCC.files!.summary(extraction as PCCDocumentExtraction);
 }
 
-export function categoryLabel(category) {
-  return window.PCC.files.categoryLabel(category);
+export function categoryLabel(category: string | undefined): string {
+  return window.PCC.files!.categoryLabel(category);
 }
 
-export function openStoredFile(doc) {
-  window.PCC.files.open(doc);
+export function openStoredFile(doc: PCCDocument): void {
+  window.PCC.files!.open!(doc);
 }
 
-export function documentMatchesFilters(doc, filters) {
+export interface DocumentFilters {
+  projectFilter?: string;
+  categoryFilter?: string;
+  statusFilter?: string;
+  search?: string;
+}
+
+export function documentMatchesFilters(doc: PCCDocument, filters: DocumentFilters): boolean {
   if (filters.projectFilter && doc.project_id !== filters.projectFilter) return false;
   if (filters.categoryFilter && doc.category !== filters.categoryFilter) return false;
   if (filters.statusFilter && doc.status !== filters.statusFilter) return false;
   if (filters.search) {
     var q = filters.search.toLowerCase();
-    var haystack = (doc.filename + " " + (doc.document_number || "")).toLowerCase();
+    var haystack = ((doc.filename || "") + " " + (doc.document_number || "")).toLowerCase();
     if (haystack.indexOf(q) === -1) return false;
   }
   return true;
@@ -133,7 +141,7 @@ export function documentMatchesFilters(doc, filters) {
 // "Delete Permanently" (reachable only from the Trash view) actually removes everything.
 // ---------------------------------------------------------------------------------
 
-export function trashDocumentGroup(groupId) {
+export function trashDocumentGroup(groupId: string | undefined): void {
   var now = new Date().toISOString();
   window.PCC.store.update(function (d) {
     d.documents.forEach(function (item) {
@@ -142,7 +150,7 @@ export function trashDocumentGroup(groupId) {
   });
 }
 
-export function restoreDocumentGroup(groupId) {
+export function restoreDocumentGroup(groupId: string | undefined): void {
   window.PCC.store.update(function (d) {
     d.documents.forEach(function (item) {
       if (item.document_group_id === groupId) item.trashed_at = null;
@@ -153,7 +161,7 @@ export function restoreDocumentGroup(groupId) {
 /** Actually removes every revision's record and blob, and cleans up project.attachments.
  * Cannot be undone. Resolves with the list of removed document ids once every blob
  * delete has settled (best-effort — a failed individual blob delete never blocks the rest). */
-export function permanentlyDeleteDocumentGroup(documents, groupId) {
+export function permanentlyDeleteDocumentGroup(documents: PCCDocument[], groupId: string | undefined): Promise<string[]> {
   var allRevisionIds = documents
     .filter(function (d) {
       return d.document_group_id === groupId;
@@ -183,7 +191,7 @@ export function permanentlyDeleteDocumentGroup(documents, groupId) {
 }
 
 /** A short "trashed N ago" label for the Trash view. */
-export function trashedAgoLabel(trashedAtIso) {
+export function trashedAgoLabel(trashedAtIso: string | null | undefined): string {
   if (!trashedAtIso) return "";
   var ms = Date.now() - new Date(trashedAtIso).getTime();
   var minutes = Math.floor(ms / 60000);
@@ -199,17 +207,17 @@ export function trashedAgoLabel(trashedAtIso) {
 // File reading + content extraction (Excel/Word/PDF), duplicate fingerprinting.
 // ---------------------------------------------------------------------------------
 
-function arrayBufferToBase64(buffer) {
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
   var bytes = new Uint8Array(buffer);
   var chunkSize = 8192;
-  var chunks = [];
+  var chunks: string[] = [];
   for (var i = 0; i < bytes.length; i += chunkSize) {
-    chunks.push(String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize)));
+    chunks.push(String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunkSize))));
   }
   return btoa(chunks.join(""));
 }
 
-function extractExcel(buffer) {
+function extractExcel(buffer: ArrayBuffer): Promise<PCCDocumentExtraction> {
   return new Promise(function (resolve, reject) {
     try {
       var data = new Uint8Array(buffer);
@@ -217,8 +225,8 @@ function extractExcel(buffer) {
       var firstSheetName = workbook.SheetNames[0];
       var sheet = workbook.Sheets[firstSheetName];
       var rows = window.XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
-      var capped = rows.slice(0, 300).map(function (row) {
-        return row.slice(0, 20).map(function (cell) {
+      var capped = rows.slice(0, 300).map(function (row: any[]) {
+        return row.slice(0, 20).map(function (cell: any) {
           return cell === null || cell === undefined ? "" : String(cell);
         });
       });
@@ -235,8 +243,8 @@ function extractExcel(buffer) {
   });
 }
 
-function extractDocx(buffer) {
-  return window.mammoth.extractRawText({ arrayBuffer: buffer }).then(function (result) {
+function extractDocx(buffer: ArrayBuffer): Promise<PCCDocumentExtraction> {
+  return window.mammoth.extractRawText({ arrayBuffer: buffer }).then(function (result: any) {
     var fullText = result.value || "";
     return {
       type: "docx",
@@ -247,19 +255,19 @@ function extractDocx(buffer) {
   });
 }
 
-function extractPdf(buffer) {
+function extractPdf(buffer: ArrayBuffer): Promise<PCCDocumentExtraction> {
   var typedArray = new Uint8Array(buffer);
   return window.pdfjsLib
     .getDocument({ data: typedArray })
-    .promise.then(function (pdf) {
+    .promise.then(function (pdf: any) {
       var pagesToRead = Math.min(pdf.numPages, PDF_MAX_PAGES);
-      var pagePromises = [];
+      var pagePromises: Promise<string>[] = [];
       for (var i = 1; i <= pagesToRead; i++) {
         pagePromises.push(
-          pdf.getPage(i).then(function (page) {
-            return page.getTextContent().then(function (content) {
+          pdf.getPage(i).then(function (page: any) {
+            return page.getTextContent().then(function (content: any) {
               return content.items
-                .map(function (item) {
+                .map(function (item: any) {
                   return item.str;
                 })
                 .join(" ");
@@ -280,13 +288,23 @@ function extractPdf(buffer) {
     });
 }
 
+export interface ReadExtractedFile {
+  name: string;
+  size: number;
+  type: string;
+  fileData: string;
+  extraction: PCCDocumentExtraction;
+  hash: string;
+  hashMethod: string;
+}
+
 /** Reads a single-upload file (.xlsx/.xls/.docx/.pdf), extracts its content, computes
  * the storable data URI, and fingerprints it for duplicate detection — one file read,
  * matching the original vanilla handleFileSelected()+checkForDuplicates() pipeline.
  * Resolves { name, size, type, fileData, extraction, hash, hashMethod }, or rejects with
  * an Error carrying a user-facing message (including the same per-type hint text the
  * vanilla page showed on an extraction failure). */
-export function readAndExtractFile(file) {
+export function readAndExtractFile(file: File): Promise<ReadExtractedFile> {
   var ext = extensionOf(file.name);
   var supported = ext === "xlsx" || ext === "xls" || ext === "docx" || ext === "pdf";
   if (!supported) {
@@ -295,7 +313,7 @@ export function readAndExtractFile(file) {
   return new Promise(function (resolve, reject) {
     var reader = new FileReader();
     reader.onload = function () {
-      var buffer = reader.result;
+      var buffer = reader.result as ArrayBuffer;
       var mimeType =
         file.type ||
         (ext === "pdf"
@@ -339,9 +357,15 @@ export function readAndExtractFile(file) {
   });
 }
 
+export interface DuplicateMatch {
+  record: PCCDocument;
+  strength: string;
+  reason: string;
+}
+
 /** Re-runs duplicate matching for the currently pending file against `projectId` — used
  * both right after a fresh read and again whenever the form's project changes. */
-export function findDuplicateMatches(data, pendingFile, projectId) {
+export function findDuplicateMatches(data: PCCStoreData, pendingFile: ReadExtractedFile | null, projectId: string): DuplicateMatch[] {
   if (!pendingFile || !pendingFile.hash) return [];
   return window.PCC.duplicateService.findFileDuplicates(activeDocuments(data.documents), {
     hash: pendingFile.hash,
@@ -352,18 +376,37 @@ export function findDuplicateMatches(data, pendingFile, projectId) {
   });
 }
 
-function strongestMatchOf(matches) {
+function strongestMatchOf(matches: DuplicateMatch[]): DuplicateMatch | null {
   return matches.length
-    ? matches.reduce(function (best, m) {
+    ? matches.reduce(function (best: DuplicateMatch | null, m) {
         return !best || (m.strength === "strong" && best.strength !== "strong") ? m : best;
       }, null)
     : null;
 }
 
+export interface DocumentFormState {
+  projectId: string;
+  activityId?: string;
+  category: string;
+  status?: string;
+  documentTypeId?: string;
+  discipline?: string;
+  documentNumber?: string;
+  revision?: string;
+  revisionGroupId?: string;
+  packageId?: string;
+  contractOrPo?: string;
+  vendorId?: string;
+  priority?: string;
+  criticality?: string;
+  remarks?: string;
+  meetingId?: string;
+}
+
 /** Non-blocking only — see documentNomenclatureEngine.js's own header comment. Returns
  * null when nomenclature checking is off, no pattern is configured, or no file is picked
  * yet. */
-export function nomenclatureCheck(data, pendingFile, form) {
+export function nomenclatureCheck(data: PCCStoreData, pendingFile: ReadExtractedFile | null, form: DocumentFormState) {
   if (!data.settings.document_nomenclature_enabled) return null;
   var pattern = data.settings.document_nomenclature_pattern;
   if (!pattern || !pendingFile) return null;
@@ -388,7 +431,7 @@ export function nomenclatureCheck(data, pendingFile, form) {
  * the blob first, then the metadata record, same order as every other upload flow in
  * this app (never orphan a document record pointing at a blob that was never written).
  * Resolves the saved document. */
-export function saveDocument(data, form, pendingFile, duplicateMatches) {
+export function saveDocument(data: PCCStoreData, form: DocumentFormState, pendingFile: ReadExtractedFile, duplicateMatches: DuplicateMatch[]): Promise<PCCDocument> {
   var strongestMatch = strongestMatchOf(duplicateMatches);
 
   var revisionNumber = 1;
@@ -399,7 +442,7 @@ export function saveDocument(data, form, pendingFile, duplicateMatches) {
     revisionNumber =
       1 +
       siblings.reduce(function (max, d) {
-        return Math.max(max, d.revision_number);
+        return Math.max(max, d.revision_number || 0);
       }, 0);
   }
 
@@ -439,7 +482,7 @@ export function saveDocument(data, form, pendingFile, duplicateMatches) {
       d.documents.push(doc);
       if (strongestMatch && !strongestMatch.record.duplicate_group_id) {
         var original = d.documents.find(function (item) {
-          return item.id === strongestMatch.record.id;
+          return item.id === (strongestMatch as DuplicateMatch).record.id;
         });
         if (original) original.duplicate_group_id = doc.duplicate_group_id;
       }
@@ -457,7 +500,7 @@ export function saveDocument(data, form, pendingFile, duplicateMatches) {
   });
 }
 
-export function updateDocumentStatus(docId, status) {
+export function updateDocumentStatus(docId: string, status: string): void {
   window.PCC.store.update(function (d) {
     var existing = d.documents.find(function (item) {
       return item.id === docId;
@@ -473,14 +516,20 @@ export function updateDocumentStatus(docId, status) {
 // worthwhile across a batch that may be hundreds of files extraction doesn't support).
 // ---------------------------------------------------------------------------------
 
+export interface BulkFingerprint {
+  hash: string;
+  hashMethod: string;
+  dataUri: string;
+}
+
 /** Reads one bulk-import file (as an ArrayBuffer), computing both its content
  * fingerprint and its storable data URI from the SAME read. Resolves
  * { hash, hashMethod, dataUri }. */
-export function readAndFingerprintForBulk(file) {
+export function readAndFingerprintForBulk(file: File): Promise<BulkFingerprint> {
   return new Promise(function (resolve, reject) {
     var reader = new FileReader();
     reader.onload = function () {
-      var buffer = reader.result;
+      var buffer = reader.result as ArrayBuffer;
       var mimeType = file.type || "application/octet-stream";
       var dataUri = "data:" + mimeType + ";base64," + arrayBufferToBase64(buffer);
       window.PCC.duplicateService.fingerprintFile(buffer, file.name, file.size).then(function (fp) {
@@ -494,13 +543,26 @@ export function readAndFingerprintForBulk(file) {
   });
 }
 
+export interface BulkEntry {
+  file: File;
+  name: string;
+  size: number;
+  type: string;
+  status: string;
+  hash: string | null;
+  hashMethod: string | null;
+  dataUri: string | null;
+  duplicateMatch: DuplicateMatch | null;
+  errorMessage: string | null;
+}
+
 /** Re-checks (or initially checks) a bulk-import entry's duplicate status against the
  * live store — used at scan time and again whenever the batch's target project changes. */
-export function findBulkDuplicateMatch(data, entry, projectId) {
+export function findBulkDuplicateMatch(data: PCCStoreData, entry: BulkEntry, projectId: string): DuplicateMatch | null {
   if (!projectId || !entry.hash) return null;
   var matches = window.PCC.duplicateService.findFileDuplicates(activeDocuments(data.documents), {
     hash: entry.hash,
-    method: entry.hashMethod,
+    method: entry.hashMethod || undefined,
     filename: entry.name,
     size: entry.size,
     projectId: projectId,
@@ -508,10 +570,24 @@ export function findBulkDuplicateMatch(data, entry, projectId) {
   return strongestMatchOf(matches);
 }
 
+export interface BulkImportResult {
+  imported: number;
+  duplicates: number;
+  skipped: number;
+  errors: number;
+}
+
 /** BATCH IMPORT -> PROGRESS -> SUMMARY. Imports every entry currently 'ready' or
  * 'duplicate' (duplicates are flagged, never silently skipped). `onProgress(done, total)`
  * is called after each file commits. Resolves { imported, duplicates, skipped, errors }. */
-export function commitBulkImport(entries, projectId, category, documentTypeId, discipline, onProgress) {
+export function commitBulkImport(
+  entries: BulkEntry[],
+  projectId: string,
+  category: string,
+  documentTypeId: string,
+  discipline: string,
+  onProgress: (done: number, total: number) => void
+): Promise<BulkImportResult> {
   var toImport = entries.filter(function (e) {
     return e.status === "ready" || e.status === "duplicate";
   });
@@ -523,7 +599,7 @@ export function commitBulkImport(entries, projectId, category, documentTypeId, d
   var done = 0;
 
   return toImport
-    .reduce(function (chain, entry) {
+    .reduce(function (chain: Promise<void>, entry) {
       return chain.then(function () {
         // Re-check against the LIVE store right before creating this document —
         // catches intra-batch duplicates too (two identical files within the same
@@ -538,8 +614,8 @@ export function commitBulkImport(entries, projectId, category, documentTypeId, d
           file_size: entry.size,
           mime_type: entry.type || "application/octet-stream",
           file_data: null,
-          content_hash: entry.hash,
-          hash_method: entry.hashMethod,
+          content_hash: entry.hash || undefined,
+          hash_method: entry.hashMethod || undefined,
           is_duplicate: !!strongestMatch,
           original_record_id: strongestMatch ? strongestMatch.record.id : null,
           duplicate_reason: strongestMatch ? strongestMatch.reason : null,
@@ -549,13 +625,13 @@ export function commitBulkImport(entries, projectId, category, documentTypeId, d
         });
 
         return window.PCC.blobStore
-          .putBlob(doc.id, entry.dataUri)
+          .putBlob(doc.id, entry.dataUri as string)
           .then(function () {
             window.PCC.store.update(function (d) {
               d.documents.push(doc);
               if (strongestMatch && !strongestMatch.record.duplicate_group_id) {
                 var original = d.documents.find(function (item) {
-                  return item.id === strongestMatch.record.id;
+                  return item.id === (strongestMatch as DuplicateMatch).record.id;
                 });
                 if (original) original.duplicate_group_id = doc.duplicate_group_id;
               }
@@ -589,25 +665,25 @@ export function commitBulkImport(entries, projectId, category, documentTypeId, d
 // Cross-page navigation
 // ---------------------------------------------------------------------------------
 
-export function viewMeeting(meetingId) {
+export function viewMeeting(meetingId: string): void {
   if (window.PCC.meetings) window.PCC.meetings.expandMeeting(meetingId);
   window.PCC.router.go("meetings");
 }
 
-export function viewVendor(vendorId) {
+export function viewVendor(vendorId: string): void {
   if (window.PCC.vendors) window.PCC.vendors.openProfile(vendorId);
   window.PCC.router.go("vendors");
 }
 
-export function viewActivityInSchedule(projectId, scheduleId, activityId) {
+export function viewActivityInSchedule(projectId: string, scheduleId: string, activityId: string): void {
   if (window.PCC.schedule) window.PCC.schedule.viewActivity(projectId, scheduleId, activityId);
   window.PCC.router.go("schedule");
 }
 
-export function getProjectContext() {
+export function getProjectContext(): string {
   return window.PCC.projectContext.get();
 }
 
-export function setProjectContext(projectId) {
+export function setProjectContext(projectId: string): void {
   window.PCC.projectContext.set(projectId);
 }

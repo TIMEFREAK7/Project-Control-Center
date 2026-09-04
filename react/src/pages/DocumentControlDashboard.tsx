@@ -19,9 +19,9 @@
  * this route), exactly like the old vanilla page recomputed fresh on every router.render().
  */
 import React from "react";
-import { pct, groupCompliance, getDashboardSnapshot, viewProjectOnPortfolio } from "../services/documentControlDashboardService.js";
+import { pct, groupCompliance, getDashboardSnapshot, viewProjectOnPortfolio, ComplianceGroup } from "../services/documentControlDashboardService";
 
-function KpiCard({ label, value, colorVar }) {
+function KpiCard({ label, value, colorVar }: { label: string; value: string | number; colorVar?: string | null }) {
   return (
     <div className="kpi-card">
       <span className="kpi-card__label">{label}</span>
@@ -36,7 +36,7 @@ function KpiCard({ label, value, colorVar }) {
 // same one every other panel-turned-list in this app uses. The whole row is the click target
 // only when onClick is given (the by-project panel passes one; the by-document-type panel
 // passes null, since document types have no dedicated page to link to).
-function ComplianceRow({ label, group, onClick }) {
+function ComplianceRow({ label, group, onClick }: { label: string; group: ComplianceGroup; onClick: (() => void) | null }) {
   const iconStatus = group.overdue > 0 ? "critical" : group.pctAvailable < 100 ? "at_risk" : "on_track";
   return (
     <div className={"attention-item" + (onClick ? " attention-item--clickable" : "")} onClick={onClick || undefined}>

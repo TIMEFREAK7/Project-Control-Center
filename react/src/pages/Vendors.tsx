@@ -74,16 +74,41 @@ import {
   computeRequirementStatus,
   getProjectContext,
   setProjectContext,
-} from "../services/vendorsService.js";
+  FieldConfig,
+  VendorFilters,
+  PendingFile,
+} from "../services/vendorsService";
+import type {
+  PCCStoreData,
+  PCCVendor,
+  PCCVendorProjectLink,
+  PCCVendorContact,
+  PCCVendorDocument,
+  PCCVendorPerformance,
+  PCCVendorMeetingLink,
+  PCCVendorRfiLink,
+  PCCVendorRiskLink,
+  PCCVendorNote,
+  PCCMeeting,
+  PCCRfi,
+  PCCRisk,
+  PCCActivity,
+} from "../types/pcc";
 
-function statusBadgeClass(status) {
+function statusBadgeClass(status: string | undefined): string {
   if (status === "preferred") return "status-badge status-badge--on_track";
   if (status === "blacklisted") return "status-badge status-badge--critical";
   if (status === "inactive") return "status-badge status-badge--complete";
   return "status-badge status-badge--info";
 }
 
-function Field({ cfg, record, idPrefix }) {
+interface FieldProps {
+  cfg: FieldConfig;
+  record: any;
+  idPrefix: string;
+}
+
+function Field({ cfg, record, idPrefix }: FieldProps) {
   const id = idPrefix + cfg.key;
   return (
     <div className="field">
@@ -92,10 +117,10 @@ function Field({ cfg, record, idPrefix }) {
         {cfg.required ? " *" : ""}
       </label>
       {cfg.type === "select" ? (
-        <select id={id} name={cfg.key} defaultValue={record[cfg.key] || cfg.options[0]}>
-          {cfg.options.map((val) => (
+        <select id={id} name={cfg.key} defaultValue={record[cfg.key] || (cfg.options && cfg.options[0])}>
+          {(cfg.options || []).map((val) => (
             <option key={val} value={val}>
-              {cfg.labels[val] || val}
+              {(cfg.labels && cfg.labels[val]) || val}
             </option>
           ))}
         </select>
@@ -110,22 +135,30 @@ function Field({ cfg, record, idPrefix }) {
 
 // ===== Vendor Master form =====
 
-function VendorForm({ isNew, vendor, data, onCancel, onSaved }) {
+interface VendorFormProps {
+  isNew: boolean;
+  vendor: PCCVendor;
+  data: PCCStoreData;
+  onCancel: () => void;
+  onSaved: (isNew: boolean, savedVendorId: string) => void;
+}
+
+function VendorForm({ isNew, vendor, data, onCancel, onSaved }: VendorFormProps) {
   const [showError, setShowError] = useState(false);
-  const primaryContact =
+  const primaryContact: PCCVendorContact | { name: string; designation: string; mobile: string; email: string } =
     data.vendor_contacts.find((c) => c.vendor_id === vendor.id && c.is_primary) || { name: "", designation: "", mobile: "", email: "" };
 
-  function handleSubmit(e) {
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const form = e.target;
-    const values = {};
+    const form = e.target as HTMLFormElement;
+    const values: any = {};
     VENDOR_FIELD_CONFIG.concat(VENDOR_ADDRESS_FIELD_CONFIG).forEach((cfg) => {
-      const el = form.querySelector("#vendorfield-" + cfg.key);
+      const el = form.querySelector("#vendorfield-" + cfg.key) as HTMLInputElement | null;
       if (el) values[cfg.key] = el.value;
     });
-    values.status = form.querySelector("#vendorfield-status").value;
-    values.next_follow_up_date = form.querySelector("#vendorfield-next_follow_up_date").value;
-    values.notes = form.querySelector("#vendorfield-notes").value;
+    values.status = (form.querySelector("#vendorfield-status") as HTMLSelectElement).value;
+    values.next_follow_up_date = (form.querySelector("#vendorfield-next_follow_up_date") as HTMLInputElement).value;
+    values.notes = (form.querySelector("#vendorfield-notes") as HTMLTextAreaElement).value;
 
     if (!values.vendor_name || !values.vendor_name.trim()) {
       setShowError(true);
@@ -134,10 +167,10 @@ function VendorForm({ isNew, vendor, data, onCancel, onSaved }) {
     setShowError(false);
 
     const contactValues = {
-      name: form.querySelector("#vendorfield-contact-name").value.trim(),
-      designation: form.querySelector("#vendorfield-contact-designation").value.trim(),
-      mobile: form.querySelector("#vendorfield-contact-mobile").value.trim(),
-      email: form.querySelector("#vendorfield-contact-email").value.trim(),
+      name: (form.querySelector("#vendorfield-contact-name") as HTMLInputElement).value.trim(),
+      designation: (form.querySelector("#vendorfield-contact-designation") as HTMLInputElement).value.trim(),
+      mobile: (form.querySelector("#vendorfield-contact-mobile") as HTMLInputElement).value.trim(),
+      email: (form.querySelector("#vendorfield-contact-email") as HTMLInputElement).value.trim(),
     };
 
     const savedVendorId = saveVendor(isNew, vendor.id, values, contactValues);
@@ -203,7 +236,15 @@ function VendorForm({ isNew, vendor, data, onCancel, onSaved }) {
 
 // ===== Vendor Master list =====
 
-function VendorCard({ v, data, onView, onEdit, onDeleted }) {
+interface VendorCardProps {
+  v: PCCVendor;
+  data: PCCStoreData;
+  onView: () => void;
+  onEdit: () => void;
+  onDeleted: (id: string) => void;
+}
+
+function VendorCard({ v, data, onView, onEdit, onDeleted }: VendorCardProps) {
   const projectCount = data.vendor_project_links.filter((l) => l.vendor_id === v.id).length;
   function handleDelete() {
     if (
@@ -221,7 +262,7 @@ function VendorCard({ v, data, onView, onEdit, onDeleted }) {
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
             <strong>{v.vendor_name || "(unnamed vendor)"}</strong>
-            <span className={statusBadgeClass(v.status)}>{VENDOR_STATUS_LABELS[v.status] || v.status}</span>
+            <span className={statusBadgeClass(v.status)}>{VENDOR_STATUS_LABELS[v.status || ""] || v.status}</span>
           </div>
           <p className="text-secondary" style={{ fontSize: "var(--text-sm)", margin: "var(--space-1) 0 0" }}>
             {[v.vendor_code, v.company_name, v.trade_discipline].filter(Boolean).join(" · ")}
@@ -245,7 +286,20 @@ function VendorCard({ v, data, onView, onEdit, onDeleted }) {
   );
 }
 
-function VendorList({ data, filters, setFilters, editingVendorId, onEdit, onAdd, onCancelEdit, onSaved, onView, onDeleted }) {
+interface VendorListProps {
+  data: PCCStoreData;
+  filters: VendorFilters;
+  setFilters: React.Dispatch<React.SetStateAction<VendorFilters>>;
+  editingVendorId: string | null;
+  onEdit: (id: string) => void;
+  onAdd: () => void;
+  onCancelEdit: () => void;
+  onSaved: (isNew: boolean, savedVendorId: string) => void;
+  onView: (id: string) => void;
+  onDeleted: (id: string) => void;
+}
+
+function VendorList({ data, filters, setFilters, editingVendorId, onEdit, onAdd, onCancelEdit, onSaved, onView, onDeleted }: VendorListProps) {
   const vendorBeingEdited = !editingVendorId ? null : editingVendorId === "new" ? newVendor() : data.vendors.find((v) => v.id === editingVendorId);
   const filtered = data.vendors.filter((v) => vendorMatchesFilters(v, data, filters));
   const distinctTrades = Array.from(new Set(data.vendors.map((v) => (v.trade_discipline || "").trim()).filter(Boolean))).sort();
@@ -325,7 +379,7 @@ function VendorList({ data, filters, setFilters, editingVendorId, onEdit, onAdd,
 
 // ===== Dashboard =====
 
-function SummaryCard({ label, value, sub }) {
+function SummaryCard({ label, value, sub }: { label: string; value: string | number; sub?: React.ReactNode }) {
   return (
     <div className="panel">
       <p className="text-secondary" style={{ fontSize: "var(--text-xs)", marginBottom: "var(--space-2)" }}>
@@ -337,7 +391,7 @@ function SummaryCard({ label, value, sub }) {
   );
 }
 
-function MiniList({ items }) {
+function MiniList({ items }: { items: string[] }) {
   if (items.length === 0) {
     return (
       <p className="text-secondary" style={{ fontSize: "var(--text-sm)" }}>
@@ -356,14 +410,15 @@ function MiniList({ items }) {
   );
 }
 
-function Dashboard({ data }) {
+function Dashboard({ data }: { data: PCCStoreData }) {
   const activeCount = data.vendors.filter((v) => v.status === "active").length;
   const preferredCount = data.vendors.filter((v) => v.status === "preferred").length;
 
-  const perProject = {};
+  const perProject: { [projectId: string]: { [vendorId: string]: boolean } } = {};
   data.vendor_project_links.forEach((l) => {
-    perProject[l.project_id] = perProject[l.project_id] || {};
-    perProject[l.project_id][l.vendor_id] = true;
+    const pid = l.project_id || "";
+    perProject[pid] = perProject[pid] || {};
+    perProject[pid][l.vendor_id || ""] = true;
   });
   const perProjectRows = Object.keys(perProject)
     .map((pid) => ({ projectId: pid, count: Object.keys(perProject[pid]).length }))
@@ -371,7 +426,7 @@ function Dashboard({ data }) {
     .slice(0, 5)
     .map((row) => projectName(data.projects, row.projectId) + " — " + row.count + " vendor" + (row.count === 1 ? "" : "s"));
 
-  let allLatestByVendor = [];
+  let allLatestByVendor: PCCVendorDocument[] = [];
   data.vendors.forEach((v) => {
     allLatestByVendor = allLatestByVendor.concat(latestDocumentsForVendor(data.vendor_documents, v.id));
   });
@@ -382,7 +437,7 @@ function Dashboard({ data }) {
       const diff = daysUntil(d.expiry_date);
       return diff !== null && diff <= EXPIRING_SOON_DAYS;
     })
-    .sort((a, b) => a.expiry_date.localeCompare(b.expiry_date));
+    .sort((a, b) => (a.expiry_date || "").localeCompare(b.expiry_date || ""));
 
   const recentUploads = data.vendor_documents
     .slice()
@@ -393,13 +448,13 @@ function Dashboard({ data }) {
     .slice()
     .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""))
     .slice(0, 5)
-    .map((v) => v.vendor_name + " (" + new Date(v.created_at).toLocaleDateString() + ")");
+    .map((v) => v.vendor_name + " (" + new Date(v.created_at || "").toLocaleDateString() + ")");
 
   const recentlyUpdated = data.vendors
     .filter((v) => v.updated_at !== v.created_at)
     .sort((a, b) => (b.updated_at || "").localeCompare(a.updated_at || ""))
     .slice(0, 5)
-    .map((v) => v.vendor_name + " (" + new Date(v.updated_at).toLocaleDateString() + ")");
+    .map((v) => v.vendor_name + " (" + new Date(v.updated_at || "").toLocaleDateString() + ")");
 
   return (
     <>
@@ -415,7 +470,7 @@ function Dashboard({ data }) {
           sub={
             <MiniList
               items={expiring.slice(0, 5).map((d) => {
-                const diff = daysUntil(d.expiry_date);
+                const diff = daysUntil(d.expiry_date) || 0;
                 return vendorName(data.vendors, d.vendor_id) + " — " + documentLabel(d) + " — " + (diff < 0 ? "expired " + Math.abs(diff) + "d ago" : diff + "d left");
               })}
             />
@@ -451,8 +506,8 @@ function Dashboard({ data }) {
 
 // ===== Profile: Overview =====
 
-function OverviewTab({ vendor, data }) {
-  function Row({ label, value }) {
+function OverviewTab({ vendor, data }: { vendor: PCCVendor; data: PCCStoreData }) {
+  function Row({ label, value }: { label: string; value: string | undefined }) {
     return (
       <div>
         <p className="text-secondary" style={{ fontSize: "var(--text-xs)", marginBottom: 2 }}>
@@ -462,7 +517,7 @@ function OverviewTab({ vendor, data }) {
       </div>
     );
   }
-  function Stat({ label, count }) {
+  function Stat({ label, count }: { label: string; count: number }) {
     return (
       <div>
         <strong>{count}</strong> <span className="text-secondary" style={{ fontSize: 12 }}>{label}</span>
@@ -523,16 +578,25 @@ function OverviewTab({ vendor, data }) {
 
 // ===== Profile: Projects =====
 
-function ProjectLinkForm({ isNew, link, vendor, data, onCancel, onSaved }) {
+interface ProjectLinkFormProps {
+  isNew: boolean;
+  link: PCCVendorProjectLink;
+  vendor: PCCVendor;
+  data: PCCStoreData;
+  onCancel: () => void;
+  onSaved: () => void;
+}
+
+function ProjectLinkForm({ isNew, link, vendor, data, onCancel, onSaved }: ProjectLinkFormProps) {
   const activeProjects = data.projects.filter((p) => !p.archived);
-  function handleSubmit(e) {
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const form = e.target;
-    const values = {
-      project_id: form.querySelector("#vplfield-project_id").value,
-      role: form.querySelector("#vplfield-role").value,
-      contract_status: form.querySelector("#vplfield-contract_status").value,
-      scope_of_work: form.querySelector("#vplfield-scope_of_work").value,
+    const form = e.target as HTMLFormElement;
+    const values: Partial<PCCVendorProjectLink> = {
+      project_id: (form.querySelector("#vplfield-project_id") as HTMLSelectElement).value,
+      role: (form.querySelector("#vplfield-role") as HTMLInputElement).value,
+      contract_status: (form.querySelector("#vplfield-contract_status") as HTMLSelectElement).value,
+      scope_of_work: (form.querySelector("#vplfield-scope_of_work") as HTMLTextAreaElement).value,
     };
     saveProjectLink(isNew, link.id, vendor.id, values);
     onSaved();
@@ -575,8 +639,8 @@ function ProjectLinkForm({ isNew, link, vendor, data, onCancel, onSaved }) {
   );
 }
 
-function ProjectsTab({ vendor, data, onChanged }) {
-  const [editingId, setEditingId] = useState(null);
+function ProjectsTab({ vendor, data, onChanged }: { vendor: PCCVendor; data: PCCStoreData; onChanged: () => void }) {
+  const [editingId, setEditingId] = useState<string | null>(null);
   const links = data.vendor_project_links.filter((l) => l.vendor_id === vendor.id);
   const linkBeingEdited = !editingId ? null : editingId === "new" ? newProjectLink(vendor.id) : links.find((l) => l.id === editingId);
 
@@ -616,7 +680,7 @@ function ProjectsTab({ vendor, data, onChanged }) {
                 <strong>{projectName(data.projects, l.project_id)}</strong>
                 <p className="text-secondary" style={{ fontSize: 12, margin: "4px 0 0" }}>
                   {l.role ? "Role: " + l.role + " — " : ""}
-                  Contract: {CONTRACT_STATUS_LABELS[l.contract_status] || l.contract_status}
+                  Contract: {CONTRACT_STATUS_LABELS[l.contract_status || ""] || l.contract_status}
                 </p>
                 {l.scope_of_work ? <p style={{ fontSize: 13, margin: "6px 0 0" }}>{l.scope_of_work}</p> : null}
               </div>
@@ -644,16 +708,24 @@ function ProjectsTab({ vendor, data, onChanged }) {
 
 // ===== Profile: Contacts =====
 
-function ContactForm({ isNew, contact, vendor, onCancel, onSaved }) {
-  function handleSubmit(e) {
+interface ContactFormProps {
+  isNew: boolean;
+  contact: PCCVendorContact;
+  vendor: PCCVendor;
+  onCancel: () => void;
+  onSaved: () => void;
+}
+
+function ContactForm({ isNew, contact, vendor, onCancel, onSaved }: ContactFormProps) {
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const form = e.target;
-    const values = {
-      name: form.querySelector("#vcfield-name").value.trim(),
-      designation: form.querySelector("#vcfield-designation").value.trim(),
-      mobile: form.querySelector("#vcfield-mobile").value.trim(),
-      email: form.querySelector("#vcfield-email").value.trim(),
-      is_primary: form.querySelector("#vcfield-is_primary").checked,
+    const form = e.target as HTMLFormElement;
+    const values: Partial<PCCVendorContact> = {
+      name: (form.querySelector("#vcfield-name") as HTMLInputElement).value.trim(),
+      designation: (form.querySelector("#vcfield-designation") as HTMLInputElement).value.trim(),
+      mobile: (form.querySelector("#vcfield-mobile") as HTMLInputElement).value.trim(),
+      email: (form.querySelector("#vcfield-email") as HTMLInputElement).value.trim(),
+      is_primary: (form.querySelector("#vcfield-is_primary") as HTMLInputElement).checked,
     };
     if (!values.name) return;
     saveContact(isNew, contact.id, vendor.id, values);
@@ -687,8 +759,8 @@ function ContactForm({ isNew, contact, vendor, onCancel, onSaved }) {
   );
 }
 
-function ContactsTab({ vendor, data, onChanged }) {
-  const [editingId, setEditingId] = useState(null);
+function ContactsTab({ vendor, data, onChanged }: { vendor: PCCVendor; data: PCCStoreData; onChanged: () => void }) {
+  const [editingId, setEditingId] = useState<string | null>(null);
   const contacts = data.vendor_contacts.filter((c) => c.vendor_id === vendor.id);
   const contactBeingEdited = !editingId ? null : editingId === "new" ? newContact(vendor.id) : contacts.find((c) => c.id === editingId);
 
@@ -749,30 +821,40 @@ function ContactsTab({ vendor, data, onChanged }) {
 
 // ===== Profile: Documents =====
 
-function DocumentUploadForm({ vendor, data, pendingDocGroupId, initialCategory, initialCustomCategory, initialProjectId, onCancel, onSaved }) {
-  const [pendingFile, setPendingFile] = useState(null);
-  const [readError, setReadError] = useState(null);
+interface DocumentUploadFormProps {
+  vendor: PCCVendor;
+  data: PCCStoreData;
+  pendingDocGroupId: string | null;
+  initialCategory: string;
+  initialCustomCategory: string;
+  initialProjectId: string;
+  onCancel: () => void;
+  onSaved: () => void;
+}
+
+function DocumentUploadForm({ vendor, data, pendingDocGroupId, initialCategory, initialCustomCategory, initialProjectId, onCancel, onSaved }: DocumentUploadFormProps) {
+  const [pendingFile, setPendingFile] = useState<PendingFile | null>(null);
+  const [readError, setReadError] = useState<string | null>(null);
   const [category, setCategory] = useState(initialCategory || "other");
   const [saving, setSaving] = useState(false);
 
-  function handleFileChange(e) {
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
     setReadError(null);
     readAndFingerprintFile(file).then(setPendingFile, (err) => setReadError(err.message));
   }
 
-  function handleSave(e) {
-    const form = e.target.closest("form") || e.target.form;
-    const category = document.getElementById("vdocfield-category").value;
-    const customLabelEl = document.getElementById("vdocfield-custom_category_label");
+  function handleSave() {
+    const category = (document.getElementById("vdocfield-category") as HTMLSelectElement).value;
+    const customLabelEl = document.getElementById("vdocfield-custom_category_label") as HTMLInputElement | null;
     const values = {
-      project_id: document.getElementById("vdocfield-project_id").value,
+      project_id: (document.getElementById("vdocfield-project_id") as HTMLSelectElement).value,
       category: category,
       custom_category_label: customLabelEl ? customLabelEl.value.trim() : "",
-      expiry_date: document.getElementById("vdocfield-expiry_date").value,
-      tags: document.getElementById("vdocfield-tags").value,
-      comments: document.getElementById("vdocfield-comments").value,
+      expiry_date: (document.getElementById("vdocfield-expiry_date") as HTMLInputElement).value,
+      tags: (document.getElementById("vdocfield-tags") as HTMLInputElement).value,
+      comments: (document.getElementById("vdocfield-comments") as HTMLTextAreaElement).value,
     };
     setSaving(true);
     saveVendorDocument(vendor, pendingFile, values, pendingDocGroupId).then(
@@ -854,9 +936,16 @@ function DocumentUploadForm({ vendor, data, pendingDocGroupId, initialCategory, 
   );
 }
 
-function DocumentsTab({ vendor, data, onChanged }) {
-  const [uploadState, setUploadState] = useState(null); // null | { groupId, category, customCategory, projectId }
-  const [expandedGroupId, setExpandedGroupId] = useState(null);
+interface DocumentsTabUploadState {
+  groupId: string | null;
+  category: string;
+  customCategory: string;
+  projectId: string;
+}
+
+function DocumentsTab({ vendor, data, onChanged }: { vendor: PCCVendor; data: PCCStoreData; onChanged: () => void }) {
+  const [uploadState, setUploadState] = useState<DocumentsTabUploadState | null>(null);
+  const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
   const latest = latestDocumentsForVendor(data.vendor_documents, vendor.id);
 
   return (
@@ -893,7 +982,7 @@ function DocumentsTab({ vendor, data, onChanged }) {
           const groupId = doc.document_group_id;
           const allRevisions = data.vendor_documents
             .filter((d) => d.document_group_id === groupId)
-            .sort((a, b) => b.revision_number - a.revision_number);
+            .sort((a, b) => (b.revision_number || 0) - (a.revision_number || 0));
           const expiry = doc.expiry_date ? daysUntil(doc.expiry_date) : null;
           const expiryText = doc.expiry_date
             ? " · Expires " + doc.expiry_date + (expiry !== null && expiry <= EXPIRING_SOON_DAYS ? (expiry < 0 ? " (EXPIRED)" : " (soon)") : "")
@@ -920,12 +1009,12 @@ function DocumentsTab({ vendor, data, onChanged }) {
                   <button
                     className="btn btn--ghost"
                     onClick={() =>
-                      setUploadState({ groupId: groupId, category: doc.category, customCategory: doc.custom_category_label, projectId: doc.project_id })
+                      setUploadState({ groupId: groupId || null, category: doc.category || "other", customCategory: doc.custom_category_label || "", projectId: doc.project_id || "" })
                     }
                   >
                     New Revision
                   </button>
-                  <button className="btn btn--ghost" onClick={() => setExpandedGroupId(expanded ? null : groupId)}>
+                  <button className="btn btn--ghost" onClick={() => setExpandedGroupId(expanded ? null : groupId || null)}>
                     {allRevisions.length > 1 ? "History (" + allRevisions.length + ")" : "History"}
                   </button>
                   <button
@@ -964,7 +1053,16 @@ function DocumentsTab({ vendor, data, onChanged }) {
 
 // ===== Shared: link-an-existing-record picker =====
 
-function LinkPickerPanel({ items, itemLabel, onLink, onClose, emptyText, buttonText }) {
+interface LinkPickerPanelProps<T extends { id: string }> {
+  items: T[];
+  itemLabel: (item: T) => string;
+  onLink: (id: string) => void;
+  onClose: () => void;
+  emptyText: string;
+  buttonText: string;
+}
+
+function LinkPickerPanel<T extends { id: string }>({ items, itemLabel, onLink, onClose, emptyText, buttonText }: LinkPickerPanelProps<T>) {
   const [selected, setSelected] = useState(items[0] ? items[0].id : "");
   return (
     <div className="panel" style={{ marginBottom: "var(--space-3)" }}>
@@ -995,7 +1093,7 @@ function LinkPickerPanel({ items, itemLabel, onLink, onClose, emptyText, buttonT
 
 // ===== Profile: Meetings =====
 
-function MeetingsTab({ vendor, data, onChanged }) {
+function MeetingsTab({ vendor, data, onChanged }: { vendor: PCCVendor; data: PCCStoreData; onChanged: () => void }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const linkedProjectIds = data.vendor_project_links.filter((l) => l.vendor_id === vendor.id).map((l) => l.project_id);
   const linkedMeetingIds = data.vendor_meeting_links.filter((l) => l.vendor_id === vendor.id).map((l) => l.meeting_id);
@@ -1079,7 +1177,7 @@ function MeetingsTab({ vendor, data, onChanged }) {
 
 // ===== Profile: RFIs =====
 
-function RfisTab({ vendor, data, onChanged }) {
+function RfisTab({ vendor, data, onChanged }: { vendor: PCCVendor; data: PCCStoreData; onChanged: () => void }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const linkedProjectIds = data.vendor_project_links.filter((l) => l.vendor_id === vendor.id).map((l) => l.project_id);
   const linkedRfiIds = data.vendor_rfi_links.filter((l) => l.vendor_id === vendor.id).map((l) => l.rfi_id);
@@ -1114,7 +1212,7 @@ function RfisTab({ vendor, data, onChanged }) {
       {pickerOpen ? (
         <LinkPickerPanel
           items={data.rfis.filter((r) => linkedRfiIds.indexOf(r.id) === -1 && (linkedProjectIds.length === 0 || linkedProjectIds.indexOf(r.project_id) !== -1))}
-          itemLabel={(r) => r.number + " — " + r.subject + " (" + RFI_TYPE_LABELS[r.type] + ", " + RFI_STATUS_LABELS[r.status] + ")"}
+          itemLabel={(r) => r.number + " — " + r.subject + " (" + RFI_TYPE_LABELS[r.type || ""] + ", " + RFI_STATUS_LABELS[r.status || ""] + ")"}
           emptyText="No RFIs/TQs available to link (from this vendor's linked projects). Link a project first, or add entries in the RFI / TQ module."
           buttonText="Link"
           onLink={(rfiId) => {
@@ -1151,9 +1249,9 @@ function RfisTab({ vendor, data, onChanged }) {
             <div key={l.id} className="project-card">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                 <div>
-                  <strong className="mono">{r.number}</strong> {r.subject} <span className="status-badge status-badge--info">{RFI_TYPE_LABELS[r.type]}</span>
+                  <strong className="mono">{r.number}</strong> {r.subject} <span className="status-badge status-badge--info">{RFI_TYPE_LABELS[r.type || ""]}</span>
                   <p className="text-secondary" style={{ fontSize: 12, margin: "4px 0 0" }}>
-                    Status: {RFI_STATUS_LABELS[r.status]}
+                    Status: {RFI_STATUS_LABELS[r.status || ""]}
                     {r.date_required ? " · Response due: " + r.date_required : ""}
                   </p>
                 </div>
@@ -1182,7 +1280,7 @@ function RfisTab({ vendor, data, onChanged }) {
 
 // ===== Profile: Risks =====
 
-function RisksTab({ vendor, data, onChanged }) {
+function RisksTab({ vendor, data, onChanged }: { vendor: PCCVendor; data: PCCStoreData; onChanged: () => void }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const linkedProjectIds = data.vendor_project_links.filter((l) => l.vendor_id === vendor.id).map((l) => l.project_id);
   const linkedRiskIds = data.vendor_risk_links.filter((l) => l.vendor_id === vendor.id).map((l) => l.risk_id);
@@ -1264,7 +1362,15 @@ function RisksTab({ vendor, data, onChanged }) {
 
 // ===== Profile: Performance =====
 
-function PerformanceForm({ isNew, perf, vendor, onCancel, onSaved }) {
+interface PerformanceFormProps {
+  isNew: boolean;
+  perf: PCCVendorPerformance;
+  vendor: PCCVendor;
+  onCancel: () => void;
+  onSaved: () => void;
+}
+
+function PerformanceForm({ isNew, perf, vendor, onCancel, onSaved }: PerformanceFormProps) {
   function ratingOptions() {
     return [0, 1, 2, 3, 4, 5].map((n) => (
       <option key={n} value={n}>
@@ -1272,17 +1378,17 @@ function PerformanceForm({ isNew, perf, vendor, onCancel, onSaved }) {
       </option>
     ));
   }
-  function handleSubmit(e) {
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const form = e.target;
-    const values = {
-      quality_rating: Number(form.querySelector("#vperffield-quality_rating").value),
-      delivery_rating: Number(form.querySelector("#vperffield-delivery_rating").value),
-      communication_rating: Number(form.querySelector("#vperffield-communication_rating").value),
-      safety_rating: Number(form.querySelector("#vperffield-safety_rating").value),
-      review_date: form.querySelector("#vperffield-review_date").value,
-      reviewed_by: form.querySelector("#vperffield-reviewed_by").value,
-      comments: form.querySelector("#vperffield-comments").value,
+    const form = e.target as HTMLFormElement;
+    const values: Partial<PCCVendorPerformance> = {
+      quality_rating: Number((form.querySelector("#vperffield-quality_rating") as HTMLSelectElement).value),
+      delivery_rating: Number((form.querySelector("#vperffield-delivery_rating") as HTMLSelectElement).value),
+      communication_rating: Number((form.querySelector("#vperffield-communication_rating") as HTMLSelectElement).value),
+      safety_rating: Number((form.querySelector("#vperffield-safety_rating") as HTMLSelectElement).value),
+      review_date: (form.querySelector("#vperffield-review_date") as HTMLInputElement).value,
+      reviewed_by: (form.querySelector("#vperffield-reviewed_by") as HTMLInputElement).value,
+      comments: (form.querySelector("#vperffield-comments") as HTMLTextAreaElement).value,
     };
     savePerformance(isNew, perf.id, vendor.id, values);
     onSaved();
@@ -1335,8 +1441,8 @@ function PerformanceForm({ isNew, perf, vendor, onCancel, onSaved }) {
   );
 }
 
-function PerformanceTab({ vendor, data, onChanged }) {
-  const [editingId, setEditingId] = useState(null);
+function PerformanceTab({ vendor, data, onChanged }: { vendor: PCCVendor; data: PCCStoreData; onChanged: () => void }) {
+  const [editingId, setEditingId] = useState<string | null>(null);
   const reviews = data.vendor_performance.filter((p) => p.vendor_id === vendor.id).slice().sort((a, b) => (b.review_date || "").localeCompare(a.review_date || ""));
   const perfBeingEdited = !editingId ? null : editingId === "new" ? newPerformance(vendor.id) : reviews.find((r) => r.id === editingId);
 
@@ -1384,7 +1490,7 @@ function PerformanceTab({ vendor, data, onChanged }) {
                   {r.reviewed_by ? " · " + r.reviewed_by : ""}
                 </p>
                 <p style={{ fontSize: 12, margin: "6px 0 0" }}>
-                  Quality: {ratingText(r.quality_rating)} · Delivery: {ratingText(r.delivery_rating)} · Communication: {ratingText(r.communication_rating)} · Safety: {ratingText(r.safety_rating)}
+                  Quality: {ratingText(r.quality_rating || 0)} · Delivery: {ratingText(r.delivery_rating || 0)} · Communication: {ratingText(r.communication_rating || 0)} · Safety: {ratingText(r.safety_rating || 0)}
                 </p>
                 {r.comments ? <p style={{ fontSize: 13, margin: "6px 0 0" }}>{r.comments}</p> : null}
               </div>
@@ -1412,7 +1518,7 @@ function PerformanceTab({ vendor, data, onChanged }) {
 
 // ===== Profile: Notes =====
 
-function NotesTab({ vendor, data, onChanged }) {
+function NotesTab({ vendor, data, onChanged }: { vendor: PCCVendor; data: PCCStoreData; onChanged: () => void }) {
   const [draft, setDraft] = useState("");
   const notes = data.vendor_notes.filter((n) => n.vendor_id === vendor.id).slice().sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
 
@@ -1441,7 +1547,7 @@ function NotesTab({ vendor, data, onChanged }) {
               <div>
                 <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{n.note_text}</p>
                 <p className="text-secondary" style={{ fontSize: 11, margin: "6px 0 0" }}>
-                  {new Date(n.created_at).toLocaleString()}
+                  {new Date(n.created_at || "").toLocaleString()}
                 </p>
               </div>
               <button
@@ -1463,12 +1569,12 @@ function NotesTab({ vendor, data, onChanged }) {
 
 // ===== Profile: Document Lookahead =====
 
-function LookaheadTab({ vendor, data }) {
-  const typesById = {};
+function LookaheadTab({ vendor, data }: { vendor: PCCVendor; data: PCCStoreData }) {
+  const typesById: { [id: string]: (typeof data.document_types)[number] } = {};
   data.document_types.forEach((t) => (typesById[t.id] = t));
-  const activitiesById = {};
+  const activitiesById: { [id: string]: PCCActivity } = {};
   data.activities.forEach((a) => (activitiesById[a.id] = a));
-  const schedulesById = {};
+  const schedulesById: { [id: string]: (typeof data.schedules)[number] } = {};
   data.schedules.forEach((s) => (schedulesById[s.id] = s));
 
   const rows = data.project_document_requirements.filter((r) => r.vendor_id === vendor.id && typesById[r.document_type_id]);
@@ -1538,8 +1644,8 @@ function LookaheadTab({ vendor, data }) {
 
 // ===== Profile: Activities =====
 
-function ActivitiesTab({ vendor, data }) {
-  const schedulesById = {};
+function ActivitiesTab({ vendor, data }: { vendor: PCCVendor; data: PCCStoreData }) {
+  const schedulesById: { [id: string]: (typeof data.schedules)[number] } = {};
   data.schedules.forEach((s) => (schedulesById[s.id] = s));
   const rows = data.activities.filter((a) => a.vendor_id === vendor.id);
 
@@ -1613,7 +1719,17 @@ var PROFILE_TABS = [
   { key: "activities", label: "Activities" },
 ];
 
-function Profile({ vendor, data, tab, onTabChange, onBack, onEdit, onChanged }) {
+interface ProfileProps {
+  vendor: PCCVendor;
+  data: PCCStoreData;
+  tab: string;
+  onTabChange: (tab: string) => void;
+  onBack: () => void;
+  onEdit: () => void;
+  onChanged: () => void;
+}
+
+function Profile({ vendor, data, tab, onTabChange, onBack, onEdit, onChanged }: ProfileProps) {
   return (
     <>
       <button className="btn btn--ghost" onClick={onBack}>
@@ -1624,7 +1740,7 @@ function Profile({ vendor, data, tab, onTabChange, onBack, onEdit, onChanged }) 
         <div style={{ display: "flex", alignItems: "center" }}>
           <h3>{vendor.vendor_name}</h3>
           <span className={statusBadgeClass(vendor.status)} style={{ marginLeft: "var(--space-3)" }}>
-            {VENDOR_STATUS_LABELS[vendor.status] || vendor.status}
+            {VENDOR_STATUS_LABELS[vendor.status || ""] || vendor.status}
           </span>
         </div>
         <button className="btn btn--ghost" onClick={onEdit}>
@@ -1671,13 +1787,20 @@ function Profile({ vendor, data, tab, onTabChange, onBack, onEdit, onChanged }) 
 
 // ===== Top-level page =====
 
-export default function VendorsPage({ initialView, initialProfileVendorId, initialProfileTab, initialProjectFilter }) {
-  const [data, setData] = useState(() => getData());
+interface VendorsPageProps {
+  initialView?: string;
+  initialProfileVendorId?: string;
+  initialProfileTab?: string;
+  initialProjectFilter?: string;
+}
+
+export default function VendorsPage({ initialView, initialProfileVendorId, initialProfileTab, initialProjectFilter }: VendorsPageProps) {
+  const [data, setData] = useState<PCCStoreData>(() => getData());
   const [view, setView] = useState(initialView || "dashboard");
-  const [profileVendorId, setProfileVendorId] = useState(initialProfileVendorId || null);
+  const [profileVendorId, setProfileVendorId] = useState<string | null>(initialProfileVendorId || null);
   const [profileTab, setProfileTab] = useState(initialProfileTab || "overview");
-  const [editingVendorId, setEditingVendorId] = useState(null);
-  const [filters, setFilters] = useState(() => {
+  const [editingVendorId, setEditingVendorId] = useState<string | null>(null);
+  const [filters, setFilters] = useState<VendorFilters>(() => {
     const ctxProjectId = getProjectContext();
     const projectFilter = initialProjectFilter || (ctxProjectId && data.projects.some((p) => p.id === ctxProjectId) ? ctxProjectId : "");
     return { search: "", statusFilter: "", projectFilter: projectFilter, tradeFilter: "", docTypeFilter: "" };

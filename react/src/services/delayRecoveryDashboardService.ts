@@ -105,7 +105,7 @@ export function delaySeverityBucket(days: number | null | undefined): string {
   return "Severe (>15d)";
 }
 
-export function delayCriticality(delayRecord: PCCDelayRecord, data: PCCStoreData): string {
+export function delayCriticality(delayRecord: PCCDelayRecord, data: PCCStoreData): string | null {
   var links = data.delay_activity_links.filter(function (l) {
     return l.delay_id === delayRecord.id;
   });

@@ -32,16 +32,34 @@ import {
   viewBaselines,
   getProjectContext,
   setProjectContext,
-} from "../services/executiveCenterService.js";
+} from "../services/executiveCenterService";
+import type {
+  PCCStoreData,
+  PCCProject,
+  PCCActivity,
+  PCCRisk,
+  PCCWeeklyReview,
+  WeeklyReviewSnapshot,
+  PopulatedProjectContext,
+  HealthScoreResult,
+  DiagnosticAlert,
+  NamedRef,
+} from "../types/pcc";
 
 // ===== Small shared pieces =====
 
-function RagBadge({ rag }) {
+function RagBadge({ rag }: { rag: string | null | undefined }) {
   var cls = rag === "on_track" ? "on_track" : rag === "at_risk" ? "at_risk" : rag === "critical" ? "critical" : "info";
-  return <span className={"status-badge status-badge--" + cls}>{RAG_LABELS[rag] || rag}</span>;
+  return <span className={"status-badge status-badge--" + cls}>{RAG_LABELS[rag || ""] || rag}</span>;
 }
 
-function KpiCard({ label, value, colorVar }) {
+interface KpiCardProps {
+  label: string;
+  value: string | number | null | undefined;
+  colorVar?: string | null;
+}
+
+function KpiCard({ label, value, colorVar }: KpiCardProps) {
   return (
     <div className="kpi-card">
       <span className="kpi-card__label">{label}</span>
@@ -52,7 +70,13 @@ function KpiCard({ label, value, colorVar }) {
   );
 }
 
-function KpiSection({ title, kpis, footnote }) {
+interface KpiSectionProps {
+  title: string;
+  kpis: KpiCardProps[];
+  footnote?: string | null;
+}
+
+function KpiSection({ title, kpis, footnote }: KpiSectionProps) {
   return (
     <div style={{ marginTop: "var(--space-4)" }}>
       <h4 className="text-secondary" style={{ marginBottom: "var(--space-2)", fontSize: "var(--text-sm)", letterSpacing: 1 }}>
@@ -72,7 +96,7 @@ function KpiSection({ title, kpis, footnote }) {
   );
 }
 
-function KpiEmptySection({ title, message }) {
+function KpiEmptySection({ title, message }: { title: string; message: string }) {
   return (
     <div style={{ marginTop: "var(--space-4)" }}>
       <h4 className="text-secondary" style={{ marginBottom: "var(--space-2)", fontSize: "var(--text-sm)", letterSpacing: 1 }}>
@@ -83,7 +107,7 @@ function KpiEmptySection({ title, message }) {
   );
 }
 
-function ChartCard({ title, children }) {
+function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="panel" style={{ flex: "1 1 320px", minWidth: 280 }}>
       <h4 style={{ marginBottom: "var(--space-3)" }}>{title}</h4>
@@ -92,7 +116,7 @@ function ChartCard({ title, children }) {
   );
 }
 
-function NoDataNote({ text }) {
+function NoDataNote({ text }: { text?: string }) {
   return (
     <p className="text-secondary" style={{ fontSize: "var(--text-sm)" }}>
       {text || "No data available."}
@@ -102,7 +126,13 @@ function NoDataNote({ text }) {
 
 // ===== Chart components — plain SVG, no charting library =====
 
-function HorizontalBarChart({ items, labelWidth }) {
+interface ChartItem {
+  label: string;
+  value: number;
+  color?: string;
+}
+
+function HorizontalBarChart({ items, labelWidth }: { items: ChartItem[]; labelWidth?: number }) {
   var nonZero = items.filter((i) => i.value > 0);
   if (nonZero.length === 0) return <NoDataNote />;
   var maxVal = Math.max.apply(null, items.map((i) => i.value));
@@ -132,7 +162,7 @@ function HorizontalBarChart({ items, labelWidth }) {
   );
 }
 
-function DonutChart({ items }) {
+function DonutChart({ items }: { items: ChartItem[] }) {
   var total = items.reduce((s, i) => s + i.value, 0);
   if (total <= 0) return <NoDataNote />;
   var size = 140;
@@ -141,7 +171,7 @@ function DonutChart({ items }) {
   var cy = size / 2;
   var circumference = 2 * Math.PI * r;
   var offset = 0;
-  var arcs = [];
+  var arcs: React.ReactNode[] = [];
   items.forEach((item) => {
     if (item.value <= 0) return;
     var frac = item.value / total;
@@ -186,20 +216,20 @@ function DonutChart({ items }) {
 }
 
 var RISK_LEVELS = ["low", "medium", "high"];
-var SEVERITY_MATRIX = {
+var SEVERITY_MATRIX: { [probability: string]: { [impact: string]: string } } = {
   high: { low: "medium", medium: "high", high: "high" },
   medium: { low: "low", medium: "medium", high: "high" },
   low: { low: "low", medium: "low", high: "medium" },
 };
 
-function RiskHeatMapMini({ risks }) {
+function RiskHeatMapMini({ risks }: { risks: PCCRisk[] }) {
   if (risks.length === 0) return <NoDataNote />;
-  var counts = {};
+  var counts: { [key: string]: number } = {};
   risks.forEach((r) => {
     var key = r.probability + ":" + r.impact;
     counts[key] = (counts[key] || 0) + 1;
   });
-  var levelColors = { high: "var(--status-critical)", medium: "var(--status-at-risk)", low: "var(--status-on-track)" };
+  var levelColors: { [severity: string]: string } = { high: "var(--status-critical)", medium: "var(--status-at-risk)", low: "var(--status-on-track)" };
   return (
     <>
       <table style={{ borderCollapse: "collapse", fontSize: "var(--text-xs)" }}>
@@ -250,7 +280,7 @@ function RiskHeatMapMini({ risks }) {
   );
 }
 
-function MilestoneTimelineMini({ milestones, todayIso }) {
+function MilestoneTimelineMini({ milestones, todayIso }: { milestones: (NamedRef & { date: string })[]; todayIso: string }) {
   if (milestones.length === 0) return <NoDataNote text="No upcoming milestones." />;
   var diffDays = window.PCC.scheduleGanttLayout.diffDays;
   var sorted = milestones.slice().sort((a, b) => (a.date < b.date ? -1 : 1));
@@ -268,7 +298,7 @@ function MilestoneTimelineMini({ milestones, todayIso }) {
           <g key={m.id}>
             <circle cx={x} cy={20} r={5} fill="var(--signal-amber)" />
             <text x={x} y={40 + (i % 3) * 16} fontSize={10} textAnchor="middle" fill="var(--text-secondary)">
-              {m.name.length > 18 ? m.name.slice(0, 17) + "…" : m.name}
+              {(m.name || "").length > 18 ? (m.name as string).slice(0, 17) + "…" : m.name}
             </text>
             <text x={x} y={52 + (i % 3) * 16} fontSize={9} textAnchor="middle" fill="var(--text-secondary)">
               {m.date}
@@ -280,24 +310,31 @@ function MilestoneTimelineMini({ milestones, todayIso }) {
   );
 }
 
-function SCurveChart({ activities, referenceDate, todayIso, snapshots }) {
-  var dated = activities.filter((a) => a.planned_start && a.planned_finish);
+interface SCurveChartProps {
+  activities: PCCActivity[];
+  referenceDate: string;
+  todayIso: string;
+  snapshots: { captured_at?: string; schedule_progress_pct?: number | null }[];
+}
+
+function SCurveChart({ activities, referenceDate, todayIso, snapshots }: SCurveChartProps) {
+  var dated = activities.filter((a): a is PCCActivity & { planned_start: string; planned_finish: string } => !!a.planned_start && !!a.planned_finish);
   if (dated.length === 0) return <NoDataNote text="No activities with planned dates yet." />;
   var diffDays = window.PCC.scheduleGanttLayout.diffDays;
   var addDays = window.PCC.scheduleGanttLayout.addDays;
   var rangeStart = dated.reduce((min, a) => (a.planned_start < min ? a.planned_start : min), dated[0].planned_start);
   var rangeEnd = dated.reduce((max, a) => (a.planned_finish > max ? a.planned_finish : max), dated[0].planned_finish);
-  var totalWeight = dated.reduce((s, a) => s + (a.duration || diffDays(a.planned_start, a.planned_finish) || 1), 0);
+  var totalWeight = dated.reduce((s, a) => s + ((a as any).duration || diffDays(a.planned_start, a.planned_finish) || 1), 0);
   if (totalWeight <= 0) return <NoDataNote />;
 
   var totalSpan = Math.max(1, diffDays(rangeStart, rangeEnd));
   var steps = Math.min(40, totalSpan);
-  var points = [];
+  var points: { day: string; pct: number }[] = [];
   for (var s = 0; s <= steps; s++) {
     var day = addDays(rangeStart, Math.round((s / steps) * totalSpan));
     var cum = 0;
     dated.forEach((a) => {
-      var dur = a.duration || diffDays(a.planned_start, a.planned_finish) || 1;
+      var dur = (a as any).duration || diffDays(a.planned_start, a.planned_finish) || 1;
       var frac;
       if (day <= a.planned_start) frac = 0;
       else if (day >= a.planned_finish) frac = 1;
@@ -313,18 +350,18 @@ function SCurveChart({ activities, referenceDate, todayIso, snapshots }) {
   var padB = 20;
   var plotW = width - padL - 10;
   var plotH = height - padB - 10;
-  function xFor(day) {
+  function xFor(day: string) {
     return padL + (diffDays(rangeStart, day) / totalSpan) * plotW;
   }
-  function yFor(pct) {
+  function yFor(pct: number) {
     return 10 + plotH - (pct / 100) * plotH;
   }
 
   var pathD = points.map((p, i) => (i === 0 ? "M " : "L ") + xFor(p.day) + " " + yFor(p.pct)).join(" ");
 
   var actualPoints = (snapshots || [])
-    .filter((sn) => sn.schedule_progress_pct != null && sn.captured_at.slice(0, 10) >= rangeStart && sn.captured_at.slice(0, 10) <= rangeEnd)
-    .map((sn) => ({ day: sn.captured_at.slice(0, 10), pct: sn.schedule_progress_pct }))
+    .filter((sn) => sn.schedule_progress_pct != null && (sn.captured_at || "").slice(0, 10) >= rangeStart && (sn.captured_at || "").slice(0, 10) <= rangeEnd)
+    .map((sn) => ({ day: (sn.captured_at || "").slice(0, 10), pct: sn.schedule_progress_pct as number }))
     .sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0));
   var actualPathD = actualPoints.length ? actualPoints.map((ap, i) => (i === 0 ? "M " : "L ") + xFor(ap.day) + " " + yFor(ap.pct)).join(" ") : "";
 
@@ -370,7 +407,7 @@ function SCurveChart({ activities, referenceDate, todayIso, snapshots }) {
   );
 }
 
-function HealthGaugeSvg({ score, rag }) {
+function HealthGaugeSvg({ score, rag }: { score: number | null; rag: string | null }) {
   var size = 160;
   var r = 64;
   var cx = size / 2;
@@ -385,7 +422,7 @@ function HealthGaugeSvg({ score, rag }) {
         <path
           d={"M " + (cx - r) + " " + cy + " A " + r + " " + r + " 0 0 1 " + (cx + r) + " " + cy}
           fill="none"
-          stroke={"var(" + RAG_COLOR_VAR[rag] + ")"}
+          stroke={"var(" + RAG_COLOR_VAR[rag || ""] + ")"}
           strokeWidth={16}
           strokeLinecap="round"
           strokeDasharray={dash + " " + (circumference - dash)}
@@ -400,7 +437,7 @@ function HealthGaugeSvg({ score, rag }) {
 
 // ===== Detail item helper =====
 
-function DetailItem({ label, value }) {
+function DetailItem({ label, value }: { label: string; value: string | number | null | undefined }) {
   return (
     <div>
       <span className="detail-item__label">{label}</span>
@@ -411,7 +448,7 @@ function DetailItem({ label, value }) {
 
 // ===== Health Score panel (with configurable weights) =====
 
-function HealthScorePanel({ health, onChanged }) {
+function HealthScorePanel({ health, onChanged }: { health: HealthScoreResult; onChanged: () => void }) {
   const [editingWeights, setEditingWeights] = useState(false);
   return (
     <div className="panel" style={{ marginTop: "var(--space-4)" }}>
@@ -462,7 +499,7 @@ function HealthScorePanel({ health, onChanged }) {
                     </td>
                   )}
                   <td style={{ padding: "var(--space-1) var(--space-2)", borderBottom: "1px solid var(--divider)", verticalAlign: "top" }}>
-                    {f.available ? f.score.toFixed(0) : "n/a"}
+                    {f.available && f.score != null ? f.score.toFixed(0) : "n/a"}
                   </td>
                   <td style={{ padding: "var(--space-1) var(--space-2)", borderBottom: "1px solid var(--divider)", verticalAlign: "top" }}>
                     {f.available ? f.contribution.toFixed(1) : "—"}
@@ -484,7 +521,7 @@ function HealthScorePanel({ health, onChanged }) {
 
 // ===== Diagnostics panel =====
 
-function DiagnosticsPanel({ diagnostics, projectId }) {
+function DiagnosticsPanel({ diagnostics, projectId }: { diagnostics: DiagnosticAlert[]; projectId: string }) {
   return (
     <div className="panel" style={{ marginTop: "var(--space-4)" }}>
       <h3 style={{ marginBottom: "var(--space-3)" }}>Project Health Diagnostics ({diagnostics.length})</h3>
@@ -517,9 +554,9 @@ function DiagnosticsPanel({ diagnostics, projectId }) {
 
 // ===== Executive Summary panel =====
 
-function ExecutiveSummaryPanel({ data, ctx, onChanged }) {
+function ExecutiveSummaryPanel({ data, ctx, onChanged }: { data: PCCStoreData; ctx: PopulatedProjectContext; onChanged: () => void }) {
   var summaryRecord = data.executive_summaries.find((s) => s.project_id === ctx.project.id);
-  const [editingSection, setEditingSection] = useState(null);
+  const [editingSection, setEditingSection] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
 
   return (
@@ -529,7 +566,7 @@ function ExecutiveSummaryPanel({ data, ctx, onChanged }) {
         Generated from real project data below. Edit any section to override it before printing/exporting; overrides are saved and persist until reset.
       </p>
       {SUMMARY_SECTIONS.map((section) => {
-        var override = summaryRecord ? summaryRecord[section.overrideKey] : "";
+        var override = summaryRecord ? (summaryRecord as any)[section.overrideKey] : "";
         var autoText = section.auto(ctx);
         var displayText = override || autoText;
         var isEditing = editingSection === section.key;
@@ -595,8 +632,13 @@ function ExecutiveSummaryPanel({ data, ctx, onChanged }) {
 
 // ===== Recent Activity / Upcoming Items =====
 
-function RecentActivityPanel({ ctx }) {
-  var items = [];
+interface TimelineItem {
+  date: string | undefined;
+  text: string;
+}
+
+function RecentActivityPanel({ ctx }: { ctx: PopulatedProjectContext }) {
+  var items: TimelineItem[] = [];
   ctx.activities.forEach((a) => items.push({ date: a.updated_at, text: "Activity “" + a.name + "” updated" + (a.status === "complete" ? " (completed)" : "") }));
   ctx.allRisks.forEach((r) =>
     items.push({ date: r.updated_at, text: (r.type === "risk" ? "Risk" : r.type === "issue" ? "Issue" : "Opportunity") + " “" + r.title + "” " + (r.status === "closed" ? "closed" : "logged/updated") })
@@ -606,19 +648,19 @@ function RecentActivityPanel({ ctx }) {
   ctx.allChangeOrders.forEach((co) => items.push({ date: co.updated_at, text: co.number + " " + co.status }));
   ctx.documents.forEach((d) => items.push({ date: d.uploaded_at, text: "Document “" + d.filename + "” uploaded" }));
   ctx.dailyLogs.forEach((l) => items.push({ date: l.updated_at || l.created_at, text: "Daily Log entry for " + l.log_date }));
-  items = items
+  var sortedItems = items
     .filter((i) => i.date)
-    .sort((a, b) => new Date(b.date) - new Date(a.date))
+    .sort((a, b) => new Date(b.date as string).getTime() - new Date(a.date as string).getTime())
     .slice(0, 12);
 
   return (
     <ChartCard title="Recent Activity">
-      {items.length === 0 ? (
+      {sortedItems.length === 0 ? (
         <NoDataNote text="No activity recorded yet." />
       ) : (
-        items.map((i, idx) => (
+        sortedItems.map((i, idx) => (
           <div key={idx} style={{ fontSize: "var(--text-sm)", marginBottom: "var(--space-2)" }}>
-            <span className="text-secondary">{new Date(i.date).toLocaleDateString()}</span> — {i.text}
+            <span className="text-secondary">{new Date(i.date as string).toLocaleDateString()}</span> — {i.text}
           </div>
         ))
       )}
@@ -626,21 +668,21 @@ function RecentActivityPanel({ ctx }) {
   );
 }
 
-function UpcomingItemsPanel({ ctx }) {
+function UpcomingItemsPanel({ ctx }: { ctx: PopulatedProjectContext }) {
   const [rangeDays, setRangeDays] = useState(30);
   var cutoff = window.PCC.scheduleGanttLayout.addDays(ctx.todayIso, rangeDays);
-  var items = [];
+  var items: TimelineItem[] = [];
   ctx.upcomingMilestones.filter((m) => m.date <= cutoff).forEach((m) => items.push({ date: m.date, text: "Milestone: " + m.name }));
   ctx.criticalActivities.forEach((a) => {
     var act = ctx.activities.find((x) => x.id === a.id);
     var finish = ctx.cpm && ctx.cpm.results[a.id] ? ctx.cpm.results[a.id].early_finish : act && act.planned_finish;
     if (finish && finish >= ctx.todayIso && finish <= cutoff) items.push({ date: finish, text: "Critical activity finishing: " + a.name });
   });
-  ctx.upcomingMeetings.filter((m) => m.meeting_date <= cutoff).forEach((m) => items.push({ date: m.meeting_date, text: "Meeting: " + (m.title || "(untitled)") }));
+  ctx.upcomingMeetings.filter((m) => (m.meeting_date || "") <= cutoff).forEach((m) => items.push({ date: m.meeting_date, text: "Meeting: " + (m.title || "(untitled)") }));
   ctx.openRfis
     .filter((r) => r.date_required && r.date_required >= ctx.todayIso && r.date_required <= cutoff)
     .forEach((r) => items.push({ date: r.date_required, text: "RFI Due: " + r.number + " " + r.subject }));
-  items.sort((a, b) => (a.date < b.date ? -1 : 1));
+  items.sort((a, b) => ((a.date || "") < (b.date || "") ? -1 : 1));
 
   return (
     <ChartCard title="Upcoming Items">
@@ -664,14 +706,15 @@ function UpcomingItemsPanel({ ctx }) {
   );
 }
 
-function VendorPerformancePanel({ data, projectId }) {
-  var reviewsByVendor = {};
+function VendorPerformancePanel({ data, projectId }: { data: PCCStoreData; projectId: string }) {
+  var reviewsByVendor: { [vendorId: string]: (typeof data.vendor_performance) } = {};
   data.vendor_performance
     .filter((r) => r.project_id === projectId)
     .forEach((r) => {
-      (reviewsByVendor[r.vendor_id] = reviewsByVendor[r.vendor_id] || []).push(r);
+      var vid = r.vendor_id || "";
+      (reviewsByVendor[vid] = reviewsByVendor[vid] || []).push(r);
     });
-  var vendorsById = {};
+  var vendorsById: { [id: string]: (typeof data.vendors)[number] } = {};
   data.vendors.forEach((v) => (vendorsById[v.id] = v));
   var vendorIds = Object.keys(reviewsByVendor);
 
@@ -713,7 +756,7 @@ function VendorPerformancePanel({ data, projectId }) {
   );
 }
 
-function KeyDecisionsPanel({ ctx }) {
+function KeyDecisionsPanel({ ctx }: { ctx: PopulatedProjectContext }) {
   return (
     <div className="panel" style={{ marginTop: "var(--space-4)" }}>
       <h3 style={{ marginBottom: "var(--space-3)" }}>Key Decisions ({ctx.pendingDecisions.length})</h3>
@@ -737,8 +780,14 @@ function KeyDecisionsPanel({ ctx }) {
   );
 }
 
-function ManagementActionListPanel({ ctx }) {
-  var items = [];
+interface ActionListItem {
+  severity: string;
+  text: string;
+  link: { module: string; recordId?: string };
+}
+
+function ManagementActionListPanel({ ctx }: { ctx: PopulatedProjectContext }) {
+  var items: ActionListItem[] = [];
   ctx.delayedActivities.forEach((a) => items.push({ severity: "critical", text: "Delayed activity: " + a.name + " (finish " + a.finish + ")", link: { module: "schedule" } }));
   ctx.highRisks.forEach((r) => items.push({ severity: "critical", text: "Critical risk: " + r.title, link: { module: "risks", recordId: r.id } }));
   ctx.overdueRfis.forEach((r) => items.push({ severity: "warning", text: "Overdue RFI: " + r.number + " " + r.subject, link: { module: "rfis", recordId: r.id } }));
@@ -775,7 +824,7 @@ function ManagementActionListPanel({ ctx }) {
 
 // ===== Schedule sub-tab detail panels =====
 
-function SchedulePerformanceDetail({ ctx, onChanged }) {
+function SchedulePerformanceDetail({ ctx, onChanged }: { ctx: PopulatedProjectContext; onChanged: () => void }) {
   var snapshots = ctx.schedulePerformanceSnapshots;
   return (
     <div className="panel" style={{ marginTop: "var(--space-3)" }}>
@@ -814,7 +863,7 @@ function SchedulePerformanceDetail({ ctx, onChanged }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "var(--space-2)" }}>
         <span style={{ fontSize: "var(--text-sm)" }}>
           {snapshots.length > 0
-            ? snapshots.length + " performance snapshot" + (snapshots.length === 1 ? "" : "s") + " captured — last on " + snapshots[0].captured_at.slice(0, 10) + "."
+            ? snapshots.length + " performance snapshot" + (snapshots.length === 1 ? "" : "s") + " captured — last on " + (snapshots[0].captured_at || "").slice(0, 10) + "."
             : "No performance snapshots captured yet — capture one to start a trend and feed the Progress S-Curve's actual line."}
         </span>
         <button
@@ -832,7 +881,7 @@ function SchedulePerformanceDetail({ ctx, onChanged }) {
         <div style={{ marginTop: "var(--space-3)" }}>
           {snapshots.slice(0, 10).map((s) => (
             <p key={s.id} className="text-secondary" style={{ fontSize: "var(--text-sm)", margin: "var(--space-1) 0" }}>
-              {s.captured_at.slice(0, 10)} — SPI {s.spi == null ? "—" : s.spi.toFixed(2)} · SPI(t) {s.spi_t == null ? "—" : s.spi_t.toFixed(2)} · Score{" "}
+              {(s.captured_at || "").slice(0, 10)} — SPI {s.spi == null ? "—" : s.spi.toFixed(2)} · SPI(t) {s.spi_t == null ? "—" : s.spi_t.toFixed(2)} · Score{" "}
               {s.schedule_performance_score == null ? "—" : s.schedule_performance_score}
             </p>
           ))}
@@ -847,7 +896,7 @@ function SchedulePerformanceDetail({ ctx, onChanged }) {
   );
 }
 
-function StatusDateDetail({ ctx }) {
+function StatusDateDetail({ ctx }: { ctx: PopulatedProjectContext }) {
   var modeLabel = ctx.schedule && ctx.schedule.calculation_mode === "retained_logic" ? "Retained Logic" : "Progress Override";
   return (
     <>
@@ -904,7 +953,7 @@ function StatusDateDetail({ ctx }) {
             : "No baseline captured for this schedule yet — capture one on the Baselines tab to track Float Changes and Milestone Variance."}
         </span>
         {ctx.schedule ? (
-          <button className="btn btn--ghost" onClick={() => viewBaselines(ctx.project.id, ctx.schedule.id)}>
+          <button className="btn btn--ghost" onClick={() => viewBaselines(ctx.project.id, (ctx.schedule as NonNullable<typeof ctx.schedule>).id)}>
             View Baselines
           </button>
         ) : null}
@@ -913,7 +962,7 @@ function StatusDateDetail({ ctx }) {
   );
 }
 
-function DelayRecoveryGapDetail({ ctx }) {
+function DelayRecoveryGapDetail({ ctx }: { ctx: PopulatedProjectContext }) {
   if (ctx.unaddressedDelayActivities.length === 0) return null;
   return (
     <div className="panel" style={{ marginTop: "var(--space-3)" }}>
@@ -924,7 +973,7 @@ function DelayRecoveryGapDetail({ ctx }) {
             {a.name} — {a.delayDays}d delay, {a.recoveryDays}d recovery estimated ({a.gapDays}d unaddressed)
           </span>
           {a.scheduleId ? (
-            <button className="btn btn--ghost" onClick={() => viewActivityInSchedule(ctx.project.id, a.scheduleId, a.id)}>
+            <button className="btn btn--ghost" onClick={() => viewActivityInSchedule(ctx.project.id, a.scheduleId || "", a.id)}>
               View in Gantt
             </button>
           ) : null}
@@ -941,7 +990,15 @@ function DelayRecoveryGapDetail({ ctx }) {
 
 // ===== Overview sub-tabs =====
 
-function SummarySubTab({ data, ctx, health, diagnostics, onChanged }) {
+interface SubTabProps {
+  data: PCCStoreData;
+  ctx: PopulatedProjectContext;
+  health: HealthScoreResult;
+  diagnostics: DiagnosticAlert[];
+  onChanged: () => void;
+}
+
+function SummarySubTab({ data, ctx, health, diagnostics, onChanged }: SubTabProps) {
   var p = ctx.project;
   return (
     <>
@@ -979,7 +1036,7 @@ function SummarySubTab({ data, ctx, health, diagnostics, onChanged }) {
   );
 }
 
-function ScheduleSubTab({ ctx, onChanged }) {
+function ScheduleSubTab({ ctx, onChanged }: { ctx: PopulatedProjectContext; onChanged: () => void }) {
   var p = ctx.project;
   return (
     <>
@@ -1003,10 +1060,10 @@ function ScheduleSubTab({ ctx, onChanged }) {
             {
               label: "Schedule Variance",
               value: ctx.forecastVarianceDays == null ? "—" : (ctx.forecastVarianceDays > 0 ? "+" : "") + ctx.forecastVarianceDays + "d",
-              colorVar: ctx.forecastVarianceDays > 0 ? "--status-critical" : null,
+              colorVar: (ctx.forecastVarianceDays || 0) > 0 ? "--status-critical" : null,
             },
           ]}
-          footnote={ctx.scheduleVarianceSource === "official_baseline" ? 'Schedule Variance measured against the Official Baseline ("' + ctx.officialBaseline.name + '").' : null}
+          footnote={ctx.scheduleVarianceSource === "official_baseline" && ctx.officialBaseline ? 'Schedule Variance measured against the Official Baseline ("' + ctx.officialBaseline.name + '").' : null}
         />
       ) : (
         <KpiEmptySection title="SCHEDULE" message="No schedule with activities yet — see the Schedule page." />
@@ -1111,7 +1168,7 @@ function ScheduleSubTab({ ctx, onChanged }) {
   );
 }
 
-function CostSubTab({ ctx }) {
+function CostSubTab({ ctx }: { ctx: PopulatedProjectContext }) {
   var p = ctx.project;
   return (
     <>
@@ -1160,7 +1217,7 @@ function CostSubTab({ ctx }) {
   );
 }
 
-function RiskSubTab({ ctx }) {
+function RiskSubTab({ ctx }: { ctx: PopulatedProjectContext }) {
   var closedRfis = ctx.allRfis.length - ctx.openRfis.length;
   return (
     <>
@@ -1216,7 +1273,7 @@ function RiskSubTab({ ctx }) {
   );
 }
 
-function ResourcesSubTab({ ctx }) {
+function ResourcesSubTab({ ctx }: { ctx: PopulatedProjectContext }) {
   return (
     <KpiSection
       title="RESOURCES"
@@ -1228,9 +1285,9 @@ function ResourcesSubTab({ ctx }) {
   );
 }
 
-function OverviewTab({ data, ctx, health, diagnostics, onChanged }) {
+function OverviewTab({ data, ctx, health, diagnostics, onChanged }: SubTabProps) {
   var p = ctx.project;
-  var subTabs = [
+  var subTabs: { key: string; label: string }[] = [
     { key: "summary", label: "Summary" },
     { key: "schedule", label: "Schedule" },
     { key: "cost", label: "Cost & Commitments" },
@@ -1259,7 +1316,7 @@ function OverviewTab({ data, ctx, health, diagnostics, onChanged }) {
           <KpiCard
             label="SCHEDULE VARIANCE"
             value={ctx.forecastVarianceDays == null ? "—" : (ctx.forecastVarianceDays > 0 ? "+" : "") + ctx.forecastVarianceDays + "d"}
-            colorVar={ctx.forecastVarianceDays > 0 ? "--status-critical" : null}
+            colorVar={(ctx.forecastVarianceDays || 0) > 0 ? "--status-critical" : null}
           />
           <KpiCard label="COST VARIANCE" value={fmtMoney(ctx.costSummary.variance, p.currency)} colorVar={ctx.costSummary.variance < 0 ? "--status-critical" : null} />
           <KpiCard label="OPEN RISKS" value={ctx.openRisks.length} colorVar={ctx.highRisks.length ? "--status-critical" : null} />
@@ -1292,9 +1349,16 @@ function OverviewTab({ data, ctx, health, diagnostics, onChanged }) {
 
 // ===== Weekly Reviews tab =====
 
-function ReviewCard({ review, previousReview, currency, onChanged }) {
+interface ReviewCardProps {
+  review: PCCWeeklyReview;
+  previousReview: PCCWeeklyReview | null;
+  currency: string | undefined;
+  onChanged: (action: string, id?: string) => void;
+}
+
+function ReviewCard({ review, previousReview, currency, onChanged }: ReviewCardProps) {
   const [expanded, setExpanded] = useState(false);
-  var s = review.snapshot;
+  var s = review.snapshot as WeeklyReviewSnapshot;
   var prev = previousReview ? previousReview.snapshot : null;
 
   return (
@@ -1366,21 +1430,30 @@ function ReviewCard({ review, previousReview, currency, onChanged }) {
   );
 }
 
-function WeeklyReviewsTab({ data, ctx, health, onProjectChanged }) {
+interface WeeklyReviewForm {
+  review_date: string;
+  reviewed_by: string;
+  attendees: string;
+  progress_notes: string;
+  issues_notes: string;
+  actions_notes: string;
+}
+
+function WeeklyReviewsTab({ data, ctx, health, onProjectChanged }: { data: PCCStoreData; ctx: PopulatedProjectContext; health: HealthScoreResult; onProjectChanged: () => void }) {
   var reviews = data.weekly_reviews
     .filter((r) => r.project_id === ctx.project.id)
-    .sort((a, b) => b.review_date.localeCompare(a.review_date) || b.created_at.localeCompare(a.created_at));
+    .sort((a, b) => b.review_date.localeCompare(a.review_date) || (b.created_at || "").localeCompare(a.created_at || ""));
 
-  const [editingId, setEditingId] = useState(null);
-  const [pendingSnapshot, setPendingSnapshot] = useState(null);
-  const [form, setForm] = useState({ review_date: "", reviewed_by: "", attendees: "", progress_notes: "", issues_notes: "", actions_notes: "" });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [pendingSnapshot, setPendingSnapshot] = useState<WeeklyReviewSnapshot | null>(null);
+  const [form, setForm] = useState<WeeklyReviewForm>({ review_date: "", reviewed_by: "", attendees: "", progress_notes: "", issues_notes: "", actions_notes: "" });
 
   function openNew() {
     setPendingSnapshot(captureSnapshot(ctx, health));
     setForm({ review_date: today(), reviewed_by: "", attendees: "", progress_notes: "", issues_notes: "", actions_notes: "" });
     setEditingId("new");
   }
-  function openEdit(reviewId) {
+  function openEdit(reviewId: string) {
     var r = reviews.find((x) => x.id === reviewId);
     if (!r) return;
     setForm({
@@ -1395,10 +1468,11 @@ function WeeklyReviewsTab({ data, ctx, health, onProjectChanged }) {
   }
 
   var isNew = editingId === "new";
-  var editingReview = isNew ? { project_id: ctx.project.id, snapshot: pendingSnapshot } : reviews.find((r) => r.id === editingId);
+  var editingReview = isNew ? { project_id: ctx.project.id, snapshot: pendingSnapshot || undefined } : reviews.find((r) => r.id === editingId);
 
-  function handleSubmit(e) {
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (!editingReview) return;
     var values = {
       review_date: form.review_date || today(),
       reviewed_by: form.reviewed_by,
@@ -1428,8 +1502,8 @@ function WeeklyReviewsTab({ data, ctx, health, onProjectChanged }) {
           <h3 style={{ marginBottom: "var(--space-3)" }}>{isNew ? "New Weekly Review" : "Edit Weekly Review"}</h3>
           {isNew ? (
             <p className="text-secondary" style={{ fontSize: "var(--text-sm)", marginTop: -6, marginBottom: "var(--space-3)" }}>
-              Snapshot captured just now — Health {pendingSnapshot.rag ? RAG_LABELS[pendingSnapshot.rag] : "—"} ({pendingSnapshot.health_score == null ? "—" : pendingSnapshot.health_score}), Schedule{" "}
-              {fmtPct(pendingSnapshot.schedule_progress_pct)}, Physical {fmtPct(pendingSnapshot.physical_progress_pct)}.
+              Snapshot captured just now — Health {pendingSnapshot!.rag ? RAG_LABELS[pendingSnapshot!.rag as string] : "—"} ({pendingSnapshot!.health_score == null ? "—" : pendingSnapshot!.health_score}), Schedule{" "}
+              {fmtPct(pendingSnapshot!.schedule_progress_pct)}, Physical {fmtPct(pendingSnapshot!.physical_progress_pct)}.
             </p>
           ) : null}
           <form onSubmit={handleSubmit}>
@@ -1489,7 +1563,7 @@ function WeeklyReviewsTab({ data, ctx, health, onProjectChanged }) {
               previousReview={idx + 1 < reviews.length ? reviews[idx + 1] : null}
               currency={ctx.project.currency}
               onChanged={(action, id) => {
-                if (action === "edit") openEdit(id);
+                if (action === "edit") openEdit(id as string);
                 else onProjectChanged();
               }}
             />
@@ -1502,7 +1576,7 @@ function WeeklyReviewsTab({ data, ctx, health, onProjectChanged }) {
 
 // ===== Output tab: Project Snapshot + Management Pack =====
 
-function ReportTable({ headers, rows }) {
+function ReportTable({ headers, rows }: { headers: string[]; rows: (string | number | undefined)[][] }) {
   return (
     <table>
       <thead>
@@ -1525,7 +1599,7 @@ function ReportTable({ headers, rows }) {
   );
 }
 
-function ReportSection({ title, children }) {
+function ReportSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="report-doc__section">
       <h3 style={{ marginBottom: "var(--space-2)" }}>{title}</h3>
@@ -1534,7 +1608,7 @@ function ReportSection({ title, children }) {
   );
 }
 
-function ReportEmptyNote({ text }) {
+function ReportEmptyNote({ text }: { text: string }) {
   return (
     <p className="text-secondary" style={{ fontSize: "var(--text-sm)", margin: "var(--space-1) 0 0" }}>
       {text}
@@ -1542,7 +1616,7 @@ function ReportEmptyNote({ text }) {
   );
 }
 
-function LogoImg({ data, style }) {
+function LogoImg({ data, style }: { data: PCCStoreData; style?: React.CSSProperties }) {
   const [src, setSrc] = useState("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1' height='1'%3E%3C/svg%3E");
   React.useEffect(() => {
     if (!data.settings.company_logo_filename) return;
@@ -1557,7 +1631,14 @@ function LogoImg({ data, style }) {
   return <img style={Object.assign({ maxHeight: 48, maxWidth: 160, objectFit: "contain" }, style)} src={src} alt="" />;
 }
 
-function ProjectSnapshotDoc({ data, ctx, health, diagnostics }) {
+interface ReportDocProps {
+  data: PCCStoreData;
+  ctx: PopulatedProjectContext;
+  health: HealthScoreResult;
+  diagnostics: DiagnosticAlert[];
+}
+
+function ProjectSnapshotDoc({ data, ctx, health, diagnostics }: ReportDocProps) {
   return (
     <div className="report-doc snapshot-doc">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "var(--space-3)", marginBottom: "var(--space-3)" }}>
@@ -1615,7 +1696,7 @@ function ProjectSnapshotDoc({ data, ctx, health, diagnostics }) {
       <ReportSection title="Executive Summary">
         {SUMMARY_SECTIONS.map((s) => {
           var summaryRecord = data.executive_summaries.find((rec) => rec.project_id === ctx.project.id);
-          var text = (summaryRecord && summaryRecord[s.overrideKey]) || s.auto(ctx);
+          var text = (summaryRecord && (summaryRecord as any)[s.overrideKey]) || s.auto(ctx);
           return (
             <p key={s.key} style={{ fontSize: "var(--text-xs)", margin: "var(--space-1) 0" }}>
               <strong>{s.label}:</strong> {text}
@@ -1635,7 +1716,7 @@ function ProjectSnapshotDoc({ data, ctx, health, diagnostics }) {
   );
 }
 
-var PACK_SECTION_LABELS = {
+var PACK_SECTION_LABELS: { [key: string]: string } = {
   cover: "Cover Page",
   summary: "Executive Summary",
   snapshot: "Project Snapshot",
@@ -1656,7 +1737,7 @@ var PACK_SECTION_LABELS = {
   meetings: "Meeting Action Summary",
 };
 
-function ManagementPackDoc({ data, ctx, health, diagnostics, sections }) {
+function ManagementPackDoc({ data, ctx, health, diagnostics, sections }: ReportDocProps & { sections: { [key: string]: boolean } }) {
   var p = ctx.project;
   return (
     <div className="report-doc">
@@ -1675,7 +1756,7 @@ function ManagementPackDoc({ data, ctx, health, diagnostics, sections }) {
         <ReportSection title="Executive Summary">
           {SUMMARY_SECTIONS.map((s) => {
             var summaryRecord = data.executive_summaries.find((rec) => rec.project_id === p.id);
-            var text = (summaryRecord && summaryRecord[s.overrideKey]) || s.auto(ctx);
+            var text = (summaryRecord && (summaryRecord as any)[s.overrideKey]) || s.auto(ctx);
             return (
               <p key={s.key} style={{ fontSize: "var(--text-sm)" }}>
                 <strong>{s.label}:</strong> {text}
@@ -1798,9 +1879,9 @@ function ManagementPackDoc({ data, ctx, health, diagnostics, sections }) {
           <ReportTable
             headers={["Metric", "Value"]}
             rows={[
-              ["Schedule Performance Score", ctx.schedulePerformance.score == null ? "—" : String(ctx.schedulePerformance.score) + " (" + RAG_LABELS[ctx.schedulePerformance.rag] + ")"],
+              ["Schedule Performance Score", ctx.schedulePerformance.score == null ? "—" : String(ctx.schedulePerformance.score) + " (" + RAG_LABELS[ctx.schedulePerformance.rag || ""] + ")"],
               ["SPI", ctx.evm && ctx.evm.spi != null ? ctx.evm.spi.toFixed(2) : "—"],
-              ["SPI(t)", ctx.earnedSchedule && !ctx.earnedSchedule.insufficientData ? ctx.earnedSchedule.spiT.toFixed(2) : "—"],
+              ["SPI(t)", ctx.earnedSchedule && !ctx.earnedSchedule.insufficientData && ctx.earnedSchedule.spiT != null ? ctx.earnedSchedule.spiT.toFixed(2) : "—"],
             ]}
           />
         </ReportSection>
@@ -1813,7 +1894,7 @@ function ManagementPackDoc({ data, ctx, health, diagnostics, sections }) {
             return allMilestones.length === 0 ? (
               <ReportEmptyNote text="No milestones defined." />
             ) : (
-              <ReportTable headers={["Milestone", "Date", "Status"]} rows={allMilestones.map((a) => [a.name, a.planned_start || "—", ACTIVITY_STATUS_LABEL_MAP[a.status] || a.status])} />
+              <ReportTable headers={["Milestone", "Date", "Status"]} rows={allMilestones.map((a) => [a.name, a.planned_start || "—", ACTIVITY_STATUS_LABEL_MAP[a.status || ""] || a.status])} />
             );
           })()}
         </ReportSection>
@@ -1935,9 +2016,9 @@ function ManagementPackDoc({ data, ctx, health, diagnostics, sections }) {
   );
 }
 
-function OutputTab({ data, ctx, health, diagnostics }) {
+function OutputTab({ data, ctx, health, diagnostics }: ReportDocProps) {
   const [mode, setMode] = useState("snapshot");
-  const [packSections, setPackSections] = useState({
+  const [packSections, setPackSections] = useState<{ [key: string]: boolean }>({
     cover: true, summary: true, snapshot: true, kpis: true, progress: true,
     schedule: true, statusDate: true, delayRecovery: true, schedulePerformance: true,
     milestones: true, cost: true, evm: true, risks: true,
@@ -1974,8 +2055,8 @@ function OutputTab({ data, ctx, health, diagnostics }) {
               onChange={(e) => {
                 var chosen = packTemplates.find((t) => t.id === e.target.value);
                 if (chosen) {
-                  var applied = {};
-                  Object.keys(PACK_SECTION_LABELS).forEach((k) => (applied[k] = chosen.sections[k] !== false));
+                  var applied: { [key: string]: boolean } = {};
+                  Object.keys(PACK_SECTION_LABELS).forEach((k) => (applied[k] = chosen!.sections[k] !== false));
                   setPackSections(applied);
                   setSelectedTemplateId(chosen.id);
                 } else {
@@ -1995,7 +2076,7 @@ function OutputTab({ data, ctx, health, diagnostics }) {
                 <button
                   className="btn btn--ghost"
                   onClick={() => {
-                    updatePackTemplate(currentTemplate.id, packSections);
+                    updatePackTemplate(currentTemplate!.id, packSections);
                     window.PCC.notify("Template updated.", "success");
                     forceRefresh((n) => n + 1);
                   }}
@@ -2005,8 +2086,8 @@ function OutputTab({ data, ctx, health, diagnostics }) {
                 <button
                   className="btn btn--ghost"
                   onClick={() => {
-                    if (!window.confirm('Delete the template "' + currentTemplate.name + '"? This can\'t be undone.')) return;
-                    deletePackTemplate(currentTemplate.id);
+                    if (!window.confirm('Delete the template "' + currentTemplate!.name + '"? This can\'t be undone.')) return;
+                    deletePackTemplate(currentTemplate!.id);
                     setSelectedTemplateId("");
                     window.PCC.notify("Template deleted.", "info");
                     forceRefresh((n) => n + 1);
@@ -2081,8 +2162,13 @@ function OutputTab({ data, ctx, health, diagnostics }) {
 
 // ===== Top-level page =====
 
-export default function ExecutiveCenterPage({ initialProjectId, initialTab }) {
-  const [data, setData] = useState(() => getData());
+interface ExecutiveCenterPageProps {
+  initialProjectId?: string;
+  initialTab?: string;
+}
+
+export default function ExecutiveCenterPage({ initialProjectId, initialTab }: ExecutiveCenterPageProps) {
+  const [data, setData] = useState<PCCStoreData>(() => getData());
   const [projectId, setProjectId] = useState(() => {
     var activeProjects = data.projects.filter((p) => !p.archived);
     if (initialProjectId && activeProjects.some((p) => p.id === initialProjectId)) return initialProjectId;
@@ -2144,7 +2230,7 @@ export default function ExecutiveCenterPage({ initialProjectId, initialTab }) {
         <div className="panel empty-state">Add a project in Portfolio first to see its Executive Center.</div>
       ) : (
         (() => {
-          var ctx = buildProjectContext(data, effectiveProjectId);
+          var ctx = buildProjectContext(data, effectiveProjectId) as PopulatedProjectContext;
           var health = window.PCC.projectHealthEngine.computeHealthScore(healthContextFrom(ctx), data.settings.health_score_weights);
           var diagnostics = window.PCC.projectHealthEngine.computeDiagnostics(diagnosticsContextFrom(ctx));
 

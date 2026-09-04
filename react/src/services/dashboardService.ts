@@ -48,7 +48,7 @@ function computeRequirementStatus(
   data: PCCStoreData,
   projectId: string,
   documentTypeId: string,
-  plannedDate: string | undefined
+  plannedDate: string | null | undefined
 ): "available" | "overdue" | "required" {
   var available = data.documents.some(function (d) {
     return d.project_id === projectId && d.document_type_id === documentTypeId && !d.trashed_at;

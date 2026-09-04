@@ -5,8 +5,108 @@
  * schedulePerformanceEngine.js) via window.PCC.*, never reimplemented here.
  */
 
-export var SCHEDULE_STATUS_LABELS = { draft: "Draft", active: "Active", superseded: "Superseded", archived: "Archived" };
-export var SCHEDULE_TYPE_LABELS = {
+import type {
+  PCCStoreData,
+  PCCProject,
+  PCCSchedule,
+  PCCWbsItem,
+  PCCActivity,
+  PCCRelationship,
+  PCCCalendar,
+  PCCScheduleBaseline,
+  PCCRecoveryAction,
+  PCCDelayRecord,
+  PCCDelayActivityLink,
+  CanonicalHeaderField,
+  ParsedScheduleImport,
+  ImportFileInfo,
+  ReadImportFileResult,
+  DuplicateFileMatch,
+  GanttLayout,
+  BaselineSnapshotActivity,
+  BaselineComparisonResult,
+  DelayImpactResult,
+  ProjectFinishImpactResult,
+  RecoveryForecastResult,
+} from "../types/pcc";
+
+export interface ActivityFieldConfig {
+  key: string;
+  label: string;
+  type: string;
+  required?: boolean;
+  options?: string | null;
+  labels?: { [key: string]: string };
+  staticOptions?: string[];
+}
+
+export interface ActivitiesTabFilter {
+  search: string;
+  wbsId: string;
+  status: string;
+  critical: boolean;
+}
+
+export interface GanttFilter {
+  search: string;
+  wbsId: string;
+  discipline: string;
+  contractor: string;
+  responsiblePerson: string;
+  quick: string;
+  nearCriticalThresholdDays?: number;
+}
+
+export interface ExcelEditorRow {
+  external_id: string;
+  name: string;
+  activity_type: string;
+  wbs_code: string;
+  wbs_name: string;
+  duration: string;
+  planned_start: string;
+  planned_finish: string;
+  predecessors: string;
+  percent_complete: string;
+  discipline: string;
+  contractor: string;
+  responsible_person: string;
+  status: string;
+  notes: string;
+  [key: string]: string;
+}
+
+export interface LinkedRecordRow {
+  text: string;
+  view: () => void;
+  badge: { label: string; className: string } | null;
+}
+
+interface LinkedRecordSource {
+  module: string;
+  label: (record: any) => string;
+  list: (data: PCCStoreData, activityId: string) => any[];
+  view: (record: any) => void;
+  badge?: (record: any, data: PCCStoreData, activity: PCCActivity) => { label: string; className: string } | null;
+}
+
+export interface WhatIfResult {
+  activityName?: string;
+  fieldToReduce: string;
+  requestedReduction: number;
+  actualReduction: number;
+  wasCritical: boolean;
+  beforeFinish: string | null;
+  afterFinish: string | null;
+  varianceDays: number | null;
+  beforeCriticalCount: number;
+  afterCriticalCount: number;
+  newlyNonCritical: string[];
+  newlyCritical: string[];
+}
+
+export var SCHEDULE_STATUS_LABELS: { [key: string]: string } = { draft: "Draft", active: "Active", superseded: "Superseded", archived: "Archived" };
+export var SCHEDULE_TYPE_LABELS: { [key: string]: string } = {
   current: "Current",
   baseline: "Baseline",
   lookahead: "Lookahead",
@@ -15,26 +115,26 @@ export var SCHEDULE_TYPE_LABELS = {
   recovery: "Recovery Schedule",
   forecast: "Forecast",
 };
-export var SCHEDULE_PLATFORM_LABELS = {
+export var SCHEDULE_PLATFORM_LABELS: { [key: string]: string } = {
   pcc: "Built in PCC",
   excel: "Imported from Excel",
   msp_xml: "Imported from Microsoft Project (XML)",
   p6_xer: "Imported from Primavera P6 (XER)",
   p6_xml: "Imported from Primavera P6 (XML)",
 };
-export var ACTIVITY_TYPE_LABELS = { task: "Task", milestone: "Milestone", summary: "Summary", wbs_summary: "WBS Summary" };
-export var ACTIVITY_STATUS_LABELS = { not_started: "Not Started", in_progress: "In Progress", complete: "Complete", on_hold: "On Hold" };
-export var RELATIONSHIP_TYPE_LABELS = { FS: "Finish-to-Start", SS: "Start-to-Start", FF: "Finish-to-Finish", SF: "Start-to-Finish" };
-export var PRIORITY_LABELS = { low: "Low", medium: "Medium", high: "High" };
-export var RECOVERY_ACTION_STATUS_LABELS = { open: "Open", in_progress: "In Progress", completed: "Completed", cancelled: "Cancelled" };
-export var DELAY_CAUSE_LABELS = {
+export var ACTIVITY_TYPE_LABELS: { [key: string]: string } = { task: "Task", milestone: "Milestone", summary: "Summary", wbs_summary: "WBS Summary" };
+export var ACTIVITY_STATUS_LABELS: { [key: string]: string } = { not_started: "Not Started", in_progress: "In Progress", complete: "Complete", on_hold: "On Hold" };
+export var RELATIONSHIP_TYPE_LABELS: { [key: string]: string } = { FS: "Finish-to-Start", SS: "Start-to-Start", FF: "Finish-to-Finish", SF: "Start-to-Finish" };
+export var PRIORITY_LABELS: { [key: string]: string } = { low: "Low", medium: "Medium", high: "High" };
+export var RECOVERY_ACTION_STATUS_LABELS: { [key: string]: string } = { open: "Open", in_progress: "In Progress", completed: "Completed", cancelled: "Cancelled" };
+export var DELAY_CAUSE_LABELS: { [key: string]: string } = {
   owner_caused: "Owner-Caused",
   contractor_caused: "Contractor-Caused",
   weather_force_majeure: "Weather / Force Majeure",
   design_rfi_driven: "Design / RFI-Driven",
   other: "Other",
 };
-export var DELAY_STATUS_LABELS = {
+export var DELAY_STATUS_LABELS: { [key: string]: string } = {
   open: "Open",
   investigating: "Under Investigation",
   mitigation_in_progress: "Mitigation in Progress",
@@ -42,7 +142,7 @@ export var DELAY_STATUS_LABELS = {
   recovered: "Recovered",
   closed: "Closed",
 };
-export var DELAY_STATUS_BADGE_CLASS = {
+export var DELAY_STATUS_BADGE_CLASS: { [key: string]: string } = {
   open: "at_risk",
   investigating: "at_risk",
   mitigation_in_progress: "info",
@@ -50,7 +150,7 @@ export var DELAY_STATUS_BADGE_CLASS = {
   recovered: "complete",
   closed: "complete",
 };
-export var DELAY_CATEGORY_LABELS = {
+export var DELAY_CATEGORY_LABELS: { [key: string]: string } = {
   late_material: "Late Material",
   late_vendor_submission: "Late Vendor Submission",
   late_drawing: "Late Drawing",
@@ -73,7 +173,7 @@ export var DELAY_CATEGORY_LABELS = {
   change_variation: "Change / Variation",
   other: "Other",
 };
-export var DELAY_RESPONSIBILITY_LABELS = {
+export var DELAY_RESPONSIBILITY_LABELS: { [key: string]: string } = {
   client: "Client",
   consultant: "Consultant",
   main_contractor: "Main Contractor",
@@ -84,17 +184,17 @@ export var DELAY_RESPONSIBILITY_LABELS = {
   shared: "Shared",
   unconfirmed: "Unconfirmed",
 };
-export var DELAY_CRITICALITY_LABELS = {
+export var DELAY_CRITICALITY_LABELS: { [key: string]: string } = {
   critical: "Critical",
   near_critical: "Near Critical",
   non_critical: "Non-Critical",
 };
-export var DELAY_CRITICALITY_BADGE_CLASS = {
+export var DELAY_CRITICALITY_BADGE_CLASS: { [key: string]: string } = {
   critical: "critical",
   near_critical: "at_risk",
   non_critical: "complete",
 };
-export var MITIGATION_TYPE_LABELS = {
+export var MITIGATION_TYPE_LABELS: { [key: string]: string } = {
   resequence_work: "Resequence Work",
   add_resources: "Add Resources",
   add_equipment: "Add Equipment",
@@ -108,36 +208,36 @@ export var MITIGATION_TYPE_LABELS = {
   temporary_works: "Temporary Works",
   other: "Other",
 };
-export var WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-export var CALC_MODE_LABELS = { progress_override: "Progress Override (actual dates win)", retained_logic: "Retained Logic (respect predecessor tie)" };
+export var WEEKDAY_LABELS: string[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+export var CALC_MODE_LABELS: { [key: string]: string } = { progress_override: "Progress Override (actual dates win)", retained_logic: "Retained Logic (respect predecessor tie)" };
 
 /** Fresh top-level wrapper every call — see CLAUDE.md's "React migration" note on why a
  * service's refresh function must never return store.get()'s shared reference directly. */
-export function getData() {
+export function getData(): PCCStoreData {
   return Object.assign({}, window.PCC.store.get());
 }
 
-export function fmtMoney(amount) {
-  if (amount === null || amount === undefined || amount === "" || isNaN(Number(amount))) return null;
+export function fmtMoney(amount: number | null | undefined): string | null {
+  if (amount === null || amount === undefined || (amount as any) === "" || isNaN(Number(amount))) return null;
   return Number(amount).toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
-export function projectName(projects, projectId) {
+export function projectName(projects: PCCProject[], projectId: string | null | undefined): string {
   var p = projects.find(function (proj) {
     return proj.id === projectId;
   });
   return p ? p.name || "(unnamed project)" : "Unassigned";
 }
 
-export function wbsName(wbsItems, wbsId) {
+export function wbsName(wbsItems: PCCWbsItem[], wbsId: string | null | undefined): string {
   if (!wbsId) return "—";
   var w = wbsItems.find(function (x) {
     return x.id === wbsId;
   });
-  return w ? (w.code ? w.code + " — " + w.name : w.name) : "—";
+  return w ? (w.code ? w.code + " — " + (w.name || "") : w.name || "") : "—";
 }
 
-export function activityName(activities, activityId) {
+export function activityName(activities: PCCActivity[], activityId: string | null | undefined): string {
   var a = activities.find(function (x) {
     return x.id === activityId;
   });
@@ -147,7 +247,7 @@ export function activityName(activities, activityId) {
 /** Shared by the Activities tab list and the Gantt tab's detail panel so both delete
  * the same way — confirm, then remove the activity and any relationship/recovery
  * action referencing it. */
-export function deleteActivityWithConfirm(activity, onDone) {
+export function deleteActivityWithConfirm(activity: PCCActivity, onDone?: () => void): boolean {
   if (!confirm('Delete activity "' + activity.name + '"? This also removes any relationships and recovery actions referencing it.')) return false;
   window.PCC.store.update(function (data2) {
     data2.activities = data2.activities.filter(function (item) {
@@ -165,7 +265,7 @@ export function deleteActivityWithConfirm(activity, onDone) {
   return true;
 }
 
-export function commitInlineActivityEdit(activityId, updates) {
+export function commitInlineActivityEdit(activityId: string, updates: Partial<PCCActivity>): void {
   window.PCC.store.update(function (data) {
     var existing = data.activities.find(function (a) {
       return a.id === activityId;
@@ -182,7 +282,7 @@ export function commitInlineActivityEdit(activityId, updates) {
 // ---------------------------------------------------------------------------------
 
 /** Returns the id of the (possibly newly created) schedule. */
-export function saveSchedule(isNew, scheduleId, projectId, values) {
+export function saveSchedule(isNew: boolean, scheduleId: string | null | undefined, projectId: string, values: Partial<PCCSchedule>): string | null {
   var newId = null;
   window.PCC.store.update(function (data) {
     if (isNew) {
@@ -206,7 +306,7 @@ export function saveSchedule(isNew, scheduleId, projectId, values) {
 /** Freezes the given schedule's WBS/Activities/Relationships into a new baseline —
  * async IndexedDB write via scheduleBaselineStore, then a thin index row into the main
  * store once that resolves. Returns a Promise. */
-export function captureBaseline(schedule) {
+export function captureBaseline(schedule: PCCSchedule): Promise<PCCScheduleBaseline> {
   var data = window.PCC.store.get();
   var wbsItems = data.wbs_items.filter(function (w) {
     return w.schedule_id === schedule.id;
@@ -249,7 +349,7 @@ export function captureBaseline(schedule) {
     });
 }
 
-function cheapFingerprint(str) {
+function cheapFingerprint(str: string): number {
   var hash = 0;
   for (var i = 0; i < str.length; i++) {
     hash = (hash * 31 + str.charCodeAt(i)) | 0;
@@ -257,7 +357,7 @@ function cheapFingerprint(str) {
   return hash;
 }
 
-function cpmInputFingerprint(activities, relationships) {
+function cpmInputFingerprint(activities: PCCActivity[], relationships: PCCRelationship[]): number {
   var actPart = activities
     .map(function (a) {
       return [a.id, a.activity_type, a.duration, a.planned_start, a.planned_finish, a.actual_start, a.actual_finish, a.percent_complete, a.remaining_duration].join(":");
@@ -275,7 +375,7 @@ function cpmInputFingerprint(activities, relationships) {
 
 /** True once anything CPM-relevant has changed since the schedule's own
  * cpm_calculated_fingerprint was captured (or it has never been calculated at all). */
-export function isCpmStale(schedule, data) {
+export function isCpmStale(schedule: PCCSchedule | null | undefined, data: PCCStoreData): boolean {
   if (!schedule || schedule.cpm_calculated_fingerprint == null) return true;
   var activities = data.activities.filter(function (a) {
     return a.schedule_id === schedule.id;
@@ -289,7 +389,7 @@ export function isCpmStale(schedule, data) {
 /** Runs the CPM engine over the given schedule's activities/relationships and writes
  * the results back onto each activity — the only code path allowed to set
  * early/late start/finish and float; the CRUD forms never do. */
-export function runCalculation(scheduleId) {
+export function runCalculation(scheduleId: string): void {
   var data = window.PCC.store.get();
   var schedule = data.schedules.find(function (s) {
     return s.id === scheduleId;
@@ -309,7 +409,7 @@ export function runCalculation(scheduleId) {
   }
 
   var scheduleCalendars = (data.calendars || []).filter(function (c) {
-    return c.project_id === schedule.project_id;
+    return c.project_id === schedule!.project_id;
   });
   var result = window.PCC.scheduleCpmEngine.calculateSchedule(scheduleActivities, scheduleRelationships, {
     dataDate: schedule.data_date,
@@ -373,7 +473,7 @@ export function runCalculation(scheduleId) {
 // WBS CRUD
 // ---------------------------------------------------------------------------------
 
-export function computeWbsLevel(parentId, allWbsItems) {
+export function computeWbsLevel(parentId: string | null | undefined, allWbsItems: PCCWbsItem[]): number {
   var level = 0;
   var walk = parentId;
   var guard = 0;
@@ -391,7 +491,7 @@ export function computeWbsLevel(parentId, allWbsItems) {
 
 /** Reparents one WBS item and cascades the level recompute down through every
  * descendant. */
-export function reparentWbsItem(itemId, newParentId, allWbsItems) {
+export function reparentWbsItem(itemId: string, newParentId: string | null, allWbsItems: PCCWbsItem[]): void {
   var item = allWbsItems.find(function (w) {
     return w.id === itemId;
   });
@@ -413,19 +513,19 @@ export function reparentWbsItem(itemId, newParentId, allWbsItems) {
   }
 }
 
-export function indentWbsItem(itemId, prevSiblingId) {
+export function indentWbsItem(itemId: string, prevSiblingId: string): void {
   window.PCC.store.update(function (data2) {
     reparentWbsItem(itemId, prevSiblingId, data2.wbs_items);
   });
 }
 
-export function outdentWbsItem(itemId, newParentId) {
+export function outdentWbsItem(itemId: string, newParentId: string | null): void {
   window.PCC.store.update(function (data2) {
     reparentWbsItem(itemId, newParentId, data2.wbs_items);
   });
 }
 
-export function saveWbsItem(isNew, wbsItem, wbsItems, projectId, scheduleId, values) {
+export function saveWbsItem(isNew: boolean, wbsItem: PCCWbsItem, wbsItems: PCCWbsItem[], projectId: string, scheduleId: string, values: Partial<PCCWbsItem>): void {
   var parentId = values.parent_wbs_id || null;
   var level = computeWbsLevel(parentId, wbsItems);
   var finalValues = Object.assign({}, values, { parent_wbs_id: parentId, level: level });
@@ -445,7 +545,7 @@ export function saveWbsItem(isNew, wbsItem, wbsItems, projectId, scheduleId, val
   window.PCC.notify(isNew ? "WBS item added." : "WBS item updated.", "success");
 }
 
-export function deleteWbsItem(w, wbsItems, activities) {
+export function deleteWbsItem(w: PCCWbsItem, wbsItems: PCCWbsItem[], activities: PCCActivity[]): boolean {
   var hasChildren = wbsItems.some(function (x) {
     return x.parent_wbs_id === w.id;
   });
@@ -470,21 +570,23 @@ export function deleteWbsItem(w, wbsItems, activities) {
 // Relationships CRUD
 // ---------------------------------------------------------------------------------
 
-export function wouldCreateRelationshipCycle(predId, succId, existingRelationships) {
+export function wouldCreateRelationshipCycle(predId: string, succId: string, existingRelationships: PCCRelationship[]): boolean {
   if (predId === succId) return true;
-  var adjacency = {};
+  var adjacency: { [id: string]: string[] } = {};
   existingRelationships.forEach(function (r) {
-    if (!adjacency[r.predecessor_id]) adjacency[r.predecessor_id] = [];
-    adjacency[r.predecessor_id].push(r.successor_id);
+    var pred = r.predecessor_id || "";
+    if (!adjacency[pred]) adjacency[pred] = [];
+    adjacency[pred].push(r.successor_id || "");
   });
-  var visited = {};
-  var queue = [succId];
+  var visited: { [id: string]: boolean } = {};
+  var queue: string[] = [succId];
   while (queue.length) {
     var current = queue.shift();
+    if (current === undefined) continue;
     if (current === predId) return true;
     if (visited[current]) continue;
     visited[current] = true;
-    (adjacency[current] || []).forEach(function (next) {
+    (adjacency[current] || []).forEach(function (next: string) {
       if (!visited[next]) queue.push(next);
     });
   }
@@ -492,14 +594,14 @@ export function wouldCreateRelationshipCycle(predId, succId, existingRelationshi
 }
 
 /** Returns an error message string, or null on success. */
-export function saveRelationship(isNew, relationship, scheduleId, values) {
+export function saveRelationship(isNew: boolean, relationship: PCCRelationship, scheduleId: string, values: Partial<PCCRelationship>): string | null {
   if (values.predecessor_id === values.successor_id) {
     return "Predecessor and successor must be different activities.";
   }
   var otherRelationshipsThisSchedule = window.PCC.store.get().relationships.filter(function (r) {
     return r.schedule_id === scheduleId && r.id !== relationship.id;
   });
-  if (wouldCreateRelationshipCycle(values.predecessor_id, values.successor_id, otherRelationshipsThisSchedule)) {
+  if (wouldCreateRelationshipCycle(values.predecessor_id || "", values.successor_id || "", otherRelationshipsThisSchedule)) {
     return "This would create a circular dependency (the successor already leads back to the predecessor through other relationships) — CPM can't calculate a schedule with a loop in it.";
   }
   window.PCC.store.update(function (data) {
@@ -516,7 +618,7 @@ export function saveRelationship(isNew, relationship, scheduleId, values) {
   return null;
 }
 
-export function deleteRelationship(r) {
+export function deleteRelationship(r: PCCRelationship): boolean {
   if (!confirm("Delete this relationship?")) return false;
   window.PCC.store.update(function (data2) {
     data2.relationships = data2.relationships.filter(function (item) {
@@ -531,7 +633,7 @@ export function deleteRelationship(r) {
 // Calendars CRUD
 // ---------------------------------------------------------------------------------
 
-export function formatWorkingDays(workingDays) {
+export function formatWorkingDays(workingDays: boolean[] | null | undefined): string {
   if (!Array.isArray(workingDays)) return "Unknown";
   var selected = WEEKDAY_LABELS.filter(function (_, i) {
     return !!workingDays[i];
@@ -541,7 +643,7 @@ export function formatWorkingDays(workingDays) {
   return selected.join(", ");
 }
 
-export function saveCalendar(isNew, calendar, projectId, values) {
+export function saveCalendar(isNew: boolean, calendar: PCCCalendar, projectId: string, values: Partial<PCCCalendar>): void {
   window.PCC.store.update(function (data) {
     if (isNew) {
       data.calendars.push(window.PCC.store.newCalendar(Object.assign({ project_id: projectId }, values)));
@@ -555,7 +657,7 @@ export function saveCalendar(isNew, calendar, projectId, values) {
   window.PCC.notify(isNew ? "Calendar added." : "Calendar updated.", "success");
 }
 
-export function setDefaultCalendar(calId, projectId) {
+export function setDefaultCalendar(calId: string, projectId: string): void {
   window.PCC.store.update(function (data2) {
     data2.calendars.forEach(function (c) {
       if (c.project_id === projectId) c.is_default = c.id === calId;
@@ -564,7 +666,7 @@ export function setDefaultCalendar(calId, projectId) {
   window.PCC.notify("Default calendar updated.", "success");
 }
 
-export function deleteCalendar(cal, referencingCount) {
+export function deleteCalendar(cal: PCCCalendar, referencingCount: number): boolean {
   if (referencingCount > 0) {
     window.PCC.notify(
       "Can't delete — " + referencingCount + " activit" + (referencingCount === 1 ? "y" : "ies") + " still use" + (referencingCount === 1 ? "s" : "") + " this calendar. Reassign them first.",
@@ -586,7 +688,7 @@ export function deleteCalendar(cal, referencingCount) {
 // Activities tab
 // ---------------------------------------------------------------------------------
 
-export var ACTIVITY_FIELD_CONFIG = [
+export var ACTIVITY_FIELD_CONFIG: ActivityFieldConfig[] = [
   { key: "name", label: "Activity Name", type: "text", required: true },
   { key: "activity_type", label: "Type", type: "select", options: "ACTIVITY_TYPES", labels: ACTIVITY_TYPE_LABELS },
   { key: "status", label: "Status", type: "select", options: "ACTIVITY_STATUSES", labels: ACTIVITY_STATUS_LABELS },
@@ -607,7 +709,7 @@ export var ACTIVITY_FIELD_CONFIG = [
   { key: "notes", label: "Notes", type: "textarea" },
 ];
 
-export var ACTIVITY_GRID_COLUMNS = [
+export var ACTIVITY_GRID_COLUMNS: { key: string; label: string }[] = [
   { key: "wbs", label: "WBS" },
   { key: "type", label: "Type" },
   { key: "start", label: "Start" },
@@ -617,15 +719,15 @@ export var ACTIVITY_GRID_COLUMNS = [
   { key: "status", label: "Status" },
 ];
 
-export function addDaysIso(isoDateStr, days) {
+export function addDaysIso(isoDateStr: string, days: number): string {
   var d = new Date(isoDateStr + "T00:00:00Z");
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
 
-export function activityMatchesActivitiesTabFilter(a, filter) {
+export function activityMatchesActivitiesTabFilter(a: PCCActivity, filter: ActivitiesTabFilter): boolean {
   if (filter.search) {
-    if (a.name.toLowerCase().indexOf(filter.search.toLowerCase()) === -1) return false;
+    if ((a.name || "").toLowerCase().indexOf(filter.search.toLowerCase()) === -1) return false;
   }
   if (filter.wbsId && a.wbs_id !== filter.wbsId) return false;
   if (filter.status && a.status !== filter.status) return false;
@@ -633,7 +735,7 @@ export function activityMatchesActivitiesTabFilter(a, filter) {
   return true;
 }
 
-export function activitySortValue(a, wbsItems, key) {
+export function activitySortValue(a: PCCActivity, wbsItems: PCCWbsItem[], key: string | null): string | number {
   switch (key) {
     case "name":
       return (a.name || "").toLowerCase();
@@ -650,13 +752,13 @@ export function activitySortValue(a, wbsItems, key) {
     case "float":
       return a.total_float == null ? Infinity : a.total_float;
     case "status":
-      return ACTIVITY_STATUS_LABELS[a.status] || "";
+      return ACTIVITY_STATUS_LABELS[a.status || ""] || "";
     default:
       return "";
   }
 }
 
-export function sortActivitiesForGrid(activities, wbsItems, sortKey, sortDir) {
+export function sortActivitiesForGrid(activities: PCCActivity[], wbsItems: PCCWbsItem[], sortKey: string | null, sortDir: string): PCCActivity[] {
   if (!sortKey) return activities;
   var dir = sortDir === "desc" ? -1 : 1;
   return activities.slice().sort(function (a, b) {
@@ -668,7 +770,7 @@ export function sortActivitiesForGrid(activities, wbsItems, sortKey, sortDir) {
   });
 }
 
-export function saveActivity(isNew, activity, projectId, scheduleId, values) {
+export function saveActivity(isNew: boolean, activity: PCCActivity, projectId: string, scheduleId: string, values: Partial<PCCActivity>): void {
   window.PCC.store.update(function (data) {
     if (isNew) {
       data.activities.push(window.PCC.store.newActivity(Object.assign({ project_id: projectId, schedule_id: scheduleId }, values)));
@@ -685,7 +787,7 @@ export function saveActivity(isNew, activity, projectId, scheduleId, values) {
   window.PCC.notify(isNew ? "Activity added." : "Activity updated.", "success");
 }
 
-export function clonePrefillFrom(a) {
+export function clonePrefillFrom(a: PCCActivity): Partial<PCCActivity> {
   return {
     wbs_id: a.wbs_id,
     name: a.name,
@@ -705,7 +807,7 @@ export function clonePrefillFrom(a) {
   };
 }
 
-export function bulkShiftActivities(selectedIds, days) {
+export function bulkShiftActivities(selectedIds: { [id: string]: boolean }, days: number): void {
   var n = Object.keys(selectedIds).length;
   window.PCC.store.update(function (data2) {
     data2.activities.forEach(function (item) {
@@ -729,31 +831,31 @@ export function bulkShiftActivities(selectedIds, days) {
 // ahead of jszip — see CLAUDE.md's "React migration" note — which also puts it ahead of
 // every other vendor/domain-engine script). Any window.PCC.<engine>.<CONSTANT> read must
 // happen lazily, inside a function, never at this file's top level.
-export function getExcelGridFields() {
+export function getExcelGridFields(): CanonicalHeaderField[] {
   return window.PCC.scheduleImportService.CANONICAL_HEADERS;
 }
-export function getImportMappingTargets() {
+export function getImportMappingTargets(): CanonicalHeaderField[] {
   return window.PCC.scheduleImportService.CANONICAL_HEADERS;
 }
 
-var XLSX_MIME_TYPES = {
+var XLSX_MIME_TYPES: { [key: string]: string } = {
   xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   xls: "application/vnd.ms-excel",
 };
 
 /** Base64-encodes an ArrayBuffer in fixed-size chunks — same approach as documents.js's
  * own copy of this helper (per-module-helpers convention, no shared utils module). */
-function arrayBufferToBase64(buffer) {
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
   var bytes = new Uint8Array(buffer);
   var chunkSize = 8192;
-  var chunks = [];
+  var chunks: string[] = [];
   for (var i = 0; i < bytes.length; i += chunkSize) {
-    chunks.push(String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize)));
+    chunks.push(String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunkSize))));
   }
   return btoa(chunks.join(""));
 }
 
-function findScheduleFileDuplicates(projectId, fp, file) {
+function findScheduleFileDuplicates(projectId: string, fp: { hash: string; method: string }, file: File): DuplicateFileMatch<PCCSchedule>[] {
   var projectSchedules = window.PCC.store.get().schedules.filter(function (s) {
     return s.project_id === projectId;
   });
@@ -769,9 +871,9 @@ function findScheduleFileDuplicates(projectId, fp, file) {
  *   duplicateMatches, needsManualMapping, headers, rawRows, columnMapping, parsed }
  * — `parsed` is present unless needsManualMapping is true (Excel only), in which case
  * the caller collects a mapping and calls applyColumnMappingAndReview() below. */
-export function readImportFile(file, projectId) {
-  var ext = /\.([a-z0-9]+)$/i.exec(file.name || "");
-  ext = ext ? ext[1].toLowerCase() : "";
+export function readImportFile(file: File, projectId: string): Promise<ReadImportFileResult> {
+  var extMatch = /\.([a-z0-9]+)$/i.exec(file.name || "");
+  var ext: string = extMatch ? extMatch[1].toLowerCase() : "";
 
   if (ext !== "xlsx" && ext !== "xls" && ext !== "xml" && ext !== "xer") {
     return Promise.reject(new Error("Unsupported file type. Use .xlsx/.xls (Excel), .xml (Microsoft Project XML export), or .xer (Primavera P6 export)."));
@@ -783,10 +885,10 @@ export function readImportFile(file, projectId) {
       reject(new Error("Could not read that file."));
     };
     reader.onload = function () {
-      var buffer = reader.result;
+      var buffer = reader.result as ArrayBuffer;
 
       if (ext === "xlsx" || ext === "xls") {
-        var workbook, sheet, headers, rows;
+        var workbook: any, sheet: any, headers: any[], rows: any[][];
         try {
           var bytes = new Uint8Array(buffer);
           workbook = window.XLSX.read(bytes, { type: "array", cellDates: true });
@@ -794,19 +896,19 @@ export function readImportFile(file, projectId) {
           var sheetRows = window.XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
           headers = sheetRows.length ? sheetRows[0] : [];
           rows = sheetRows.slice(1);
-        } catch (e) {
+        } catch (e: any) {
           reject(new Error("Could not parse this as an Excel file: " + e.message));
           return;
         }
 
         var autoMapping = window.PCC.scheduleImportService.autoDetectColumnMapping(headers);
-        var needsManualMapping = headers.some(function (h, i) {
+        var needsManualMapping = headers.some(function (h: any, i: number) {
           return String(h || "").trim() !== "" && autoMapping[i] === undefined;
         });
         var fileDataUri = "data:" + (XLSX_MIME_TYPES[ext] || "application/octet-stream") + ";base64," + arrayBufferToBase64(buffer);
 
         window.PCC.duplicateService.fingerprintFile(buffer, file.name, file.size).then(function (fp) {
-          var importFile = { name: file.name, size: file.size, hash: fp.hash, hashMethod: fp.method, fileData: fileDataUri };
+          var importFile: ImportFileInfo = { name: file.name, size: file.size, hash: fp.hash, hashMethod: fp.method, fileData: fileDataUri };
           var duplicateMatches = findScheduleFileDuplicates(projectId, fp, file);
           var scheduleName = file.name.replace(/\.(xlsx|xls)$/i, "");
 
@@ -820,17 +922,17 @@ export function readImportFile(file, projectId) {
       }
 
       if (ext === "xml") {
-        var xmlText;
+        var xmlText: string;
         try {
           xmlText = new TextDecoder("utf-8").decode(buffer);
-        } catch (e) {
+        } catch (e: any) {
           reject(new Error("Could not read this file as text: " + e.message));
           return;
         }
         var parsedXml = window.PCC.mspXmlService.parseMspXml(xmlText);
         var xmlFileDataUri = "data:application/xml;base64," + arrayBufferToBase64(buffer);
         window.PCC.duplicateService.fingerprintFile(buffer, file.name, file.size).then(function (fp) {
-          var importFile = { name: file.name, size: file.size, hash: fp.hash, hashMethod: fp.method, fileData: xmlFileDataUri };
+          var importFile: ImportFileInfo = { name: file.name, size: file.size, hash: fp.hash, hashMethod: fp.method, fileData: xmlFileDataUri };
           resolve({
             sourceType: "msp_xml",
             importFile: importFile,
@@ -847,17 +949,17 @@ export function readImportFile(file, projectId) {
       }
 
       // ext === "xer"
-      var xerText;
+      var xerText: string;
       try {
         xerText = new TextDecoder("utf-8").decode(buffer);
-      } catch (e) {
+      } catch (e: any) {
         reject(new Error("Could not read this file as text: " + e.message));
         return;
       }
       var parsedXer = window.PCC.p6XerService.parseXer(xerText);
       var xerFileDataUri = "data:application/octet-stream;base64," + arrayBufferToBase64(buffer);
       window.PCC.duplicateService.fingerprintFile(buffer, file.name, file.size).then(function (fp) {
-        var importFile = { name: file.name, size: file.size, hash: fp.hash, hashMethod: fp.method, fileData: xerFileDataUri };
+        var importFile: ImportFileInfo = { name: file.name, size: file.size, hash: fp.hash, hashMethod: fp.method, fileData: xerFileDataUri };
         resolve({
           sourceType: "p6_xer",
           importFile: importFile,
@@ -875,15 +977,15 @@ export function readImportFile(file, projectId) {
   });
 }
 
-export function applyColumnMappingAndReview(headers, rawRows, columnMapping) {
+export function applyColumnMappingAndReview(headers: any[], rawRows: any[][], columnMapping: { [colIndex: number]: string | undefined }): ParsedScheduleImport {
   return window.PCC.scheduleImportService.parseRows(headers, rawRows, columnMapping);
 }
 
 /** Turns a scheduleImportService.parseRows() result into store-shaped WBS/Activity/
  * Relationship records for one schedule. Shared by commitImport (new schedule) and
  * applyExcelEdits (existing schedule) so both go through identical construction logic. */
-export function buildScheduleRecords(parsed, projectId, scheduleId) {
-  var wbsCodeToId = {};
+export function buildScheduleRecords(parsed: ParsedScheduleImport, projectId: string, scheduleId: string): { wbsItems: PCCWbsItem[]; activities: PCCActivity[]; relationships: PCCRelationship[] } {
+  var wbsCodeToId: { [code: string]: string } = {};
   var wbsItems = parsed.wbsEntries.map(function (w) {
     var item = window.PCC.store.newWbsItem({ project_id: projectId, schedule_id: scheduleId, code: w.code, name: w.name, level: w.level });
     wbsCodeToId[w.code] = item.id;
@@ -894,7 +996,7 @@ export function buildScheduleRecords(parsed, projectId, scheduleId) {
     item.parent_wbs_id = parentCode ? wbsCodeToId[parentCode] || null : null;
   });
 
-  var externalIdToActivityId = {};
+  var externalIdToActivityId: { [externalId: string]: string } = {};
   var activities = parsed.activities.map(function (a) {
     var activity = window.PCC.store.newActivity({
       project_id: projectId,
@@ -938,7 +1040,7 @@ export function buildScheduleRecords(parsed, projectId, scheduleId) {
 
 /** Commits a parsed import as a brand-new schedule revision. Returns a Promise
  * resolving to the new schedule's id. */
-export function commitImport(projectId, parsed, scheduleNameRaw, importFile, sourceType) {
+export function commitImport(projectId: string, parsed: ParsedScheduleImport, scheduleNameRaw: string, importFile: ImportFileInfo, sourceType: string): Promise<string> {
   var data = window.PCC.store.get();
   var scheduleName = scheduleNameRaw.trim() || importFile.name;
 
@@ -951,7 +1053,7 @@ export function commitImport(projectId, parsed, scheduleNameRaw, importFile, sou
     });
   var nextRevision = existingRevisions.length ? Math.max.apply(null, existingRevisions) + 1 : 0;
 
-  var SOURCE_TYPE_FILE_LABELS = { excel: "Excel", msp_xml: "Microsoft Project XML", p6_xer: "Primavera P6 (XER)" };
+  var SOURCE_TYPE_FILE_LABELS: { [key: string]: string } = { excel: "Excel", msp_xml: "Microsoft Project XML", p6_xer: "Primavera P6 (XER)" };
   var sourceFileLabel = SOURCE_TYPE_FILE_LABELS[sourceType];
   var extMatch = /\.([a-zA-Z0-9]+)$/.exec(importFile.name || "");
   var newSchedule = window.PCC.store.newSchedule({
@@ -970,7 +1072,7 @@ export function commitImport(projectId, parsed, scheduleNameRaw, importFile, sou
 
   var records = buildScheduleRecords(parsed, projectId, newSchedule.id);
 
-  var newCalendar = null;
+  var newCalendar: PCCCalendar | null = null;
   if (sourceType !== "excel" && parsed.calendar) {
     newCalendar = window.PCC.store.newCalendar({
       project_id: projectId,
@@ -979,8 +1081,9 @@ export function commitImport(projectId, parsed, scheduleNameRaw, importFile, sou
       holidays: parsed.calendar.holidays,
       is_default: false,
     });
+    var newCalendarId = newCalendar.id;
     records.activities.forEach(function (a) {
-      a.calendar_id = newCalendar.id;
+      a.calendar_id = newCalendarId;
     });
   }
 
@@ -1011,12 +1114,12 @@ export function commitImport(projectId, parsed, scheduleNameRaw, importFile, sou
       );
       return newSchedule.id;
     })
-    .catch(function (e) {
+    .catch(function (e: any) {
       throw new Error("Could not store the original " + sourceFileLabel + " file: " + e.message);
     });
 }
 
-function gatherScheduleExportData(schedule, data) {
+function gatherScheduleExportData(schedule: PCCSchedule, data: PCCStoreData): { wbsItems: PCCWbsItem[]; activities: PCCActivity[]; relationships: PCCRelationship[]; calendar: PCCCalendar | null } {
   var wbsItems = data.wbs_items.filter(function (w) {
     return w.schedule_id === schedule.id;
   });
@@ -1026,7 +1129,7 @@ function gatherScheduleExportData(schedule, data) {
   var relationships = data.relationships.filter(function (r) {
     return r.schedule_id === schedule.id;
   });
-  var calendarId = null;
+  var calendarId: string | null | undefined = null;
   for (var i = 0; i < activities.length; i++) {
     if (activities[i].calendar_id) {
       calendarId = activities[i].calendar_id;
@@ -1043,7 +1146,7 @@ function gatherScheduleExportData(schedule, data) {
   return { wbsItems: wbsItems, activities: activities, relationships: relationships, calendar: calendar || null };
 }
 
-export function exportMspXml(schedule) {
+export function exportMspXml(schedule: PCCSchedule): void {
   var data = window.PCC.store.get();
   var exportData = gatherScheduleExportData(schedule, data);
   var xml = window.PCC.mspXmlService.exportScheduleToMspXml({ schedule: schedule, wbsItems: exportData.wbsItems, activities: exportData.activities, relationships: exportData.relationships, calendar: exportData.calendar });
@@ -1054,12 +1157,12 @@ export function exportMspXml(schedule) {
     .then(function () {
       window.PCC.notify('Exported "' + schedule.name + '" as Microsoft Project XML.', "success");
     })
-    .catch(function (e) {
+    .catch(function (e: any) {
       window.PCC.notify("Could not export: " + e.message, "error");
     });
 }
 
-export function exportP6Xer(schedule) {
+export function exportP6Xer(schedule: PCCSchedule): void {
   var data = window.PCC.store.get();
   var exportData = gatherScheduleExportData(schedule, data);
   var xer = window.PCC.p6XerService.exportScheduleToXer({ schedule: schedule, wbsItems: exportData.wbsItems, activities: exportData.activities, relationships: exportData.relationships, calendar: exportData.calendar });
@@ -1070,7 +1173,7 @@ export function exportP6Xer(schedule) {
     .then(function () {
       window.PCC.notify('Exported "' + schedule.name + '" as a Primavera P6 XER file.', "success");
     })
-    .catch(function (e) {
+    .catch(function (e: any) {
       window.PCC.notify("Could not export: " + e.message, "error");
     });
 }
@@ -1079,13 +1182,13 @@ export function exportP6Xer(schedule) {
 // Excel Editor
 // ---------------------------------------------------------------------------------
 
-function buildPredecessorsString(activity, relationships, activitiesById) {
+function buildPredecessorsString(activity: PCCActivity, relationships: PCCRelationship[], activitiesById: { [id: string]: PCCActivity }): string {
   var tokens = relationships
     .filter(function (r) {
       return r.successor_id === activity.id;
     })
     .map(function (r) {
-      var pred = activitiesById[r.predecessor_id];
+      var pred = activitiesById[r.predecessor_id || ""];
       if (!pred || !pred.external_id) return null;
       var token = pred.external_id;
       if (r.type && r.type !== "FS") token += r.type;
@@ -1098,8 +1201,8 @@ function buildPredecessorsString(activity, relationships, activitiesById) {
   return tokens.join(",");
 }
 
-export function buildExcelEditorRows(schedule, data) {
-  var wbsById = {};
+export function buildExcelEditorRows(schedule: PCCSchedule, data: PCCStoreData): ExcelEditorRow[] {
+  var wbsById: { [id: string]: PCCWbsItem } = {};
   data.wbs_items
     .filter(function (w) {
       return w.schedule_id === schedule.id;
@@ -1107,7 +1210,7 @@ export function buildExcelEditorRows(schedule, data) {
     .forEach(function (w) {
       wbsById[w.id] = w;
     });
-  var activitiesById = {};
+  var activitiesById: { [id: string]: PCCActivity } = {};
   data.activities
     .filter(function (a) {
       return a.schedule_id === schedule.id;
@@ -1129,8 +1232,8 @@ export function buildExcelEditorRows(schedule, data) {
         external_id: a.external_id || "",
         name: a.name || "",
         activity_type: a.activity_type || "task",
-        wbs_code: wbs ? wbs.code : "",
-        wbs_name: wbs ? wbs.name : "",
+        wbs_code: wbs ? wbs.code || "" : "",
+        wbs_name: wbs ? wbs.name || "" : "",
         duration: a.duration != null ? String(a.duration) : "",
         planned_start: a.planned_start || "",
         planned_finish: a.planned_finish || "",
@@ -1145,7 +1248,7 @@ export function buildExcelEditorRows(schedule, data) {
     });
 }
 
-export function reviewExcelEdits(rows) {
+export function reviewExcelEdits(rows: ExcelEditorRow[]): ParsedScheduleImport {
   var fields = getExcelGridFields();
   var headerLabels = fields.map(function (f) {
     return f.label;
@@ -1163,12 +1266,12 @@ export function reviewExcelEdits(rows) {
 // percent_complete gets a real numeric cell with a "%" display format, so the file that
 // comes back out actually looks and behaves like a normal Excel schedule, not a bare CSV
 // dumped into .xlsx. duration/percent_complete are numeric for the same reason.
-var EXCEL_GRID_DATE_KEYS = { planned_start: true, planned_finish: true };
-var EXCEL_GRID_NUMBER_KEYS = { duration: true, percent_complete: true };
+var EXCEL_GRID_DATE_KEYS: { [key: string]: boolean } = { planned_start: true, planned_finish: true };
+var EXCEL_GRID_NUMBER_KEYS: { [key: string]: boolean } = { duration: true, percent_complete: true };
 
 /** Regenerates the attached Excel file from exactly the header/row data that was just
  * parsed and applies the parsed result onto the schedule. Returns a Promise. */
-export function applyExcelEdits(schedule, rows, parsed) {
+export function applyExcelEdits(schedule: PCCSchedule, rows: ExcelEditorRow[], parsed: ParsedScheduleImport): Promise<void> {
   var fields = getExcelGridFields();
 
   var workbook = new window.ExcelJS.Workbook();
@@ -1179,7 +1282,7 @@ export function applyExcelEdits(schedule, rows, parsed) {
   sheet.getRow(1).font = { bold: true };
 
   rows.forEach(function (row) {
-    var rowData = {};
+    var rowData: { [key: string]: any } = {};
     fields.forEach(function (f) {
       var raw = row[f.key] || "";
       if (EXCEL_GRID_DATE_KEYS[f.key] && raw) {
@@ -1200,9 +1303,9 @@ export function applyExcelEdits(schedule, rows, parsed) {
   });
 
   var records = buildScheduleRecords(parsed, schedule.project_id, schedule.id);
-  var wbBuffer;
+  var wbBuffer: ArrayBuffer;
 
-  return workbook.xlsx.writeBuffer().then(function (buf) {
+  return workbook.xlsx.writeBuffer().then(function (buf: ArrayBuffer) {
     wbBuffer = buf;
     var fileDataUri = "data:" + XLSX_MIME_TYPES.xlsx + ";base64," + arrayBufferToBase64(wbBuffer);
     return window.PCC.blobStore.putBlob(schedule.id, fileDataUri);
@@ -1238,15 +1341,15 @@ export function applyExcelEdits(schedule, rows, parsed) {
 // Gantt tab
 // ---------------------------------------------------------------------------------
 
-export var GANTT_ZOOM_PX_PER_DAY = { day: 32, week: 16, month: 6, quarter: 2.2, year: 0.7 };
-export var GANTT_ZOOM_LABELS = { auto: "Auto", day: "Daily", week: "Weekly", month: "Monthly", quarter: "Quarterly", year: "Yearly" };
+export var GANTT_ZOOM_PX_PER_DAY: { [key: string]: number } = { day: 32, week: 16, month: 6, quarter: 2.2, year: 0.7 };
+export var GANTT_ZOOM_LABELS: { [key: string]: string } = { auto: "Auto", day: "Daily", week: "Weekly", month: "Monthly", quarter: "Quarterly", year: "Yearly" };
 
-export function truncateLabel(name, maxChars) {
+export function truncateLabel(name: string, maxChars: number): string {
   if (name.length <= maxChars) return name;
   return name.slice(0, maxChars - 1) + "…";
 }
 
-export function ganttPxPerDay(totalSpanDays, zoom) {
+export function ganttPxPerDay(totalSpanDays: number, zoom: string | null): number {
   if (zoom && GANTT_ZOOM_PX_PER_DAY[zoom]) return GANTT_ZOOM_PX_PER_DAY[zoom];
   if (totalSpanDays <= 30) return 24;
   if (totalSpanDays <= 90) return 14;
@@ -1254,22 +1357,22 @@ export function ganttPxPerDay(totalSpanDays, zoom) {
   return 4;
 }
 
-export function ganttTickIntervalDays(totalSpanDays) {
+export function ganttTickIntervalDays(totalSpanDays: number): number {
   if (totalSpanDays <= 45) return 7;
   if (totalSpanDays <= 120) return 14;
   return 30;
 }
 
-export function formatAxisDate(iso) {
+export function formatAxisDate(iso: string): string {
   var d = new Date(iso + "T00:00:00Z");
   return d.getUTCMonth() + 1 + "/" + d.getUTCDate();
 }
 
-export function todayIso() {
+export function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-export function activityMatchesGanttFilter(a, wbsItems, filter, referenceDateIso) {
+export function activityMatchesGanttFilter(a: PCCActivity, wbsItems: PCCWbsItem[], filter: GanttFilter, referenceDateIso: string): boolean {
   if (filter.search) {
     var needle = filter.search.toLowerCase();
     var wbs = wbsItems.find(function (w) {
@@ -1315,7 +1418,7 @@ export function activityMatchesGanttFilter(a, wbsItems, filter, referenceDateIso
 
 /** Shared by the Gantt bar's own "Not Ready" marker and the Activity Detail Panel's
  * Document Readiness section (Stage 5) — factored out once so both reuse the same rule. */
-export function computeRequirementStatus(data, projectId, documentTypeId, plannedDate) {
+export function computeRequirementStatus(data: PCCStoreData, projectId: string | null | undefined, documentTypeId: string, plannedDate: string | null | undefined): string {
   var available = data.documents.some(function (d) {
     return d.project_id === projectId && d.document_type_id === documentTypeId && !d.trashed_at;
   });
@@ -1324,7 +1427,7 @@ export function computeRequirementStatus(data, projectId, documentTypeId, planne
   return "required";
 }
 
-export var REQUIREMENT_STATUS_BADGE = {
+export var REQUIREMENT_STATUS_BADGE: { [key: string]: { className: string; label: string } } = {
   available: { className: "complete", label: "Available" },
   overdue: { className: "critical", label: "Overdue" },
   required: { className: "at_risk", label: "Required" },
@@ -1332,8 +1435,8 @@ export var REQUIREMENT_STATUS_BADGE = {
 
 /** An activity with zero linked document requirements is never "not ready" — nothing
  * to flag. */
-export function activityNotReady(activity, data) {
-  var typesById = {};
+export function activityNotReady(activity: PCCActivity, data: PCCStoreData): boolean {
+  var typesById: { [id: string]: any } = {};
   data.document_types.forEach(function (t) {
     typesById[t.id] = t;
   });
@@ -1346,27 +1449,27 @@ export function activityNotReady(activity, data) {
   });
 }
 
-export function matchKeyFor(a) {
+export function matchKeyFor(a: { external_id?: string | null; id: string }): string {
   if (a.external_id !== null && a.external_id !== undefined && a.external_id !== "") return "ext:" + a.external_id;
   return "id:" + a.id;
 }
 
 /** Loads (and returns as a Promise) the trimmed activity snapshot for a baseline, for
  * the Gantt's ghost-bar overlay. */
-export function loadBaselineOverlay(baselineId) {
+export function loadBaselineOverlay(baselineId: string): Promise<{ baselineId: string; activities: BaselineSnapshotActivity[] }> {
   return window.PCC.scheduleBaselineStore.getSnapshot(baselineId).then(function (snapshot) {
     return { baselineId: baselineId, activities: snapshot ? snapshot.activities : [] };
   });
 }
 
-export function computeGanttLayout(activities, options) {
+export function computeGanttLayout(activities: PCCActivity[], options: { dataDate?: string | null }): GanttLayout {
   return window.PCC.scheduleGanttLayout.computeLayout(activities, options);
 }
 
 /** Commits a drag-driven move/resize: writes planned_start/planned_finish/duration and
  * immediately re-runs CPM, exactly like the toolbar's own "Calculate Schedule" button —
  * so float/critical-path/project-finish never go stale after a drag. */
-export function commitGanttDrag(activity, mode, origStart, origFinish, dayDelta, scheduleId) {
+export function commitGanttDrag(activity: PCCActivity, mode: string, origStart: string, origFinish: string, dayDelta: number, scheduleId: string): void {
   var result =
     mode === "move"
       ? window.PCC.scheduleGanttLayout.moveDates(origStart, origFinish, dayDelta)
@@ -1394,7 +1497,7 @@ export function commitGanttDrag(activity, mode, origStart, origFinish, dayDelta,
 
 /** Same calculated-wins/planned-falls-back precedence as resourceLevelingEngine.js's
  * own effectiveDates() — duplicated here per this app's per-module-helpers convention. */
-export function resourceActivityEffectiveDates(activity) {
+export function resourceActivityEffectiveDates(activity: PCCActivity): { start: string | null; finish: string | null } {
   if (activity.activity_type === "milestone") return { start: null, finish: null };
   return {
     start: activity.actual_start || activity.early_start || activity.planned_start || null,
@@ -1402,13 +1505,13 @@ export function resourceActivityEffectiveDates(activity) {
   };
 }
 
-var COMMITMENT_STATUS_LABELS = { draft: "Draft", issued: "Issued", approved: "Approved", closed: "Closed", cancelled: "Cancelled" };
-var COMMITMENT_RISK_WINDOW_DAYS = 7;
+var COMMITMENT_STATUS_LABELS: { [key: string]: string } = { draft: "Draft", issued: "Issued", approved: "Approved", closed: "Closed", cancelled: "Cancelled" };
+var COMMITMENT_RISK_WINDOW_DAYS: number = 7;
 
 /** Gate 10 (Activity Linking) — every register that can optionally carry an
  * activity_id, surfaced as one flat, live-queried list. Each row's view() uses that
  * module's own existing expand/navigate API. */
-var LINKED_RECORD_SOURCES = [
+var LINKED_RECORD_SOURCES: LinkedRecordSource[] = [
   {
     module: "risks",
     label: function (r) { return (r.type === "risk" ? "Risk" : r.type === "issue" ? "Issue" : "Opportunity") + ": " + (r.title || "(untitled)"); },
@@ -1487,7 +1590,7 @@ var LINKED_RECORD_SOURCES = [
       if (overAlloc.count === 0) return { label: "Available", className: "on_track" };
       var dates = resourceActivityEffectiveDates(activity);
       if (!dates.start) return { label: "Over-Allocated (Elsewhere)", className: "at_risk" };
-      var conflictInWindow = overAlloc.overAllocatedDays.some(function (d) { return d.date >= dates.start && d.date < dates.finish; });
+      var conflictInWindow = overAlloc.overAllocatedDays.some(function (d) { return d.date >= dates.start! && d.date < dates.finish!; });
       return conflictInWindow ? { label: "Over-Allocated", className: "critical" } : { label: "Available", className: "on_track" };
     },
   },
@@ -1511,8 +1614,8 @@ var LINKED_RECORD_SOURCES = [
   },
 ];
 
-export function getLinkedRecords(data, activity) {
-  var rows = [];
+export function getLinkedRecords(data: PCCStoreData, activity: PCCActivity): LinkedRecordRow[] {
+  var rows: LinkedRecordRow[] = [];
   LINKED_RECORD_SOURCES.forEach(function (source) {
     source.list(data, activity.id).forEach(function (record) {
       rows.push({
@@ -1527,13 +1630,13 @@ export function getLinkedRecords(data, activity) {
   return rows;
 }
 
-export function recoveryActionOverdue(action) {
+export function recoveryActionOverdue(action: PCCRecoveryAction): boolean {
   if (action.status === "completed" || action.status === "cancelled") return false;
   if (!action.target_recovery_date) return false;
   return action.target_recovery_date < todayIso();
 }
 
-export function saveRecoveryAction(isNew, editingId, activity, values) {
+export function saveRecoveryAction(isNew: boolean, editingId: string | null, activity: PCCActivity, values: Partial<PCCRecoveryAction>): void {
   window.PCC.store.update(function (d) {
     if (isNew) {
       d.recovery_actions.push(window.PCC.store.newRecoveryAction(Object.assign({ activity_id: activity.id, project_id: activity.project_id }, values)));
@@ -1547,7 +1650,7 @@ export function saveRecoveryAction(isNew, editingId, activity, values) {
   window.PCC.notify("Recovery action saved.", "success");
 }
 
-export function deleteRecoveryAction(id) {
+export function deleteRecoveryAction(id: string): void {
   window.PCC.store.update(function (d) {
     d.recovery_actions = d.recovery_actions.filter(function (x) {
       return x.id !== id;
@@ -1557,19 +1660,19 @@ export function deleteRecoveryAction(id) {
 
 // ---- Delay Records ----
 
-export function computeDelayImpact(delayRecord, links, data) {
+export function computeDelayImpact(delayRecord: PCCDelayRecord, links: PCCDelayActivityLink[], data: PCCStoreData): DelayImpactResult {
   return window.PCC.delayImpactEngine.computeDelayImpact(delayRecord, links, data);
 }
 
-export function computeProjectFinishImpact(scheduleId, data) {
+export function computeProjectFinishImpact(scheduleId: string, data: PCCStoreData): ProjectFinishImpactResult {
   return window.PCC.delayImpactEngine.computeProjectFinishImpact(scheduleId, data);
 }
 
-export function computeRecoveryForecast(delayRecord, links, recoveryActions, data) {
+export function computeRecoveryForecast(delayRecord: PCCDelayRecord, links: PCCDelayActivityLink[], recoveryActions: PCCRecoveryAction[], data: PCCStoreData): RecoveryForecastResult {
   return window.PCC.delayImpactEngine.computeRecoveryForecast(delayRecord, links, recoveryActions, data);
 }
 
-export function deriveDelayStatusLabel(impact, milestoneSlippageDays, projectImpactDays) {
+export function deriveDelayStatusLabel(impact: DelayImpactResult, milestoneSlippageDays: number | null | undefined, projectImpactDays: number | null | undefined): { text: string; colorVar: string | null } {
   if (projectImpactDays != null && projectImpactDays > 0) return { text: "PROJECT IMPACT", colorVar: "--status-critical" };
   if (milestoneSlippageDays != null && milestoneSlippageDays > 0) return { text: "MILESTONE AT RISK", colorVar: "--status-critical" };
   if (impact.overall_criticality === "critical") return { text: "CRITICAL", colorVar: "--status-critical" };
@@ -1580,14 +1683,14 @@ export function deriveDelayStatusLabel(impact, milestoneSlippageDays, projectImp
 
 /** The schedule_id of a Delay's own primary activity — falls back to the given
  * fallbackScheduleId if the primary activity was since deleted. */
-export function activityScheduleId(data, delayRecord, fallbackScheduleId) {
+export function activityScheduleId(data: PCCStoreData, delayRecord: PCCDelayRecord, fallbackScheduleId: string): string | undefined {
   var primary = data.activities.find(function (a) {
     return a.id === delayRecord.activity_id;
   });
   return primary ? primary.schedule_id : fallbackScheduleId;
 }
 
-export function describeRelatedRecords(r, data) {
+export function describeRelatedRecords(r: PCCDelayRecord, data: PCCStoreData): string {
   var parts = [];
   if (r.risk_id) {
     var risk = data.risks.find(function (x) {
@@ -1637,8 +1740,8 @@ export function describeRelatedRecords(r, data) {
 /** Saves a Delay Record — handles the status_history append-on-transition and the
  * "milestone selected here is also an affected activity" auto-link, matching the
  * vanilla onsubmit handler exactly. */
-export function saveDelayRecord(isNew, editingId, existingStatus, activity, values) {
-  function ensureActivityLinked(d, delayRecordId, activityId) {
+export function saveDelayRecord(isNew: boolean, editingId: string | null, existingStatus: string | null | undefined, activity: PCCActivity, values: Partial<PCCDelayRecord>): void {
+  function ensureActivityLinked(d: PCCStoreData, delayRecordId: string, activityId: string | undefined) {
     if (!activityId) return;
     var already = d.delay_activity_links.some(function (l) {
       return l.delay_id === delayRecordId && l.activity_id === activityId;
@@ -1663,7 +1766,7 @@ export function saveDelayRecord(isNew, editingId, existingStatus, activity, valu
   window.PCC.store.update(function (d) {
     if (isNew) {
       var created = window.PCC.store.newDelayRecord(Object.assign({ activity_id: activity.id, project_id: activity.project_id }, values));
-      created.status_history = [{ status: values.status, changed_at: created.created_at, note: "Delay identified." }];
+      created.status_history = [{ status: values.status || "", changed_at: created.created_at, note: "Delay identified." }];
       d.delay_records.push(created);
       d.delay_activity_links.push(
         window.PCC.store.newDelayActivityLink({
@@ -1683,7 +1786,7 @@ export function saveDelayRecord(isNew, editingId, existingStatus, activity, valu
       if (existing) {
         if (existingStatus !== values.status) {
           if (!existing.status_history) existing.status_history = [];
-          existing.status_history.push({ status: values.status, changed_at: values.updated_at, note: "" });
+          existing.status_history.push({ status: values.status || "", changed_at: values.updated_at, note: "" });
         }
         Object.assign(existing, values);
         ensureActivityLinked(d, existing.id, values.milestone_activity_id);
@@ -1693,7 +1796,7 @@ export function saveDelayRecord(isNew, editingId, existingStatus, activity, valu
   window.PCC.notify("Delay record saved.", "success");
 }
 
-export function deleteDelayRecord(id) {
+export function deleteDelayRecord(id: string): void {
   window.PCC.store.update(function (d) {
     d.delay_records = d.delay_records.filter(function (x) {
       return x.id !== id;
@@ -1707,7 +1810,7 @@ export function deleteDelayRecord(id) {
   });
 }
 
-export function linkDelayActivity(delayRecordId, activity) {
+export function linkDelayActivity(delayRecordId: string, activity: PCCActivity): void {
   window.PCC.store.update(function (d) {
     d.delay_activity_links.push(
       window.PCC.store.newDelayActivityLink({
@@ -1728,7 +1831,7 @@ export function linkDelayActivity(delayRecordId, activity) {
  * buildProjectContext() and delayRecoveryDashboard.js's portfolio rollup, independently
  * re-derived here per this app's established per-module-duplication convention. Returns
  * null when the activity has no delay logged. */
-export function delayRecoveryGap(activity, data) {
+export function delayRecoveryGap(activity: PCCActivity, data: PCCStoreData): { delayDays: number; recoveryDays: number; gapDays: number } | null {
   var delayDays = data.delay_records
     .filter(function (r) {
       return r.activity_id === activity.id;
@@ -1755,7 +1858,7 @@ export function delayRecoveryGap(activity, data) {
 /** Loads a baseline's stored snapshot and compares it against the given schedule's
  * current WBS/Activities/Relationships/Calendars. Returns a Promise resolving to the
  * scheduleBaselineEngine comparison result. */
-export function runBaselineComparison(baseline, scheduleId) {
+export function runBaselineComparison(baseline: PCCScheduleBaseline, scheduleId: string): Promise<BaselineComparisonResult> {
   var data = window.PCC.store.get();
   return window.PCC.scheduleBaselineStore.getSnapshot(baseline.id).then(function (snapshot) {
     if (!snapshot) throw new Error("Baseline snapshot not found in storage.");
@@ -1773,14 +1876,14 @@ export function runBaselineComparison(baseline, scheduleId) {
     });
     var currentCalendars = currentSchedule
       ? data.calendars.filter(function (cal) {
-          return cal.project_id === currentSchedule.project_id;
+          return cal.project_id === currentSchedule!.project_id;
         })
       : [];
     return window.PCC.scheduleBaselineEngine.compareBaselineToCurrent(snapshot, currentWbsItems, currentActivities, currentRelationships, currentCalendars);
   });
 }
 
-export function renameBaseline(id, newName) {
+export function renameBaseline(id: string, newName: string): void {
   window.PCC.store.update(function (d) {
     var item = d.schedule_baselines.find(function (x) {
       return x.id === id;
@@ -1789,7 +1892,7 @@ export function renameBaseline(id, newName) {
   });
 }
 
-export function toggleOfficialBaseline(baseline) {
+export function toggleOfficialBaseline(baseline: PCCScheduleBaseline): void {
   var wasOfficial = baseline.is_official;
   window.PCC.store.update(function (d) {
     d.schedule_baselines.forEach(function (item) {
@@ -1800,7 +1903,7 @@ export function toggleOfficialBaseline(baseline) {
   window.PCC.notify(wasOfficial ? "Baseline unmarked as Official." : "Baseline marked Official — Executive Center's Schedule Variance now measures against it.", "success");
 }
 
-export function deleteBaseline(id) {
+export function deleteBaseline(id: string): void {
   window.PCC.scheduleBaselineStore.deleteSnapshot(id).catch(function () {});
   window.PCC.store.update(function (d) {
     d.schedule_baselines = d.schedule_baselines.filter(function (item) {
@@ -1817,11 +1920,12 @@ export function deleteBaseline(id) {
 /** Pure, in-memory "what if we reduce this activity's duration by N days" exploration
  * — clones the current activities, perturbs one, and reruns the real CPM engine twice
  * (before/after). Nothing is persisted. Returns { error } or { result }. */
-export function runWhatIf(schedule, scheduleActivities, scheduleRelationships, activityId, reduceDays) {
+export function runWhatIf(schedule: PCCSchedule, scheduleActivities: PCCActivity[], scheduleRelationships: PCCRelationship[], activityId: string, reduceDays: number): { error: string; result?: undefined } | { error?: undefined; result: WhatIfResult } {
   if (!activityId) return { error: "Select an activity first." };
   var activity = scheduleActivities.find(function (a) {
     return a.id === activityId;
   });
+  if (!activity) return { error: "Select an activity first." };
   if (activity.status === "complete") {
     return { error: "Completed activities can't be accelerated — their dates are historical." };
   }
@@ -1829,7 +1933,7 @@ export function runWhatIf(schedule, scheduleActivities, scheduleRelationships, a
     return { error: "Enter a positive number of days to reduce." };
   }
 
-  var fieldToReduce = activity.status === "in_progress" ? "remaining_duration" : "duration";
+  var fieldToReduce: "remaining_duration" | "duration" = activity.status === "in_progress" ? "remaining_duration" : "duration";
   var currentValue = activity[fieldToReduce] || 0;
   var newValue = Math.max(0, currentValue - reduceDays);
 
@@ -1862,7 +1966,7 @@ export function runWhatIf(schedule, scheduleActivities, scheduleRelationships, a
   var newlyCritical = afterCriticalIds.filter(function (id) {
     return beforeCriticalIds.indexOf(id) === -1;
   });
-  function namesFor(ids) {
+  function namesFor(ids: string[]) {
     return ids.map(function (id) {
       var a = scheduleActivities.find(function (x) {
         return x.id === id;
@@ -1878,8 +1982,8 @@ export function runWhatIf(schedule, scheduleActivities, scheduleRelationships, a
       requestedReduction: reduceDays,
       actualReduction: currentValue - newValue,
       wasCritical: !!wasCritical,
-      beforeFinish: before.projectFinish,
-      afterFinish: after.projectFinish,
+      beforeFinish: before.projectFinish || null,
+      afterFinish: after.projectFinish || null,
       varianceDays: before.projectFinish && after.projectFinish ? window.PCC.scheduleGanttLayout.diffDays(before.projectFinish, after.projectFinish) : null,
       beforeCriticalCount: beforeCriticalIds.length,
       afterCriticalCount: afterCriticalIds.length,
@@ -1893,10 +1997,10 @@ export function runWhatIf(schedule, scheduleActivities, scheduleRelationships, a
 // Cross-page navigation helper
 // ---------------------------------------------------------------------------------
 
-export function setProjectContext(projectId) {
+export function setProjectContext(projectId: string): void {
   window.PCC.projectContext.set(projectId);
 }
 
-export function getProjectContext() {
+export function getProjectContext(): string {
   return window.PCC.projectContext.get();
 }

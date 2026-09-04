@@ -33,10 +33,22 @@ import {
   viewActivityInSchedule,
   getProjectContext,
   setProjectContext,
-} from "../services/documentsService.js";
+  DocumentFilters,
+  DocumentFormState,
+  ReadExtractedFile,
+  DuplicateMatch,
+  BulkEntry,
+  BulkImportResult,
+} from "../services/documentsService";
+import type { PCCStoreData, PCCDocument, PCCDocumentExtraction, PCCProject } from "../types/pcc";
 
-function activityOptionsFor(data, projectId) {
-  var scheduleNameById = {};
+interface ActivityOption {
+  id: string;
+  label: string;
+}
+
+function activityOptionsFor(data: PCCStoreData, projectId: string): ActivityOption[] {
+  var scheduleNameById: { [id: string]: string | undefined } = {};
   data.schedules
     .filter(function (s) {
       return s.project_id === projectId;
@@ -53,7 +65,7 @@ function activityOptionsFor(data, projectId) {
     });
 }
 
-function ExcelPreview({ extraction }) {
+function ExcelPreview({ extraction }: { extraction: PCCDocumentExtraction }) {
   return (
     <div style={{ marginTop: "var(--space-3)" }}>
       <p className="text-secondary" style={{ fontSize: "var(--text-sm)", marginBottom: "var(--space-2)" }}>
@@ -64,7 +76,7 @@ function ExcelPreview({ extraction }) {
         <table className="mono" style={{ borderCollapse: "collapse", width: "100%", fontSize: "var(--text-sm)" }}>
           <thead>
             <tr>
-              {extraction.headers.map((h, i) => (
+              {extraction.headers.map((h: string, i: number) => (
                 <th
                   key={i}
                   style={{
@@ -82,9 +94,9 @@ function ExcelPreview({ extraction }) {
             </tr>
           </thead>
           <tbody>
-            {extraction.rows.slice(0, 15).map((row, ri) => (
+            {extraction.rows.slice(0, 15).map((row: string[], ri: number) => (
               <tr key={ri}>
-                {row.map((cell, ci) => (
+                {row.map((cell: string, ci: number) => (
                   <td key={ci} style={{ padding: "var(--space-1) var(--space-3)", borderBottom: "1px solid var(--divider)" }}>
                     {cell}
                   </td>
@@ -103,7 +115,7 @@ function ExcelPreview({ extraction }) {
   );
 }
 
-function TextPreview({ extraction }) {
+function TextPreview({ extraction }: { extraction: PCCDocumentExtraction }) {
   var TEXT_CHAR_CAP = 50000;
   return (
     <div style={{ marginTop: "var(--space-3)" }}>
@@ -131,12 +143,12 @@ function TextPreview({ extraction }) {
   );
 }
 
-function ExtractionPreview({ extraction }) {
+function ExtractionPreview({ extraction }: { extraction: PCCDocumentExtraction | null | undefined }) {
   if (!extraction) return null;
   return extraction.type === "excel" ? <ExcelPreview extraction={extraction} /> : <TextPreview extraction={extraction} />;
 }
 
-function DuplicateWarning({ matches, data, onAcknowledge, onCancel }) {
+function DuplicateWarning({ matches, data, onAcknowledge, onCancel }: { matches: DuplicateMatch[]; data: PCCStoreData; onAcknowledge: () => void; onCancel: () => void }) {
   return (
     <div
       style={{
@@ -156,7 +168,7 @@ function DuplicateWarning({ matches, data, onAcknowledge, onCancel }) {
             <div>
               <strong>{m.record.filename}</strong>
               <br />
-              {projectName(data, m.record.project_id)} · {new Date(m.record.uploaded_at).toLocaleDateString()} · {CATEGORY_LABELS[m.record.category] || m.record.category}
+              {projectName(data, m.record.project_id)} · {new Date(m.record.uploaded_at || "").toLocaleDateString()} · {CATEGORY_LABELS[m.record.category || ""] || m.record.category}
               <br />
               <span className="text-secondary">{m.reason}</span>
             </div>
@@ -180,7 +192,7 @@ function DuplicateWarning({ matches, data, onAcknowledge, onCancel }) {
   );
 }
 
-function NomenclatureNotice({ data, pendingFile, form }) {
+function NomenclatureNotice({ data, pendingFile, form }: { data: PCCStoreData; pendingFile: ReadExtractedFile | null; form: DocumentFormState }) {
   var result = nomenclatureCheck(data, pendingFile, form);
   if (!result) return null;
   var ok = result.matches;
@@ -206,13 +218,39 @@ function NomenclatureNotice({ data, pendingFile, form }) {
   );
 }
 
-function UploadForm({ data, prefill, onSaved, onCancel }) {
+interface UploadFormPrefill {
+  projectId?: string;
+  activityId?: string;
+  category?: string;
+  documentTypeId?: string;
+  discipline?: string;
+  documentNumber?: string;
+  revision?: string;
+  packageId?: string;
+  contractOrPo?: string;
+  vendorId?: string;
+  priority?: string;
+  criticality?: string;
+  status?: string;
+  remarks?: string;
+  meetingId?: string;
+  revisionGroupId?: string;
+}
+
+interface UploadFormProps {
+  data: PCCStoreData;
+  prefill: UploadFormPrefill;
+  onSaved: () => void;
+  onCancel: () => void;
+}
+
+function UploadForm({ data, prefill, onSaved, onCancel }: UploadFormProps) {
   var activeProjects = data.projects.filter(function (p) {
     return !p.archived;
   });
   var activeDocTypes = window.PCC.documentTypes ? window.PCC.documentTypes.activeTypes() : [];
 
-  const [form, setForm] = useState(function () {
+  const [form, setForm] = useState<DocumentFormState>(function () {
     return {
       projectId: prefill.projectId || (activeProjects[0] && activeProjects[0].id) || "",
       activityId: prefill.activityId || "",
@@ -232,20 +270,20 @@ function UploadForm({ data, prefill, onSaved, onCancel }) {
       revisionGroupId: prefill.revisionGroupId || "",
     };
   });
-  const [pendingFile, setPendingFile] = useState(null);
-  const [readError, setReadError] = useState(null);
-  const [readingLabel, setReadingLabel] = useState(null);
-  const [duplicateMatches, setDuplicateMatches] = useState([]);
+  const [pendingFile, setPendingFile] = useState<ReadExtractedFile | null>(null);
+  const [readError, setReadError] = useState<string | null>(null);
+  const [readingLabel, setReadingLabel] = useState<string | null>(null);
+  const [duplicateMatches, setDuplicateMatches] = useState<DuplicateMatch[]>([]);
   const [duplicateAcknowledged, setDuplicateAcknowledged] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  function set(key, value) {
+  function set(key: keyof DocumentFormState, value: string) {
     setForm(function (prev) {
       return Object.assign({}, prev, { [key]: value });
     });
   }
 
-  function handleProjectChange(projectId) {
+  function handleProjectChange(projectId: string) {
     set("projectId", projectId);
     set("activityId", "");
     if (pendingFile && pendingFile.hash) {
@@ -254,22 +292,22 @@ function UploadForm({ data, prefill, onSaved, onCancel }) {
     }
   }
 
-  function handleDocTypeChange(documentTypeId) {
+  function handleDocTypeChange(documentTypeId: string) {
     set("documentTypeId", documentTypeId);
     var chosen = activeDocTypes.find(function (t) {
       return t.id === documentTypeId;
     });
-    set("criticality", chosen ? chosen.default_criticality : "");
+    set("criticality", chosen ? chosen.default_criticality || "" : "");
   }
 
-  function handleFileChange(e) {
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     var file = e.target.files && e.target.files[0];
     if (!file) return;
     setReadError(null);
     setDuplicateMatches([]);
     setDuplicateAcknowledged(false);
-    var ext = /\.([a-z0-9]+)$/i.exec(file.name || "");
-    ext = ext ? ext[1].toLowerCase() : "";
+    var extMatch = /\.([a-z0-9]+)$/i.exec(file.name || "");
+    var ext = extMatch ? extMatch[1].toLowerCase() : "";
     setReadingLabel(ext === "docx" ? "Reading Word document…" : ext === "pdf" ? "Reading PDF…" : "Reading spreadsheet…");
     readAndExtractFile(file).then(
       function (result) {
@@ -511,35 +549,42 @@ function UploadForm({ data, prefill, onSaved, onCancel }) {
   );
 }
 
-function BulkImportPanel({ data, initialProjectId, onClose, onImported }) {
-  const [projectId, setProjectId] = useState(initialProjectId || (data.projects.find((p) => !p.archived) || {}).id || "");
+interface BulkImportPanelProps {
+  data: PCCStoreData;
+  initialProjectId: string;
+  onClose: () => void;
+  onImported: () => void;
+}
+
+function BulkImportPanel({ data, initialProjectId, onClose, onImported }: BulkImportPanelProps) {
+  const [projectId, setProjectId] = useState(initialProjectId || (data.projects.find((p) => !p.archived) || ({} as PCCProject)).id || "");
   const [category, setCategory] = useState("other");
   const [discipline, setDiscipline] = useState("");
-  const [files, setFiles] = useState([]); // [{file,name,size,type,status,hash,hashMethod,dataUri,duplicateMatch,errorMessage}]
-  const [progress, setProgress] = useState(null);
-  const [summary, setSummary] = useState(null);
+  const [files, setFiles] = useState<BulkEntry[]>([]);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [summary, setSummary] = useState<BulkImportResult | null>(null);
 
   var activeProjects = data.projects.filter(function (p) {
     return !p.archived;
   });
 
-  function scanFiles(fileList) {
-    var picked = Array.prototype.slice.call(fileList);
+  function scanFiles(fileList: FileList) {
+    var picked = Array.prototype.slice.call(fileList) as File[];
     if (picked.length === 0) return;
     setSummary(null);
-    var entries = picked.map(function (file) {
+    var entries: BulkEntry[] = picked.map(function (file) {
       return { file: file, name: file.name, size: file.size, type: file.type, status: "scanning", hash: null, hashMethod: null, dataUri: null, duplicateMatch: null, errorMessage: null };
     });
     setFiles((prev) => prev.concat(entries));
 
-    entries.reduce(function (chain, entry) {
+    entries.reduce(function (chain: Promise<void>, entry) {
       return chain.then(function () {
         return readAndFingerprintForBulk(entry.file).then(
           function (result) {
             entry.hash = result.hash;
             entry.hashMethod = result.hashMethod;
             entry.dataUri = result.dataUri;
-            var liveData = { documents: window.PCC.store.get().documents };
+            var liveData = { documents: window.PCC.store.get().documents } as PCCStoreData;
             entry.duplicateMatch = projectId ? findBulkDuplicateMatch(liveData, entry, projectId) : null;
             entry.status = entry.duplicateMatch ? "duplicate" : "ready";
             setFiles((prev) => prev.slice());
@@ -554,9 +599,9 @@ function BulkImportPanel({ data, initialProjectId, onClose, onImported }) {
     }, Promise.resolve());
   }
 
-  function handleProjectChange(newProjectId) {
+  function handleProjectChange(newProjectId: string) {
     setProjectId(newProjectId);
-    var liveData = { documents: window.PCC.store.get().documents };
+    var liveData = { documents: window.PCC.store.get().documents } as PCCStoreData;
     files.forEach(function (entry) {
       if (entry.status === "scanning" || entry.status === "error" || !entry.hash) return;
       entry.duplicateMatch = findBulkDuplicateMatch(liveData, entry, newProjectId);
@@ -565,7 +610,7 @@ function BulkImportPanel({ data, initialProjectId, onClose, onImported }) {
     setFiles((prev) => prev.slice());
   }
 
-  function removeFile(index) {
+  function removeFile(index: number) {
     setFiles((prev) => prev.filter((_, i) => i !== index));
   }
 
@@ -663,7 +708,7 @@ function BulkImportPanel({ data, initialProjectId, onClose, onImported }) {
       <div style={{ display: "flex", gap: "var(--space-3)", marginBottom: "var(--space-3)" }}>
         <button
           className="btn btn--ghost"
-          onClick={() => document.getElementById("bulkimport-files-input").click()}
+          onClick={() => (document.getElementById("bulkimport-files-input") as HTMLInputElement).click()}
         >
           Choose Files
         </button>
@@ -679,7 +724,7 @@ function BulkImportPanel({ data, initialProjectId, onClose, onImported }) {
         />
         <button
           className="btn btn--ghost"
-          onClick={() => document.getElementById("bulkimport-folder-input").click()}
+          onClick={() => (document.getElementById("bulkimport-folder-input") as HTMLInputElement).click()}
         >
           Choose Folder
         </button>
@@ -687,7 +732,7 @@ function BulkImportPanel({ data, initialProjectId, onClose, onImported }) {
           id="bulkimport-folder-input"
           type="file"
           multiple
-          webkitdirectory=""
+          {...({ webkitdirectory: "" } as any)}
           style={{ display: "none" }}
           onChange={(e) => {
             if (e.target.files && e.target.files.length) scanFiles(e.target.files);
@@ -758,7 +803,15 @@ function BulkImportPanel({ data, initialProjectId, onClose, onImported }) {
   );
 }
 
-function DocumentBulkBar({ selectedIds, filtered, trashMode, onCleared, onChanged }) {
+interface DocumentBulkBarProps {
+  selectedIds: { [id: string]: boolean };
+  filtered: PCCDocument[];
+  trashMode: boolean;
+  onCleared: () => void;
+  onChanged: () => void;
+}
+
+function DocumentBulkBar({ selectedIds, filtered, trashMode, onCleared, onChanged }: DocumentBulkBarProps) {
   var n = Object.keys(selectedIds).length;
   if (n === 0) return null;
   var noun = n === 1 ? "document" : "documents";
@@ -873,7 +926,17 @@ function DocumentBulkBar({ selectedIds, filtered, trashMode, onCleared, onChange
   );
 }
 
-function DocumentListItem({ doc, data, isSelected, onSelect, isChecked, onCheckChange, trashMode }) {
+interface DocumentListItemProps {
+  doc: PCCDocument;
+  data: PCCStoreData;
+  isSelected: boolean;
+  onSelect: () => void;
+  isChecked: boolean;
+  onCheckChange: (checked: boolean) => void;
+  trashMode: boolean;
+}
+
+function DocumentListItem({ doc, data, isSelected, onSelect, isChecked, onCheckChange, trashMode }: DocumentListItemProps) {
   return (
     <div className={"doc-register-item" + (isSelected ? " doc-register-item--selected" : "")} onClick={onSelect}>
       <input
@@ -890,8 +953,8 @@ function DocumentListItem({ doc, data, isSelected, onSelect, isChecked, onCheckC
         {doc.document_number ? " · " + doc.document_number + (doc.revision ? " Rev " + doc.revision : "") : ""}
       </div>
       <div className="doc-register-item__badges">
-        <span className="status-badge status-badge--complete">{CATEGORY_LABELS[doc.category] || doc.category}</span>
-        <span className="status-badge status-badge--info">{STATUS_LABELS[doc.status] || doc.status}</span>
+        <span className="status-badge status-badge--complete">{CATEGORY_LABELS[doc.category || ""] || doc.category}</span>
+        <span className="status-badge status-badge--info">{STATUS_LABELS[doc.status || ""] || doc.status}</span>
         {doc.is_duplicate ? (
           <span className="status-badge status-badge--at_risk" title={doc.duplicate_reason || "Flagged as a possible duplicate at upload time."}>
             Possible Duplicate
@@ -903,7 +966,31 @@ function DocumentListItem({ doc, data, isSelected, onSelect, isChecked, onCheckC
   );
 }
 
-function DocumentPreviewPanel({ doc, data, trashMode, previewExtractionExpanded, onToggleExtraction, expandedRevisionsGroupId, onToggleHistory, onChanged, onNewRevision, onDeletedSelection }) {
+interface DocumentPreviewPanelProps {
+  doc: PCCDocument;
+  data: PCCStoreData;
+  trashMode: boolean;
+  previewExtractionExpanded: boolean;
+  onToggleExtraction: () => void;
+  expandedRevisionsGroupId: string | null;
+  onToggleHistory: () => void;
+  onChanged: () => void;
+  onNewRevision: (doc: PCCDocument) => void;
+  onDeletedSelection: (allRevisionIds: string[]) => void;
+}
+
+function DocumentPreviewPanel({
+  doc,
+  data,
+  trashMode,
+  previewExtractionExpanded,
+  onToggleExtraction,
+  expandedRevisionsGroupId,
+  onToggleHistory,
+  onChanged,
+  onNewRevision,
+  onDeletedSelection,
+}: DocumentPreviewPanelProps) {
   var allRevisions = revisionsFor(data.documents, doc.document_group_id);
   var linkedMeeting = doc.meeting_id ? data.meetings.find((m) => m.id === doc.meeting_id) : null;
   var linkedActivity = doc.activity_id ? data.activities.find((a) => a.id === doc.activity_id) : null;
@@ -911,7 +998,7 @@ function DocumentPreviewPanel({ doc, data, trashMode, previewExtractionExpanded,
   var linkedVendor = doc.vendor_id ? data.vendors.find((v) => v.id === doc.vendor_id) : null;
   var linkedPackage = doc.package_id ? data.packages.find((p) => p.id === doc.package_id) : null;
 
-  function item(label, value) {
+  function item(label: string, value: string | number | null | undefined) {
     return (
       <div key={label}>
         <span className="detail-item__label">{label}</span>
@@ -927,7 +1014,7 @@ function DocumentPreviewPanel({ doc, data, trashMode, previewExtractionExpanded,
           <h3 style={{ marginBottom: 2, wordBreak: "break-word" }}>{doc.filename}</h3>
         </div>
         <div style={{ display: "flex", gap: "var(--space-2)", flexShrink: 0 }}>
-          <span className="status-badge status-badge--complete">{CATEGORY_LABELS[doc.category] || doc.category}</span>
+          <span className="status-badge status-badge--complete">{CATEGORY_LABELS[doc.category || ""] || doc.category}</span>
           {doc.is_duplicate ? (
             <span className="status-badge status-badge--at_risk" title={doc.duplicate_reason || "Flagged as a possible duplicate at upload time."}>
               Possible Duplicate
@@ -958,7 +1045,7 @@ function DocumentPreviewPanel({ doc, data, trashMode, previewExtractionExpanded,
       <div className="detail-grid">
         {item("Project", projectName(data, doc.project_id))}
         {item("Size", formatBytes(doc.file_size))}
-        {item("Uploaded", new Date(doc.uploaded_at).toLocaleDateString())}
+        {item("Uploaded", new Date(doc.uploaded_at || "").toLocaleDateString())}
         {item("Revision", doc.revision_number)}
         {linkedDocType ? item("Type", linkedDocType.name) : null}
         {doc.discipline ? item("Discipline", doc.discipline) : null}
@@ -983,17 +1070,17 @@ function DocumentPreviewPanel({ doc, data, trashMode, previewExtractionExpanded,
           Open File
         </button>
         {linkedMeeting ? (
-          <button className="btn btn--ghost" onClick={() => viewMeeting(linkedMeeting.id)}>
+          <button className="btn btn--ghost" onClick={() => viewMeeting(linkedMeeting!.id)}>
             View Meeting
           </button>
         ) : null}
         {linkedVendor ? (
-          <button className="btn btn--ghost" onClick={() => viewVendor(linkedVendor.id)}>
+          <button className="btn btn--ghost" onClick={() => viewVendor(linkedVendor!.id)}>
             View Vendor
           </button>
         ) : null}
         {linkedActivity ? (
-          <button className="btn btn--ghost" onClick={() => viewActivityInSchedule(doc.project_id, linkedActivity.schedule_id, linkedActivity.id)}>
+          <button className="btn btn--ghost" onClick={() => viewActivityInSchedule(doc.project_id, linkedActivity!.schedule_id, linkedActivity!.id)}>
             View in Gantt
           </button>
         ) : null}
@@ -1075,7 +1162,7 @@ function DocumentPreviewPanel({ doc, data, trashMode, previewExtractionExpanded,
                     Rev {rev.revision_number} — {rev.filename}
                   </div>
                   <div className="attention-item__meta">
-                    {(STATUS_LABELS[rev.status] || rev.status) + " · " + new Date(rev.uploaded_at).toLocaleDateString()}
+                    {(STATUS_LABELS[rev.status || ""] || rev.status) + " · " + new Date(rev.uploaded_at || "").toLocaleDateString()}
                   </div>
                 </div>
               </div>
@@ -1087,31 +1174,39 @@ function DocumentPreviewPanel({ doc, data, trashMode, previewExtractionExpanded,
   );
 }
 
-export default function DocumentsPage({ initialFormOpen, initialProjectId, initialMeetingId, initialProjectFilter, initialSelectedDocId }) {
-  const [data, setData] = useState(() => getData());
-  const [filters, setFilters] = useState(() => {
+interface DocumentsPageProps {
+  initialFormOpen?: boolean;
+  initialProjectId?: string;
+  initialMeetingId?: string;
+  initialProjectFilter?: string;
+  initialSelectedDocId?: string;
+}
+
+export default function DocumentsPage({ initialFormOpen, initialProjectId, initialMeetingId, initialProjectFilter, initialSelectedDocId }: DocumentsPageProps) {
+  const [data, setData] = useState<PCCStoreData>(() => getData());
+  const [filters, setFilters] = useState<DocumentFilters>(() => {
     var ctxProjectId = getProjectContext();
     var projectFilter = initialProjectFilter || (ctxProjectId && data.projects.some((p) => p.id === ctxProjectId) ? ctxProjectId : "");
     return { search: "", categoryFilter: "", statusFilter: "", projectFilter: projectFilter };
   });
   const [formOpen, setFormOpen] = useState(!!initialFormOpen);
-  const [formPrefill, setFormPrefill] = useState(function () {
+  const [formPrefill, setFormPrefill] = useState<UploadFormPrefill>(function () {
     return { projectId: initialProjectId || "", meetingId: initialMeetingId || "" };
   });
   const [bulkImportOpen, setBulkImportOpen] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
-  const [selectedDocId, setSelectedDocId] = useState(initialSelectedDocId || null);
-  const [selectedIds, setSelectedIds] = useState({});
+  const [selectedDocId, setSelectedDocId] = useState<string | null>(initialSelectedDocId || null);
+  const [selectedIds, setSelectedIds] = useState<{ [id: string]: boolean }>({});
   const [previewExtractionExpanded, setPreviewExtractionExpanded] = useState(false);
-  const [expandedRevisionsGroupId, setExpandedRevisionsGroupId] = useState(null);
-  const [listWidth, setListWidth] = useState(null);
+  const [expandedRevisionsGroupId, setExpandedRevisionsGroupId] = useState<string | null>(null);
+  const [listWidth, setListWidth] = useState<number | null>(null);
   const [formKey, setFormKey] = useState(0);
 
   function refresh() {
     setData(getData());
   }
 
-  function selectDocument(docId) {
+  function selectDocument(docId: string) {
     setSelectedDocId(docId);
     setPreviewExtractionExpanded(false);
   }
@@ -1126,7 +1221,7 @@ export default function DocumentsPage({ initialFormOpen, initialProjectId, initi
     setFormOpen(true);
   }
 
-  function openNewRevisionForm(doc) {
+  function openNewRevisionForm(doc: PCCDocument) {
     setFormPrefill({
       projectId: doc.project_id,
       activityId: doc.activity_id || "",
@@ -1162,10 +1257,10 @@ export default function DocumentsPage({ initialFormOpen, initialProjectId, initi
 
   var filtered = !isEmpty && !trashEmpty
     ? showTrash
-      ? latestDocuments(data.documents.filter((d) => d.trashed_at)).sort((a, b) => new Date(b.trashed_at) - new Date(a.trashed_at))
+      ? latestDocuments(data.documents.filter((d) => d.trashed_at)).sort((a, b) => new Date(b.trashed_at || "").getTime() - new Date(a.trashed_at || "").getTime())
       : latestDocuments(data.documents.filter((d) => !d.trashed_at))
           .filter((doc) => documentMatchesFilters(doc, filters))
-          .sort((a, b) => new Date(b.uploaded_at) - new Date(a.uploaded_at))
+          .sort((a, b) => new Date(b.uploaded_at || "").getTime() - new Date(a.uploaded_at || "").getTime())
     : [];
 
   var effectiveSelectedId = selectedDocId && filtered.some((d) => d.id === selectedDocId) ? selectedDocId : filtered[0] ? filtered[0].id : null;
@@ -1353,20 +1448,20 @@ export default function DocumentsPage({ initialFormOpen, initialProjectId, initi
             role="separator"
             aria-label="Resize document list"
             title="Drag to resize, double-click to reset"
-            onMouseDown={(downEvent) => {
+            onMouseDown={(downEvent: React.MouseEvent<HTMLDivElement>) => {
               downEvent.preventDefault();
               // The DOM spec nulls out event.currentTarget once the dispatching event's
               // own listeners finish running — capturing the element itself (not the
               // event) is required here since onMouseMove/onMouseUp fire later, on
               // separate events (confirmed real jsdom/Chromium behavior, not a quirk).
               var handleEl = downEvent.currentTarget;
-              var registerEl = handleEl.parentElement;
-              var listPaneEl = registerEl.querySelector(".doc-register-list");
+              var registerEl = handleEl.parentElement as HTMLElement;
+              var listPaneEl = registerEl.querySelector(".doc-register-list") as HTMLElement;
               var registerRect = registerEl.getBoundingClientRect();
-              var lastWidth = null;
+              var lastWidth: number | null = null;
               handleEl.classList.add("doc-register-resize-handle--dragging");
 
-              function onMouseMove(moveEvent) {
+              function onMouseMove(moveEvent: MouseEvent) {
                 var raw = moveEvent.clientX - registerRect.left;
                 var clamped = Math.max(240, Math.min(640, raw));
                 lastWidth = clamped;
@@ -1393,11 +1488,11 @@ export default function DocumentsPage({ initialFormOpen, initialProjectId, initi
               previewExtractionExpanded={previewExtractionExpanded}
               onToggleExtraction={() => setPreviewExtractionExpanded((v) => !v)}
               expandedRevisionsGroupId={expandedRevisionsGroupId}
-              onToggleHistory={() => setExpandedRevisionsGroupId((cur) => (cur === selectedDoc.document_group_id ? null : selectedDoc.document_group_id))}
+              onToggleHistory={() => setExpandedRevisionsGroupId((cur) => (cur === selectedDoc!.document_group_id ? null : selectedDoc!.document_group_id || null))}
               onChanged={refresh}
               onNewRevision={openNewRevisionForm}
               onDeletedSelection={(allRevisionIds) => {
-                if (allRevisionIds.indexOf(effectiveSelectedId) !== -1) setSelectedDocId(null);
+                if (allRevisionIds.indexOf(effectiveSelectedId || "") !== -1) setSelectedDocId(null);
               }}
             />
           ) : null}
@@ -1433,7 +1528,7 @@ export default function DocumentsPage({ initialFormOpen, initialProjectId, initi
         />
       ) : null}
       {bulkImportOpen ? (
-        <BulkImportPanel data={data} initialProjectId={filters.projectFilter} onClose={() => setBulkImportOpen(false)} onImported={refresh} />
+        <BulkImportPanel data={data} initialProjectId={filters.projectFilter || ""} onClose={() => setBulkImportOpen(false)} onImported={refresh} />
       ) : null}
 
       {body}

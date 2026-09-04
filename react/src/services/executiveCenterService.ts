@@ -18,43 +18,59 @@
  * render() function can consume a one-shot pending prop before mount), so this file's
  * own viewProject forwards to it.
  */
+import type {
+  PCCStoreData,
+  PCCProject,
+  PCCSchedule,
+  PCCActivity,
+  PCCRisk,
+  ProjectContext,
+  NamedRef,
+  CpmResult,
+  HealthScoreResult,
+  DiagnosticAlert,
+  ExecutiveCenterHealthSummary,
+  ExecutiveCenterSchedulePerformanceSummary,
+  WeeklyReviewSnapshot,
+  PCCWeeklyReview,
+} from "../types/pcc";
 
-export var SEVERITY_MATRIX = {
+export var SEVERITY_MATRIX: { [probability: string]: { [impact: string]: string } } = {
   high: { low: "medium", medium: "high", high: "high" },
   medium: { low: "low", medium: "medium", high: "high" },
   low: { low: "low", medium: "low", high: "medium" },
 };
 export var RISK_LEVELS = ["low", "medium", "high"];
-export var RAG_LABELS = { on_track: "On Track", at_risk: "At Risk", critical: "Critical", unknown: "Not Yet Scored" };
-export var RAG_COLOR_VAR = { on_track: "--status-on-track", at_risk: "--status-at-risk", critical: "--status-critical", unknown: "--text-secondary" };
-export var SEVERITY_LABEL = { critical: "Critical", warning: "Warning", info: "Info" };
-export var DIAGNOSTICS_ICON_CLASS = { critical: "critical", warning: "warning", info: "info" };
-export var ACTIVITY_STATUS_LABEL_MAP = { not_started: "Not Started", in_progress: "In Progress", complete: "Complete", on_hold: "On Hold" };
+export var RAG_LABELS: { [rag: string]: string } = { on_track: "On Track", at_risk: "At Risk", critical: "Critical", unknown: "Not Yet Scored" };
+export var RAG_COLOR_VAR: { [rag: string]: string } = { on_track: "--status-on-track", at_risk: "--status-at-risk", critical: "--status-critical", unknown: "--text-secondary" };
+export var SEVERITY_LABEL: { [severity: string]: string } = { critical: "Critical", warning: "Warning", info: "Info" };
+export var DIAGNOSTICS_ICON_CLASS: { [severity: string]: string } = { critical: "critical", warning: "warning", info: "info" };
+export var ACTIVITY_STATUS_LABEL_MAP: { [status: string]: string } = { not_started: "Not Started", in_progress: "In Progress", complete: "Complete", on_hold: "On Hold" };
 
-export function getData() {
+export function getData(): PCCStoreData {
   return Object.assign({}, window.PCC.store.get());
 }
 
-export function today() {
+export function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-export function fmtMoney(amount, currency) {
+export function fmtMoney(amount: number | string | null | undefined, currency: string | undefined): string {
   if (amount === null || amount === undefined || amount === "" || isNaN(Number(amount))) return "—";
   var n = Number(amount);
   return (currency ? currency + " " : "") + n.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
-export function fmtPct(n) {
+export function fmtPct(n: number | null | undefined): string {
   if (n === null || n === undefined || isNaN(n)) return "—";
   return Math.round(n) + "%";
 }
 
-export function riskSeverity(r) {
-  return SEVERITY_MATRIX[r.probability] ? SEVERITY_MATRIX[r.probability][r.impact] : "medium";
+export function riskSeverity(r: PCCRisk): string {
+  return SEVERITY_MATRIX[r.probability || ""] ? SEVERITY_MATRIX[r.probability || ""][r.impact || ""] : "medium";
 }
 
-function pickPrimarySchedule(schedules) {
+function pickPrimarySchedule(schedules: PCCSchedule[]): PCCSchedule | null {
   if (schedules.length === 0) return null;
   var active = schedules.filter(function (s) {
     return s.status === "active";
@@ -64,19 +80,19 @@ function pickPrimarySchedule(schedules) {
     .slice()
     .sort(function (a, b) {
       if (a.revision_number !== b.revision_number) return b.revision_number - a.revision_number;
-      return new Date(b.updated_at) - new Date(a.updated_at);
+      return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
     })[0];
 }
 
 /** Every number the rest of this page needs, in one place, so KPIs/health/diagnostics/
  * summary/charts/snapshot all read from the same computed values instead of five
  * slightly-different re-derivations of "what's overdue." */
-export function buildProjectContext(data, projectId) {
+export function buildProjectContext(data: PCCStoreData, projectId: string): ProjectContext {
   var project = data.projects.find(function (p) {
     return p.id === projectId;
   });
   var todayIso = today();
-  var ctx = { project: project, todayIso: todayIso };
+  var ctx: ProjectContext = { project: project, todayIso: todayIso };
   if (!project) return ctx;
 
   // ---- Schedule ----
@@ -89,25 +105,25 @@ export function buildProjectContext(data, projectId) {
 
   var activities = schedule
     ? data.activities.filter(function (a) {
-        return a.schedule_id === schedule.id;
+        return a.schedule_id === (schedule as PCCSchedule).id;
       })
     : [];
   var relationships = schedule
     ? data.relationships.filter(function (r) {
-        return r.schedule_id === schedule.id;
+        return r.schedule_id === (schedule as PCCSchedule).id;
       })
     : [];
   ctx.activities = activities;
   ctx.relationships = relationships;
 
-  var cpm = null;
+  var cpm: CpmResult | null = null;
   if (schedule && activities.length > 0) {
     cpm = window.PCC.scheduleCpmEngine.calculateSchedule(activities, relationships, {
-      dataDate: schedule.data_date,
+      dataDate: (schedule as any).data_date,
       nearCriticalThresholdDays: schedule.near_critical_threshold_days,
-      calculationMode: schedule.calculation_mode,
-      calendarAware: schedule.calendar_aware,
-      honorConstraints: schedule.constraints_enabled,
+      calculationMode: (schedule as any).calculation_mode,
+      calendarAware: (schedule as any).calendar_aware,
+      honorConstraints: (schedule as any).constraints_enabled,
       calendars: (data.calendars || []).filter(function (c) {
         return c.project_id === projectId;
       }),
@@ -115,14 +131,14 @@ export function buildProjectContext(data, projectId) {
   }
   ctx.cpm = cpm;
 
-  var referenceDate = (schedule && schedule.data_date) || todayIso;
+  var referenceDate = (schedule && (schedule as any).data_date) || todayIso;
   ctx.referenceDate = referenceDate;
 
-  var criticalActivities = [];
-  var nearCriticalActivities = [];
-  var delayedActivities = [];
+  var criticalActivities: NamedRef[] = [];
+  var nearCriticalActivities: NamedRef[] = [];
+  var delayedActivities: (NamedRef & { finish?: string | null })[] = [];
   var completedCount = 0;
-  var plannedDates = [];
+  var plannedDates: string[] = [];
   var weightedProgressNumerator = 0;
   var weightedProgressDenominator = 0;
   var weightedPhysicalNumerator = 0;
@@ -130,19 +146,19 @@ export function buildProjectContext(data, projectId) {
   var notStartedCount = 0;
   var remainingDurationTotal = 0;
   var remainingDurationMissingCount = 0;
-  var forecastLateActivities = [];
-  var outOfSequenceActivities = [];
+  var forecastLateActivities: (NamedRef & { plannedFinish?: string; forecastFinish?: string; varianceDays: number })[] = [];
+  var outOfSequenceActivities: NamedRef[] = [];
 
   activities.forEach(function (a) {
     var r = cpm && cpm.results[a.id];
     var totalFloat = r ? r.total_float : a.total_float;
     var earlyFinish = r ? r.early_finish : a.early_finish;
     var effectiveFinish = earlyFinish || a.planned_finish;
-    var isOutOfSequence = r ? r.is_out_of_sequence : a.is_out_of_sequence;
+    var isOutOfSequence = r ? r.is_out_of_sequence : (a as any).is_out_of_sequence;
     if (isOutOfSequence) outOfSequenceActivities.push({ id: a.id, name: a.name });
 
     if (totalFloat != null && totalFloat <= 0) criticalActivities.push({ id: a.id, name: a.name });
-    else if (totalFloat != null && totalFloat > 0 && totalFloat <= (schedule ? schedule.near_critical_threshold_days : 5)) {
+    else if (totalFloat != null && totalFloat > 0 && totalFloat <= (schedule ? schedule.near_critical_threshold_days || 5 : 5)) {
       nearCriticalActivities.push({ id: a.id, name: a.name });
     }
     if (effectiveFinish && effectiveFinish < referenceDate && a.status !== "complete") {
@@ -152,11 +168,11 @@ export function buildProjectContext(data, projectId) {
       completedCount++;
     } else if (a.status === "in_progress") {
       inProgressCount++;
-      if (a.remaining_duration != null) remainingDurationTotal += Number(a.remaining_duration) || 0;
+      if ((a as any).remaining_duration != null) remainingDurationTotal += Number((a as any).remaining_duration) || 0;
       else remainingDurationMissingCount++;
     } else if (a.status === "not_started") {
       notStartedCount++;
-      if (a.duration != null) remainingDurationTotal += Number(a.duration) || 0;
+      if ((a as any).duration != null) remainingDurationTotal += Number((a as any).duration) || 0;
     }
     if (a.status !== "complete" && earlyFinish && a.planned_finish && earlyFinish > a.planned_finish) {
       forecastLateActivities.push({
@@ -170,10 +186,10 @@ export function buildProjectContext(data, projectId) {
     if (a.planned_start) plannedDates.push(a.planned_start);
     if (a.planned_finish) plannedDates.push(a.planned_finish);
 
-    var weight = a.duration != null && a.duration > 0 ? a.duration : 1;
+    var weight = (a as any).duration != null && (a as any).duration > 0 ? (a as any).duration : 1;
     weightedProgressNumerator += weight * (Number(a.percent_complete) || 0);
     weightedProgressDenominator += weight;
-    weightedPhysicalNumerator += weight * (Number(a.physical_progress) || 0);
+    weightedPhysicalNumerator += weight * (Number((a as any).physical_progress) || 0);
   });
   forecastLateActivities.sort(function (a, b) {
     return b.varianceDays - a.varianceDays;
@@ -192,7 +208,7 @@ export function buildProjectContext(data, projectId) {
   ctx.outOfSequenceActivities = outOfSequenceActivities;
   ctx.baselineCount = schedule
     ? data.schedule_baselines.filter(function (b) {
-        return b.schedule_id === schedule.id;
+        return b.schedule_id === (schedule as PCCSchedule).id;
       }).length
     : 0;
   ctx.scheduleProgressPct = weightedProgressDenominator > 0 ? weightedProgressNumerator / weightedProgressDenominator : null;
@@ -208,9 +224,9 @@ export function buildProjectContext(data, projectId) {
       })
     : project.finish_date || null;
   ctx.plannedDurationDays = ctx.plannedStart && ctx.plannedFinish ? window.PCC.scheduleGanttLayout.diffDays(ctx.plannedStart, ctx.plannedFinish) : null;
-  ctx.forecastFinish = cpm && cpm.projectFinish ? cpm.projectFinish : project.forecast_finish_date || null;
-  ctx.forecastFinishSource = cpm && cpm.projectFinish ? "calculated" : project.forecast_finish_date ? "manual" : "none";
-  ctx.forecastVarianceDays = cpm ? cpm.forecastVarianceDays : null;
+  ctx.forecastFinish = cpm && cpm.projectFinish ? cpm.projectFinish : (project as any).forecast_finish_date || null;
+  ctx.forecastFinishSource = cpm && cpm.projectFinish ? "calculated" : (project as any).forecast_finish_date ? "manual" : "none";
+  ctx.forecastVarianceDays = cpm ? cpm.forecastVarianceDays ?? null : null;
   ctx.officialBaseline =
     data.schedule_baselines.find(function (b) {
       return b.project_id === projectId && b.is_official;
@@ -226,8 +242,8 @@ export function buildProjectContext(data, projectId) {
   var milestoneActivities = activities.filter(function (a) {
     return a.activity_type === "milestone";
   });
-  var upcomingMilestones = [];
-  var slippedMilestones = [];
+  var upcomingMilestones: (NamedRef & { date: string })[] = [];
+  var slippedMilestones: (NamedRef & { varianceDays: number })[] = [];
   milestoneActivities.forEach(function (a) {
     var r = cpm && cpm.results[a.id];
     var calcDate = r ? r.early_start : a.early_start;
@@ -261,11 +277,10 @@ export function buildProjectContext(data, projectId) {
     budgetItems.length > 0
       ? window.PCC.costEvmEngine.computeEvm(budgetItems, actuals, activities, schedule ? [schedule] : [], {
           bac: costSummary.budgeted,
-          ac: costSummary.actual,
         })
       : null;
 
-  var dataDateForEvm = (schedule && schedule.data_date) || null;
+  var dataDateForEvm = (schedule && (schedule as any).data_date) || null;
   ctx.earnedSchedule =
     ctx.evm && ctx.evm.ev != null ? window.PCC.costEvmEngine.computeEarnedSchedule(budgetItems, activities, { ev: ctx.evm.ev, dataDate: dataDateForEvm }) : null;
   ctx.schedulePerformance = window.PCC.schedulePerformanceEngine.computeSchedulePerformanceScore({
@@ -281,11 +296,11 @@ export function buildProjectContext(data, projectId) {
       return s.project_id === projectId;
     })
     .sort(function (a, b) {
-      return new Date(b.captured_at) - new Date(a.captured_at);
+      return new Date(b.captured_at || "").getTime() - new Date(a.captured_at || "").getTime();
     });
 
   var COMMITMENT_RISK_WINDOW_DAYS = 7;
-  function commitmentAtRisk(c) {
+  function commitmentAtRisk(c: (typeof data.commitments)[number]): boolean {
     if (!c.activity_id || c.status === "approved" || c.status === "closed" || c.status === "cancelled") return false;
     var act = data.activities.find(function (a) {
       return a.id === c.activity_id;
@@ -311,7 +326,7 @@ export function buildProjectContext(data, projectId) {
         return sum + (Number(a.amount) || 0);
       }, 0);
     commitmentTotals.committed += Number(c.committed_value) || 0;
-    commitmentTotals.approved += Number(c.approved_value) || 0;
+    commitmentTotals.approved += Number((c as any).approved_value) || 0;
     commitmentTotals.actual += actual;
     if (c.committed_value != null) commitmentTotals.remaining += Number(c.committed_value) - actual;
     if (commitmentAtRisk(c)) commitmentTotals.atRisk++;
@@ -358,7 +373,7 @@ export function buildProjectContext(data, projectId) {
         id: r.id,
         number: r.number,
         subject: r.subject,
-        daysOverdue: window.PCC.scheduleGanttLayout.diffDays(r.date_required, todayIso),
+        daysOverdue: window.PCC.scheduleGanttLayout.diffDays(r.date_required as string, todayIso),
       };
     });
   var answeredRfis = projectRfis.filter(function (r) {
@@ -367,7 +382,7 @@ export function buildProjectContext(data, projectId) {
   var avgResponseDays =
     answeredRfis.length > 0
       ? answeredRfis.reduce(function (sum, r) {
-          return sum + window.PCC.scheduleGanttLayout.diffDays(r.date_raised, r.date_answered);
+          return sum + window.PCC.scheduleGanttLayout.diffDays(r.date_raised as string, r.date_answered as string);
         }, 0) / answeredRfis.length
       : null;
   ctx.allRfis = projectRfis;
@@ -398,7 +413,7 @@ export function buildProjectContext(data, projectId) {
   var projectMeetings = data.meetings.filter(function (m) {
     return m.project_id === projectId;
   });
-  var overdueMeetingActions = [];
+  var overdueMeetingActions: { meetingId: string; meetingTitle: string; description?: string; dueDate?: string }[] = [];
   projectMeetings.forEach(function (m) {
     (m.actions || []).forEach(function (a) {
       if (a.status === "open" && a.due_date && a.due_date < todayIso) {
@@ -413,7 +428,7 @@ export function buildProjectContext(data, projectId) {
       return m.meeting_date && m.meeting_date >= todayIso;
     })
     .sort(function (a, b) {
-      return a.meeting_date < b.meeting_date ? -1 : 1;
+      return (a.meeting_date as string) < (b.meeting_date as string) ? -1 : 1;
     });
   ctx.upcomingMeetings = upcomingMeetings;
 
@@ -426,21 +441,21 @@ export function buildProjectContext(data, projectId) {
   });
 
   // ---- Resources ----
-  var allProjectActivityIds = {};
+  var allProjectActivityIds: { [id: string]: boolean } = {};
   data.activities.forEach(function (a) {
     if (a.project_id === projectId) allProjectActivityIds[a.id] = true;
   });
   var projectAssignments = data.resource_assignments.filter(function (a) {
-    return allProjectActivityIds[a.activity_id];
+    return !!a.activity_id && allProjectActivityIds[a.activity_id];
   });
-  var assignedResourceIds = {};
+  var assignedResourceIds: { [id: string]: boolean } = {};
   projectAssignments.forEach(function (a) {
-    assignedResourceIds[a.resource_id] = true;
+    if (a.resource_id) assignedResourceIds[a.resource_id] = true;
   });
   var portfolioOverAlloc = window.PCC.resourceLevelingEngine
     ? window.PCC.resourceLevelingEngine.portfolioOverAllocationSummary(data.resources, data.resource_assignments, data.activities, data.resource_unavailability)
     : [];
-  var overAllocById = {};
+  var overAllocById: { [resourceId: string]: (typeof portfolioOverAlloc)[number] } = {};
   portfolioOverAlloc.forEach(function (s) {
     overAllocById[s.resourceId] = s;
   });
@@ -454,7 +469,7 @@ export function buildProjectContext(data, projectId) {
     });
 
   // ---- Document Control ----
-  var docTypesById = {};
+  var docTypesById: { [id: string]: (typeof data.document_types)[number] } = {};
   data.document_types.forEach(function (t) {
     docTypesById[t.id] = t;
   });
@@ -463,7 +478,7 @@ export function buildProjectContext(data, projectId) {
   });
   var docControlAvailable = 0;
   var docControlOverdue = 0;
-  var docControlOverdueTypeNames = [];
+  var docControlOverdueTypeNames: string[] = [];
   projectDocRequirements.forEach(function (r) {
     var available = data.documents.some(function (d) {
       return d.project_id === projectId && d.document_type_id === r.document_type_id && !d.trashed_at;
@@ -499,15 +514,17 @@ export function buildProjectContext(data, projectId) {
     return r.project_id === projectId;
   });
   ctx.allDelayRecords = projectDelayRecords;
-  var delayDaysByActivity = {};
+  var delayDaysByActivity: { [activityId: string]: number } = {};
   projectDelayRecords.forEach(function (r) {
-    delayDaysByActivity[r.activity_id] = (delayDaysByActivity[r.activity_id] || 0) + (r.delay_days || 0);
+    var actId = r.activity_id || "";
+    delayDaysByActivity[actId] = (delayDaysByActivity[actId] || 0) + (r.delay_days || 0);
   });
-  var recoveryDaysByActivity = {};
+  var recoveryDaysByActivity: { [activityId: string]: number } = {};
   openRecoveryActions.forEach(function (r) {
-    recoveryDaysByActivity[r.activity_id] = (recoveryDaysByActivity[r.activity_id] || 0) + (r.estimated_recovery_days || 0);
+    var actId = r.activity_id || "";
+    recoveryDaysByActivity[actId] = (recoveryDaysByActivity[actId] || 0) + (r.estimated_recovery_days || 0);
   });
-  var unaddressedDelayActivities = [];
+  var unaddressedDelayActivities: { id: string; scheduleId?: string | null; name?: string; delayDays: number; recoveryDays: number; gapDays: number }[] = [];
   var totalDelayDays = 0;
   var totalUnaddressedDelayDays = 0;
   Object.keys(delayDaysByActivity).forEach(function (activityId) {
@@ -550,7 +567,24 @@ export function buildProjectContext(data, projectId) {
   return ctx;
 }
 
-export function healthContextFrom(ctx) {
+export interface HealthContext {
+  totalActivityCount?: number;
+  criticalCount: number;
+  nearCriticalCount: number;
+  forecastVarianceDays?: number | null;
+  plannedDurationDays?: number | null;
+  budgetTotal: number | null;
+  actualTotal: number | null;
+  highRiskCount: number;
+  openRiskCount: number;
+  criticalIssueCount: number;
+  openIssueCount: number;
+  overdueRfiCount: number;
+  openRfiCount: number;
+  pendingChangeOrderCount: number;
+}
+
+export function healthContextFrom(ctx: ProjectContext): HealthContext {
   return {
     totalActivityCount: ctx.totalActivityCount,
     criticalCount: ctx.criticalActivities ? ctx.criticalActivities.length : 0,
@@ -569,7 +603,7 @@ export function healthContextFrom(ctx) {
   };
 }
 
-export function diagnosticsContextFrom(ctx) {
+export function diagnosticsContextFrom(ctx: ProjectContext) {
   return {
     spi: ctx.evm ? ctx.evm.spi : null,
     cpi: ctx.evm ? ctx.evm.cpi : null,
@@ -605,13 +639,19 @@ export function diagnosticsContextFrom(ctx) {
   };
 }
 
-export function floatDistributionBuckets(activities) {
+export interface FloatBucket {
+  label: string;
+  color: string;
+  value: number;
+}
+
+export function floatDistributionBuckets(activities: PCCActivity[]): FloatBucket[] {
   var buckets = [
-    { label: "< 0 (over)", test: function (f) { return f < 0; }, color: "var(--status-critical)" },
-    { label: "0 (critical)", test: function (f) { return f === 0; }, color: "var(--status-critical)" },
-    { label: "1–5", test: function (f) { return f >= 1 && f <= 5; }, color: "var(--status-at-risk)" },
-    { label: "6–15", test: function (f) { return f >= 6 && f <= 15; }, color: "var(--status-info)" },
-    { label: "16+", test: function (f) { return f >= 16; }, color: "var(--status-on-track)" },
+    { label: "< 0 (over)", test: function (f: number) { return f < 0; }, color: "var(--status-critical)" },
+    { label: "0 (critical)", test: function (f: number) { return f === 0; }, color: "var(--status-critical)" },
+    { label: "1–5", test: function (f: number) { return f >= 1 && f <= 5; }, color: "var(--status-at-risk)" },
+    { label: "6–15", test: function (f: number) { return f >= 6 && f <= 15; }, color: "var(--status-info)" },
+    { label: "16+", test: function (f: number) { return f >= 16; }, color: "var(--status-on-track)" },
   ];
   var withFloat = activities.filter(function (a) {
     return a.total_float != null;
@@ -621,7 +661,7 @@ export function floatDistributionBuckets(activities) {
       label: b.label,
       color: b.color,
       value: withFloat.filter(function (a) {
-        return b.test(a.total_float);
+        return b.test(a.total_float as number);
       }).length,
     };
   });
@@ -631,11 +671,11 @@ export function floatDistributionBuckets(activities) {
 // Executive Summary — template/data-driven, never AI-generated.
 // ---------------------------------------------------------------------------------
 
-export function autoStatusText(ctx) {
-  var p = ctx.project;
-  var lines = [];
+export function autoStatusText(ctx: ProjectContext): string {
+  var p = ctx.project as PCCProject;
+  var lines: string[] = [];
   lines.push((p.name || "This project") + " is currently " + (p.status || "on_track").replace("_", " ") + ", " + fmtPct(p.progress) + " complete overall.");
-  if (ctx.totalActivityCount > 0) {
+  if ((ctx.totalActivityCount || 0) > 0) {
     lines.push(
       "Schedule progress is " +
         fmtPct(ctx.scheduleProgressPct) +
@@ -650,15 +690,15 @@ export function autoStatusText(ctx) {
           : "")
     );
   }
-  if (ctx.costSummary.budgeted > 0) {
+  if (ctx.costSummary && ctx.costSummary.budgeted > 0) {
     lines.push("Cost: " + fmtMoney(ctx.costSummary.actual, p.currency) + " actual against a " + fmtMoney(ctx.costSummary.budgeted, p.currency) + " budget.");
   }
   return lines.join(" ");
 }
 
-export function autoAchievementsText(ctx) {
-  var lines = [];
-  var completedMilestones = ctx.activities.filter(function (a) {
+export function autoAchievementsText(ctx: ProjectContext): string {
+  var lines: string[] = [];
+  var completedMilestones = (ctx.activities || []).filter(function (a) {
     return a.activity_type === "milestone" && a.status === "complete";
   });
   if (completedMilestones.length) {
@@ -672,12 +712,12 @@ export function autoAchievementsText(ctx) {
         "."
     );
   }
-  var completedActivities = ctx.activities
+  var completedActivities = (ctx.activities || [])
     .filter(function (a) {
       return a.activity_type !== "milestone" && a.status === "complete";
     })
     .sort(function (a, b) {
-      return (b.duration || 0) - (a.duration || 0);
+      return ((b as any).duration || 0) - ((a as any).duration || 0);
     })
     .slice(0, 5);
   if (completedActivities.length) {
@@ -695,42 +735,53 @@ export function autoAchievementsText(ctx) {
   return lines.join(" ");
 }
 
-export function autoChallengesText(ctx) {
-  var lines = [];
-  if (ctx.delayedActivities.length) lines.push(ctx.delayedActivities.length + " activity(ies) currently delayed.");
-  if (ctx.highRisks.length)
+export function autoChallengesText(ctx: ProjectContext): string {
+  var lines: string[] = [];
+  var delayedActivities = ctx.delayedActivities || [];
+  var highRisks = ctx.highRisks || [];
+  var openIssues = ctx.openIssues || [];
+  var overdueRecoveryActions = ctx.overdueRecoveryActions || [];
+  if (delayedActivities.length) lines.push(delayedActivities.length + " activity(ies) currently delayed.");
+  if (highRisks.length)
     lines.push(
-      ctx.highRisks.length +
+      highRisks.length +
         " open high-severity risk(s): " +
-        ctx.highRisks
+        highRisks
           .map(function (r) {
             return r.title;
           })
           .join(", ") +
         "."
     );
-  if (ctx.openIssues.length) lines.push(ctx.openIssues.length + " open issue(s).");
-  if (ctx.overdueRecoveryActions.length) lines.push(ctx.overdueRecoveryActions.length + " recovery action(s) overdue.");
+  if (openIssues.length) lines.push(openIssues.length + " open issue(s).");
+  if (overdueRecoveryActions.length) lines.push(overdueRecoveryActions.length + " recovery action(s) overdue.");
   if (lines.length === 0) return "No significant delays, high risks, or open issues at this time.";
   return lines.join(" ");
 }
 
-export function autoAttentionText(ctx) {
-  var lines = [];
-  if (ctx.pendingChangeOrders.length) lines.push(ctx.pendingChangeOrders.length + " Change Order(s) awaiting a decision.");
-  if (ctx.overdueRfis.length) lines.push(ctx.overdueRfis.length + " overdue RFI/TQ requiring response.");
-  if (ctx.highRisks.length) lines.push(ctx.highRisks.length + " high-severity risk(s) needing a mitigation decision.");
-  if (ctx.pendingDecisions.length) lines.push(ctx.pendingDecisions.length + " decision(s) pending in the Decision Register.");
+export function autoAttentionText(ctx: ProjectContext): string {
+  var lines: string[] = [];
+  var pendingChangeOrders = ctx.pendingChangeOrders || [];
+  var overdueRfis = ctx.overdueRfis || [];
+  var highRisks = ctx.highRisks || [];
+  var pendingDecisions = ctx.pendingDecisions || [];
+  if (pendingChangeOrders.length) lines.push(pendingChangeOrders.length + " Change Order(s) awaiting a decision.");
+  if (overdueRfis.length) lines.push(overdueRfis.length + " overdue RFI/TQ requiring response.");
+  if (highRisks.length) lines.push(highRisks.length + " high-severity risk(s) needing a mitigation decision.");
+  if (pendingDecisions.length) lines.push(pendingDecisions.length + " decision(s) pending in the Decision Register.");
   if (lines.length === 0) return "Nothing currently requires management decision or approval.";
   return lines.join(" ");
 }
 
-export function autoUpcomingText(ctx) {
-  var lines = [];
-  if (ctx.upcomingMilestones.length) {
+export function autoUpcomingText(ctx: ProjectContext): string {
+  var lines: string[] = [];
+  var upcomingMilestones = ctx.upcomingMilestones || [];
+  var criticalActivities = ctx.criticalActivities || [];
+  var upcomingMeetings = ctx.upcomingMeetings || [];
+  if (upcomingMilestones.length) {
     lines.push(
       "Upcoming milestones: " +
-        ctx.upcomingMilestones
+        upcomingMilestones
           .slice(0, 5)
           .map(function (m) {
             return m.name + " (" + m.date + ")";
@@ -739,25 +790,32 @@ export function autoUpcomingText(ctx) {
         "."
     );
   }
-  if (ctx.criticalActivities.length) lines.push(ctx.criticalActivities.length + " critical-path activity(ies) to watch.");
-  if (ctx.upcomingMeetings.length) lines.push(ctx.upcomingMeetings.length + " meeting(s) scheduled.");
+  if (criticalActivities.length) lines.push(criticalActivities.length + " critical-path activity(ies) to watch.");
+  if (upcomingMeetings.length) lines.push(upcomingMeetings.length + " meeting(s) scheduled.");
   if (lines.length === 0) return "No upcoming milestones, meetings, or critical activities on record.";
   return lines.join(" ");
 }
 
-export function autoDocumentControlText(ctx) {
+export function autoDocumentControlText(ctx: ProjectContext): string {
   if (!ctx.docControlTotal) return "No document requirements have been assigned to this project yet.";
-  var lines = [];
+  var lines: string[] = [];
   lines.push(ctx.docControlAvailable + " of " + ctx.docControlTotal + " required documents are Available.");
-  if (ctx.docControlOverdue > 0) {
-    lines.push(ctx.docControlOverdue + " overdue: " + ctx.docControlOverdueTypeNames.join(", ") + ".");
+  if ((ctx.docControlOverdue || 0) > 0) {
+    lines.push(ctx.docControlOverdue + " overdue: " + (ctx.docControlOverdueTypeNames || []).join(", ") + ".");
   } else {
     lines.push("Nothing is overdue.");
   }
   return lines.join(" ");
 }
 
-export var SUMMARY_SECTIONS = [
+export interface SummarySection {
+  key: string;
+  label: string;
+  overrideKey: string;
+  auto: (ctx: ProjectContext) => string;
+}
+
+export var SUMMARY_SECTIONS: SummarySection[] = [
   { key: "status", label: "Project Status", overrideKey: "status_override", auto: autoStatusText },
   { key: "achievements", label: "Achievements", overrideKey: "achievements_override", auto: autoAchievementsText },
   { key: "challenges", label: "Challenges", overrideKey: "challenges_override", auto: autoChallengesText },
@@ -766,7 +824,7 @@ export var SUMMARY_SECTIONS = [
   { key: "documentControl", label: "Document Control Status", overrideKey: "document_control_override", auto: autoDocumentControlText },
 ];
 
-export function saveExecutiveSummarySection(projectId, overrideKey, value) {
+export function saveExecutiveSummarySection(projectId: string, overrideKey: string, value: string): void {
   window.PCC.store.update(function (d) {
     var rec = d.executive_summaries.find(function (s) {
       return s.project_id === projectId;
@@ -775,27 +833,27 @@ export function saveExecutiveSummarySection(projectId, overrideKey, value) {
       rec = window.PCC.store.newExecutiveSummary({ project_id: projectId });
       d.executive_summaries.push(rec);
     }
-    rec[overrideKey] = value;
+    (rec as any)[overrideKey] = value;
     rec.updated_at = new Date().toISOString();
   });
 }
 
-export function resetExecutiveSummarySection(projectId, overrideKey) {
+export function resetExecutiveSummarySection(projectId: string, overrideKey: string): void {
   window.PCC.store.update(function (d) {
     var rec = d.executive_summaries.find(function (s) {
       return s.project_id === projectId;
     });
-    if (rec) rec[overrideKey] = "";
+    if (rec) (rec as any)[overrideKey] = "";
   });
 }
 
-export function saveHealthWeight(key, value) {
+export function saveHealthWeight(key: string, value: string | number): void {
   window.PCC.store.update(function (d) {
-    d.settings.health_score_weights[key] = Number(value) || 0;
+    (d.settings.health_score_weights as any)[key] = Number(value) || 0;
   });
 }
 
-export function captureSchedulePerformanceSnapshot(projectId, ctx) {
+export function captureSchedulePerformanceSnapshot(projectId: string, ctx: ProjectContext): void {
   window.PCC.store.update(function (d) {
     d.schedule_performance_snapshots.push(
       window.PCC.store.newSchedulePerformanceSnapshot({
@@ -806,8 +864,8 @@ export function captureSchedulePerformanceSnapshot(projectId, ctx) {
         earned_schedule_days: ctx.earnedSchedule && !ctx.earnedSchedule.insufficientData ? ctx.earnedSchedule.earnedScheduleDays : null,
         actual_time_days: ctx.earnedSchedule && !ctx.earnedSchedule.insufficientData ? ctx.earnedSchedule.actualTimeDays : null,
         schedule_variance_days: ctx.earnedSchedule && !ctx.earnedSchedule.insufficientData ? ctx.earnedSchedule.scheduleVarianceDays : null,
-        schedule_performance_score: ctx.schedulePerformance.score,
-        schedule_performance_rag: ctx.schedulePerformance.rag,
+        schedule_performance_score: ctx.schedulePerformance ? ctx.schedulePerformance.score : null,
+        schedule_performance_rag: ctx.schedulePerformance ? ctx.schedulePerformance.rag : null,
         schedule_progress_pct: ctx.scheduleProgressPct,
       })
     );
@@ -815,9 +873,9 @@ export function captureSchedulePerformanceSnapshot(projectId, ctx) {
 }
 
 /** Same overallRating() averaging formula vendors.js's own vendor profile uses. */
-export function overallRating(perf) {
-  var vals = [perf.quality_rating, perf.delivery_rating, perf.communication_rating, perf.safety_rating].filter(function (v) {
-    return v > 0;
+export function overallRating(perf: { quality_rating?: number; delivery_rating?: number; communication_rating?: number; safety_rating?: number }): number {
+  var vals = [perf.quality_rating, perf.delivery_rating, perf.communication_rating, perf.safety_rating].filter(function (v): v is number {
+    return !!v && v > 0;
   });
   if (vals.length === 0) return 0;
   var sum = vals.reduce(function (a, b) {
@@ -828,29 +886,29 @@ export function overallRating(perf) {
 
 /** The exact set of numbers a review freezes, read straight off the already-computed
  * ctx/health for this render — never recomputed later. */
-export function captureSnapshot(ctx, health) {
+export function captureSnapshot(ctx: ProjectContext, health: HealthScoreResult): WeeklyReviewSnapshot {
   return {
     health_score: health.score,
     rag: health.rag,
     schedule_progress_pct: ctx.scheduleProgressPct,
     physical_progress_pct: ctx.physicalProgressPct,
-    cost_budget: ctx.costSummary.budgeted,
-    cost_actual: ctx.costSummary.actual,
-    cost_variance: ctx.costSummary.variance,
-    open_risks: ctx.openRisks.length,
-    high_risks: ctx.highRisks.length,
-    open_rfis: ctx.openRfis.length,
-    overdue_rfis: ctx.overdueRfis.length,
-    pending_change_orders: ctx.pendingChangeOrders.length,
-    open_recovery_actions: ctx.openRecoveryActions.length,
-    overdue_recovery_actions: ctx.overdueRecoveryActions.length,
-    pending_decisions: ctx.pendingDecisions.length,
+    cost_budget: ctx.costSummary ? ctx.costSummary.budgeted : null,
+    cost_actual: ctx.costSummary ? ctx.costSummary.actual : null,
+    cost_variance: ctx.costSummary ? ctx.costSummary.variance : null,
+    open_risks: (ctx.openRisks || []).length,
+    high_risks: (ctx.highRisks || []).length,
+    open_rfis: (ctx.openRfis || []).length,
+    overdue_rfis: (ctx.overdueRfis || []).length,
+    pending_change_orders: (ctx.pendingChangeOrders || []).length,
+    open_recovery_actions: (ctx.openRecoveryActions || []).length,
+    overdue_recovery_actions: (ctx.overdueRecoveryActions || []).length,
+    pending_decisions: (ctx.pendingDecisions || []).length,
   };
 }
 
 /** A small +/-/= delta marker comparing a review's snapshot value against the previous
  * (older) review's. */
-export function deltaMarker(current, previous, higherIsBetter) {
+export function deltaMarker(current: number | null | undefined, previous: number | null | undefined, higherIsBetter: boolean): string {
   if (previous === null || previous === undefined || current === null || current === undefined) return "";
   var diff = current - previous;
   if (diff === 0) return " (=)";
@@ -858,7 +916,7 @@ export function deltaMarker(current, previous, higherIsBetter) {
   return " (" + (diff > 0 ? "+" : "") + diff + (improved ? " ▲" : " ▼") + ")";
 }
 
-export function saveWeeklyReview(isNew, review, values) {
+export function saveWeeklyReview(isNew: boolean, review: { id?: string; project_id: string; snapshot?: WeeklyReviewSnapshot }, values: Partial<PCCWeeklyReview>): void {
   window.PCC.store.update(function (d) {
     if (isNew) {
       d.weekly_reviews.push(window.PCC.store.newWeeklyReview(Object.assign({ project_id: review.project_id, snapshot: review.snapshot }, values)));
@@ -874,7 +932,7 @@ export function saveWeeklyReview(isNew, review, values) {
   });
 }
 
-export function deleteWeeklyReview(reviewId) {
+export function deleteWeeklyReview(reviewId: string): void {
   window.PCC.store.update(function (d) {
     d.weekly_reviews = d.weekly_reviews.filter(function (r) {
       return r.id !== reviewId;
@@ -882,7 +940,7 @@ export function deleteWeeklyReview(reviewId) {
   });
 }
 
-export function saveNewPackTemplate(name, sections) {
+export function saveNewPackTemplate(name: string, sections: { [key: string]: boolean }) {
   var newTemplate = window.PCC.store.newReportTemplate({ report_type: "management_pack", name: name, sections: Object.assign({}, sections) });
   window.PCC.store.update(function (d) {
     d.report_templates.push(newTemplate);
@@ -890,7 +948,7 @@ export function saveNewPackTemplate(name, sections) {
   return newTemplate;
 }
 
-export function updatePackTemplate(templateId, sections) {
+export function updatePackTemplate(templateId: string, sections: { [key: string]: boolean }): void {
   window.PCC.store.update(function (d) {
     var t = d.report_templates.find(function (x) {
       return x.id === templateId;
@@ -902,7 +960,7 @@ export function updatePackTemplate(templateId, sections) {
   });
 }
 
-export function deletePackTemplate(templateId) {
+export function deletePackTemplate(templateId: string): void {
   window.PCC.store.update(function (d) {
     d.report_templates = d.report_templates.filter(function (t) {
       return t.id !== templateId;
@@ -910,8 +968,14 @@ export function deletePackTemplate(templateId) {
   });
 }
 
+export interface NavigationLink {
+  module: string;
+  recordId?: string;
+  tab?: string;
+}
+
 /** Central place every "View" / management-action link goes through. */
-export function navigateToLink(link, projectId) {
+export function navigateToLink(link: NavigationLink | null | undefined, projectId: string): void {
   if (!link || !link.module) return;
   if (link.module === "risks" && window.PCC.risks) {
     if (link.recordId && window.PCC.risks.expandRisk) window.PCC.risks.expandRisk(link.recordId);
@@ -925,7 +989,7 @@ export function navigateToLink(link, projectId) {
     if (link.recordId && window.PCC.decisionRegister.expandDecision) window.PCC.decisionRegister.expandDecision(link.recordId);
   } else if (link.module === "delayRecoveryDashboard") {
     // No per-record expand API — landing there is enough.
-  } else if (link.module === "cost" && window.PCC.cost) {
+  } else if (link.module === "cost" && window.PCC.cost && window.PCC.cost.filterByProject) {
     window.PCC.cost.filterByProject(projectId);
   } else if (link.module === "vendors" && window.PCC.vendors) {
     if (link.recordId && window.PCC.vendors.openProfile) window.PCC.vendors.openProfile(link.recordId);
@@ -933,21 +997,21 @@ export function navigateToLink(link, projectId) {
   window.PCC.router.go(link.module);
 }
 
-export function viewActivityInSchedule(projectId, scheduleId, activityId) {
+export function viewActivityInSchedule(projectId: string, scheduleId: string, activityId: string): void {
   if (window.PCC.schedule) window.PCC.schedule.viewActivity(projectId, scheduleId, activityId);
   window.PCC.router.go("schedule");
 }
 
-export function viewBaselines(projectId, scheduleId) {
+export function viewBaselines(projectId: string, scheduleId: string): void {
   if (window.PCC.schedule) window.PCC.schedule.viewBaselines(projectId, scheduleId);
   window.PCC.router.go("schedule");
 }
 
-export function getProjectContext() {
+export function getProjectContext(): string {
   return window.PCC.projectContext.get();
 }
 
-export function setProjectContext(projectId) {
+export function setProjectContext(projectId: string): void {
   window.PCC.projectContext.set(projectId);
 }
 
@@ -959,16 +1023,16 @@ export function setProjectContext(projectId) {
 // other pages' calc functions use — see this file's own header comment.
 // ---------------------------------------------------------------------------------
 
-window.PCC = window.PCC || {};
-window.PCC.executiveCenter = window.PCC.executiveCenter || {};
+window.PCC = window.PCC || ({} as any);
+window.PCC.executiveCenter = window.PCC.executiveCenter || ({} as any);
 
-window.PCC.executiveCenter.getDiagnostics = function (projectId) {
+window.PCC.executiveCenter.getDiagnostics = function (projectId: string): DiagnosticAlert[] {
   var data = window.PCC.store.get();
   var ctx = buildProjectContext(data, projectId);
   return window.PCC.projectHealthEngine.computeDiagnostics(diagnosticsContextFrom(ctx));
 };
 
-window.PCC.executiveCenter.getHealthSummary = function (projectId) {
+window.PCC.executiveCenter.getHealthSummary = function (projectId: string): ExecutiveCenterHealthSummary {
   var data = window.PCC.store.get();
   var ctx = buildProjectContext(data, projectId);
   var health = window.PCC.projectHealthEngine.computeHealthScore(healthContextFrom(ctx), data.settings.health_score_weights);
@@ -983,23 +1047,23 @@ window.PCC.executiveCenter.getHealthSummary = function (projectId) {
     rag: health.rag,
     scheduleRag: scheduleFactor && scheduleFactor.available ? window.PCC.projectHealthEngine.ragFromScore(scheduleFactor.score) : "unknown",
     riskRag: riskFactor && riskFactor.available ? window.PCC.projectHealthEngine.ragFromScore(riskFactor.score) : "unknown",
-    delayedActivityCount: ctx.delayedActivities.length,
+    delayedActivityCount: (ctx.delayedActivities || []).length,
   };
 };
 
-window.PCC.executiveCenter.getSchedulePerformanceSummary = function (projectId) {
+window.PCC.executiveCenter.getSchedulePerformanceSummary = function (projectId: string): ExecutiveCenterSchedulePerformanceSummary {
   var data = window.PCC.store.get();
   var ctx = buildProjectContext(data, projectId);
   return {
-    score: ctx.schedulePerformance.score,
-    rag: ctx.schedulePerformance.rag || "unknown",
+    score: ctx.schedulePerformance ? ctx.schedulePerformance.score : null,
+    rag: (ctx.schedulePerformance && ctx.schedulePerformance.rag) || "unknown",
     spi: ctx.evm ? ctx.evm.spi : null,
-    spiT: ctx.earnedSchedule && !ctx.earnedSchedule.insufficientData ? ctx.earnedSchedule.spiT : null,
-    unaddressedDelayDays: ctx.totalUnaddressedDelayDays,
+    spiT: ctx.earnedSchedule && !ctx.earnedSchedule.insufficientData ? ctx.earnedSchedule.spiT ?? null : null,
+    unaddressedDelayDays: ctx.totalUnaddressedDelayDays || 0,
   };
 };
 
-window.PCC.executiveCenter.getDelayImpactSummary = function (projectId) {
+window.PCC.executiveCenter.getDelayImpactSummary = function (projectId: string): { openDelayCount: number; criticalDelayCount: number } {
   var data = window.PCC.store.get();
   var projectDelayRecords = data.delay_records.filter(function (r) {
     return r.project_id === projectId;
@@ -1021,6 +1085,6 @@ window.PCC.executiveCenter.getDelayImpactSummary = function (projectId) {
   };
 };
 
-export function viewProject(projectId, tab) {
+export function viewProject(projectId: string, tab?: string): void {
   window.PCC.executiveCenter.viewProject(projectId, tab);
 }

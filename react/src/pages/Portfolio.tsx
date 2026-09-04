@@ -52,7 +52,6 @@ import {
   computeRequirementStatus,
   activitiesForProject,
   computeSuggestedDueDate,
-  projectIsUpcoming,
   computePortfolioKpis,
   getHealthSummary,
   getSchedulePerformanceSummary,
@@ -93,21 +92,25 @@ import {
   viewCost,
   viewResources,
   viewCommitments,
-} from "../services/portfolioService.js";
+  DocReqState,
+  PortfolioFilters,
+  PortfolioKpis,
+} from "../services/portfolioService";
+import type { PCCStoreData, PCCProject, PCCCompany, PCCClient, PCCDocumentType, PCCVendorProjectLink, PCCDocument, PortfolioOverAllocationEntry } from "../types/pcc";
 
 // ===== Company / Client cascading picker with inline "+ Add New…" =====
 
-function CompanyClientField({ data, project }) {
-  const [companies, setCompanies] = useState(() => activeCompanies(data, project.company_id));
+function CompanyClientField({ data, project }: { data: PCCStoreData; project: PCCProject }) {
+  const [companies, setCompanies] = useState<PCCCompany[]>(() => activeCompanies(data, project.company_id));
   const [selectedCompanyId, setSelectedCompanyId] = useState(project.company_id || "");
-  const [clients, setClients] = useState(() => activeClients(data, project.company_id, project.client_id));
+  const [clients, setClients] = useState<PCCClient[]>(() => activeClients(data, project.company_id || "", project.client_id));
   const [selectedClientId, setSelectedClientId] = useState(project.client_id || "");
   const [companyCreating, setCompanyCreating] = useState(false);
   const [companyNewName, setCompanyNewName] = useState("");
   const [clientCreating, setClientCreating] = useState(false);
   const [clientNewName, setClientNewName] = useState("");
 
-  function handleCompanyChange(e) {
+  function handleCompanyChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const value = e.target.value;
     if (value === "__new__") {
       setCompanyCreating(true);
@@ -132,7 +135,7 @@ function CompanyClientField({ data, project }) {
     setCompanyNewName("");
   }
 
-  function handleClientChange(e) {
+  function handleClientChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const value = e.target.value;
     if (value === "__new__") {
       setClientCreating(true);
@@ -206,12 +209,19 @@ function CompanyClientField({ data, project }) {
 
 // ===== Document Requirements checklist (uncommitted, form-local state) =====
 
-function DocumentRequirementsField({ data, project, docReq, setDocReq }) {
+interface DocumentRequirementsFieldProps {
+  data: PCCStoreData;
+  project: PCCProject;
+  docReq: DocReqState;
+  setDocReq: React.Dispatch<React.SetStateAction<DocReqState>>;
+}
+
+function DocumentRequirementsField({ data, project, docReq, setDocReq }: DocumentRequirementsFieldProps) {
   const activeTypes = activeDocumentTypes();
 
-  function toggleType(typeId, checked) {
+  function toggleType(typeId: string, checked: boolean) {
     setDocReq((prev) => {
-      const next = {
+      const next: DocReqState = {
         selectedTypeIds: prev.selectedTypeIds.slice(),
         dueDates: Object.assign({}, prev.dueDates),
         vendorIds: Object.assign({}, prev.vendorIds),
@@ -233,11 +243,11 @@ function DocumentRequirementsField({ data, project, docReq, setDocReq }) {
     });
   }
 
-  function setField(mapName, typeId, value) {
+  function setField(mapName: "dueDates" | "vendorIds" | "activityIds" | "leadTimes", typeId: string, value: string | number) {
     setDocReq((prev) => {
-      const next = Object.assign({}, prev, { [mapName]: Object.assign({}, prev[mapName]) });
-      if (value) next[mapName][typeId] = value;
-      else delete next[mapName][typeId];
+      const next: DocReqState = Object.assign({}, prev, { [mapName]: Object.assign({}, prev[mapName]) });
+      if (value) (next[mapName] as any)[typeId] = value;
+      else delete (next[mapName] as any)[typeId];
       return next;
     });
   }
@@ -245,11 +255,11 @@ function DocumentRequirementsField({ data, project, docReq, setDocReq }) {
   function applyTemplate() {
     const template = projectTemplates().find((t) => t.key === docReq.templateKey);
     if (!template) return;
-    const matchedNames = {};
+    const matchedNames: { [name: string]: boolean } = {};
     template.suggested_type_names.forEach((n) => {
       matchedNames[n.toLowerCase()] = true;
     });
-    const selectedSet = {};
+    const selectedSet: { [id: string]: boolean } = {};
     docReq.selectedTypeIds.forEach((id) => {
       selectedSet[id] = true;
     });
@@ -303,7 +313,7 @@ function DocumentRequirementsField({ data, project, docReq, setDocReq }) {
               activeTypes
                 .slice()
                 .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
-                .reduce((acc, t) => {
+                .reduce((acc: { [category: string]: PCCDocumentType[] }, t) => {
                   const cat = t.category || "(uncategorized)";
                   (acc[cat] = acc[cat] || []).push(t);
                   return acc;
@@ -403,16 +413,24 @@ function DocumentRequirementsField({ data, project, docReq, setDocReq }) {
 
 // ===== Add/Edit Project form =====
 
-function ProjectForm({ isNew, project, data, onCancel, onSaved }) {
+interface ProjectFormProps {
+  isNew: boolean;
+  project: PCCProject;
+  data: PCCStoreData;
+  onCancel: () => void;
+  onSaved: () => void;
+}
+
+function ProjectForm({ isNew, project, data, onCancel, onSaved }: ProjectFormProps) {
   const [showError, setShowError] = useState(false);
   const [docReq, setDocReq] = useState(() => buildDocReqState(data, isNew ? null : project.id));
 
-  function handleSubmit(e) {
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const form = e.target;
-    const values = {};
+    const form = e.target as HTMLFormElement;
+    const values: any = {};
     FIELD_CONFIG.forEach((cfg) => {
-      const el = form.querySelector("#field-" + cfg.key);
+      const el = form.querySelector("#field-" + cfg.key) as HTMLInputElement | HTMLSelectElement | null;
       if (!el) return;
       if (cfg.type === "number" || cfg.type === "cadence_select") {
         values[cfg.key] = el.value === "" ? null : Number(el.value);
@@ -426,8 +444,8 @@ function ProjectForm({ isNew, project, data, onCancel, onSaved }) {
     }
     setShowError(false);
 
-    const companySelectEl = form.querySelector("#field-company_id");
-    const clientSelectEl = form.querySelector("#field-client_id");
+    const companySelectEl = form.querySelector("#field-company_id") as HTMLSelectElement | null;
+    const clientSelectEl = form.querySelector("#field-client_id") as HTMLSelectElement | null;
     values.company_id = companySelectEl && companySelectEl.value !== "__new__" ? companySelectEl.value : "";
     values.client_id = clientSelectEl && clientSelectEl.value !== "__new__" ? clientSelectEl.value : "";
 
@@ -448,7 +466,7 @@ function ProjectForm({ isNew, project, data, onCancel, onSaved }) {
                   {cfg.required ? " *" : ""}
                 </label>
                 {cfg.type === "select" ? (
-                  <select id={"field-" + cfg.key} name={cfg.key} defaultValue={project[cfg.key] || "on_track"} required={cfg.required}>
+                  <select id={"field-" + cfg.key} name={cfg.key} defaultValue={(project as any)[cfg.key] || "on_track"} required={cfg.required}>
                     {window.PCC.store.PROJECT_STATUSES.map((s) => (
                       <option key={s} value={s}>
                         {STATUS_LABELS[s] || s}
@@ -456,7 +474,7 @@ function ProjectForm({ isNew, project, data, onCancel, onSaved }) {
                     ))}
                   </select>
                 ) : cfg.type === "cadence_select" ? (
-                  <select id={"field-" + cfg.key} name={cfg.key} defaultValue={project[cfg.key] != null ? String(project[cfg.key]) : ""}>
+                  <select id={"field-" + cfg.key} name={cfg.key} defaultValue={(project as any)[cfg.key] != null ? String((project as any)[cfg.key]) : ""}>
                     <option value="">None</option>
                     {REVIEW_CADENCE_OPTIONS.map((days) => (
                       <option key={days} value={days}>
@@ -471,7 +489,7 @@ function ProjectForm({ isNew, project, data, onCancel, onSaved }) {
                     name={cfg.key}
                     min={cfg.min}
                     max={cfg.max}
-                    defaultValue={project[cfg.key] === null || project[cfg.key] === undefined ? "" : project[cfg.key]}
+                    defaultValue={(project as any)[cfg.key] === null || (project as any)[cfg.key] === undefined ? "" : (project as any)[cfg.key]}
                     required={cfg.required}
                   />
                 )}
@@ -500,7 +518,7 @@ function ProjectForm({ isNew, project, data, onCancel, onSaved }) {
 
 // ===== KPI strip =====
 
-function KpiStrip({ kpis }) {
+function KpiStrip({ kpis }: { kpis: PortfolioKpis }) {
   const items = [
     { label: "TOTAL PROJECTS", value: kpis.total, colorVar: null },
     { label: "ACTIVE", value: kpis.active, colorVar: null },
@@ -526,14 +544,14 @@ function KpiStrip({ kpis }) {
 
 // ===== Compare view =====
 
-var RAG_BADGE_CLASS = { on_track: "on_track", at_risk: "at_risk", critical: "critical", unknown: "info" };
-var RAG_LABEL = { on_track: "On Track", at_risk: "At Risk", critical: "Critical", unknown: "—" };
+var RAG_BADGE_CLASS: { [rag: string]: string } = { on_track: "on_track", at_risk: "at_risk", critical: "critical", unknown: "info" };
+var RAG_LABEL: { [rag: string]: string } = { on_track: "On Track", at_risk: "At Risk", critical: "Critical", unknown: "—" };
 
-function RagCell({ rag }) {
+function RagCell({ rag }: { rag: string }) {
   return <span className={"status-badge status-badge--" + (RAG_BADGE_CLASS[rag] || "info")}>{RAG_LABEL[rag] || rag}</span>;
 }
 
-function CompareTable({ projects, onOpenDetails }) {
+function CompareTable({ projects, onOpenDetails }: { projects: PCCProject[]; onOpenDetails: (id: string) => void }) {
   if (projects.length === 0) {
     return <div className="panel empty-state">No projects match this search/filter.</div>;
   }
@@ -595,7 +613,18 @@ function CompareTable({ projects, onOpenDetails }) {
 
 // ===== Project card =====
 
-function ProjectCard({ p, data, expanded, menuOpen, onToggleDetails, onToggleMenu, onEdit, onArchive }) {
+interface ProjectCardProps {
+  p: PCCProject;
+  data: PCCStoreData;
+  expanded: boolean;
+  menuOpen: boolean;
+  onToggleDetails: () => void;
+  onToggleMenu: () => void;
+  onEdit: () => void;
+  onArchive: () => void;
+}
+
+function ProjectCard({ p, data, expanded, menuOpen, onToggleDetails, onToggleMenu, onEdit, onArchive }: ProjectCardProps) {
   const stats = projectCardStats(data, p.id);
   const scheduleHealth = computeScheduleHealthCheap(data, p.id);
   const riskLevel = computeRiskLevel(data, p.id);
@@ -610,7 +639,7 @@ function ProjectCard({ p, data, expanded, menuOpen, onToggleDetails, onToggleMen
         <div className="project-card__meta">{[p.client, p.company, p.country].filter(Boolean).join(" · ")}</div>
       </div>
 
-      <span className={"status-badge status-badge--" + p.status}>{STATUS_LABELS[p.status] || p.status}</span>
+      <span className={"status-badge status-badge--" + p.status}>{STATUS_LABELS[p.status || ""] || p.status}</span>
 
       <div className="progress-bar" style={{ minWidth: 160 }}>
         <div className="progress-bar__row">
@@ -711,7 +740,16 @@ function ProjectCard({ p, data, expanded, menuOpen, onToggleDetails, onToggleMen
 
 // ===== Generic "N items, up to 5, View All" section =====
 
-function LinkedListSection({ label, items, renderRow, emptyText, onViewAll, extraHeaderButton }) {
+interface LinkedListSectionProps<T> {
+  label: string;
+  items: T[];
+  renderRow: (item: T) => React.ReactNode;
+  emptyText: string;
+  onViewAll: (() => void) | null;
+  extraHeaderButton?: React.ReactNode;
+}
+
+function LinkedListSection<T>({ label, items, renderRow, emptyText, onViewAll, extraHeaderButton }: LinkedListSectionProps<T>) {
   return (
     <div style={{ marginTop: "var(--space-4)", paddingTop: "var(--space-4)", borderTop: "1px solid var(--divider)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -747,16 +785,16 @@ function LinkedListSection({ label, items, renderRow, emptyText, onViewAll, extr
 
 // ===== Vendors section (special-case: inline link picker) =====
 
-var VENDOR_CONTRACT_LABELS = { draft: "Draft", active: "Active", completed: "Completed", terminated: "Terminated" };
+var VENDOR_CONTRACT_LABELS: { [status: string]: string } = { draft: "Draft", active: "Active", completed: "Completed", terminated: "Terminated" };
 
-function VendorsSection({ p, data, onChanged }) {
+function VendorsSection({ p, data, onChanged }: { p: PCCProject; data: PCCStoreData; onChanged: () => void }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const links = data.vendor_project_links.filter((l) => l.project_id === p.id);
   const unlinkedVendors = data.vendors.filter((v) => !links.some((l) => l.vendor_id === v.id));
   const [pickedVendorId, setPickedVendorId] = useState(unlinkedVendors[0] ? unlinkedVendors[0].id : "");
 
   function handleLink() {
-    linkVendor(p.id, pickedVendorId || (unlinkedVendors[0] && unlinkedVendors[0].id));
+    linkVendor(p.id, pickedVendorId || (unlinkedVendors[0] && unlinkedVendors[0].id) || "");
     setPickerOpen(false);
     onChanged();
   }
@@ -817,7 +855,7 @@ function VendorsSection({ p, data, onChanged }) {
                   className="btn btn--ghost"
                   style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", padding: "2px var(--space-2)" }}
                   disabled={!vendor}
-                  onClick={() => openVendorProfile(link.vendor_id)}
+                  onClick={() => openVendorProfile(link.vendor_id || "")}
                 >
                   {(vendor ? vendor.vendor_name || "(unnamed vendor)" : "(deleted vendor)") + (link.role ? " — " + link.role : "")}
                 </button>
@@ -828,7 +866,7 @@ function VendorsSection({ p, data, onChanged }) {
                       (link.contract_status === "active" ? "status-badge--on_track" : link.contract_status === "terminated" ? "status-badge--critical" : "status-badge--info")
                     }
                   >
-                    {VENDOR_CONTRACT_LABELS[link.contract_status] || link.contract_status}
+                    {VENDOR_CONTRACT_LABELS[link.contract_status || ""] || link.contract_status}
                   </span>
                   <button
                     className="btn btn--ghost"
@@ -857,19 +895,19 @@ function VendorsSection({ p, data, onChanged }) {
 
 // ===== Document requirements read-only summary =====
 
-function DocumentRequirementsSummary({ p, data, onEdit }) {
-  const typesById = {};
+function DocumentRequirementsSummary({ p, data, onEdit }: { p: PCCProject; data: PCCStoreData; onEdit: () => void }) {
+  const typesById: { [id: string]: PCCDocumentType } = {};
   data.document_types.forEach((t) => (typesById[t.id] = t));
-  const vendorsById = {};
+  const vendorsById: { [id: string]: (typeof data.vendors)[number] } = {};
   data.vendors.forEach((v) => (vendorsById[v.id] = v));
-  const activitiesById = {};
+  const activitiesById: { [id: string]: (typeof data.activities)[number] } = {};
   data.activities.forEach((a) => (activitiesById[a.id] = a));
-  const scheduleNameById = {};
+  const scheduleNameById: { [id: string]: string | undefined } = {};
   data.schedules.forEach((s) => (scheduleNameById[s.id] = s.name));
 
   const requirements = data.project_document_requirements.filter((r) => r.project_id === p.id && typesById[r.document_type_id]);
-  const availableCount = requirements.filter((r) => computeRequirementStatus(data, p.id, r.document_type_id, r.planned_submission_date) === "available").length;
-  const overdueCount = requirements.filter((r) => computeRequirementStatus(data, p.id, r.document_type_id, r.planned_submission_date) === "overdue").length;
+  const availableCount = requirements.filter((r) => computeRequirementStatus(data, p.id, r.document_type_id, r.planned_submission_date || null) === "available").length;
+  const overdueCount = requirements.filter((r) => computeRequirementStatus(data, p.id, r.document_type_id, r.planned_submission_date || null) === "overdue").length;
 
   return (
     <div style={{ marginTop: "var(--space-4)", paddingTop: "var(--space-4)", borderTop: "1px solid var(--divider)" }}>
@@ -895,7 +933,7 @@ function DocumentRequirementsSummary({ p, data, onEdit }) {
               const t = typesById[r.document_type_id];
               const vendor = r.vendor_id ? vendorsById[r.vendor_id] : null;
               const linkedActivity = r.activity_id ? activitiesById[r.activity_id] : null;
-              const status = computeRequirementStatus(data, p.id, r.document_type_id, r.planned_submission_date);
+              const status = computeRequirementStatus(data, p.id, r.document_type_id, r.planned_submission_date || null);
               const badgeInfo = REQUIREMENT_STATUS_BADGE[status];
               return (
                 <div key={r.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "var(--text-sm)" }}>
@@ -926,7 +964,7 @@ function DocumentRequirementsSummary({ p, data, onEdit }) {
 
 // ===== Cost / Resources / Commitments sections =====
 
-function CostSection({ p, data }) {
+function CostSection({ p, data }: { p: PCCProject; data: PCCStoreData }) {
   const summary = projectCostSummary(data, p.id);
   return (
     <div style={{ marginTop: "var(--space-4)", paddingTop: "var(--space-4)", borderTop: "1px solid var(--divider)" }}>
@@ -960,24 +998,24 @@ function CostSection({ p, data }) {
   );
 }
 
-function ResourcesAssignedSection({ p, data }) {
+function ResourcesAssignedSection({ p, data }: { p: PCCProject; data: PCCStoreData }) {
   if (!window.PCC.resourceLevelingEngine || data.resources.length === 0) return null;
-  const projectActivityIds = {};
+  const projectActivityIds: { [id: string]: boolean } = {};
   data.activities.forEach((a) => {
     if (a.project_id === p.id) projectActivityIds[a.id] = true;
   });
-  const projectAssignments = data.resource_assignments.filter((a) => projectActivityIds[a.activity_id]);
+  const projectAssignments = data.resource_assignments.filter((a) => a.activity_id && projectActivityIds[a.activity_id]);
 
-  const overAllocById = {};
+  const overAllocById: { [resourceId: string]: PortfolioOverAllocationEntry } = {};
   if (projectAssignments.length > 0) {
     portfolioOverAllocationSummary(data).forEach((s) => {
       overAllocById[s.resourceId] = s;
     });
   }
-  const seenResourceIds = {};
-  const rows = [];
+  const seenResourceIds: { [id: string]: boolean } = {};
+  const rows: PCCStoreData["resources"] = [];
   projectAssignments.forEach((a) => {
-    if (seenResourceIds[a.resource_id]) return;
+    if (!a.resource_id || seenResourceIds[a.resource_id]) return;
     seenResourceIds[a.resource_id] = true;
     const resource = data.resources.find((r) => r.id === a.resource_id);
     if (resource) rows.push(resource);
@@ -1012,7 +1050,7 @@ function ResourcesAssignedSection({ p, data }) {
   );
 }
 
-function CommitmentsSection({ p, data }) {
+function CommitmentsSection({ p, data }: { p: PCCProject; data: PCCStoreData }) {
   const commitments = data.commitments.filter((c) => c.project_id === p.id);
   if (commitments.length === 0 || !window.PCC.commitments) return null;
   const totalCommitted = commitments.reduce((sum, c) => sum + (Number(c.committed_value) || 0), 0);
@@ -1033,11 +1071,18 @@ function CommitmentsSection({ p, data }) {
 
 // ===== Project details panel =====
 
-function ProjectDetails({ p, data, onChanged, onEditRequirements }) {
+interface ProjectDetailsProps {
+  p: PCCProject;
+  data: PCCStoreData;
+  onChanged: () => void;
+  onEditRequirements: () => void;
+}
+
+function ProjectDetails({ p, data, onChanged, onEditRequirements }: ProjectDetailsProps) {
   const attachedDocs = latestDocsForProject(data, p.id);
-  const projectLogs = data.daily_logs.filter((d) => d.project_id === p.id).slice().sort((a, b) => b.log_date.localeCompare(a.log_date));
+  const projectLogs = data.daily_logs.filter((d) => d.project_id === p.id).slice().sort((a, b) => (b.log_date || "").localeCompare(a.log_date || ""));
   const projectRisks = data.risks.filter((r) => r.project_id === p.id && r.status !== "closed");
-  const projectMeetings = data.meetings.filter((m) => m.project_id === p.id).slice().sort((a, b) => b.meeting_date.localeCompare(a.meeting_date));
+  const projectMeetings = data.meetings.filter((m) => m.project_id === p.id).slice().sort((a, b) => (b.meeting_date || "").localeCompare(a.meeting_date || ""));
   const projectRfis = data.rfis.filter((r) => r.project_id === p.id && r.status !== "closed");
   const projectChangeOrders = data.change_orders.filter((co) => co.project_id === p.id && co.status !== "closed" && co.status !== "rejected");
   const today = todayIsoDate();
@@ -1046,7 +1091,7 @@ function ProjectDetails({ p, data, onChanged, onEditRequirements }) {
     <div className="project-details">
       <div className="detail-grid">
         {DETAIL_FIELDS.map((cfg) => {
-          const raw = p[cfg.key];
+          const raw = (p as any)[cfg.key];
           const value = cfg.money ? formatMoney(raw, p.currency) : raw && String(raw).trim() ? raw : "—";
           return (
             <div key={cfg.key}>
@@ -1172,7 +1217,20 @@ function ProjectDetails({ p, data, onChanged, onEditRequirements }) {
 
 // ===== Project entry (card + optional details) =====
 
-function ProjectEntry({ p, data, expanded, menuOpen, onToggleDetails, onToggleMenu, onEdit, onArchive, onChanged, onEditRequirements }) {
+interface ProjectEntryProps {
+  p: PCCProject;
+  data: PCCStoreData;
+  expanded: boolean;
+  menuOpen: boolean;
+  onToggleDetails: () => void;
+  onToggleMenu: () => void;
+  onEdit: () => void;
+  onArchive: () => void;
+  onChanged: () => void;
+  onEditRequirements: () => void;
+}
+
+function ProjectEntry({ p, data, expanded, menuOpen, onToggleDetails, onToggleMenu, onEdit, onArchive, onChanged, onEditRequirements }: ProjectEntryProps) {
   return (
     <div className="project-entry">
       <ProjectCard p={p} data={data} expanded={expanded} menuOpen={menuOpen} onToggleDetails={onToggleDetails} onToggleMenu={onToggleMenu} onEdit={onEdit} onArchive={onArchive} />
@@ -1183,8 +1241,13 @@ function ProjectEntry({ p, data, expanded, menuOpen, onToggleDetails, onToggleMe
 
 // ===== Top-level page =====
 
-export default function PortfolioPage({ initialExpandedId, initialStatusFilter }) {
-  const [data, setData] = useState(() => getData());
+interface PortfolioPageProps {
+  initialExpandedId?: string;
+  initialStatusFilter?: string;
+}
+
+export default function PortfolioPage({ initialExpandedId, initialStatusFilter }: PortfolioPageProps) {
+  const [data, setData] = useState<PCCStoreData>(() => getData());
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState(initialStatusFilter || "");
   const [healthFilter, setHealthFilter] = useState("");
@@ -1199,28 +1262,28 @@ export default function PortfolioPage({ initialExpandedId, initialStatusFilter }
   const [showArchived, setShowArchived] = useState(false);
   const [view, setView] = useState("cards");
   const pendingPrefill = window.PCC.pendingProjectPrefill;
-  const [editingId, setEditingId] = useState(() => (pendingPrefill ? "new" : null));
-  const [expandedId, setExpandedId] = useState(initialExpandedId || null);
-  const [openMenuId, setOpenMenuId] = useState(null);
-  if (pendingPrefill) window.PCC.pendingProjectPrefill = null;
+  const [editingId, setEditingId] = useState<string | null>(() => (pendingPrefill ? "new" : null));
+  const [expandedId, setExpandedId] = useState<string | null>(initialExpandedId || null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  if (pendingPrefill) window.PCC.pendingProjectPrefill = undefined;
 
   function refresh() {
     setData(getData());
   }
 
-  const filters = { search, statusFilter, healthFilter, clientFilter, countryFilter, locationFilter, sectorFilter, pmFilter, plannerFilter, typeFilter, yearFilter, showArchived };
+  const filters: PortfolioFilters = { search, statusFilter, healthFilter, clientFilter, countryFilter, locationFilter, sectorFilter, pmFilter, plannerFilter, typeFilter, yearFilter, showArchived };
   const filtered = data.projects.filter((p) => projectMatchesFilters(p, data, filters));
   const kpis = computePortfolioKpis(data);
 
   const projectBeingEdited = !editingId ? null : editingId === "new" ? newProject(pendingPrefill || {}) : data.projects.find((p) => p.id === editingId);
 
-  function handleArchive(p) {
+  function handleArchive(p: PCCProject) {
     toggleArchive(p.id);
     setOpenMenuId(null);
     refresh();
   }
 
-  function openEditRequirements(projectId) {
+  function openEditRequirements(projectId: string) {
     setEditingId(projectId);
   }
 
@@ -1317,7 +1380,7 @@ export default function PortfolioPage({ initialExpandedId, initialStatusFilter }
         </select>
         <select value={yearFilter} onChange={(e) => setYearFilter(e.target.value)}>
           <option value="">All years</option>
-          {Array.from(new Set(data.projects.filter((p) => p.start_date).map((p) => p.start_date.slice(0, 4))))
+          {Array.from(new Set(data.projects.filter((p) => p.start_date).map((p) => (p.start_date as string).slice(0, 4))))
             .sort()
             .map((y) => (
               <option key={y} value={y}>
