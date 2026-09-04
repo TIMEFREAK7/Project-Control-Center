@@ -43,37 +43,53 @@ import {
   projectEvm,
   getProjectContext,
   setProjectContext,
-} from "../services/costService.js";
+} from "../services/costService";
+import type { ActivityOption, LabeledOption } from "../services/costService";
+import type { PCCCostBudgetItem, PCCCostActual, PCCProject, PCCStoreData } from "../types/pcc";
 
-function BudgetForm({ isNew, item, projects, data, onCancel, onSaved }) {
+function BudgetForm({
+  isNew,
+  item,
+  projects,
+  data,
+  onCancel,
+  onSaved,
+}: {
+  isNew: boolean;
+  item: PCCCostBudgetItem;
+  projects: PCCProject[];
+  data: PCCStoreData;
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
   const activeProjects = projects.filter((p) => !p.archived);
   const [selectedProjectId, setSelectedProjectId] = useState(item.project_id || (activeProjects[0] ? activeProjects[0].id : ""));
   const [projectResetVersion, setProjectResetVersion] = useState(0);
   const [showError, setShowError] = useState(false);
 
-  function handleProjectChange(e) {
+  function handleProjectChange(e: React.ChangeEvent<HTMLSelectElement>) {
     setSelectedProjectId(e.target.value);
     setProjectResetVersion((v) => v + 1);
   }
 
-  function handleSubmit(e) {
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const form = e.target;
-    const name = form.querySelector("#costbudgetfield-name").value.trim();
-    const amountRaw = form.querySelector("#costbudgetfield-planned_amount").value;
+    const form = e.target as HTMLFormElement;
+    const name = (form.querySelector("#costbudgetfield-name") as HTMLInputElement).value.trim();
+    const amountRaw = (form.querySelector("#costbudgetfield-planned_amount") as HTMLInputElement).value;
     const amount = amountRaw === "" ? null : Number(amountRaw);
     if (!name || !selectedProjectId || amount === null || Number.isNaN(amount)) {
       setShowError(true);
       return;
     }
     setShowError(false);
-    const values = {
+    const values: Partial<PCCCostBudgetItem> = {
       project_id: selectedProjectId,
-      category: form.querySelector("#costbudgetfield-category").value,
+      category: (form.querySelector("#costbudgetfield-category") as HTMLSelectElement).value,
       name: name,
       planned_amount: amount,
-      activity_id: form.querySelector("#costbudgetfield-activity_id").value,
-      notes: form.querySelector("#costbudgetfield-notes").value,
+      activity_id: (form.querySelector("#costbudgetfield-activity_id") as HTMLSelectElement).value,
+      notes: (form.querySelector("#costbudgetfield-notes") as HTMLTextAreaElement).value,
     };
     saveBudgetItem(isNew, item.id, values);
     onSaved();
@@ -159,40 +175,54 @@ function BudgetForm({ isNew, item, projects, data, onCancel, onSaved }) {
   );
 }
 
-function ActualForm({ isNew, entry, projects, data, onCancel, onSaved }) {
+function ActualForm({
+  isNew,
+  entry,
+  projects,
+  data,
+  onCancel,
+  onSaved,
+}: {
+  isNew: boolean;
+  entry: PCCCostActual;
+  projects: PCCProject[];
+  data: PCCStoreData;
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
   const activeProjects = projects.filter((p) => !p.archived);
   const [selectedProjectId, setSelectedProjectId] = useState(entry.project_id || (activeProjects[0] ? activeProjects[0].id : ""));
   const [projectResetVersion, setProjectResetVersion] = useState(0);
   const [showError, setShowError] = useState(false);
 
-  function handleProjectChange(e) {
+  function handleProjectChange(e: React.ChangeEvent<HTMLSelectElement>) {
     setSelectedProjectId(e.target.value);
     setProjectResetVersion((v) => v + 1);
   }
 
-  function handleSubmit(e) {
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const form = e.target;
-    const description = form.querySelector("#costactualfield-description").value.trim();
-    const amountRaw = form.querySelector("#costactualfield-amount").value;
+    const form = e.target as HTMLFormElement;
+    const description = (form.querySelector("#costactualfield-description") as HTMLInputElement).value.trim();
+    const amountRaw = (form.querySelector("#costactualfield-amount") as HTMLInputElement).value;
     const amount = amountRaw === "" ? null : Number(amountRaw);
-    const date = form.querySelector("#costactualfield-date").value;
+    const date = (form.querySelector("#costactualfield-date") as HTMLInputElement).value;
     if (!description || !selectedProjectId || amount === null || Number.isNaN(amount) || !date) {
       setShowError(true);
       return;
     }
     setShowError(false);
-    const values = {
+    const values: Partial<PCCCostActual> = {
       project_id: selectedProjectId,
-      budget_item_id: form.querySelector("#costactualfield-budget_item_id").value,
-      commitment_id: form.querySelector("#costactualfield-commitment_id").value,
-      category: form.querySelector("#costactualfield-category").value,
+      budget_item_id: (form.querySelector("#costactualfield-budget_item_id") as HTMLSelectElement).value,
+      commitment_id: (form.querySelector("#costactualfield-commitment_id") as HTMLSelectElement).value,
+      category: (form.querySelector("#costactualfield-category") as HTMLSelectElement).value,
       description: description,
       amount: amount,
       date: date,
-      vendor: form.querySelector("#costactualfield-vendor").value,
-      invoice_ref: form.querySelector("#costactualfield-invoice_ref").value,
-      notes: form.querySelector("#costactualfield-notes").value,
+      vendor: (form.querySelector("#costactualfield-vendor") as HTMLInputElement).value,
+      invoice_ref: (form.querySelector("#costactualfield-invoice_ref") as HTMLInputElement).value,
+      notes: (form.querySelector("#costactualfield-notes") as HTMLTextAreaElement).value,
     };
     saveActual(isNew, entry.id, values);
     onSaved();
@@ -311,7 +341,27 @@ function ActualForm({ isNew, entry, projects, data, onCancel, onSaved }) {
   );
 }
 
-function Toolbar({ tab, search, onSearchChange, categoryFilter, onCategoryChange, projectFilter, onProjectChange, projects, actionsSlot }) {
+function Toolbar({
+  tab,
+  search,
+  onSearchChange,
+  categoryFilter,
+  onCategoryChange,
+  projectFilter,
+  onProjectChange,
+  projects,
+  actionsSlot,
+}: {
+  tab: string;
+  search: string;
+  onSearchChange: (value: string) => void;
+  categoryFilter: string;
+  onCategoryChange: (value: string) => void;
+  projectFilter: string;
+  onProjectChange: (value: string) => void;
+  projects: PCCProject[];
+  actionsSlot: React.ReactNode;
+}) {
   return (
     <div className="toolbar">
       <input
@@ -342,21 +392,48 @@ function Toolbar({ tab, search, onSearchChange, categoryFilter, onCategoryChange
   );
 }
 
-function BudgetTab({ data, search, categoryFilter, projectFilter, onSearchChange, onCategoryChange, onProjectChange, editingId, onEdit, onAdd, onCancelEdit, onSaved }) {
+function BudgetTab({
+  data,
+  search,
+  categoryFilter,
+  projectFilter,
+  onSearchChange,
+  onCategoryChange,
+  onProjectChange,
+  editingId,
+  onEdit,
+  onAdd,
+  onCancelEdit,
+  onSaved,
+}: {
+  data: PCCStoreData;
+  search: string;
+  categoryFilter: string;
+  projectFilter: string;
+  onSearchChange: (value: string) => void;
+  onCategoryChange: (value: string) => void;
+  onProjectChange: (value: string) => void;
+  editingId: string | null;
+  onEdit: (id: string) => void;
+  onAdd: () => void;
+  onCancelEdit: () => void;
+  onSaved: () => void;
+}) {
   const hasActiveProjects = data.projects.some((p) => !p.archived);
-  const itemBeingEdited = !editingId ? null : editingId === "new" ? newCostBudgetItem() : data.cost_budget_items.find((b) => b.id === editingId);
+  const itemBeingEdited: PCCCostBudgetItem | null =
+    !editingId ? null : editingId === "new" ? newCostBudgetItem() : data.cost_budget_items.find((b) => b.id === editingId) || null;
 
-  function matches(b) {
+  function matches(b: PCCCostBudgetItem): boolean {
     if (categoryFilter && b.category !== categoryFilter) return false;
     if (projectFilter && b.project_id !== projectFilter) return false;
     if (search) {
-      const haystack = (b.name + " " + (b.notes || "")).toLowerCase();
+      const haystack = ((b.name || "") + " " + (b.notes || "")).toLowerCase();
       if (haystack.indexOf(search.toLowerCase()) === -1) return false;
     }
     return true;
   }
 
-  function handleDelete(b) {
+  function handleDelete(b: PCCCostBudgetItem) {
     const linkedCount = actualsAgainst(data, b.id).length;
     const msg =
       'Delete budget item "' + b.name + '"?' +
@@ -410,7 +487,7 @@ function BudgetTab({ data, search, categoryFilter, projectFilter, onSearchChange
                     <strong>{b.name}</strong>
                     <br />
                     <span className="text-secondary" style={{ fontSize: 12 }}>
-                      {CATEGORY_LABELS[b.category]} · {projectName(data.projects, b.project_id)} · Planned {formatMoney(b.planned_amount)} · Actual so far{" "}
+                      {CATEGORY_LABELS[b.category || ""]} · {projectName(data.projects, b.project_id)} · Planned {formatMoney(b.planned_amount)} · Actual so far{" "}
                       {formatMoney(actualTotal)}
                       {linkedActivity ? " · linked to “" + linkedActivity.name + "” (" + (linkedActivity.percent_complete || 0) + "% complete)" : ""}
                     </span>
@@ -433,27 +510,57 @@ function BudgetTab({ data, search, categoryFilter, projectFilter, onSearchChange
   );
 }
 
-function ActualsTab({ data, search, categoryFilter, projectFilter, onSearchChange, onCategoryChange, onProjectChange, editingId, onEdit, onAdd, onCancelEdit, onSaved }) {
+function ActualsTab({
+  data,
+  search,
+  categoryFilter,
+  projectFilter,
+  onSearchChange,
+  onCategoryChange,
+  onProjectChange,
+  editingId,
+  onEdit,
+  onAdd,
+  onCancelEdit,
+  onSaved,
+}: {
+  data: PCCStoreData;
+  search: string;
+  categoryFilter: string;
+  projectFilter: string;
+  onSearchChange: (value: string) => void;
+  onCategoryChange: (value: string) => void;
+  onProjectChange: (value: string) => void;
+  editingId: string | null;
+  onEdit: (id: string) => void;
+  onAdd: () => void;
+  onCancelEdit: () => void;
+  onSaved: () => void;
+}) {
   const hasActiveProjects = data.projects.some((p) => !p.archived);
-  const entryBeingEdited = !editingId ? null : editingId === "new" ? newCostActual() : data.cost_actuals.find((a) => a.id === editingId);
+  const entryBeingEdited: PCCCostActual | null =
+    !editingId ? null : editingId === "new" ? newCostActual() : data.cost_actuals.find((a) => a.id === editingId) || null;
 
-  function matches(a) {
+  function matches(a: PCCCostActual): boolean {
     if (categoryFilter && a.category !== categoryFilter) return false;
     if (projectFilter && a.project_id !== projectFilter) return false;
     if (search) {
-      const haystack = (a.description + " " + (a.vendor || "") + " " + (a.invoice_ref || "")).toLowerCase();
+      const haystack = ((a.description || "") + " " + (a.vendor || "") + " " + (a.invoice_ref || "")).toLowerCase();
       if (haystack.indexOf(search.toLowerCase()) === -1) return false;
     }
     return true;
   }
 
-  function handleDelete(a) {
+  function handleDelete(a: PCCCostActual) {
     if (!window.confirm('Delete this actual cost entry ("' + a.description + '")? This can\'t be undone.')) return;
     deleteActual(a.id);
     onSaved();
   }
 
-  const filtered = data.cost_actuals.filter(matches).slice().sort((a, b) => (b.date < a.date ? -1 : b.date > a.date ? 1 : 0));
+  const filtered = data.cost_actuals
+    .filter(matches)
+    .slice()
+    .sort((a, b) => ((b.date || "") < (a.date || "") ? -1 : (b.date || "") > (a.date || "") ? 1 : 0));
 
   return (
     <>
@@ -497,7 +604,7 @@ function ActualsTab({ data, search, categoryFilter, projectFilter, onSearchChang
                     <strong>{a.description}</strong>
                     <br />
                     <span className="text-secondary" style={{ fontSize: 12 }}>
-                      {CATEGORY_LABELS[a.category]} · {projectName(data.projects, a.project_id)} · {a.date} · {formatMoney(a.amount)}
+                      {CATEGORY_LABELS[a.category || ""]} · {projectName(data.projects, a.project_id)} · {a.date} · {formatMoney(a.amount)}
                       {a.vendor ? " · " + a.vendor : ""}
                       {linkedBudget ? " · against “" + linkedBudget.name + "”" : ""}
                       {linkedCommitment ? " · commitment " + (linkedCommitment.po_contract_number || "(no PO/Contract #)") : ""}
@@ -521,7 +628,7 @@ function ActualsTab({ data, search, categoryFilter, projectFilter, onSearchChang
   );
 }
 
-function SummaryTab({ data }) {
+function SummaryTab({ data }: { data: PCCStoreData }) {
   const activeProjects = data.projects.filter((p) => !p.archived);
   const totals = activeProjects.reduce(
     (acc, p) => {
@@ -596,7 +703,7 @@ function SummaryTab({ data }) {
   );
 }
 
-function EvmTab({ data }) {
+function EvmTab({ data }: { data: PCCStoreData }) {
   const activeProjects = data.projects.filter((p) => !p.archived);
 
   if (activeProjects.length === 0) {
@@ -691,7 +798,7 @@ function EvmTab({ data }) {
   );
 }
 
-export default function CostPage({ initialProjectFilter }) {
+export default function CostPage({ initialProjectFilter }: { initialProjectFilter?: string }) {
   const [data, setData] = useState(() => getData());
   const [tab, setTab] = useState("budget");
   const [search, setSearch] = useState("");
@@ -701,19 +808,19 @@ export default function CostPage({ initialProjectFilter }) {
     const ctxProjectId = getProjectContext();
     return ctxProjectId && data.projects.some((p) => p.id === ctxProjectId) ? ctxProjectId : "";
   });
-  const [editingBudgetId, setEditingBudgetId] = useState(null);
-  const [editingActualId, setEditingActualId] = useState(null);
+  const [editingBudgetId, setEditingBudgetId] = useState<string | null>(null);
+  const [editingActualId, setEditingActualId] = useState<string | null>(null);
 
   function refresh() {
     setData(getData());
   }
 
-  function handleProjectFilterChange(value) {
+  function handleProjectFilterChange(value: string) {
     setProjectFilter(value);
     if (value) setProjectContext(value);
   }
 
-  function handleTabChange(key) {
+  function handleTabChange(key: string) {
     setTab(key);
     setEditingBudgetId(null);
     setEditingActualId(null);

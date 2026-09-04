@@ -39,27 +39,43 @@ import {
   removePhoto,
   addPhotos,
   createDelayFromLog,
-} from "../services/dailyLogService.js";
+} from "../services/dailyLogService";
+import type { FieldConfig, ActivityOption } from "../services/dailyLogService";
+import type { PCCDailyLog, PCCDailyLogPhoto, PCCProject, PCCStoreData } from "../types/pcc";
 
-function DailyLogForm({ isNew, log, projects, data, onCancel, onSaved }) {
+function DailyLogForm({
+  isNew,
+  log,
+  projects,
+  data,
+  onCancel,
+  onSaved,
+}: {
+  isNew: boolean;
+  log: PCCDailyLog;
+  projects: PCCProject[];
+  data: PCCStoreData;
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
   const [selectedProjectId, setSelectedProjectId] = useState(log.project_id || (projects[0] ? projects[0].id : ""));
-  const [errorText, setErrorText] = useState(null);
+  const [errorText, setErrorText] = useState<string | null>(null);
   const [errorLevel, setErrorLevel] = useState("critical");
   const [duplicateWarningAcknowledged, setDuplicateWarningAcknowledged] = useState(false);
 
   const activeProjects = projects.filter((p) => !p.archived);
-  const activityOptions = activitiesForProject(data, selectedProjectId);
+  const activityOptions: ActivityOption[] = activitiesForProject(data, selectedProjectId);
 
-  function handleSubmit(e) {
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const form = e.target;
-    const values = {};
+    const form = e.target as HTMLFormElement;
+    const values: { [key: string]: string } = {};
     FIELD_CONFIG.forEach((cfg) => {
-      const el = form.querySelector("#dlfield-" + cfg.key);
+      const el = form.querySelector("#dlfield-" + cfg.key) as HTMLInputElement | HTMLTextAreaElement | null;
       if (el) values[cfg.key] = el.value;
     });
     values.project_id = selectedProjectId;
-    values.activity_id = form.querySelector("#dlfield-activity_id").value;
+    values.activity_id = (form.querySelector("#dlfield-activity_id") as HTMLSelectElement).value;
 
     if (!values.project_id || !values.log_date) {
       setErrorText("Project and Date are required.");
@@ -135,14 +151,14 @@ function DailyLogForm({ isNew, log, projects, data, onCancel, onSaved }) {
                 {cfg.required ? " *" : ""}
               </label>
               {cfg.type === "textarea" ? (
-                <textarea id={"dlfield-" + cfg.key} name={cfg.key} rows={3} defaultValue={log[cfg.key] || ""} />
+                <textarea id={"dlfield-" + cfg.key} name={cfg.key} rows={3} defaultValue={(log as any)[cfg.key] || ""} />
               ) : (
                 <input
                   id={"dlfield-" + cfg.key}
                   name={cfg.key}
                   type={cfg.type}
                   placeholder={cfg.placeholder || ""}
-                  defaultValue={log[cfg.key] || ""}
+                  defaultValue={(log as any)[cfg.key] || ""}
                   required={cfg.required}
                   onChange={cfg.key === "log_date" ? () => setDuplicateWarningAcknowledged(false) : undefined}
                 />
@@ -168,7 +184,15 @@ function DailyLogForm({ isNew, log, projects, data, onCancel, onSaved }) {
   );
 }
 
-function PhotoCell({ log, photo, onChanged }) {
+function PhotoCell({
+  log,
+  photo,
+  onChanged,
+}: {
+  log: PCCDailyLog;
+  photo: PCCDailyLogPhoto;
+  onChanged: () => void;
+}) {
   const [src, setSrc] = useState(
     "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1' height='1'%3E%3C/svg%3E"
   );
@@ -233,11 +257,11 @@ function PhotoCell({ log, photo, onChanged }) {
   );
 }
 
-function PhotosSection({ log, onChanged }) {
+function PhotosSection({ log, onChanged }: { log: PCCDailyLog; onChanged: () => void }) {
   const [adding, setAdding] = useState(false);
-  const fileInputRef = React.useRef(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
-  function handleFileChange(e) {
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
     setAdding(true);
@@ -279,13 +303,21 @@ function PhotosSection({ log, onChanged }) {
   );
 }
 
-function CreateDelayForm({ log, onCancel, onSaved }) {
-  const [errorText, setErrorText] = useState(null);
+function CreateDelayForm({
+  log,
+  onCancel,
+  onSaved,
+}: {
+  log: PCCDailyLog;
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
+  const [errorText, setErrorText] = useState<string | null>(null);
 
-  function handleSubmit(e) {
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const form = e.target;
-    const description = form.querySelector("#dailylogdelay-description").value;
+    const form = e.target as HTMLFormElement;
+    const description = (form.querySelector("#dailylogdelay-description") as HTMLTextAreaElement).value;
     if (!description.trim()) {
       setErrorText("Description is required.");
       return;
@@ -293,8 +325,8 @@ function CreateDelayForm({ log, onCancel, onSaved }) {
     setErrorText(null);
     createDelayFromLog(
       log.id,
-      form.querySelector("#dailylogdelay-category").value,
-      form.querySelector("#dailylogdelay-days").value,
+      (form.querySelector("#dailylogdelay-category") as HTMLSelectElement).value,
+      (form.querySelector("#dailylogdelay-days") as HTMLInputElement).value,
       description
     );
     onSaved();
@@ -337,7 +369,15 @@ function CreateDelayForm({ log, onCancel, onSaved }) {
   );
 }
 
-function DailyLogDelaysSection({ log, data, onChanged }) {
+function DailyLogDelaysSection({
+  log,
+  data,
+  onChanged,
+}: {
+  log: PCCDailyLog;
+  data: PCCStoreData;
+  onChanged: () => void;
+}) {
   const [creatingDelay, setCreatingDelay] = useState(false);
   const delaysForLog = data.delay_records.filter((r) => r.daily_log_id === log.id);
 
@@ -373,13 +413,13 @@ function DailyLogDelaysSection({ log, data, onChanged }) {
               <div
                 key={r.id}
                 className={"attention-item" + (r.activity_id ? " attention-item--clickable" : "")}
-                onClick={r.activity_id ? () => viewActivityForDelay(log.project_id, r.activity_id, data) : undefined}
+                onClick={r.activity_id ? () => viewActivityForDelay(log.project_id, r.activity_id || undefined, data) : undefined}
               >
                 <span className={"attention-item__icon attention-item__icon--" + (isActive ? "warning" : "info")} />
                 <div className="attention-item__body">
                   <div className="attention-item__text">{r.description || "(untitled delay)"}</div>
                   <div className="attention-item__meta">
-                    {(DAILY_LOG_DELAY_CATEGORY_LABELS[r.delay_category] || r.delay_category) +
+                    {(DAILY_LOG_DELAY_CATEGORY_LABELS[r.delay_category || ""] || r.delay_category) +
                       (r.activity_id ? "" : " · Schedule Impact Not Yet Assessed")}
                   </div>
                 </div>
@@ -392,14 +432,15 @@ function DailyLogDelaysSection({ log, data, onChanged }) {
   );
 }
 
-function LogDetails({ log, data, onChanged }) {
+function LogDetails({ log, data, onChanged }: { log: PCCDailyLog; data: PCCStoreData; onChanged: () => void }) {
   const linkedActivity = log.activity_id ? data.activities.find((a) => a.id === log.activity_id) : null;
 
   return (
     <div className="project-details">
       <div className="detail-grid">
         {DETAIL_FIELDS.map((cfg) => {
-          const value = log[cfg.key] && log[cfg.key].trim() ? log[cfg.key] : "—";
+          const rawValue = (log as any)[cfg.key];
+          const value = rawValue && rawValue.trim() ? rawValue : "—";
           return (
             <div key={cfg.key} style={cfg.type === "textarea" ? { gridColumn: "1 / -1" } : undefined}>
               <span className="detail-item__label">{cfg.label.toUpperCase()}</span>
@@ -430,7 +471,27 @@ function LogDetails({ log, data, onChanged }) {
   );
 }
 
-function LogEntry({ log, projects, expanded, onToggleDetails, onEdit, onClone, onDelete, data, onChanged }) {
+function LogEntry({
+  log,
+  projects,
+  expanded,
+  onToggleDetails,
+  onEdit,
+  onClone,
+  onDelete,
+  data,
+  onChanged,
+}: {
+  log: PCCDailyLog;
+  projects: PCCProject[];
+  expanded: boolean;
+  onToggleDetails: () => void;
+  onEdit: () => void;
+  onClone: () => void;
+  onDelete: () => void;
+  data: PCCStoreData;
+  onChanged: () => void;
+}) {
   const pName = projectName(projects, log.project_id) || "(project removed)";
   return (
     <div className="project-entry">
@@ -475,7 +536,13 @@ function LogEntry({ log, projects, expanded, onToggleDetails, onEdit, onClone, o
   );
 }
 
-export default function DailyLogPage({ initialProjectFilter, initialExpandedId }) {
+export default function DailyLogPage({
+  initialProjectFilter,
+  initialExpandedId,
+}: {
+  initialProjectFilter?: string;
+  initialExpandedId?: string | null;
+}) {
   const [data, setData] = useState(() => getData());
   const [search, setSearch] = useState("");
   const [projectFilter, setProjectFilter] = useState(() => {
@@ -483,9 +550,9 @@ export default function DailyLogPage({ initialProjectFilter, initialExpandedId }
     const ctxProjectId = getProjectContext();
     return ctxProjectId && data.projects.some((p) => p.id === ctxProjectId) ? ctxProjectId : "";
   });
-  const [editingId, setEditingId] = useState(null);
-  const [pendingPrefill, setPendingPrefill] = useState(null);
-  const [expandedId, setExpandedId] = useState(initialExpandedId || null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [pendingPrefill, setPendingPrefill] = useState<Partial<PCCDailyLog> | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(initialExpandedId || null);
 
   function refresh() {
     setData(getData());
@@ -493,7 +560,7 @@ export default function DailyLogPage({ initialProjectFilter, initialExpandedId }
 
   const projects = data.projects;
 
-  function matchesFilters(log) {
+  function matchesFilters(log: PCCDailyLog): boolean {
     if (projectFilter && log.project_id !== projectFilter) return false;
     if (search) {
       const pName = projectName(projects, log.project_id) || "";
@@ -503,15 +570,16 @@ export default function DailyLogPage({ initialProjectFilter, initialExpandedId }
     return true;
   }
 
-  const logBeingEdited = !editingId ? null : editingId === "new" ? newDailyLog(pendingPrefill || {}) : data.daily_logs.find((d) => d.id === editingId);
+  const logBeingEdited: PCCDailyLog | null =
+    !editingId ? null : editingId === "new" ? newDailyLog(pendingPrefill || {}) : data.daily_logs.find((d) => d.id === editingId) || null;
 
-  function handleDelete(log) {
+  function handleDelete(log: PCCDailyLog) {
     if (!window.confirm("Delete this daily log entry? This can't be undone.")) return;
     deleteDailyLog(log.id);
     refresh();
   }
 
-  function handleClone(log) {
+  function handleClone(log: PCCDailyLog) {
     setPendingPrefill({
       project_id: log.project_id,
       weather: log.weather,
@@ -528,7 +596,9 @@ export default function DailyLogPage({ initialProjectFilter, initialExpandedId }
   }
 
   const filtered = data.daily_logs.filter(matchesFilters);
-  const sorted = filtered.slice().sort((a, b) => b.log_date.localeCompare(a.log_date) || new Date(b.created_at) - new Date(a.created_at));
+  const sorted = filtered
+    .slice()
+    .sort((a, b) => (b.log_date || "").localeCompare(a.log_date || "") || new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
 
   return (
     <>

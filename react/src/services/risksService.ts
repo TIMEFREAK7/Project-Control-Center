@@ -2,18 +2,28 @@
  * existing store globals, unchanged from the vanilla page. getData() returns a FRESH
  * top-level object reference (see CLAUDE.md's React migration notes).
  */
+import type { PCCStoreData, PCCProject, PCCRisk } from "../types/pcc";
 
-export var TYPE_LABELS = { risk: "Risk", issue: "Issue", opportunity: "Opportunity" };
-export var STATUS_LABELS = { open: "Open", mitigating: "Mitigating", closed: "Closed" };
-export var LEVEL_LABELS = { low: "Low", medium: "Medium", high: "High" };
+export interface FieldConfig {
+  key: string;
+  label: string;
+  type: string;
+  required?: boolean;
+  options?: "RISK_TYPES" | "RISK_STATUSES" | "RISK_LEVELS";
+  labels?: { [value: string]: string };
+}
 
-var SEVERITY_MATRIX = {
+export var TYPE_LABELS: { [type: string]: string } = { risk: "Risk", issue: "Issue", opportunity: "Opportunity" };
+export var STATUS_LABELS: { [status: string]: string } = { open: "Open", mitigating: "Mitigating", closed: "Closed" };
+export var LEVEL_LABELS: { [level: string]: string } = { low: "Low", medium: "Medium", high: "High" };
+
+var SEVERITY_MATRIX: { [probability: string]: { [impact: string]: string } } = {
   high: { low: "medium", medium: "high", high: "high" },
   medium: { low: "low", medium: "medium", high: "high" },
   low: { low: "low", medium: "low", high: "medium" },
 };
 
-export var FIELD_CONFIG = [
+export var FIELD_CONFIG: FieldConfig[] = [
   { key: "title", label: "Title", type: "text", required: true },
   { key: "type", label: "Type", type: "select", options: "RISK_TYPES", labels: TYPE_LABELS },
   { key: "status", label: "Status", type: "select", options: "RISK_STATUSES", labels: STATUS_LABELS },
@@ -24,15 +34,16 @@ export var FIELD_CONFIG = [
   { key: "mitigation", label: "Mitigation / Response", type: "textarea" },
 ];
 
-export function severityOf(risk) {
-  return SEVERITY_MATRIX[risk.probability][risk.impact];
+export function severityOf(risk: { probability?: string; impact?: string }): string | undefined {
+  var byProbability = SEVERITY_MATRIX[risk.probability || ""];
+  return byProbability ? byProbability[risk.impact || ""] : undefined;
 }
 
-export function getData() {
+export function getData(): PCCStoreData {
   return Object.assign({}, window.PCC.store.get());
 }
 
-export function projectName(projects, projectId) {
+export function projectName(projects: PCCProject[], projectId: string | undefined): string {
   if (!projectId) return "Unassigned";
   var p = projects.find(function (proj) {
     return proj.id === projectId;
@@ -40,8 +51,13 @@ export function projectName(projects, projectId) {
   return p ? p.name || "(unnamed project)" : "Unassigned";
 }
 
-export function activitiesForProject(data, projectId) {
-  var scheduleNameById = {};
+export interface ActivityOption {
+  id: string;
+  label: string;
+}
+
+export function activitiesForProject(data: PCCStoreData, projectId: string): ActivityOption[] {
+  var scheduleNameById: { [id: string]: string | undefined } = {};
   data.schedules
     .filter(function (s) {
       return s.project_id === projectId;
@@ -58,11 +74,11 @@ export function activitiesForProject(data, projectId) {
     });
 }
 
-export function newRisk(prefill) {
+export function newRisk(prefill?: Partial<PCCRisk> | null): PCCRisk {
   return window.PCC.store.newRisk(prefill || {});
 }
 
-export function saveRisk(isNew, riskId, values, sourceMeetingId) {
+export function saveRisk(isNew: boolean, riskId: string | undefined, values: Partial<PCCRisk>, sourceMeetingId?: string | null): void {
   window.PCC.store.update(function (data) {
     if (isNew) {
       var record = Object.assign({}, values);
@@ -81,7 +97,7 @@ export function saveRisk(isNew, riskId, values, sourceMeetingId) {
   window.PCC.notify(isNew ? "Register entry added." : "Register entry updated.", "success");
 }
 
-export function deleteRisk(id) {
+export function deleteRisk(id: string): void {
   window.PCC.store.update(function (data) {
     data.risks = data.risks.filter(function (item) {
       return item.id !== id;
@@ -90,7 +106,7 @@ export function deleteRisk(id) {
   window.PCC.notify("Register entry deleted.", "info");
 }
 
-export function closeRisks(ids) {
+export function closeRisks(ids: { [id: string]: boolean }): void {
   window.PCC.store.update(function (d) {
     d.risks.forEach(function (item) {
       if (ids[item.id]) {
@@ -101,7 +117,7 @@ export function closeRisks(ids) {
   });
 }
 
-export function deleteRisks(ids) {
+export function deleteRisks(ids: { [id: string]: boolean }): void {
   window.PCC.store.update(function (d) {
     d.risks = d.risks.filter(function (item) {
       return !ids[item.id];
@@ -109,28 +125,28 @@ export function deleteRisks(ids) {
   });
 }
 
-export function getProjectContext() {
+export function getProjectContext(): string {
   return window.PCC.projectContext.get();
 }
-export function setProjectContext(projectId) {
+export function setProjectContext(projectId: string): void {
   window.PCC.projectContext.set(projectId);
 }
 
-export function viewMeeting(meetingId) {
+export function viewMeeting(meetingId: string): void {
   if (window.PCC.meetings) window.PCC.meetings.expandMeeting(meetingId);
   window.PCC.router.go("meetings");
 }
 
-export function viewActivityInSchedule(projectId, scheduleId, activityId) {
+export function viewActivityInSchedule(projectId: string, scheduleId: string, activityId: string): void {
   if (window.PCC.schedule) window.PCC.schedule.viewActivity(projectId, scheduleId, activityId);
   window.PCC.router.go("schedule");
 }
 
-export function createChangeOrderFromRisk(projectId, riskId) {
-  if (window.PCC.changeOrders) window.PCC.changeOrders.createFromRisk(projectId, riskId);
+export function createChangeOrderFromRisk(projectId: string, riskId: string): void {
+  if (window.PCC.changeOrders && window.PCC.changeOrders.createFromRisk) window.PCC.changeOrders.createFromRisk(projectId, riskId);
   window.PCC.router.go("changeOrders");
 }
 
-export function notify(message, level) {
+export function notify(message: string, level: string): void {
   window.PCC.notify(message, level);
 }

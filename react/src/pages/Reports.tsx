@@ -34,13 +34,28 @@ import {
   deleteTemplate,
   notify,
   printPage,
-} from "../services/reportsService.js";
+} from "../services/reportsService";
+import type { PCCProject, PCCStoreData } from "../types/pcc";
 
-function ReportViewer({ reportType, project, data, sections, sectionDays }) {
-  const containerRef = useRef(null);
+type ReportType = "project" | "portfolio";
+
+function ReportViewer({
+  reportType,
+  project,
+  data,
+  sections,
+  sectionDays,
+}: {
+  reportType: ReportType;
+  project: PCCProject | undefined;
+  data: PCCStoreData;
+  sections: { [key: string]: boolean };
+  sectionDays: { [key: string]: string };
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const container = containerRef.current;
+    const container = containerRef.current!;
     container.innerHTML = "";
     let doc;
     if (reportType === "project") {
@@ -66,22 +81,25 @@ function ReportViewer({ reportType, project, data, sections, sectionDays }) {
 
 export default function ReportsPage() {
   const [data, setData] = useState(() => getData());
-  const [reportType, setReportType] = useState("project");
+  const [reportType, setReportType] = useState<ReportType>("project");
   const [projectId, setProjectId] = useState(() => {
     const ctxProjectId = getProjectContext();
     if (ctxProjectId && data.projects.some((p) => p.id === ctxProjectId)) return ctxProjectId;
     return data.projects.length > 0 ? data.projects[0].id : "";
   });
-  const [sections, setSections] = useState({ project: allSectionsOn(PROJECT_SECTIONS), portfolio: allSectionsOn(PORTFOLIO_SECTIONS) });
-  const [selectedTemplateId, setSelectedTemplateId] = useState({ project: "", portfolio: "" });
+  const [sections, setSections] = useState<{ project: { [key: string]: boolean }; portfolio: { [key: string]: boolean } }>({
+    project: allSectionsOn(PROJECT_SECTIONS),
+    portfolio: allSectionsOn(PORTFOLIO_SECTIONS),
+  });
+  const [selectedTemplateId, setSelectedTemplateId] = useState<{ project: string; portfolio: string }>({ project: "", portfolio: "" });
   const [savingAsNew, setSavingAsNew] = useState(false);
-  const [reportSectionDays, setReportSectionDays] = useState({ dailyLog: "", meetings: "", documents: "" });
+  const [reportSectionDays, setReportSectionDays] = useState<{ [key: string]: string }>({ dailyLog: "", meetings: "", documents: "" });
 
   function refresh() {
     setData(getData());
   }
 
-  const newTemplateNameRef = useRef(null);
+  const newTemplateNameRef = useRef<HTMLInputElement>(null);
 
   const projects = data.projects;
   const sectionKeys = reportType === "project" ? PROJECT_SECTIONS : PORTFOLIO_SECTIONS;
@@ -89,19 +107,19 @@ export default function ReportsPage() {
   const currentTemplate = currentTemplates.find((t) => t.id === selectedTemplateId[reportType]);
   const project = projects.find((p) => p.id === projectId) || projects[0];
 
-  function handleReportTypeChange(value) {
-    setReportType(value);
+  function handleReportTypeChange(value: string) {
+    setReportType(value as ReportType);
   }
 
-  function handleProjectChange(value) {
+  function handleProjectChange(value: string) {
     setProjectId(value);
     setProjectContext(value);
   }
 
-  function handleTemplateChange(value) {
+  function handleTemplateChange(value: string) {
     const chosen = currentTemplates.find((t) => t.id === value);
     if (chosen) {
-      const applied = {};
+      const applied: { [key: string]: boolean } = {};
       Object.keys(sectionKeys).forEach((k) => {
         applied[k] = chosen.sections[k] !== false;
       });
@@ -113,21 +131,21 @@ export default function ReportsPage() {
   }
 
   function handleSaveChanges() {
-    saveTemplateChanges(currentTemplate.id, sections[reportType]);
+    saveTemplateChanges(currentTemplate!.id, sections[reportType]);
     notify("Template updated.", "success");
     refresh();
   }
 
   function handleDeleteTemplate() {
-    if (!window.confirm('Delete the template "' + currentTemplate.name + '"? This can\'t be undone.')) return;
-    deleteTemplate(currentTemplate.id);
+    if (!window.confirm('Delete the template "' + currentTemplate!.name + '"? This can\'t be undone.')) return;
+    deleteTemplate(currentTemplate!.id);
     setSelectedTemplateId((prev) => Object.assign({}, prev, { [reportType]: "" }));
     notify("Template deleted.", "info");
     refresh();
   }
 
   function handleConfirmSaveNew() {
-    const name = newTemplateNameRef.current.value.trim();
+    const name = newTemplateNameRef.current!.value.trim();
     if (!name) {
       notify("Enter a template name.", "warning");
       return;
@@ -139,7 +157,7 @@ export default function ReportsPage() {
     refresh();
   }
 
-  function handleToggleSection(key) {
+  function handleToggleSection(key: string) {
     setSections((prev) =>
       Object.assign({}, prev, { [reportType]: Object.assign({}, prev[reportType], { [key]: !prev[reportType][key] }) })
     );

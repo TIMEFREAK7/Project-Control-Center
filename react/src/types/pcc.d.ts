@@ -46,6 +46,9 @@ export interface PCCProject {
   finish_date?: string;
   budget?: number;
   currency?: string;
+  contract_type?: string;
+  contract_value?: number;
+  location?: string;
 }
 
 export interface PCCDocument {
@@ -55,14 +58,115 @@ export interface PCCDocument {
   trashed_at?: string | null;
   uploaded_at?: string;
   filename?: string;
+  category?: string;
+  package_id?: string;
+  meeting_id?: string;
+}
+
+export interface PCCCommitment {
+  id: string;
+  project_id: string;
+  vendor_id?: string;
+  package_id?: string;
+  type?: string;
+  po_contract_number?: string;
+  commitment_date?: string;
+  committed_value?: number | null;
+  approved_value?: number | null;
+  status?: string;
+  budget_item_id?: string;
+  activity_id?: string;
+  notes?: string;
+  updated_at?: string;
+}
+
+export interface PCCPackage {
+  id: string;
+  name?: string;
+  code?: string;
+  notes?: string;
+  updated_at?: string;
+}
+
+export interface PCCCostActual {
+  id: string;
+  project_id?: string;
+  commitment_id?: string;
+  budget_item_id?: string;
+  category?: string;
+  description?: string;
+  amount?: number | null;
+  date?: string;
+  vendor?: string;
+  invoice_ref?: string;
+  notes?: string;
+  updated_at?: string;
+}
+
+export interface PCCCostBudgetItem {
+  id: string;
+  project_id: string;
+  name?: string;
+  category?: string;
+  planned_amount?: number | null;
+  activity_id?: string;
+  notes?: string;
+  updated_at?: string;
+}
+
+export interface PCCProjectCostSummary {
+  budgeted: number;
+  actual: number;
+  variance: number;
+  usingPortfolioBudget?: boolean;
+}
+
+export interface PCCProjectEvm {
+  bac: number;
+  ac: number;
+  pv: number;
+  ev: number;
+  linkedBac: number;
+  cpi: number | null;
+  spi: number | null;
+  eac?: number | null;
+  vac?: number | null;
+  coveragePct?: number | null;
 }
 
 export interface PCCDailyLog {
   id: string;
   project_id: string;
+  activity_id?: string;
   log_date?: string;
+  weather?: string;
+  manpower?: string;
+  equipment?: string;
+  visitors?: string;
+  deliveries?: string;
+  activities?: string;
+  safety_notes?: string;
+  incidents?: string;
+  notes?: string;
+  photos: PCCDailyLogPhoto[];
   updated_at?: string;
   created_at?: string;
+}
+
+export interface PCCDailyLogPhoto {
+  id: string;
+  filename?: string;
+  file_data?: string | null;
+  file_size?: number;
+  caption?: string;
+}
+
+export interface PCCReportTemplate {
+  id: string;
+  report_type: string;
+  name?: string;
+  sections: { [key: string]: boolean };
+  updated_at?: string;
 }
 
 export interface PCCSchedule {
@@ -133,6 +237,7 @@ export interface PCCActivity {
   total_float?: number | null;
   responsible_person?: string;
   contractor?: string;
+  percent_complete?: number;
   updated_at?: string;
 }
 
@@ -148,20 +253,39 @@ export interface PCCDelayRecord {
   is_excusable?: boolean;
   delay_cause?: string;
   responsibility_classification?: string;
+  daily_log_id?: string;
+  identified_date?: string;
+  created_at?: string;
+  status_history?: { status: string; changed_at?: string; note?: string }[];
 }
 
 export interface PCCDelayActivityLink {
   delay_id: string;
   activity_id: string;
+  project_id?: string;
+  original_planned_start?: string;
+  original_planned_finish?: string;
+  original_total_float?: number | null;
 }
 
 export interface PCCMeetingAction {
+  id: string;
   status: string;
   due_date?: string;
   description?: string;
   owner?: string;
   vendor_id?: string;
   activity_id?: string;
+  rfi_id?: string;
+  risk_id?: string;
+}
+
+export interface PCCMeetingRecording {
+  id: string;
+  filename?: string;
+  duration?: string;
+  uploaded_by?: string;
+  uploaded_at?: string;
 }
 
 export interface PCCRecoveryAction {
@@ -186,6 +310,24 @@ export interface PCCChangeOrder {
   requested_by?: string;
   waiting_on_party?: string;
   updated_at?: string;
+  cost_impact_amount?: number | null;
+  schedule_impact_days?: number | null;
+  source_risk_id?: string;
+  source_rfi_id?: string;
+  description?: string;
+  justification?: string;
+  date_requested?: string;
+  activity_id?: string;
+  decision_by?: string;
+  date_decided?: string;
+  source_meeting_id?: string;
+  revisions: PCCChangeOrderRevision[];
+}
+
+export interface PCCChangeOrderRevision {
+  date: string;
+  author?: string;
+  note: string;
 }
 
 export interface PCCDecision {
@@ -211,6 +353,11 @@ export interface PCCRisk {
   status?: string;
   probability?: string;
   impact?: string;
+  owner?: string;
+  description?: string;
+  mitigation?: string;
+  source_meeting_id?: string;
+  activity_id?: string;
   updated_at?: string;
 }
 
@@ -240,7 +387,12 @@ export interface PCCMeeting {
   project_id: string;
   title?: string;
   meeting_date?: string;
-  actions?: PCCMeetingAction[];
+  actions: PCCMeetingAction[];
+  recordings?: PCCMeetingRecording[];
+  activity_id?: string;
+  attendees?: string;
+  agenda?: string;
+  minutes?: string;
   updated_at?: string;
 }
 
@@ -255,6 +407,23 @@ export interface PCCRfi {
   assigned_to?: string;
   waiting_on_party?: string;
   updated_at?: string;
+  priority?: string;
+  raised_by?: string;
+  question?: string;
+  date_raised?: string;
+  cost_impact?: boolean;
+  schedule_impact?: boolean;
+  response?: string;
+  date_answered?: string;
+  activity_id?: string;
+  source_meeting_id?: string;
+  revisions: PCCRfiRevision[];
+}
+
+export interface PCCRfiRevision {
+  date: string;
+  author?: string;
+  note: string;
 }
 
 export interface PCCDocumentType {
@@ -311,6 +480,11 @@ export interface PCCStoreData {
   companies: PCCCompany[];
   clients: PCCClient[];
   daily_logs: PCCDailyLog[];
+  report_templates: PCCReportTemplate[];
+  commitments: PCCCommitment[];
+  packages: PCCPackage[];
+  cost_actuals: PCCCostActual[];
+  cost_budget_items: PCCCostBudgetItem[];
   document_types: PCCDocumentType[];
   vendors: PCCVendor[];
   project_document_requirements: PCCProjectDocumentRequirement[];
@@ -384,6 +558,35 @@ declare global {
         newDecision(prefill: Partial<PCCDecision>): PCCDecision;
         DECISION_STATUSES: string[];
         WAITING_ON_PARTIES: string[];
+        newReportTemplate(values: Partial<PCCReportTemplate>): PCCReportTemplate;
+        newRisk(prefill: Partial<PCCRisk>): PCCRisk;
+        RISK_TYPES: string[];
+        RISK_STATUSES: string[];
+        RISK_LEVELS: string[];
+        newCommitment(prefill: Partial<PCCCommitment>): PCCCommitment;
+        newPackage(prefill: Partial<PCCPackage>): PCCPackage;
+        COMMITMENT_TYPES: string[];
+        COMMITMENT_STATUSES: string[];
+        newChangeOrder(prefill: Partial<PCCChangeOrder>): PCCChangeOrder;
+        nextChangeOrderNumber(existing: PCCChangeOrder[]): string;
+        newChangeOrderRevision(values: { author: string; note: string }): PCCChangeOrderRevision;
+        CHANGE_ORDER_STATUSES: string[];
+        newRfi(prefill: Partial<PCCRfi>): PCCRfi;
+        nextRfiNumber(existing: PCCRfi[], type: string): string;
+        newRfiRevision(values: { author: string; note: string }): PCCRfiRevision;
+        RFI_TYPES: string[];
+        RFI_PRIORITIES: string[];
+        RFI_STATUSES: string[];
+        newDailyLog(prefill: Partial<PCCDailyLog>): PCCDailyLog;
+        newDailyLogPhoto(values: Partial<PCCDailyLogPhoto>): PCCDailyLogPhoto;
+        newDelayRecord(values: Partial<PCCDelayRecord>): PCCDelayRecord;
+        newDelayActivityLink(values: Partial<PCCDelayActivityLink>): PCCDelayActivityLink;
+        newMeeting(overrides: Partial<PCCMeeting>): PCCMeeting;
+        newMeetingAction(): PCCMeetingAction;
+        newMeetingRecording(): PCCMeetingRecording;
+        newCostBudgetItem(values: Partial<PCCCostBudgetItem>): PCCCostBudgetItem;
+        newCostActual(values: Partial<PCCCostActual>): PCCCostActual;
+        COST_CATEGORIES: string[];
       };
       pendingProjectPrefill?: { company_id?: string; client_id?: string };
       delayImpactEngine: {
@@ -398,6 +601,14 @@ declare global {
         getBlob(id: string): Promise<string | null>;
         putBlob(id: string, dataUri: string): Promise<void>;
         deleteBlob(id: string): Promise<void>;
+        resolve(id: string, inlineFileData?: string | null): Promise<string | null>;
+      };
+      loadingIndicator: {
+        show(message: string): void;
+        hide(): void;
+      };
+      fileViewer: {
+        open(file: { filename: string; mimeType: string; blob: Blob }): void;
       };
       layout: {
         refreshTitleBlock(): void;
@@ -440,6 +651,7 @@ declare global {
       };
       rfis: {
         expandRfi(rfiId: string): void;
+        createFromMeeting?(projectId: string, meetingId: string): void;
       };
       portfolio: {
         viewProject(projectId: string): void;
@@ -447,24 +659,43 @@ declare global {
       };
       changeOrders: {
         expandChangeOrder(changeOrderId: string): void;
+        createFromRisk?(projectId: string, riskId: string): void;
+        createFromRfi?(projectId: string, rfiId: string): void;
+        createFromMeeting?(projectId: string, meetingId: string): void;
+      };
+      lessonsLearned?: {
+        createFromMeeting?(projectId: string, meetingId: string): void;
       };
       cost?: {
-        projectCostSummary(data: PCCStoreData, projectId: string): { budgeted: number; actual: number };
+        projectCostSummary(data: PCCStoreData, projectId: string): PCCProjectCostSummary;
+      };
+      costEvmEngine: {
+        computeEvm(
+          budgetItems: PCCCostBudgetItem[],
+          actuals: PCCCostActual[],
+          activities: PCCActivity[],
+          schedules: PCCSchedule[],
+          options: { bac: number }
+        ): PCCProjectEvm;
       };
       scheduleGanttLayout: {
         addDays(isoDateStr: string, days: number): string;
       };
       files?: {
         filterByProject(projectId: string): void;
+        open?(doc: PCCDocument): void;
+        createFromMeeting?(projectId: string, meetingId: string): void;
       };
       decisionRegister: {
         expandDecision(decisionId: string): void;
+        createFromMeeting?(projectId: string, meetingId: string): void;
       };
       vendors: {
         openProfile(vendorId: string): void;
       };
       risks: {
         expandRisk(riskId: string): void;
+        createFromMeeting?(projectId: string, meetingId: string): void;
       };
       executiveCenter: {
         viewProject(projectId: string, tab?: string): void;

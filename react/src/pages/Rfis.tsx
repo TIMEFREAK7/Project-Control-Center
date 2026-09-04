@@ -38,31 +38,49 @@ import {
   viewMeeting,
   viewActivityInSchedule,
   createChangeOrderFromRfi,
-} from "../services/rfisService.js";
+} from "../services/rfisService";
+import type { FieldConfig, ActivityOption } from "../services/rfisService";
+import type { PCCRfi, PCCProject, PCCStoreData, PCCMeeting } from "../types/pcc";
 
-function RfiForm({ isNew, rfi, projects, data, sourceMeeting, onCancel, onSaved }) {
+function RfiForm({
+  isNew,
+  rfi,
+  projects,
+  data,
+  sourceMeeting,
+  onCancel,
+  onSaved,
+}: {
+  isNew: boolean;
+  rfi: PCCRfi;
+  projects: PCCProject[];
+  data: PCCStoreData;
+  sourceMeeting: PCCMeeting | null | undefined;
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
   const activeProjects = projects.filter((p) => !p.archived);
   const [selectedProjectId, setSelectedProjectId] = useState(rfi.project_id || (activeProjects[0] ? activeProjects[0].id : ""));
   const [showError, setShowError] = useState(false);
 
-  const activityOptions = activitiesForProject(data, selectedProjectId);
+  const activityOptions: ActivityOption[] = activitiesForProject(data, selectedProjectId);
 
-  function handleSubmit(e) {
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const form = e.target;
-    const values = {};
+    const form = e.target as HTMLFormElement;
+    const values: any = {};
     FIELD_CONFIG.forEach((cfg) => {
-      const el = form.querySelector("#rfifield-" + cfg.key);
+      const el = form.querySelector("#rfifield-" + cfg.key) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null;
       if (el) values[cfg.key] = el.value;
     });
-    values.cost_impact = form.querySelector("#rfifield-cost_impact").checked;
-    values.schedule_impact = form.querySelector("#rfifield-schedule_impact").checked;
+    values.cost_impact = (form.querySelector("#rfifield-cost_impact") as HTMLInputElement).checked;
+    values.schedule_impact = (form.querySelector("#rfifield-schedule_impact") as HTMLInputElement).checked;
     values.project_id = selectedProjectId;
-    values.activity_id = form.querySelector("#rfifield-activity_id").value;
+    values.activity_id = (form.querySelector("#rfifield-activity_id") as HTMLSelectElement).value;
 
     if (!isNew) {
-      const responseEl = form.querySelector("#rfifield-response");
-      const statusEl = form.querySelector("#rfifield-status");
+      const responseEl = form.querySelector("#rfifield-response") as HTMLTextAreaElement | null;
+      const statusEl = form.querySelector("#rfifield-status") as HTMLSelectElement | null;
       if (responseEl) values.response = responseEl.value;
       if (statusEl) values.status = statusEl.value;
     }
@@ -122,18 +140,18 @@ function RfiForm({ isNew, rfi, projects, data, sourceMeeting, onCancel, onSaved 
                 {cfg.required ? " *" : ""}
               </label>
               {cfg.type === "select" ? (
-                <select id={"rfifield-" + cfg.key} name={cfg.key} defaultValue={rfi[cfg.key] || ""}>
+                <select id={"rfifield-" + cfg.key} name={cfg.key} defaultValue={(rfi as any)[cfg.key] || ""}>
                   {cfg.optional ? <option value="">Not set</option> : null}
-                  {window.PCC.store[cfg.options].map((val) => (
+                  {window.PCC.store[cfg.options!].map((val) => (
                     <option key={val} value={val}>
-                      {cfg.labels[val] || val}
+                      {(cfg.labels && cfg.labels[val]) || val}
                     </option>
                   ))}
                 </select>
               ) : cfg.type === "textarea" ? (
-                <textarea id={"rfifield-" + cfg.key} name={cfg.key} rows={3} defaultValue={rfi[cfg.key] || ""} required={cfg.required} />
+                <textarea id={"rfifield-" + cfg.key} name={cfg.key} rows={3} defaultValue={(rfi as any)[cfg.key] || ""} required={cfg.required} />
               ) : (
-                <input id={"rfifield-" + cfg.key} name={cfg.key} type={cfg.type} defaultValue={rfi[cfg.key] || ""} required={cfg.required} />
+                <input id={"rfifield-" + cfg.key} name={cfg.key} type={cfg.type} defaultValue={(rfi as any)[cfg.key] || ""} required={cfg.required} />
               )}
             </div>
           ))}
@@ -188,7 +206,7 @@ function RfiForm({ isNew, rfi, projects, data, sourceMeeting, onCancel, onSaved 
   );
 }
 
-function RfiDetails({ r, data, onChanged }) {
+function RfiDetails({ r, data, onChanged }: { r: PCCRfi; data: PCCStoreData; onChanged: () => void }) {
   const [draftAuthor, setDraftAuthor] = useState("");
   const [draftNote, setDraftNote] = useState("");
 
@@ -318,7 +336,31 @@ function RfiDetails({ r, data, onChanged }) {
   );
 }
 
-function RfiEntry({ r, data, projects, expanded, selected, onToggleSelect, onToggleDetails, onEdit, onClone, onDelete, onChanged }) {
+function RfiEntry({
+  r,
+  data,
+  projects,
+  expanded,
+  selected,
+  onToggleSelect,
+  onToggleDetails,
+  onEdit,
+  onClone,
+  onDelete,
+  onChanged,
+}: {
+  r: PCCRfi;
+  data: PCCStoreData;
+  projects: PCCProject[];
+  expanded: boolean;
+  selected: boolean;
+  onToggleSelect: () => void;
+  onToggleDetails: () => void;
+  onEdit: () => void;
+  onClone: () => void;
+  onDelete: () => void;
+  onChanged: () => void;
+}) {
   return (
     <div className="project-entry">
       <div className="project-card">
@@ -334,7 +376,7 @@ function RfiEntry({ r, data, projects, expanded, selected, onToggleSelect, onTog
             <span className="mono">{r.number}</span> — {r.subject || "(untitled)"}
           </div>
           <div className="project-card__meta">
-            {TYPE_LABELS[r.type]} · {projectName(projects, r.project_id)}
+            {TYPE_LABELS[r.type || ""]} · {projectName(projects, r.project_id)}
             {r.assigned_to ? " · " + r.assigned_to : ""}
           </div>
         </div>
@@ -343,7 +385,7 @@ function RfiEntry({ r, data, projects, expanded, selected, onToggleSelect, onTog
             {STATUS_LABELS[r.status]}
           </span>
           <span className={"status-badge status-badge--" + (r.priority === "high" ? "critical" : r.priority === "medium" ? "at_risk" : "on_track")}>
-            {PRIORITY_LABELS[r.priority]} Priority
+            {PRIORITY_LABELS[r.priority || ""]} Priority
           </span>
           {isOverdue(r) ? <span className="status-badge status-badge--critical">Overdue</span> : null}
         </div>
@@ -367,7 +409,7 @@ function RfiEntry({ r, data, projects, expanded, selected, onToggleSelect, onTog
   );
 }
 
-function OverduePanel({ rfis, projects }) {
+function OverduePanel({ rfis, projects }: { rfis: PCCRfi[]; projects: PCCProject[] }) {
   const overdueItems = rfis.filter(isOverdue);
   if (overdueItems.length === 0) return null;
 
@@ -398,7 +440,15 @@ function OverduePanel({ rfis, projects }) {
   );
 }
 
-export default function RfisPage({ initialProjectFilter, initialPrefill, initialExpandedId }) {
+export default function RfisPage({
+  initialProjectFilter,
+  initialPrefill,
+  initialExpandedId,
+}: {
+  initialProjectFilter?: string;
+  initialPrefill?: Partial<PCCRfi> | null;
+  initialExpandedId?: string | null;
+}) {
   const [data, setData] = useState(() => getData());
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
@@ -408,10 +458,10 @@ export default function RfisPage({ initialProjectFilter, initialPrefill, initial
     const ctxProjectId = getProjectContext();
     return ctxProjectId && data.projects.some((p) => p.id === ctxProjectId) ? ctxProjectId : "";
   });
-  const [editingId, setEditingId] = useState(() => (initialPrefill ? "new" : null));
-  const [pendingPrefill, setPendingPrefill] = useState(initialPrefill || null);
-  const [expandedId, setExpandedId] = useState(initialExpandedId || null);
-  const [selectedIds, setSelectedIds] = useState({});
+  const [editingId, setEditingId] = useState<string | null>(() => (initialPrefill ? "new" : null));
+  const [pendingPrefill, setPendingPrefill] = useState<Partial<PCCRfi> | null>(initialPrefill || null);
+  const [expandedId, setExpandedId] = useState<string | null>(initialExpandedId || null);
+  const [selectedIds, setSelectedIds] = useState<{ [id: string]: boolean }>({});
 
   function refresh() {
     setData(getData());
@@ -419,21 +469,23 @@ export default function RfisPage({ initialProjectFilter, initialPrefill, initial
 
   const projects = data.projects;
 
-  function matchesFilters(r) {
+  function matchesFilters(r: PCCRfi): boolean {
     if (typeFilter && r.type !== typeFilter) return false;
     if (statusFilter && r.status !== statusFilter) return false;
     if (projectFilter && r.project_id !== projectFilter) return false;
     if (search) {
-      const haystack = (r.number + " " + r.subject + " " + r.question + " " + r.raised_by + " " + r.assigned_to).toLowerCase();
+      const haystack = ((r.number || "") + " " + (r.subject || "") + " " + (r.question || "") + " " + (r.raised_by || "") + " " + (r.assigned_to || "")).toLowerCase();
       if (haystack.indexOf(search.toLowerCase()) === -1) return false;
     }
     return true;
   }
 
-  const rfiBeingEdited = !editingId ? null : editingId === "new" ? newRfi(pendingPrefill || {}) : data.rfis.find((r) => r.id === editingId);
-  const sourceMeeting = rfiBeingEdited && rfiBeingEdited.source_meeting_id ? data.meetings.find((m) => m.id === rfiBeingEdited.source_meeting_id) : null;
+  const rfiBeingEdited: PCCRfi | null =
+    !editingId ? null : editingId === "new" ? newRfi(pendingPrefill || {}) : data.rfis.find((r) => r.id === editingId) || null;
+  const sourceMeeting =
+    rfiBeingEdited && rfiBeingEdited.source_meeting_id ? data.meetings.find((m) => m.id === rfiBeingEdited!.source_meeting_id) : null;
 
-  function handleToggleSelect(id) {
+  function handleToggleSelect(id: string) {
     setSelectedIds((prev) => {
       const next = Object.assign({}, prev);
       if (next[id]) delete next[id];
@@ -442,13 +494,13 @@ export default function RfisPage({ initialProjectFilter, initialPrefill, initial
     });
   }
 
-  function handleDelete(r) {
-    if (!window.confirm("Delete this " + TYPE_LABELS[r.type] + "? This can't be undone.")) return;
+  function handleDelete(r: PCCRfi) {
+    if (!window.confirm("Delete this " + TYPE_LABELS[r.type || ""] + "? This can't be undone.")) return;
     deleteRfi(r.id);
     refresh();
   }
 
-  function handleClone(r) {
+  function handleClone(r: PCCRfi) {
     setPendingPrefill({
       project_id: r.project_id,
       type: r.type,

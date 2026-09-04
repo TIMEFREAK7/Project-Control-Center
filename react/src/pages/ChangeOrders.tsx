@@ -41,40 +41,56 @@ import {
   viewRfi,
   viewRisk,
   viewActivityInSchedule,
-} from "../services/changeOrdersService.js";
+} from "../services/changeOrdersService";
+import type { ActivityOption } from "../services/changeOrdersService";
+import type { PCCChangeOrder, PCCProject, PCCStoreData, PCCRfi, PCCRisk } from "../types/pcc";
 
-function ChangeOrderForm({ isNew, co, projects, data, onCancel, onSaved }) {
+function ChangeOrderForm({
+  isNew,
+  co,
+  projects,
+  data,
+  onCancel,
+  onSaved,
+}: {
+  isNew: boolean;
+  co: PCCChangeOrder;
+  projects: PCCProject[];
+  data: PCCStoreData;
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
   const activeProjects = projects.filter((p) => !p.archived);
   const [selectedProjectId, setSelectedProjectId] = useState(co.project_id || (activeProjects[0] ? activeProjects[0].id : ""));
   const [showError, setShowError] = useState(false);
 
-  const activityOptions = activitiesForProject(data, selectedProjectId);
+  const activityOptions: ActivityOption[] = activitiesForProject(data, selectedProjectId);
   const sources = sourceOptionsFor(data, selectedProjectId);
 
-  function handleSubmit(e) {
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const form = e.target;
-    const values = {
-      title: form.querySelector("#cofield-title").value,
-      description: form.querySelector("#cofield-description").value,
-      justification: form.querySelector("#cofield-justification").value,
-      requested_by: form.querySelector("#cofield-requested_by").value,
-      date_requested: form.querySelector("#cofield-date_requested").value,
-      waiting_on_party: form.querySelector("#cofield-waiting_on_party").value,
-      cost_impact_amount: form.querySelector("#cofield-cost_impact_amount").value,
-      schedule_impact_days: form.querySelector("#cofield-schedule_impact_days").value,
+    const form = e.target as HTMLFormElement;
+    const values: any = {
+      title: (form.querySelector("#cofield-title") as HTMLInputElement).value,
+      description: (form.querySelector("#cofield-description") as HTMLTextAreaElement).value,
+      justification: (form.querySelector("#cofield-justification") as HTMLTextAreaElement).value,
+      requested_by: (form.querySelector("#cofield-requested_by") as HTMLInputElement).value,
+      date_requested: (form.querySelector("#cofield-date_requested") as HTMLInputElement).value,
+      waiting_on_party: (form.querySelector("#cofield-waiting_on_party") as HTMLSelectElement).value,
+      cost_impact_amount: (form.querySelector("#cofield-cost_impact_amount") as HTMLInputElement).value,
+      schedule_impact_days: (form.querySelector("#cofield-schedule_impact_days") as HTMLInputElement).value,
       project_id: selectedProjectId,
-      activity_id: form.querySelector("#cofield-activity_id").value,
-      source_rfi_id: form.querySelector("#cofield-source_rfi_id").value,
-      source_risk_id: form.querySelector("#cofield-source_risk_id").value,
+      activity_id: (form.querySelector("#cofield-activity_id") as HTMLSelectElement).value,
+      source_rfi_id: (form.querySelector("#cofield-source_rfi_id") as HTMLSelectElement).value,
+      source_risk_id: (form.querySelector("#cofield-source_risk_id") as HTMLSelectElement).value,
     };
     values.cost_impact_amount = values.cost_impact_amount === "" ? null : Number(values.cost_impact_amount);
     values.schedule_impact_days = values.schedule_impact_days === "" ? null : Number(values.schedule_impact_days);
 
     if (!isNew) {
-      const statusEl = form.querySelector("#cofield-status");
-      const decisionByEl = form.querySelector("#cofield-decision_by");
-      const dateDecidedEl = form.querySelector("#cofield-date_decided");
+      const statusEl = form.querySelector("#cofield-status") as HTMLSelectElement | null;
+      const decisionByEl = form.querySelector("#cofield-decision_by") as HTMLInputElement | null;
+      const dateDecidedEl = form.querySelector("#cofield-date_decided") as HTMLInputElement | null;
       if (statusEl) values.status = statusEl.value;
       if (decisionByEl) values.decision_by = decisionByEl.value;
       if (dateDecidedEl) values.date_decided = dateDecidedEl.value;
@@ -225,7 +241,15 @@ function ChangeOrderForm({ isNew, co, projects, data, onCancel, onSaved }) {
   );
 }
 
-function ChangeOrderDetails({ co, data, onChanged }) {
+function ChangeOrderDetails({
+  co,
+  data,
+  onChanged,
+}: {
+  co: PCCChangeOrder;
+  data: PCCStoreData;
+  onChanged: () => void;
+}) {
   const [draftAuthor, setDraftAuthor] = useState("");
   const [draftNote, setDraftNote] = useState("");
 
@@ -243,7 +267,7 @@ function ChangeOrderDetails({ co, data, onChanged }) {
     { label: "JUSTIFICATION", value: co.justification || "—", wide: true },
   ];
 
-  const links = [];
+  const links: { label: string; text: string; go: () => void }[] = [];
   if (co.source_meeting_id) {
     const m = data.meetings.find((x) => x.id === co.source_meeting_id);
     if (m) links.push({ label: "RAISED IN MEETING", text: m.title + " (" + m.meeting_date + ")", go: () => viewMeeting(m.id) });
@@ -261,7 +285,7 @@ function ChangeOrderDetails({ co, data, onChanged }) {
     if (linkedActivity) {
       links.push({
         label: "LINKED ACTIVITY",
-        text: linkedActivity.name,
+        text: linkedActivity.name || "(unnamed activity)",
         go: () => viewActivityInSchedule(co.project_id, linkedActivity.schedule_id, linkedActivity.id),
       });
     }
@@ -354,7 +378,31 @@ function ChangeOrderDetails({ co, data, onChanged }) {
   );
 }
 
-function CoEntry({ co, data, projects, expanded, selected, onToggleSelect, onToggleDetails, onEdit, onClone, onDelete, onChanged }) {
+function CoEntry({
+  co,
+  data,
+  projects,
+  expanded,
+  selected,
+  onToggleSelect,
+  onToggleDetails,
+  onEdit,
+  onClone,
+  onDelete,
+  onChanged,
+}: {
+  co: PCCChangeOrder;
+  data: PCCStoreData;
+  projects: PCCProject[];
+  expanded: boolean;
+  selected: boolean;
+  onToggleSelect: () => void;
+  onToggleDetails: () => void;
+  onEdit: () => void;
+  onClone: () => void;
+  onDelete: () => void;
+  onChanged: () => void;
+}) {
   const costStr = formatMoney(co.cost_impact_amount);
   const daysStr = formatDays(co.schedule_impact_days);
 
@@ -380,10 +428,10 @@ function CoEntry({ co, data, projects, expanded, selected, onToggleSelect, onTog
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <span className={"status-badge " + statusBadgeClass(co.status)}>{STATUS_LABELS[co.status]}</span>
           {costStr !== null ? (
-            <span className={"status-badge " + (co.cost_impact_amount > 0 ? "status-badge--at_risk" : "status-badge--on_track")}>{costStr}</span>
+            <span className={"status-badge " + ((co.cost_impact_amount || 0) > 0 ? "status-badge--at_risk" : "status-badge--on_track")}>{costStr}</span>
           ) : null}
           {daysStr !== null ? (
-            <span className={"status-badge " + (co.schedule_impact_days > 0 ? "status-badge--at_risk" : "status-badge--on_track")}>{daysStr}</span>
+            <span className={"status-badge " + ((co.schedule_impact_days || 0) > 0 ? "status-badge--at_risk" : "status-badge--on_track")}>{daysStr}</span>
           ) : null}
         </div>
         <div className="project-card__actions">
@@ -406,7 +454,15 @@ function CoEntry({ co, data, projects, expanded, selected, onToggleSelect, onTog
   );
 }
 
-export default function ChangeOrdersPage({ initialProjectFilter, initialPrefill, initialExpandedId }) {
+export default function ChangeOrdersPage({
+  initialProjectFilter,
+  initialPrefill,
+  initialExpandedId,
+}: {
+  initialProjectFilter?: string;
+  initialPrefill?: Partial<PCCChangeOrder> | null;
+  initialExpandedId?: string | null;
+}) {
   const [data, setData] = useState(() => getData());
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -415,10 +471,10 @@ export default function ChangeOrdersPage({ initialProjectFilter, initialPrefill,
     const ctxProjectId = getProjectContext();
     return ctxProjectId && data.projects.some((p) => p.id === ctxProjectId) ? ctxProjectId : "";
   });
-  const [editingId, setEditingId] = useState(() => (initialPrefill ? "new" : null));
-  const [pendingPrefill, setPendingPrefill] = useState(initialPrefill || null);
-  const [expandedId, setExpandedId] = useState(initialExpandedId || null);
-  const [selectedIds, setSelectedIds] = useState({});
+  const [editingId, setEditingId] = useState<string | null>(() => (initialPrefill ? "new" : null));
+  const [pendingPrefill, setPendingPrefill] = useState<Partial<PCCChangeOrder> | null>(initialPrefill || null);
+  const [expandedId, setExpandedId] = useState<string | null>(initialExpandedId || null);
+  const [selectedIds, setSelectedIds] = useState<{ [id: string]: boolean }>({});
 
   function refresh() {
     setData(getData());
@@ -426,19 +482,20 @@ export default function ChangeOrdersPage({ initialProjectFilter, initialPrefill,
 
   const projects = data.projects;
 
-  function matchesFilters(co) {
+  function matchesFilters(co: PCCChangeOrder): boolean {
     if (statusFilter && co.status !== statusFilter) return false;
     if (projectFilter && co.project_id !== projectFilter) return false;
     if (search) {
-      const haystack = (co.number + " " + co.title + " " + co.description + " " + co.requested_by).toLowerCase();
+      const haystack = ((co.number || "") + " " + (co.title || "") + " " + (co.description || "") + " " + (co.requested_by || "")).toLowerCase();
       if (haystack.indexOf(search.toLowerCase()) === -1) return false;
     }
     return true;
   }
 
-  const coBeingEdited = !editingId ? null : editingId === "new" ? newChangeOrder(pendingPrefill || {}) : data.change_orders.find((co) => co.id === editingId);
+  const coBeingEdited: PCCChangeOrder | null =
+    !editingId ? null : editingId === "new" ? newChangeOrder(pendingPrefill || {}) : data.change_orders.find((co) => co.id === editingId) || null;
 
-  function handleToggleSelect(id) {
+  function handleToggleSelect(id: string) {
     setSelectedIds((prev) => {
       const next = Object.assign({}, prev);
       if (next[id]) delete next[id];
@@ -447,13 +504,13 @@ export default function ChangeOrdersPage({ initialProjectFilter, initialPrefill,
     });
   }
 
-  function handleDelete(co) {
+  function handleDelete(co: PCCChangeOrder) {
     if (!window.confirm("Delete this Change Order? This can't be undone.")) return;
     deleteChangeOrder(co.id);
     refresh();
   }
 
-  function handleClone(co) {
+  function handleClone(co: PCCChangeOrder) {
     setPendingPrefill({
       project_id: co.project_id,
       title: co.title,
@@ -477,7 +534,7 @@ export default function ChangeOrdersPage({ initialProjectFilter, initialPrefill,
   const selectedCount = Object.keys(selectedIds).length;
   const noun = selectedCount === 1 ? "entry" : "entries";
 
-  function handleBulkStatus(newStatus, verb) {
+  function handleBulkStatus(newStatus: string, verb: string) {
     bulkSetStatus(selectedIds, newStatus);
     window.PCC.notify(selectedCount + (selectedCount === 1 ? " Change Order " : " Change Orders ") + verb + ".", "success");
     setSelectedIds({});

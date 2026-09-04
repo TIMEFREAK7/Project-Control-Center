@@ -39,41 +39,55 @@ import {
   getProjectContext,
   setProjectContext,
   viewActivityInSchedule,
-} from "../services/commitmentsService.js";
+} from "../services/commitmentsService";
+import type { ActivityOption, BudgetItemOption } from "../services/commitmentsService";
+import type { PCCCommitment, PCCPackage, PCCStoreData, PCCActivity } from "../types/pcc";
 
-function CommitmentForm({ isNew, commitment, data, onCancel, onSaved }) {
+function CommitmentForm({
+  isNew,
+  commitment,
+  data,
+  onCancel,
+  onSaved,
+}: {
+  isNew: boolean;
+  commitment: PCCCommitment;
+  data: PCCStoreData;
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
   const activeProjects = data.projects.filter((p) => !p.archived);
   const [selectedProjectId, setSelectedProjectId] = useState(commitment.project_id || "");
   const [showError, setShowError] = useState(false);
 
-  const activityOptions = activitiesForProject(data, selectedProjectId);
-  const budgetItemOptions = budgetItemsForProject(data, selectedProjectId);
+  const activityOptions: ActivityOption[] = activitiesForProject(data, selectedProjectId);
+  const budgetItemOptions: BudgetItemOption[] = budgetItemsForProject(data, selectedProjectId);
   const actual = !isNew ? actualValueFor(data, commitment.id) : 0;
 
-  function handleSubmit(e) {
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const form = e.target;
+    const form = e.target as HTMLFormElement;
     if (!selectedProjectId) {
       setShowError(true);
       return;
     }
     setShowError(false);
 
-    const committedValueRaw = form.querySelector("#cmtfield-committed_value").value;
-    const approvedValueRaw = form.querySelector("#cmtfield-approved_value").value;
-    const values = {
+    const committedValueRaw = (form.querySelector("#cmtfield-committed_value") as HTMLInputElement).value;
+    const approvedValueRaw = (form.querySelector("#cmtfield-approved_value") as HTMLInputElement).value;
+    const values: Partial<PCCCommitment> = {
       project_id: selectedProjectId,
-      vendor_id: form.querySelector("#cmtfield-vendor_id").value,
-      package_id: form.querySelector("#cmtfield-package_id").value,
-      type: form.querySelector("#cmtfield-type").value,
-      po_contract_number: form.querySelector("#cmtfield-po_contract_number").value,
-      commitment_date: form.querySelector("#cmtfield-commitment_date").value,
+      vendor_id: (form.querySelector("#cmtfield-vendor_id") as HTMLSelectElement).value,
+      package_id: (form.querySelector("#cmtfield-package_id") as HTMLSelectElement).value,
+      type: (form.querySelector("#cmtfield-type") as HTMLSelectElement).value,
+      po_contract_number: (form.querySelector("#cmtfield-po_contract_number") as HTMLInputElement).value,
+      commitment_date: (form.querySelector("#cmtfield-commitment_date") as HTMLInputElement).value,
       committed_value: committedValueRaw === "" ? null : Number(committedValueRaw),
       approved_value: approvedValueRaw === "" ? null : Number(approvedValueRaw),
-      status: form.querySelector("#cmtfield-status").value,
-      budget_item_id: form.querySelector("#cmtfield-budget_item_id").value,
-      activity_id: form.querySelector("#cmtfield-activity_id").value,
-      notes: form.querySelector("#cmtfield-notes").value,
+      status: (form.querySelector("#cmtfield-status") as HTMLSelectElement).value,
+      budget_item_id: (form.querySelector("#cmtfield-budget_item_id") as HTMLSelectElement).value,
+      activity_id: (form.querySelector("#cmtfield-activity_id") as HTMLSelectElement).value,
+      notes: (form.querySelector("#cmtfield-notes") as HTMLTextAreaElement).value,
     };
 
     saveCommitment(isNew, commitment.id, values);
@@ -205,7 +219,7 @@ function CommitmentForm({ isNew, commitment, data, onCancel, onSaved }) {
   );
 }
 
-function KpiStrip({ filtered, data }) {
+function KpiStrip({ filtered, data }: { filtered: PCCCommitment[]; data: PCCStoreData }) {
   const totals = { committed: 0, approved: 0, actual: 0, remaining: 0, atRisk: 0 };
   filtered.forEach((c) => {
     const actual = actualValueFor(data, c.id);
@@ -216,7 +230,7 @@ function KpiStrip({ filtered, data }) {
     if (commitmentIsAtRisk(c, data)) totals.atRisk++;
   });
 
-  const kpis = [
+  const kpis: { label: string; value: string | number; colorVar?: string | null }[] = [
     { label: "TOTAL COMMITTED", value: formatMoney(totals.committed) },
     { label: "TOTAL APPROVED", value: formatMoney(totals.approved) },
     { label: "TOTAL ACTUAL", value: formatMoney(totals.actual) },
@@ -238,10 +252,20 @@ function KpiStrip({ filtered, data }) {
   );
 }
 
-function CommitmentRow({ c, data, onEdit, onDelete }) {
+function CommitmentRow({
+  c,
+  data,
+  onEdit,
+  onDelete,
+}: {
+  c: PCCCommitment;
+  data: PCCStoreData;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
   const actual = actualValueFor(data, c.id);
   const remaining = remainingFor(c.committed_value, actual);
-  const metaParts = [projectName(data.projects, c.project_id), TYPE_LABELS[c.type] || c.type];
+  const metaParts = [projectName(data.projects, c.project_id), TYPE_LABELS[c.type || ""] || c.type];
   if (c.vendor_id) metaParts.push(vendorName(data.vendors, c.vendor_id));
   if (c.package_id) metaParts.push(packageName(data.packages, c.package_id));
   if (c.commitment_date) metaParts.push(c.commitment_date);
@@ -276,7 +300,7 @@ function CommitmentRow({ c, data, onEdit, onDelete }) {
           </span>
         ) : null}
         <span className="status-badge status-badge--info" style={{ fontSize: 11 }}>
-          {STATUS_LABELS[c.status] || c.status}
+          {STATUS_LABELS[c.status || ""] || c.status}
         </span>
         {activity ? (
           <button className="btn btn--ghost" onClick={() => viewActivityInSchedule(activity)}>
@@ -294,7 +318,19 @@ function CommitmentRow({ c, data, onEdit, onDelete }) {
   );
 }
 
-function CommitmentsTab({ data, editingCommitmentId, setEditingCommitmentId, initialProjectFilter, refresh }) {
+function CommitmentsTab({
+  data,
+  editingCommitmentId,
+  setEditingCommitmentId,
+  initialProjectFilter,
+  refresh,
+}: {
+  data: PCCStoreData;
+  editingCommitmentId: string | null;
+  setEditingCommitmentId: (id: string | null) => void;
+  initialProjectFilter?: string;
+  refresh: () => void;
+}) {
   const [search, setSearch] = useState("");
   // Redesign Gate 6 (Global Project Context): follow the shared active project on this
   // page's first render whenever no explicit filterByProject() prefill was given — same
@@ -309,14 +345,14 @@ function CommitmentsTab({ data, editingCommitmentId, setEditingCommitmentId, ini
   const [typeFilter, setTypeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
 
-  const commitmentBeingEdited =
+  const commitmentBeingEdited: PCCCommitment | null =
     !editingCommitmentId
       ? null
       : editingCommitmentId === "new"
       ? newCommitment({})
-      : data.commitments.find((c) => c.id === editingCommitmentId);
+      : data.commitments.find((c) => c.id === editingCommitmentId) || null;
 
-  function matchesFilters(c) {
+  function matchesFilters(c: PCCCommitment): boolean {
     if (projectFilter && c.project_id !== projectFilter) return false;
     if (vendorFilter && c.vendor_id !== vendorFilter) return false;
     if (packageFilter && c.package_id !== packageFilter) return false;
@@ -333,7 +369,7 @@ function CommitmentsTab({ data, editingCommitmentId, setEditingCommitmentId, ini
   const sorted = filtered.slice().sort((a, b) => (b.commitment_date || "").localeCompare(a.commitment_date || ""));
   const hasActiveProjects = data.projects.some((p) => !p.archived);
 
-  function handleDelete(c) {
+  function handleDelete(c: PCCCommitment) {
     if (!window.confirm('Delete commitment "' + (c.po_contract_number || "(no PO/Contract #)") + '"? Cost Tracking entries already logged against it are not deleted, just unlinked.')) return;
     deleteCommitment(c.id);
     refresh();
@@ -433,19 +469,33 @@ function CommitmentsTab({ data, editingCommitmentId, setEditingCommitmentId, ini
   );
 }
 
-function PackageForm({ isNew, pkg, onCancel, onSaved }) {
+function PackageForm({
+  isNew,
+  pkg,
+  onCancel,
+  onSaved,
+}: {
+  isNew: boolean;
+  pkg: PCCPackage;
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
   const [showError, setShowError] = useState(false);
 
-  function handleSubmit(e) {
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const form = e.target;
-    const name = form.querySelector("#pkgfield-name").value.trim();
+    const form = e.target as HTMLFormElement;
+    const name = (form.querySelector("#pkgfield-name") as HTMLInputElement).value.trim();
     if (!name) {
       setShowError(true);
       return;
     }
     setShowError(false);
-    const values = { name: name, code: form.querySelector("#pkgfield-code").value, notes: form.querySelector("#pkgfield-notes").value };
+    const values = {
+      name: name,
+      code: (form.querySelector("#pkgfield-code") as HTMLInputElement).value,
+      notes: (form.querySelector("#pkgfield-notes") as HTMLTextAreaElement).value,
+    };
     savePackage(isNew, pkg.id, values);
     onSaved();
   }
@@ -482,12 +532,13 @@ function PackageForm({ isNew, pkg, onCancel, onSaved }) {
   );
 }
 
-function PackagesTab({ data, refresh }) {
-  const [editingPackageId, setEditingPackageId] = useState(null);
+function PackagesTab({ data, refresh }: { data: PCCStoreData; refresh: () => void }) {
+  const [editingPackageId, setEditingPackageId] = useState<string | null>(null);
 
-  const pkgBeingEdited = !editingPackageId ? null : editingPackageId === "new" ? newPackage({}) : data.packages.find((p) => p.id === editingPackageId);
+  const pkgBeingEdited: PCCPackage | null =
+    !editingPackageId ? null : editingPackageId === "new" ? newPackage({}) : data.packages.find((p) => p.id === editingPackageId) || null;
 
-  function handleDelete(p, commitmentCount, documentCount) {
+  function handleDelete(p: PCCPackage, commitmentCount: number, documentCount: number) {
     const warning =
       commitmentCount > 0 || documentCount > 0
         ? 'Delete "' + p.name + '"? ' + commitmentCount + " commitment(s) and " + documentCount + " document(s) referencing it will be unlinked, not deleted."
@@ -559,10 +610,18 @@ function PackagesTab({ data, refresh }) {
   );
 }
 
-export default function CommitmentsPage({ initialTab, initialProjectFilter, initialEditingCommitmentId }) {
+export default function CommitmentsPage({
+  initialTab,
+  initialProjectFilter,
+  initialEditingCommitmentId,
+}: {
+  initialTab?: string;
+  initialProjectFilter?: string;
+  initialEditingCommitmentId?: string | null;
+}) {
   const [data, setData] = useState(() => getData());
   const [tab, setTab] = useState(initialTab || "commitments");
-  const [editingCommitmentId, setEditingCommitmentId] = useState(initialEditingCommitmentId || null);
+  const [editingCommitmentId, setEditingCommitmentId] = useState<string | null>(initialEditingCommitmentId || null);
 
   function refresh() {
     setData(getData());

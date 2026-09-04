@@ -10,14 +10,15 @@
  * comment for why this is safe — reports.js's own toolbar/template UI is real JSX; only
  * the assembled report document itself is this escape hatch).
  */
+import type { PCCStoreData, PCCProject, PCCReportTemplate } from "../types/pcc";
 
-export var SEVERITY_MATRIX = {
+export var SEVERITY_MATRIX: { [probability: string]: { [impact: string]: string } } = {
   high: { low: "medium", medium: "high", high: "high" },
   medium: { low: "low", medium: "medium", high: "high" },
   low: { low: "low", medium: "low", high: "medium" },
 };
 
-export var PROJECT_SECTIONS = {
+export var PROJECT_SECTIONS: { [key: string]: string } = {
   overview: "Overview",
   risks: "Risk / Issue / Opportunity Register",
   rfis: "RFI / Technical Query",
@@ -28,7 +29,7 @@ export var PROJECT_SECTIONS = {
   dailyLog: "Daily Log",
   documents: "Documents",
 };
-export var PORTFOLIO_SECTIONS = {
+export var PORTFOLIO_SECTIONS: { [key: string]: string } = {
   projects: "Projects",
   kpis: "Portfolio KPIs",
   risks: "Risk / Issue / Opportunity Register",
@@ -39,8 +40,8 @@ export var PORTFOLIO_SECTIONS = {
   documentCompliance: "Document Control Compliance",
 };
 
-export function allSectionsOn(keys) {
-  var out = {};
+export function allSectionsOn(keys: { [key: string]: string }): { [key: string]: boolean } {
+  var out: { [key: string]: boolean } = {};
   Object.keys(keys).forEach(function (k) {
     out[k] = true;
   });
@@ -56,9 +57,9 @@ export var REPORT_DAY_WINDOW_OPTIONS = [
   { value: "90", label: "Last 90 days" },
 ];
 
-export var REPORT_DAY_SECTION_LABELS = { dailyLog: "Daily Log", meetings: "Meetings", documents: "Documents" };
+export var REPORT_DAY_SECTION_LABELS: { [key: string]: string } = { dailyLog: "Daily Log", meetings: "Meetings", documents: "Documents" };
 
-function withinReportDayWindow(dateStr, days) {
+function withinReportDayWindow(dateStr: string | undefined, days: string | undefined): boolean {
   if (!days) return true;
   if (!dateStr) return false;
   var cutoff = new Date();
@@ -66,7 +67,7 @@ function withinReportDayWindow(dateStr, days) {
   return new Date(dateStr) >= cutoff;
 }
 
-function renderLogoImg(data) {
+function renderLogoImg(data: PCCStoreData): HTMLImageElement | null {
   if (!data.settings.company_logo_filename) return null;
   var img = document.createElement("img");
   img.style.maxHeight = "48px";
@@ -84,24 +85,24 @@ function renderLogoImg(data) {
   return img;
 }
 
-function today() {
+function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-function esc(s) {
+function esc(s: unknown): string {
   var div = document.createElement("div");
   div.textContent = s === null || s === undefined ? "" : String(s);
   return div.innerHTML;
 }
 
-function fmtMoney(amount, currency) {
+function fmtMoney(amount: number | string | null | undefined, currency: string | undefined): string {
   if (amount === null || amount === undefined || amount === "") return "—";
   var n = Number(amount);
   if (isNaN(n)) return "—";
   return (currency ? currency + " " : "") + n.toLocaleString();
 }
 
-function sectionEl(titleText) {
+function sectionEl(titleText: string): HTMLDivElement {
   var section = document.createElement("div");
   section.className = "report-doc__section";
   var h3 = document.createElement("h3");
@@ -111,7 +112,7 @@ function sectionEl(titleText) {
   return section;
 }
 
-function emptyNote(text) {
+function emptyNote(text: string): HTMLParagraphElement {
   var p = document.createElement("p");
   p.className = "text-secondary";
   p.style.fontSize = "12px";
@@ -120,7 +121,7 @@ function emptyNote(text) {
   return p;
 }
 
-function table(headers, rows) {
+function table(headers: string[], rows: string[][]): HTMLTableElement {
   var t = document.createElement("table");
   var thead = document.createElement("thead");
   var trh = document.createElement("tr");
@@ -145,7 +146,12 @@ function table(headers, rows) {
   return t;
 }
 
-export function buildProjectReport(project, data, sections, sectionDays) {
+export function buildProjectReport(
+  project: PCCProject,
+  data: PCCStoreData,
+  sections: { [key: string]: boolean },
+  sectionDays: { [key: string]: string }
+): HTMLDivElement {
   var doc = document.createElement("div");
   doc.className = "report-doc";
 
@@ -197,7 +203,7 @@ export function buildProjectReport(project, data, sections, sectionDays) {
         table(
           ["Title", "Type", "Severity", "Status", "Owner"],
           openRisks.map(function (r) {
-            var severity = SEVERITY_MATRIX[r.probability] ? SEVERITY_MATRIX[r.probability][r.impact] : "—";
+            var severity = SEVERITY_MATRIX[r.probability || ""] ? SEVERITY_MATRIX[r.probability || ""][r.impact || ""] : "—";
             return [esc(r.title || "(untitled)"), esc(r.type), esc(severity), esc(r.status), esc(r.owner || "—")];
           })
         )
@@ -286,7 +292,7 @@ export function buildProjectReport(project, data, sections, sectionDays) {
     var overdueRecovery = openRecovery.filter(function (r) {
       return r.target_recovery_date && r.target_recovery_date < today();
     });
-    var activitiesById = {};
+    var activitiesById: { [id: string]: (typeof data.activities)[number] } = {};
     data.activities.forEach(function (a) {
       activitiesById[a.id] = a;
     });
@@ -299,7 +305,7 @@ export function buildProjectReport(project, data, sections, sectionDays) {
           ["Description", "Activity", "Status", "Target Date", "Responsible"],
           openRecovery.map(function (r) {
             var overdue = r.target_recovery_date && r.target_recovery_date < today();
-            var activity = activitiesById[r.activity_id];
+            var activity = activitiesById[r.activity_id || ""];
             return [
               esc(r.description || "(untitled)"),
               esc(activity ? activity.name : "—"),
@@ -347,7 +353,7 @@ export function buildProjectReport(project, data, sections, sectionDays) {
       .sort(function (a, b) {
         return (b.meeting_date || "").localeCompare(a.meeting_date || "");
       });
-    var openActions = [];
+    var openActions: { meeting: (typeof meetings)[number]; action: NonNullable<(typeof meetings)[number]["actions"]>[number] }[] = [];
     meetings.forEach(function (m) {
       (m.actions || []).forEach(function (a) {
         if (a.status === "open") openActions.push({ meeting: m, action: a });
@@ -425,7 +431,7 @@ export function buildProjectReport(project, data, sections, sectionDays) {
     if (docs.length === 0) {
       docSection.appendChild(emptyNote(documentsDays ? "No documents uploaded in the last " + documentsDays + " days." : "No documents on file."));
     } else {
-      var byCategory = {};
+      var byCategory: { [key: string]: number } = {};
       docs.forEach(function (d) {
         var cat = d.category || "other";
         byCategory[cat] = (byCategory[cat] || 0) + 1;
@@ -445,7 +451,7 @@ export function buildProjectReport(project, data, sections, sectionDays) {
   return doc;
 }
 
-export function buildPortfolioReport(data, sections) {
+export function buildPortfolioReport(data: PCCStoreData, sections: { [key: string]: boolean }): HTMLDivElement {
   var doc = document.createElement("div");
   doc.className = "report-doc";
 
@@ -489,9 +495,9 @@ export function buildPortfolioReport(data, sections) {
     var totalContractValue = activeProjects.reduce(function (sum, p) {
       return sum + (Number(p.contract_value) || 0);
     }, 0);
-    var statusCounts = {};
+    var statusCounts: { [key: string]: number } = {};
     activeProjects.forEach(function (p) {
-      statusCounts[p.status] = (statusCounts[p.status] || 0) + 1;
+      statusCounts[p.status || ""] = (statusCounts[p.status || ""] || 0) + 1;
     });
     var kpiSection = sectionEl("Portfolio KPIs");
     kpiSection.appendChild(
@@ -513,9 +519,9 @@ export function buildPortfolioReport(data, sections) {
     var openRisks = data.risks.filter(function (r) {
       return r.status !== "closed";
     });
-    var riskByType = { risk: 0, issue: 0, opportunity: 0 };
+    var riskByType: { [key: string]: number } = { risk: 0, issue: 0, opportunity: 0 };
     openRisks.forEach(function (r) {
-      riskByType[r.type] = (riskByType[r.type] || 0) + 1;
+      riskByType[r.type || ""] = (riskByType[r.type || ""] || 0) + 1;
     });
     var riskSection = sectionEl("Risk / Issue / Opportunity Register — " + openRisks.length + " open across portfolio");
     riskSection.appendChild(
@@ -554,7 +560,7 @@ export function buildPortfolioReport(data, sections) {
   }
 
   if (sections.recoveryActions) {
-    var activeProjectIdsForRecovery = {};
+    var activeProjectIdsForRecovery: { [id: string]: boolean } = {};
     activeProjects.forEach(function (p) {
       activeProjectIdsForRecovery[p.id] = true;
     });
@@ -571,7 +577,7 @@ export function buildPortfolioReport(data, sections) {
   }
 
   if (sections.decisions) {
-    var activeProjectIdsForDecisions = {};
+    var activeProjectIdsForDecisions: { [id: string]: boolean } = {};
     activeProjects.forEach(function (p) {
       activeProjectIdsForDecisions[p.id] = true;
     });
@@ -583,11 +589,11 @@ export function buildPortfolioReport(data, sections) {
   }
 
   if (!sections.documentCompliance) return doc;
-  var docTypesById = {};
+  var docTypesById: { [id: string]: (typeof data.document_types)[number] } = {};
   data.document_types.forEach(function (t) {
     docTypesById[t.id] = t;
   });
-  var activeProjectIds = {};
+  var activeProjectIds: { [id: string]: boolean } = {};
   activeProjects.forEach(function (p) {
     activeProjectIds[p.id] = true;
   });
@@ -614,7 +620,7 @@ export function buildPortfolioReport(data, sections) {
   if (docTotal === 0) {
     docSection.appendChild(emptyNote("No document requirements assigned across the active portfolio."));
   } else {
-    var byProject = {};
+    var byProject: { [projectId: string]: { total: number; available: number; overdue: number } } = {};
     docRows.forEach(function (x) {
       var pid = x.row.project_id;
       if (!byProject[pid]) byProject[pid] = { total: 0, available: 0, overdue: 0 };
@@ -649,22 +655,22 @@ export function buildPortfolioReport(data, sections) {
   return doc;
 }
 
-export function getData() {
+export function getData(): PCCStoreData {
   return Object.assign({}, window.PCC.store.get());
 }
 
-export function getProjectContext() {
+export function getProjectContext(): string {
   return window.PCC.projectContext.get();
 }
-export function setProjectContext(projectId) {
+export function setProjectContext(projectId: string): void {
   window.PCC.projectContext.set(projectId);
 }
 
-export function newReportTemplate(values) {
+export function newReportTemplate(values: Partial<PCCReportTemplate>): PCCReportTemplate {
   return window.PCC.store.newReportTemplate(values);
 }
 
-export function saveTemplateChanges(templateId, sections) {
+export function saveTemplateChanges(templateId: string, sections: { [key: string]: boolean }): void {
   window.PCC.store.update(function (d) {
     var t = d.report_templates.find(function (x) {
       return x.id === templateId;
@@ -676,7 +682,7 @@ export function saveTemplateChanges(templateId, sections) {
   });
 }
 
-export function saveNewTemplate(reportType, name, sections) {
+export function saveNewTemplate(reportType: string, name: string, sections: { [key: string]: boolean }): PCCReportTemplate {
   var newTemplate = window.PCC.store.newReportTemplate({ report_type: reportType, name: name, sections: Object.assign({}, sections) });
   window.PCC.store.update(function (d) {
     d.report_templates.push(newTemplate);
@@ -684,7 +690,7 @@ export function saveNewTemplate(reportType, name, sections) {
   return newTemplate;
 }
 
-export function deleteTemplate(templateId) {
+export function deleteTemplate(templateId: string): void {
   window.PCC.store.update(function (d) {
     d.report_templates = d.report_templates.filter(function (t) {
       return t.id !== templateId;
@@ -692,10 +698,10 @@ export function deleteTemplate(templateId) {
   });
 }
 
-export function notify(message, level) {
+export function notify(message: string, level: string): void {
   window.PCC.notify(message, level);
 }
 
-export function printPage() {
+export function printPage(): void {
   window.print();
 }

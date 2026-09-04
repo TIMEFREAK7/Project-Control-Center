@@ -9,8 +9,9 @@
  * single implementation so the Cost page's own Summary/EVM tabs share the exact same
  * math, never a second copy of it.
  */
+import type { PCCStoreData, PCCProject, PCCCostBudgetItem, PCCCostActual, PCCProjectCostSummary, PCCProjectEvm } from "../types/pcc";
 
-export var CATEGORY_LABELS = {
+export var CATEGORY_LABELS: { [category: string]: string } = {
   labor: "Labor",
   materials: "Materials",
   equipment: "Equipment",
@@ -19,11 +20,11 @@ export var CATEGORY_LABELS = {
   other: "Other",
 };
 
-export function getData() {
+export function getData(): PCCStoreData {
   return Object.assign({}, window.PCC.store.get());
 }
 
-export function projectName(projects, projectId) {
+export function projectName(projects: PCCProject[], projectId: string | undefined): string {
   if (!projectId) return "Unassigned";
   var p = projects.find(function (proj) {
     return proj.id === projectId;
@@ -31,19 +32,24 @@ export function projectName(projects, projectId) {
   return p ? p.name || "(unnamed project)" : "Unassigned";
 }
 
-export function formatMoney(value, currency) {
+export function formatMoney(value: number | string | null | undefined, currency?: string): string {
   if (value === null || value === undefined || value === "") return "—";
   var num = Number(value);
   if (Number.isNaN(num)) return "—";
   return (currency ? currency + " " : "") + num.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
-export function formatIndex(value) {
+export function formatIndex(value: number | null | undefined): string {
   return value == null ? "—" : value.toFixed(2);
 }
 
-export function activitiesForProject(data, projectId) {
-  var scheduleNameById = {};
+export interface ActivityOption {
+  id: string;
+  label: string;
+}
+
+export function activitiesForProject(data: PCCStoreData, projectId: string): ActivityOption[] {
+  var scheduleNameById: { [id: string]: string | undefined } = {};
   data.schedules
     .filter(function (s) {
       return s.project_id === projectId;
@@ -60,17 +66,22 @@ export function activitiesForProject(data, projectId) {
     });
 }
 
-export function budgetItemsForProject(data, projectId) {
+export interface LabeledOption {
+  id: string;
+  label: string;
+}
+
+export function budgetItemsForProject(data: PCCStoreData, projectId: string): LabeledOption[] {
   return data.cost_budget_items
     .filter(function (b) {
       return b.project_id === projectId;
     })
     .map(function (b) {
-      return { id: b.id, label: b.name + " (" + (CATEGORY_LABELS[b.category] || b.category) + ")" };
+      return { id: b.id, label: (b.name || "") + " (" + (CATEGORY_LABELS[b.category || ""] || b.category) + ")" };
     });
 }
 
-export function commitmentsForProject(data, projectId) {
+export function commitmentsForProject(data: PCCStoreData, projectId: string): LabeledOption[] {
   return data.commitments
     .filter(function (c) {
       return c.project_id === projectId;
@@ -80,20 +91,20 @@ export function commitmentsForProject(data, projectId) {
     });
 }
 
-export function actualsAgainst(data, budgetItemId) {
+export function actualsAgainst(data: PCCStoreData, budgetItemId: string): PCCCostActual[] {
   return data.cost_actuals.filter(function (a) {
     return a.budget_item_id === budgetItemId;
   });
 }
 
-export function newCostBudgetItem() {
+export function newCostBudgetItem(): PCCCostBudgetItem {
   return window.PCC.store.newCostBudgetItem({});
 }
-export function newCostActual() {
+export function newCostActual(): PCCCostActual {
   return window.PCC.store.newCostActual({});
 }
 
-export function saveBudgetItem(isNew, itemId, values) {
+export function saveBudgetItem(isNew: boolean, itemId: string | undefined, values: Partial<PCCCostBudgetItem>): void {
   window.PCC.store.update(function (d) {
     if (isNew) {
       d.cost_budget_items.push(window.PCC.store.newCostBudgetItem(values));
@@ -110,7 +121,7 @@ export function saveBudgetItem(isNew, itemId, values) {
   window.PCC.notify(isNew ? "Budget item added." : "Budget item updated.", "success");
 }
 
-export function deleteBudgetItem(id) {
+export function deleteBudgetItem(id: string): void {
   window.PCC.store.update(function (d) {
     d.cost_budget_items = d.cost_budget_items.filter(function (item2) {
       return item2.id !== id;
@@ -122,7 +133,7 @@ export function deleteBudgetItem(id) {
   window.PCC.notify("Budget item deleted.", "info");
 }
 
-export function saveActual(isNew, actualId, values) {
+export function saveActual(isNew: boolean, actualId: string | undefined, values: Partial<PCCCostActual>): void {
   window.PCC.store.update(function (d) {
     if (isNew) {
       d.cost_actuals.push(window.PCC.store.newCostActual(values));
@@ -139,7 +150,7 @@ export function saveActual(isNew, actualId, values) {
   window.PCC.notify(isNew ? "Actual cost logged." : "Actual cost updated.", "success");
 }
 
-export function deleteActual(id) {
+export function deleteActual(id: string): void {
   window.PCC.store.update(function (d) {
     d.cost_actuals = d.cost_actuals.filter(function (item2) {
       return item2.id !== id;
@@ -148,11 +159,11 @@ export function deleteActual(id) {
   window.PCC.notify("Actual cost entry deleted.", "info");
 }
 
-export function projectCostSummary(data, projectId) {
-  return window.PCC.cost.projectCostSummary(data, projectId);
+export function projectCostSummary(data: PCCStoreData, projectId: string): PCCProjectCostSummary {
+  return window.PCC.cost!.projectCostSummary(data, projectId);
 }
 
-export function projectEvm(data, projectId) {
+export function projectEvm(data: PCCStoreData, projectId: string): PCCProjectEvm {
   var budgetItems = data.cost_budget_items.filter(function (b) {
     return b.project_id === projectId;
   });
@@ -165,9 +176,9 @@ export function projectEvm(data, projectId) {
   });
 }
 
-export function getProjectContext() {
+export function getProjectContext(): string {
   return window.PCC.projectContext.get();
 }
-export function setProjectContext(projectId) {
+export function setProjectContext(projectId: string): void {
   window.PCC.projectContext.set(projectId);
 }

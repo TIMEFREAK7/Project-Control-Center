@@ -2,8 +2,17 @@
  * existing store/blobStore globals, unchanged from the vanilla page. getData() returns a
  * FRESH top-level object reference (see CLAUDE.md's React migration notes).
  */
+import type { PCCStoreData, PCCProject, PCCDailyLog, PCCDailyLogPhoto } from "../types/pcc";
 
-export var FIELD_CONFIG = [
+export interface FieldConfig {
+  key: string;
+  label: string;
+  type: string;
+  required?: boolean;
+  placeholder?: string;
+}
+
+export var FIELD_CONFIG: FieldConfig[] = [
   { key: "log_date", label: "Date", type: "date", required: true },
   { key: "weather", label: "Weather", type: "text", placeholder: "e.g. Sunny, 32°C" },
   { key: "manpower", label: "Manpower", type: "text", placeholder: "e.g. Direct: 45, Contractor: 120" },
@@ -21,7 +30,7 @@ export var DETAIL_FIELDS = FIELD_CONFIG.filter(function (f) {
 
 export var LARGE_PHOTO_WARNING_BYTES = 8 * 1024 * 1024;
 
-export var DAILY_LOG_DELAY_CATEGORY_LABELS = {
+export var DAILY_LOG_DELAY_CATEGORY_LABELS: { [category: string]: string } = {
   late_material: "Late Material",
   late_vendor_submission: "Late Vendor Submission",
   late_drawing: "Late Drawing",
@@ -45,26 +54,31 @@ export var DAILY_LOG_DELAY_CATEGORY_LABELS = {
   other: "Other",
 };
 
-export function formatBytes(bytes) {
+export function formatBytes(bytes: number | undefined): string {
   if (!bytes) return "0 KB";
   var kb = bytes / 1024;
   if (kb < 1024) return Math.round(kb) + " KB";
   return (kb / 1024).toFixed(1) + " MB";
 }
 
-export function getData() {
+export function getData(): PCCStoreData {
   return Object.assign({}, window.PCC.store.get());
 }
 
-export function projectName(projects, projectId) {
+export function projectName(projects: PCCProject[], projectId: string): string | null {
   var p = projects.find(function (proj) {
     return proj.id === projectId;
   });
   return p ? p.name || "(unnamed project)" : null;
 }
 
-export function activitiesForProject(data, projectId) {
-  var scheduleNameById = {};
+export interface ActivityOption {
+  id: string;
+  label: string;
+}
+
+export function activitiesForProject(data: PCCStoreData, projectId: string): ActivityOption[] {
+  var scheduleNameById: { [id: string]: string | undefined } = {};
   data.schedules
     .filter(function (s) {
       return s.project_id === projectId;
@@ -81,17 +95,17 @@ export function activitiesForProject(data, projectId) {
     });
 }
 
-export function newDailyLog(prefill) {
+export function newDailyLog(prefill?: Partial<PCCDailyLog> | null): PCCDailyLog {
   return window.PCC.store.newDailyLog(prefill || {});
 }
 
-export function findDuplicateLog(projectId, logDate) {
+export function findDuplicateLog(projectId: string, logDate: string): PCCDailyLog | undefined {
   return window.PCC.store.get().daily_logs.find(function (d) {
     return d.project_id === projectId && d.log_date === logDate;
   });
 }
 
-export function saveDailyLog(isNew, logId, values) {
+export function saveDailyLog(isNew: boolean, logId: string | undefined, values: Partial<PCCDailyLog>): void {
   window.PCC.store.update(function (data) {
     if (isNew) {
       data.daily_logs.push(window.PCC.store.newDailyLog(values));
@@ -108,7 +122,7 @@ export function saveDailyLog(isNew, logId, values) {
   window.PCC.notify(isNew ? "Daily log added." : "Daily log updated.", "success");
 }
 
-export function deleteDailyLog(id) {
+export function deleteDailyLog(id: string): void {
   window.PCC.store.update(function (data) {
     data.daily_logs = data.daily_logs.filter(function (d) {
       return d.id !== id;
@@ -117,19 +131,19 @@ export function deleteDailyLog(id) {
   window.PCC.notify("Daily log deleted.", "info");
 }
 
-export function getProjectContext() {
+export function getProjectContext(): string {
   return window.PCC.projectContext.get();
 }
-export function setProjectContext(projectId) {
+export function setProjectContext(projectId: string): void {
   window.PCC.projectContext.set(projectId);
 }
 
-export function viewActivityInSchedule(projectId, scheduleId, activityId) {
+export function viewActivityInSchedule(projectId: string, scheduleId: string, activityId: string): void {
   if (window.PCC.schedule) window.PCC.schedule.viewActivity(projectId, scheduleId, activityId);
   window.PCC.router.go("schedule");
 }
 
-export function viewActivityForDelay(projectId, activityId, data) {
+export function viewActivityForDelay(projectId: string, activityId: string | undefined, data: PCCStoreData): void {
   var act = data.activities.find(function (a) {
     return a.id === activityId;
   });
@@ -139,7 +153,7 @@ export function viewActivityForDelay(projectId, activityId, data) {
 
 /** Blob written FIRST, metadata only committed once that succeeds — same "never orphan a
  * reference" rule Documents' own delete already establishes. */
-export function openPhotoFullSize(photo) {
+export function openPhotoFullSize(photo: PCCDailyLogPhoto): void {
   window.PCC.loadingIndicator.show("Opening photo…");
   window.PCC.blobStore
     .resolve(photo.id, photo.file_data)
@@ -161,17 +175,17 @@ export function openPhotoFullSize(photo) {
       var filename = (photo.caption || "photo").replace(/[\\/:*?"<>|]/g, "-") + ".jpg";
       window.PCC.fileViewer.open({ filename: filename, mimeType: mime, blob: blob });
     })
-    .catch(function (e) {
+    .catch(function (e: Error) {
       window.PCC.loadingIndicator.hide();
       window.PCC.notify("Could not open this photo: " + e.message, "error");
     });
 }
 
-export function resolvePhotoThumbnail(photo) {
+export function resolvePhotoThumbnail(photo: PCCDailyLogPhoto): Promise<string | null> {
   return window.PCC.blobStore.resolve(photo.id, photo.file_data);
 }
 
-export function updatePhotoCaption(logId, photoId, caption) {
+export function updatePhotoCaption(logId: string, photoId: string, caption: string): void {
   window.PCC.store.update(function (data) {
     var existingLog = data.daily_logs.find(function (d) {
       return d.id === logId;
@@ -183,7 +197,7 @@ export function updatePhotoCaption(logId, photoId, caption) {
   });
 }
 
-export function removePhoto(logId, photoId) {
+export function removePhoto(logId: string, photoId: string): void {
   window.PCC.store.update(function (data) {
     var existingLog = data.daily_logs.find(function (d) {
       return d.id === logId;
@@ -201,13 +215,13 @@ export function removePhoto(logId, photoId) {
 /** Sequential, not parallel: keeps behavior predictable and avoids many concurrent
  * IndexedDB writes plus many concurrent store.update() calls racing each other. Returns a
  * promise resolving to { anyLarge, anyFailed } once every file has been processed. */
-export function addPhotos(logId, files) {
+export function addPhotos(logId: string, files: File[]): Promise<{ anyLarge: boolean; anyFailed: boolean }> {
   var anyLarge = false;
   var anyFailed = false;
 
-  var chain = files.reduce(function (chainAcc, file) {
+  var chain = files.reduce(function (chainAcc: Promise<void>, file) {
     return chainAcc.then(function () {
-      return new Promise(function (resolve) {
+      return new Promise<void>(function (resolve) {
         var reader = new FileReader();
         reader.onload = function () {
           if (file.size > LARGE_PHOTO_WARNING_BYTES) anyLarge = true;
@@ -217,7 +231,7 @@ export function addPhotos(logId, files) {
             file_size: file.size,
           });
           window.PCC.blobStore
-            .putBlob(photo.id, reader.result)
+            .putBlob(photo.id, reader.result as string)
             .then(function () {
               window.PCC.store.update(function (data) {
                 var existingLog = data.daily_logs.find(function (d) {
@@ -250,7 +264,7 @@ export function addPhotos(logId, files) {
   });
 }
 
-export function createDelayFromLog(logId, categoryValue, daysValue, descriptionValue) {
+export function createDelayFromLog(logId: string, categoryValue: string, daysValue: string, descriptionValue: string): void {
   var linkedToActivity = false;
   window.PCC.store.update(function (d) {
     var freshLog = d.daily_logs.find(function (x) {
@@ -259,7 +273,7 @@ export function createDelayFromLog(logId, categoryValue, daysValue, descriptionV
     if (!freshLog) return;
     var activity = freshLog.activity_id
       ? d.activities.find(function (a) {
-          return a.id === freshLog.activity_id;
+          return a.id === freshLog!.activity_id;
         })
       : null;
     var created = window.PCC.store.newDelayRecord({

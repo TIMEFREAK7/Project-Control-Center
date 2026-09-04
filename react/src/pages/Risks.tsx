@@ -33,25 +33,43 @@ import {
   viewMeeting,
   viewActivityInSchedule,
   createChangeOrderFromRisk,
-} from "../services/risksService.js";
+} from "../services/risksService";
+import type { FieldConfig, ActivityOption } from "../services/risksService";
+import type { PCCRisk, PCCProject, PCCStoreData, PCCMeeting, PCCActivity } from "../types/pcc";
 
-function RiskForm({ isNew, risk, projects, data, sourceMeeting, onCancel, onSaved }) {
+function RiskForm({
+  isNew,
+  risk,
+  projects,
+  data,
+  sourceMeeting,
+  onCancel,
+  onSaved,
+}: {
+  isNew: boolean;
+  risk: PCCRisk;
+  projects: PCCProject[];
+  data: PCCStoreData;
+  sourceMeeting: PCCMeeting | null | undefined;
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
   const activeProjects = projects.filter((p) => !p.archived);
   const [selectedProjectId, setSelectedProjectId] = useState(risk.project_id || (activeProjects[0] ? activeProjects[0].id : ""));
   const [showError, setShowError] = useState(false);
 
-  const activityOptions = activitiesForProject(data, selectedProjectId);
+  const activityOptions: ActivityOption[] = activitiesForProject(data, selectedProjectId);
 
-  function handleSubmit(e) {
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const form = e.target;
-    const values = {};
+    const form = e.target as HTMLFormElement;
+    const values: { [key: string]: string } = {};
     FIELD_CONFIG.forEach((cfg) => {
-      const el = form.querySelector("#riskfield-" + cfg.key);
+      const el = form.querySelector("#riskfield-" + cfg.key) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null;
       if (el) values[cfg.key] = el.value;
     });
     values.project_id = selectedProjectId;
-    const activityEl = form.querySelector("#riskfield-activity_id");
+    const activityEl = form.querySelector("#riskfield-activity_id") as HTMLSelectElement | null;
     values.activity_id = activityEl ? activityEl.value : "";
 
     if (!values.title || !values.title.trim() || !values.project_id) {
@@ -109,17 +127,17 @@ function RiskForm({ isNew, risk, projects, data, sourceMeeting, onCancel, onSave
                 {cfg.required ? " *" : ""}
               </label>
               {cfg.type === "select" ? (
-                <select id={"riskfield-" + cfg.key} name={cfg.key} defaultValue={risk[cfg.key]}>
-                  {window.PCC.store[cfg.options].map((val) => (
+                <select id={"riskfield-" + cfg.key} name={cfg.key} defaultValue={(risk as any)[cfg.key]}>
+                  {window.PCC.store[cfg.options!].map((val) => (
                     <option key={val} value={val}>
-                      {cfg.labels[val] || val}
+                      {(cfg.labels && cfg.labels[val]) || val}
                     </option>
                   ))}
                 </select>
               ) : cfg.type === "textarea" ? (
-                <textarea id={"riskfield-" + cfg.key} name={cfg.key} rows={3} defaultValue={risk[cfg.key] || ""} />
+                <textarea id={"riskfield-" + cfg.key} name={cfg.key} rows={3} defaultValue={(risk as any)[cfg.key] || ""} />
               ) : (
-                <input id={"riskfield-" + cfg.key} name={cfg.key} type={cfg.type} defaultValue={risk[cfg.key] || ""} required={cfg.required} />
+                <input id={"riskfield-" + cfg.key} name={cfg.key} type={cfg.type} defaultValue={(risk as any)[cfg.key] || ""} required={cfg.required} />
               )}
             </div>
           ))}
@@ -140,7 +158,24 @@ function RiskForm({ isNew, risk, projects, data, sourceMeeting, onCancel, onSave
   );
 }
 
-function Heatmap({ allRisks, toolbarFilteredRisks, heatmapFilter, onCellClick, onClear }) {
+interface HeatmapFilter {
+  probability: string;
+  impact: string;
+}
+
+function Heatmap({
+  allRisks,
+  toolbarFilteredRisks,
+  heatmapFilter,
+  onCellClick,
+  onClear,
+}: {
+  allRisks: PCCRisk[];
+  toolbarFilteredRisks: PCCRisk[];
+  heatmapFilter: HeatmapFilter | null;
+  onCellClick: (prob: string, impact: string, isActive: boolean) => void;
+  onClear: () => void;
+}) {
   const isNarrowed = toolbarFilteredRisks.length !== allRisks.length;
 
   return (
@@ -170,7 +205,7 @@ function Heatmap({ allRisks, toolbarFilteredRisks, heatmapFilter, onCellClick, o
                   key={impact}
                   className={"heatmap-cell heatmap-cell--" + severity + (isActive ? " heatmap-cell--active" : "")}
                   title={LEVEL_LABELS[prob] + " probability × " + LEVEL_LABELS[impact] + " impact"}
-                  onClick={() => onCellClick(prob, impact, isActive)}
+                  onClick={() => onCellClick(prob, impact, !!isActive)}
                 >
                   {count}
                 </div>
@@ -188,10 +223,10 @@ function Heatmap({ allRisks, toolbarFilteredRisks, heatmapFilter, onCellClick, o
   );
 }
 
-function RiskDetails({ r, data }) {
+function RiskDetails({ r, data }: { r: PCCRisk; data: PCCStoreData }) {
   const fields = [
-    { label: "PROBABILITY", value: LEVEL_LABELS[r.probability] },
-    { label: "IMPACT", value: LEVEL_LABELS[r.impact] },
+    { label: "PROBABILITY", value: LEVEL_LABELS[r.probability || ""] },
+    { label: "IMPACT", value: LEVEL_LABELS[r.impact || ""] },
     { label: "OWNER", value: r.owner || "—" },
     { label: "DESCRIPTION", value: r.description || "—", wide: true },
     { label: "MITIGATION / RESPONSE", value: r.mitigation || "—", wide: true },
@@ -261,7 +296,35 @@ function RiskDetails({ r, data }) {
   );
 }
 
-function RiskEntry({ r, data, projects, expanded, selected, menuOpen, onToggleSelect, onToggleDetails, onToggleMenu, onCloseMenu, onEdit, onClone, onDelete }) {
+function RiskEntry({
+  r,
+  data,
+  projects,
+  expanded,
+  selected,
+  menuOpen,
+  onToggleSelect,
+  onToggleDetails,
+  onToggleMenu,
+  onCloseMenu,
+  onEdit,
+  onClone,
+  onDelete,
+}: {
+  r: PCCRisk;
+  data: PCCStoreData;
+  projects: PCCProject[];
+  expanded: boolean;
+  selected: boolean;
+  menuOpen: boolean;
+  onToggleSelect: () => void;
+  onToggleDetails: () => void;
+  onToggleMenu: () => void;
+  onCloseMenu: () => void;
+  onEdit: () => void;
+  onClone: () => void;
+  onDelete: () => void;
+}) {
   const severity = severityOf(r);
   return (
     <div className="project-entry">
@@ -276,16 +339,16 @@ function RiskEntry({ r, data, projects, expanded, selected, menuOpen, onToggleSe
         <div className="project-card__main">
           <div className="project-card__name">{r.title || "(untitled)"}</div>
           <div className="project-card__meta">
-            {TYPE_LABELS[r.type]} · {projectName(projects, r.project_id)}
+            {TYPE_LABELS[r.type || ""]} · {projectName(projects, r.project_id)}
             {r.owner ? " · " + r.owner : ""}
           </div>
         </div>
         <div style={{ display: "flex", gap: 6 }}>
           <span className={"status-badge status-badge--" + (severity === "high" ? "critical" : severity === "medium" ? "at_risk" : "on_track")}>
-            {LEVEL_LABELS[severity]} Severity
+            {LEVEL_LABELS[severity || ""]} Severity
           </span>
           <span className={"status-badge status-badge--" + (r.status === "closed" ? "complete" : r.status === "mitigating" ? "at_risk" : "info")}>
-            {STATUS_LABELS[r.status]}
+            {STATUS_LABELS[r.status || ""]}
           </span>
         </div>
         <div className="project-card__actions">
@@ -320,7 +383,17 @@ function RiskEntry({ r, data, projects, expanded, selected, menuOpen, onToggleSe
   );
 }
 
-export default function RisksPage({ initialFilterByProject, initialProjectFilter, initialPrefill, initialExpandedId }) {
+export default function RisksPage({
+  initialFilterByProject,
+  initialProjectFilter,
+  initialPrefill,
+  initialExpandedId,
+}: {
+  initialFilterByProject?: boolean;
+  initialProjectFilter?: string;
+  initialPrefill?: Partial<PCCRisk> | null;
+  initialExpandedId?: string | null;
+}) {
   const [data, setData] = useState(() => getData());
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
@@ -329,16 +402,16 @@ export default function RisksPage({ initialFilterByProject, initialProjectFilter
   // closed items, matching how registers get used day to day).
   const [statusFilter, setStatusFilter] = useState(initialFilterByProject ? "" : "open");
   const [projectFilter, setProjectFilter] = useState(() => {
-    if (initialFilterByProject) return initialProjectFilter;
+    if (initialFilterByProject) return initialProjectFilter || "";
     const ctxProjectId = getProjectContext();
     return ctxProjectId && data.projects.some((p) => p.id === ctxProjectId) ? ctxProjectId : "";
   });
-  const [heatmapFilter, setHeatmapFilter] = useState(null);
-  const [editingId, setEditingId] = useState(() => (initialPrefill ? "new" : null));
-  const [pendingPrefill, setPendingPrefill] = useState(initialPrefill || null);
-  const [expandedId, setExpandedId] = useState(initialExpandedId || null);
-  const [openMenuId, setOpenMenuId] = useState(null);
-  const [selectedIds, setSelectedIds] = useState({});
+  const [heatmapFilter, setHeatmapFilter] = useState<HeatmapFilter | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(() => (initialPrefill ? "new" : null));
+  const [pendingPrefill, setPendingPrefill] = useState<Partial<PCCRisk> | null>(initialPrefill || null);
+  const [expandedId, setExpandedId] = useState<string | null>(initialExpandedId || null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<{ [id: string]: boolean }>({});
 
   function refresh() {
     setData(getData());
@@ -346,17 +419,17 @@ export default function RisksPage({ initialFilterByProject, initialProjectFilter
 
   const projects = data.projects;
 
-  function matchesToolbarFilters(r) {
+  function matchesToolbarFilters(r: PCCRisk): boolean {
     if (typeFilter && r.type !== typeFilter) return false;
     if (statusFilter && r.status !== statusFilter) return false;
     if (projectFilter && r.project_id !== projectFilter) return false;
     if (search) {
-      const haystack = (r.title + " " + r.description + " " + r.owner).toLowerCase();
+      const haystack = ((r.title || "") + " " + (r.description || "") + " " + (r.owner || "")).toLowerCase();
       if (haystack.indexOf(search.toLowerCase()) === -1) return false;
     }
     return true;
   }
-  function matchesFilters(r) {
+  function matchesFilters(r: PCCRisk): boolean {
     if (!matchesToolbarFilters(r)) return false;
     if (heatmapFilter && (r.probability !== heatmapFilter.probability || r.impact !== heatmapFilter.impact)) return false;
     return true;
@@ -364,11 +437,12 @@ export default function RisksPage({ initialFilterByProject, initialProjectFilter
 
   const toolbarFilteredRisks = data.risks.filter(matchesToolbarFilters);
 
-  const riskBeingEdited = !editingId ? null : editingId === "new" ? newRisk(pendingPrefill || {}) : data.risks.find((r) => r.id === editingId);
+  const riskBeingEdited: PCCRisk | null =
+    !editingId ? null : editingId === "new" ? newRisk(pendingPrefill || {}) : data.risks.find((r) => r.id === editingId) || null;
   const sourceMeeting =
-    riskBeingEdited && riskBeingEdited.source_meeting_id ? data.meetings.find((m) => m.id === riskBeingEdited.source_meeting_id) : null;
+    riskBeingEdited && riskBeingEdited.source_meeting_id ? data.meetings.find((m) => m.id === riskBeingEdited!.source_meeting_id) : null;
 
-  function handleToggleSelect(id) {
+  function handleToggleSelect(id: string) {
     setSelectedIds((prev) => {
       const next = Object.assign({}, prev);
       if (next[id]) delete next[id];
@@ -377,14 +451,14 @@ export default function RisksPage({ initialFilterByProject, initialProjectFilter
     });
   }
 
-  function handleDelete(r) {
+  function handleDelete(r: PCCRisk) {
     if (!window.confirm("Delete this register entry? This can't be undone.")) return;
     deleteRisk(r.id);
     setOpenMenuId(null);
     refresh();
   }
 
-  function handleClone(r) {
+  function handleClone(r: PCCRisk) {
     setPendingPrefill({
       project_id: r.project_id,
       type: r.type,
@@ -411,7 +485,7 @@ export default function RisksPage({ initialFilterByProject, initialProjectFilter
     deleteRisks(selectedIds);
     notifyBulk("deleted");
   }
-  function notifyBulk(verb) {
+  function notifyBulk(verb: string) {
     window.PCC.notify(selectedCount + " " + noun + " " + verb + ".", verb === "deleted" ? "info" : "success");
     setSelectedIds({});
     refresh();

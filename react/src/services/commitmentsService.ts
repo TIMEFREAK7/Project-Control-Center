@@ -2,8 +2,9 @@
  * over the existing store globals, unchanged from the vanilla page. getData() returns a
  * FRESH top-level object reference (see CLAUDE.md's React migration notes).
  */
+import type { PCCStoreData, PCCProject, PCCVendor, PCCPackage, PCCCommitment, PCCActivity } from "../types/pcc";
 
-export var TYPE_LABELS = {
+export var TYPE_LABELS: { [type: string]: string } = {
   purchase_order: "Purchase Order",
   subcontract: "Subcontract",
   vendor_commitment: "Vendor Commitment",
@@ -11,28 +12,28 @@ export var TYPE_LABELS = {
   service_commitment: "Service Commitment",
   approved_commercial_commitment: "Approved Commercial Commitment",
 };
-export var STATUS_LABELS = { draft: "Draft", issued: "Issued", approved: "Approved", closed: "Closed", cancelled: "Cancelled" };
+export var STATUS_LABELS: { [status: string]: string } = { draft: "Draft", issued: "Issued", approved: "Approved", closed: "Closed", cancelled: "Cancelled" };
 
 export var COMMITMENT_RISK_WINDOW_DAYS = 7;
 
-export function getData() {
+export function getData(): PCCStoreData {
   return Object.assign({}, window.PCC.store.get());
 }
 
-export function projectName(projects, projectId) {
+export function projectName(projects: PCCProject[], projectId: string | undefined): string {
   var p = projects.find(function (x) {
     return x.id === projectId;
   });
   return p ? p.name || "(unnamed project)" : "(project removed)";
 }
-export function vendorName(vendors, vendorId) {
+export function vendorName(vendors: PCCVendor[], vendorId: string | undefined): string {
   if (!vendorId) return "";
   var v = vendors.find(function (x) {
     return x.id === vendorId;
   });
   return v ? v.vendor_name || "(unnamed vendor)" : "(vendor deleted)";
 }
-export function packageName(packages, packageId) {
+export function packageName(packages: PCCPackage[], packageId: string | undefined): string {
   if (!packageId) return "";
   var p = packages.find(function (x) {
     return x.id === packageId;
@@ -40,14 +41,14 @@ export function packageName(packages, packageId) {
   return p ? p.name || "(unnamed package)" : "(package deleted)";
 }
 
-export function formatMoney(value) {
+export function formatMoney(value: number | string | null | undefined): string {
   if (value === null || value === undefined || value === "") return "—";
   var n = Number(value);
   if (isNaN(n)) return "—";
   return (n < 0 ? "-$" : "$") + Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
-export function actualValueFor(data, commitmentId) {
+export function actualValueFor(data: PCCStoreData, commitmentId: string): number {
   return data.cost_actuals
     .filter(function (a) {
       return a.commitment_id === commitmentId;
@@ -57,25 +58,25 @@ export function actualValueFor(data, commitmentId) {
     }, 0);
 }
 
-export function remainingFor(committedValue, actual) {
+export function remainingFor(committedValue: number | null | undefined, actual: number): number | null {
   if (committedValue === null || committedValue === undefined) return null;
   return Number(committedValue) - actual;
 }
 
-function todayIso() {
+function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
-function addDaysIso(isoDateStr, days) {
+function addDaysIso(isoDateStr: string, days: number): string {
   var d = new Date(isoDateStr + "T00:00:00Z");
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
-function activityEffectiveStart(activity) {
+function activityEffectiveStart(activity: PCCActivity | undefined): string | null {
   if (!activity || activity.activity_type === "milestone") return null;
   return activity.early_start || activity.planned_start || null;
 }
 
-export function commitmentIsAtRisk(c, data) {
+export function commitmentIsAtRisk(c: PCCCommitment, data: PCCStoreData): boolean {
   if (!c.activity_id || c.status === "approved" || c.status === "closed" || c.status === "cancelled") return false;
   var activity = data.activities.find(function (a) {
     return a.id === c.activity_id;
@@ -85,9 +86,14 @@ export function commitmentIsAtRisk(c, data) {
   return start <= addDaysIso(todayIso(), COMMITMENT_RISK_WINDOW_DAYS);
 }
 
-export function activitiesForProject(data, projectId) {
+export interface ActivityOption {
+  id: string;
+  label: string;
+}
+
+export function activitiesForProject(data: PCCStoreData, projectId: string): ActivityOption[] {
   if (!projectId) return [];
-  var scheduleNameById = {};
+  var scheduleNameById: { [id: string]: string | undefined } = {};
   data.schedules
     .filter(function (s) {
       return s.project_id === projectId;
@@ -104,7 +110,12 @@ export function activitiesForProject(data, projectId) {
     });
 }
 
-export function budgetItemsForProject(data, projectId) {
+export interface BudgetItemOption {
+  id: string;
+  label: string;
+}
+
+export function budgetItemsForProject(data: PCCStoreData, projectId: string): BudgetItemOption[] {
   if (!projectId) return [];
   return data.cost_budget_items
     .filter(function (b) {
@@ -115,10 +126,10 @@ export function budgetItemsForProject(data, projectId) {
     });
 }
 
-export function newCommitment(prefill) {
+export function newCommitment(prefill?: Partial<PCCCommitment> | null): PCCCommitment {
   return window.PCC.store.newCommitment(prefill || {});
 }
-export function saveCommitment(isNew, commitmentId, values) {
+export function saveCommitment(isNew: boolean, commitmentId: string | undefined, values: Partial<PCCCommitment>): void {
   window.PCC.store.update(function (d) {
     if (isNew) {
       d.commitments.push(window.PCC.store.newCommitment(values));
@@ -134,7 +145,7 @@ export function saveCommitment(isNew, commitmentId, values) {
   });
   window.PCC.notify(isNew ? "Commitment added." : "Commitment updated.", "success");
 }
-export function deleteCommitment(id) {
+export function deleteCommitment(id: string): void {
   window.PCC.store.update(function (d) {
     d.commitments = d.commitments.filter(function (item) {
       return item.id !== id;
@@ -146,10 +157,10 @@ export function deleteCommitment(id) {
   window.PCC.notify("Commitment deleted.", "success");
 }
 
-export function newPackage(prefill) {
+export function newPackage(prefill?: Partial<PCCPackage> | null): PCCPackage {
   return window.PCC.store.newPackage(prefill || {});
 }
-export function savePackage(isNew, packageId, values) {
+export function savePackage(isNew: boolean, packageId: string | undefined, values: Partial<PCCPackage>): void {
   window.PCC.store.update(function (d) {
     if (isNew) {
       d.packages.push(window.PCC.store.newPackage(values));
@@ -165,7 +176,7 @@ export function savePackage(isNew, packageId, values) {
   });
   window.PCC.notify(isNew ? "Package added." : "Package updated.", "success");
 }
-export function deletePackage(id) {
+export function deletePackage(id: string): void {
   window.PCC.store.update(function (d) {
     d.packages = d.packages.filter(function (item) {
       return item.id !== id;
@@ -180,14 +191,14 @@ export function deletePackage(id) {
   window.PCC.notify("Package deleted.", "success");
 }
 
-export function getProjectContext() {
+export function getProjectContext(): string {
   return window.PCC.projectContext.get();
 }
-export function setProjectContext(projectId) {
+export function setProjectContext(projectId: string): void {
   window.PCC.projectContext.set(projectId);
 }
 
-export function viewActivityInSchedule(activity) {
+export function viewActivityInSchedule(activity: PCCActivity): void {
   if (window.PCC.schedule) {
     window.PCC.schedule.viewActivity(activity.project_id, activity.schedule_id, activity.id);
     window.PCC.router.go("schedule");

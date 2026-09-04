@@ -52,9 +52,23 @@ import {
   createChangeOrderFromMeeting,
   createDecisionFromMeeting,
   createLessonFromMeeting,
-} from "../services/meetingsService.js";
+} from "../services/meetingsService";
+import type { ActivityOption, LabeledOption } from "../services/meetingsService";
+import type { PCCMeeting, PCCMeetingAction, PCCMeetingRecording, PCCProject, PCCStoreData } from "../types/pcc";
 
-function ActionRow({ action, data, projectId, resetVersion, onRemove }) {
+function ActionRow({
+  action,
+  data,
+  projectId,
+  resetVersion,
+  onRemove,
+}: {
+  action: PCCMeetingAction;
+  data: PCCStoreData;
+  projectId: string;
+  resetVersion: number;
+  onRemove: () => void;
+}) {
   const preserveOriginal = resetVersion === 0;
   const resetKey = projectId + "-" + resetVersion;
   return (
@@ -109,7 +123,7 @@ function ActionRow({ action, data, projectId, resetVersion, onRemove }) {
   );
 }
 
-function RecordingRow({ recording, onRemove }) {
+function RecordingRow({ recording, onRemove }: { recording: PCCMeetingRecording; onRemove: () => void }) {
   return (
     <div
       className="recording-editor-row"
@@ -127,16 +141,30 @@ function RecordingRow({ recording, onRemove }) {
   );
 }
 
-function MeetingForm({ isNew, meeting, projects, data, onCancel, onSaved }) {
+function MeetingForm({
+  isNew,
+  meeting,
+  projects,
+  data,
+  onCancel,
+  onSaved,
+}: {
+  isNew: boolean;
+  meeting: PCCMeeting;
+  projects: PCCProject[];
+  data: PCCStoreData;
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
   const activeProjects = projects.filter((p) => !p.archived);
   const initialProjectId = meeting.project_id || (activeProjects[0] ? activeProjects[0].id : "");
   const [selectedProjectId, setSelectedProjectId] = useState(initialProjectId);
   const [projectResetVersion, setProjectResetVersion] = useState(0);
   const [showError, setShowError] = useState(false);
-  const [actionRows, setActionRows] = useState(() => meeting.actions || []);
-  const [recordingRows, setRecordingRows] = useState(() => meeting.recordings || []);
+  const [actionRows, setActionRows] = useState<PCCMeetingAction[]>(() => meeting.actions || []);
+  const [recordingRows, setRecordingRows] = useState<PCCMeetingRecording[]>(() => meeting.recordings || []);
 
-  function handleProjectChange(e) {
+  function handleProjectChange(e: React.ChangeEvent<HTMLSelectElement>) {
     setSelectedProjectId(e.target.value);
     setProjectResetVersion((v) => v + 1);
   }
@@ -144,31 +172,31 @@ function MeetingForm({ isNew, meeting, projects, data, onCancel, onSaved }) {
   function handleAddAction() {
     setActionRows((prev) => prev.concat([newMeetingAction()]));
   }
-  function handleRemoveAction(id) {
+  function handleRemoveAction(id: string) {
     setActionRows((prev) => prev.filter((a) => a.id !== id));
   }
   function handleAddRecording() {
     setRecordingRows((prev) => prev.concat([newMeetingRecording()]));
   }
-  function handleRemoveRecording(id) {
+  function handleRemoveRecording(id: string) {
     setRecordingRows((prev) => prev.filter((r) => r.id !== id));
   }
 
-  function readActionsFromForm(formEl) {
+  function readActionsFromForm(formEl: HTMLFormElement): Partial<PCCMeetingAction>[] {
     var rows = formEl.querySelectorAll(".action-editor-row");
-    var actions = [];
+    var actions: Partial<PCCMeetingAction>[] = [];
     rows.forEach(function (row) {
-      var description = row.querySelector(".action-desc").value.trim();
-      var owner = row.querySelector(".action-owner").value.trim();
-      var due_date = row.querySelector(".action-due").value;
-      var status = row.querySelector(".action-status").value;
-      var vendor_id = row.querySelector(".action-vendor").value;
-      var activity_id = row.querySelector(".action-activity").value;
-      var rfi_id = row.querySelector(".action-rfi").value;
-      var risk_id = row.querySelector(".action-risk").value;
+      var description = (row.querySelector(".action-desc") as HTMLInputElement).value.trim();
+      var owner = (row.querySelector(".action-owner") as HTMLInputElement).value.trim();
+      var due_date = (row.querySelector(".action-due") as HTMLInputElement).value;
+      var status = (row.querySelector(".action-status") as HTMLSelectElement).value;
+      var vendor_id = (row.querySelector(".action-vendor") as HTMLSelectElement).value;
+      var activity_id = (row.querySelector(".action-activity") as HTMLSelectElement).value;
+      var rfi_id = (row.querySelector(".action-rfi") as HTMLSelectElement).value;
+      var risk_id = (row.querySelector(".action-risk") as HTMLSelectElement).value;
       if (!description && !owner && !due_date) return;
       actions.push({
-        id: row.dataset.actionId,
+        id: (row as HTMLElement).dataset.actionId,
         description: description,
         owner: owner,
         due_date: due_date,
@@ -182,36 +210,36 @@ function MeetingForm({ isNew, meeting, projects, data, onCancel, onSaved }) {
     return actions;
   }
 
-  function readRecordingsFromForm(formEl) {
+  function readRecordingsFromForm(formEl: HTMLFormElement): Partial<PCCMeetingRecording>[] {
     var rows = formEl.querySelectorAll(".recording-editor-row");
-    var recordings = [];
+    var recordings: Partial<PCCMeetingRecording>[] = [];
     rows.forEach(function (row) {
-      var filename = row.querySelector(".recording-filename").value.trim();
-      var duration = row.querySelector(".recording-duration").value.trim();
-      var uploaded_by = row.querySelector(".recording-uploaded-by").value.trim();
+      var filename = (row.querySelector(".recording-filename") as HTMLInputElement).value.trim();
+      var duration = (row.querySelector(".recording-duration") as HTMLInputElement).value.trim();
+      var uploaded_by = (row.querySelector(".recording-uploaded-by") as HTMLInputElement).value.trim();
       if (!filename && !duration && !uploaded_by) return;
       recordings.push({
-        id: row.dataset.recordingId,
+        id: (row as HTMLElement).dataset.recordingId,
         filename: filename,
         duration: duration,
         uploaded_by: uploaded_by,
-        uploaded_at: row.dataset.uploadedAt || new Date().toISOString(),
+        uploaded_at: (row as HTMLElement).dataset.uploadedAt || new Date().toISOString(),
       });
     });
     return recordings;
   }
 
-  function handleSubmit(e) {
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const form = e.target;
-    const values = {
+    const form = e.target as HTMLFormElement;
+    const values: any = {
       project_id: selectedProjectId,
-      activity_id: form.querySelector("#meetingfield-activity_id").value,
-      title: form.querySelector("#meetingfield-title").value,
-      meeting_date: form.querySelector("#meetingfield-meeting_date").value,
-      attendees: form.querySelector("#meetingfield-attendees").value,
-      agenda: form.querySelector("#meetingfield-agenda").value,
-      minutes: form.querySelector("#meetingfield-minutes").value,
+      activity_id: (form.querySelector("#meetingfield-activity_id") as HTMLSelectElement).value,
+      title: (form.querySelector("#meetingfield-title") as HTMLInputElement).value,
+      meeting_date: (form.querySelector("#meetingfield-meeting_date") as HTMLInputElement).value,
+      attendees: (form.querySelector("#meetingfield-attendees") as HTMLInputElement).value,
+      agenda: (form.querySelector("#meetingfield-agenda") as HTMLTextAreaElement).value,
+      minutes: (form.querySelector("#meetingfield-minutes") as HTMLTextAreaElement).value,
     };
     if (!values.project_id || !values.title.trim() || !values.meeting_date) {
       setShowError(true);
@@ -338,7 +366,7 @@ function MeetingForm({ isNew, meeting, projects, data, onCancel, onSaved }) {
   );
 }
 
-function MeetingDetails({ m, data, projects }) {
+function MeetingDetails({ m, data, projects }: { m: PCCMeeting; data: PCCStoreData; projects: PCCProject[] }) {
   const linkedActivity = m.activity_id ? data.activities.find((a) => a.id === m.activity_id) : null;
   const linkedRisks = data.risks.filter((r) => r.source_meeting_id === m.id);
   const linkedDocs = data.documents.filter((d) => d.meeting_id === m.id);
@@ -386,7 +414,7 @@ function MeetingDetails({ m, data, projects }) {
           <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
             {m.actions.map((a) => {
               const overdue = isOverdue(a);
-              const linkParts = [];
+              const linkParts: string[] = [];
               if (a.vendor_id) {
                 const v = data.vendors.find((x) => x.id === a.vendor_id);
                 if (v) linkParts.push("Vendor: " + (v.vendor_name || "(unnamed vendor)"));
@@ -540,7 +568,23 @@ function MeetingDetails({ m, data, projects }) {
   );
 }
 
-function MeetingEntry({ m, projects, expanded, data, onToggleDetails, onEdit, onDelete }) {
+function MeetingEntry({
+  m,
+  projects,
+  expanded,
+  data,
+  onToggleDetails,
+  onEdit,
+  onDelete,
+}: {
+  m: PCCMeeting;
+  projects: PCCProject[];
+  expanded: boolean;
+  data: PCCStoreData;
+  onToggleDetails: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
   const overdue = overdueCount(m);
   return (
     <div className="project-entry">
@@ -577,7 +621,7 @@ function MeetingEntry({ m, projects, expanded, data, onToggleDetails, onEdit, on
   );
 }
 
-function OverduePanel({ meetings }) {
+function OverduePanel({ meetings }: { meetings: PCCMeeting[] }) {
   const overdueItems = allOpenActions(meetings).filter((entry) => isOverdue(entry.action));
   if (overdueItems.length === 0) return null;
 
@@ -605,7 +649,13 @@ function OverduePanel({ meetings }) {
   );
 }
 
-export default function MeetingsPage({ initialProjectFilter, initialExpandedId }) {
+export default function MeetingsPage({
+  initialProjectFilter,
+  initialExpandedId,
+}: {
+  initialProjectFilter?: string;
+  initialExpandedId?: string | null;
+}) {
   const [data, setData] = useState(() => getData());
   const [search, setSearch] = useState("");
   const [projectFilter, setProjectFilter] = useState(() => {
@@ -613,8 +663,8 @@ export default function MeetingsPage({ initialProjectFilter, initialExpandedId }
     const ctxProjectId = getProjectContext();
     return ctxProjectId && data.projects.some((p) => p.id === ctxProjectId) ? ctxProjectId : "";
   });
-  const [editingId, setEditingId] = useState(null);
-  const [expandedId, setExpandedId] = useState(initialExpandedId || null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(initialExpandedId || null);
 
   function refresh() {
     setData(getData());
@@ -622,7 +672,7 @@ export default function MeetingsPage({ initialProjectFilter, initialExpandedId }
 
   const projects = data.projects;
 
-  function meetingMatchesFilters(m) {
+  function meetingMatchesFilters(m: PCCMeeting): boolean {
     if (projectFilter && m.project_id !== projectFilter) return false;
     if (search) {
       const pName = projectName(projects, m.project_id);
@@ -632,16 +682,20 @@ export default function MeetingsPage({ initialProjectFilter, initialExpandedId }
     return true;
   }
 
-  const meetingBeingEdited = !editingId ? null : editingId === "new" ? newMeeting() : data.meetings.find((m) => m.id === editingId);
+  const meetingBeingEdited: PCCMeeting | null =
+    !editingId ? null : editingId === "new" ? newMeeting() : data.meetings.find((m) => m.id === editingId) || null;
 
-  function handleDelete(m) {
+  function handleDelete(m: PCCMeeting) {
     if (!window.confirm("Delete this meeting? This can't be undone.")) return;
     deleteMeeting(m.id);
     refresh();
   }
 
   const hasActiveProjects = projects.some((p) => !p.archived);
-  const filtered = data.meetings.filter(meetingMatchesFilters).slice().sort((a, b) => b.meeting_date.localeCompare(a.meeting_date));
+  const filtered = data.meetings
+    .filter(meetingMatchesFilters)
+    .slice()
+    .sort((a, b) => (b.meeting_date || "").localeCompare(a.meeting_date || ""));
 
   return (
     <>
