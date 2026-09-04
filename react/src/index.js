@@ -16,7 +16,7 @@
 import React from "react";
 import ReactDOMClient from "react-dom/client";
 import { flushSync } from "react-dom";
-import StorageManagementPage from "./pages/StorageManagement.jsx";
+import StorageManagementPage from "./pages/StorageManagement.tsx";
 import ComingSoonPage from "./pages/NotFound.jsx";
 import VendorPerformanceCentrePage from "./pages/VendorPerformanceCentre.jsx";
 import DocumentControlDashboardPage from "./pages/DocumentControlDashboard.jsx";

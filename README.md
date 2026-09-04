@@ -6061,6 +6061,22 @@ viewer's spreadsheet preview stay on SheetJS, unchanged — none of them write f
 styling. See HANDOFF.md's own write-up for the full detail, including two new cross-realm testing
 gotchas found along the way. Full suite: 2626 checks, 0 failures; verified in real Chromium too.
 
+## TypeScript conversion — started, strict mode, 2026-09-03
+
+Started per Aditya's own explicit direction, in strict mode from day one rather than loosened-
+then-tightened-later — retrofitting strict mode onto an already-converted codebase is its own
+separate, harder migration than just starting strict when there's nothing to retrofit yet.
+TypeScript lives in `react/src/` only; the vanilla `src/js/` domain engines stay untouched and
+un-type-checked, described to the TypeScript side only via hand-written `.d.ts` declarations
+(`react/src/types/pcc.d.ts`) covering exactly the `window.PCC.*` functions a converted page
+actually calls — not all of them upfront. **Storage Management** (the same page that piloted the
+original React migration) is the TypeScript pilot too: small, self-contained, converted 1:1 with
+zero behavior change, all 27 of its existing tests pass unchanged. `node build.js` now runs
+`tsc --noEmit` before bundling, so a real type error fails the build instead of silently shipping
+— esbuild strips types without checking them. Full suite: 2626 checks, 0 failures; verified in
+real Chromium too. See HANDOFF.md for the full write-up, including how the next page conversion
+should extend the `.d.ts` boundary.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →

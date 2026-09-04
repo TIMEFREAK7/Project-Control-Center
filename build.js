@@ -22,6 +22,13 @@ function buildReactBundle() {
       "react/node_modules is missing — run `cd react && npm install` once, then re-run `node build.js`."
     );
   }
+  // TypeScript conversion (started with the Storage Management page, strict mode):
+  // esbuild strips types without checking them, so `npm run build` alone would silently
+  // ship type errors — run `tsc --noEmit` first and fail the whole build if it doesn't
+  // pass, the same "catch it before it ships" discipline this build already applies to
+  // the test suite. Only .ts/.tsx files are checked (tsconfig.json: allowJs/checkJs both
+  // false) — an unconverted .jsx page is untouched by this step either way.
+  execFileSync("npm", ["run", "typecheck"], { cwd: REACT_DIR, stdio: "inherit" });
   execFileSync("npm", ["run", "build"], { cwd: REACT_DIR, stdio: "inherit" });
 }
 

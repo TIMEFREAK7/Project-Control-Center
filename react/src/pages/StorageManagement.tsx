@@ -1,5 +1,8 @@
 /* Storage Management — the pilot page for PCC's progressive React migration (master
- * prompt §1, priority 1: "React architecture and progressive migration").
+ * prompt §1, priority 1: "React architecture and progressive migration"), and now also
+ * the pilot page for the TypeScript conversion, for the same reason: small, self-
+ * contained, non-critical-path, already sits behind a clean domain engine with zero DOM/
+ * store-write coupling.
  *
  * Chosen as the pilot deliberately: it's a self-contained, non-critical-path page (not on
  * anyone's daily-use golden path), it already sits behind a clean domain engine
@@ -15,9 +18,11 @@
  * (tests/test_storage_management_e2e.js) unchanged, only the implementation moved.
  */
 import React, { useState } from "react";
-import { formatBytes, projectName, getStorageSnapshot, scanStorage, deleteOrphanBlob } from "../services/storageService.js";
+import { formatBytes, projectName, getStorageSnapshot, scanStorage, deleteOrphanBlob } from "../services/storageService";
+import type { StorageSnapshot, ScanResult } from "../services/storageService";
+import type { StorageBreakdownEntry, StorageProjectEntry } from "../types/pcc";
 
-function KpiCard({ label, value, sub }) {
+function KpiCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div className="panel kpi-card">
       <div className="kpi-card__label">{label}</div>
@@ -31,7 +36,15 @@ function KpiCard({ label, value, sub }) {
   );
 }
 
-function BreakdownPanel({ heading, rows, labelFor }) {
+function BreakdownPanel<T extends { count: number; bytes: number }>({
+  heading,
+  rows,
+  labelFor,
+}: {
+  heading: string;
+  rows: T[];
+  labelFor: (row: T) => string;
+}) {
   return (
     <div className="panel" style={{ marginTop: "var(--space-4)" }}>
       <h3 style={{ marginBottom: "var(--space-3)" }}>{heading}</h3>
@@ -56,16 +69,12 @@ function BreakdownPanel({ heading, rows, labelFor }) {
 }
 
 export default function StorageManagementPage() {
-  const [snapshot, setSnapshot] = useState(() => getStorageSnapshot());
+  const [snapshot, setSnapshot] = useState<StorageSnapshot>(() => getStorageSnapshot());
   const [scanning, setScanning] = useState(false);
-  const [scanResult, setScanResult] = useState(null);
-  const [scanError, setScanError] = useState(null);
+  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
 
   const { data, summary } = snapshot;
-
-  function refreshSnapshot() {
-    setSnapshot(getStorageSnapshot());
-  }
 
   function handleScan() {
     setScanning(true);
@@ -75,29 +84,29 @@ export default function StorageManagementPage() {
         setScanResult(result);
         setScanning(false);
       })
-      .catch((e) => {
+      .catch((e: Error) => {
         setScanError("Could not scan storage: " + e.message);
         setScanning(false);
       });
   }
 
-  function handleDeleteOrphan(id) {
+  function handleDeleteOrphan(id: string) {
     if (!window.confirm("Permanently delete this orphan file? It has no matching record in PCC, so nothing else references it. This can't be undone.")) return;
     deleteOrphanBlob(id)
       .then(() => {
         setScanResult((prev) => (prev ? { ...prev, orphanBlobs: prev.orphanBlobs.filter((o) => o.id !== id) } : prev));
         window.PCC.notify("Orphan file deleted.", "info");
       })
-      .catch((e) => {
+      .catch((e: Error) => {
         window.PCC.notify("Could not delete: " + e.message, "error");
       });
   }
 
-  const bySourceRows = Object.keys(summary.bySource)
+  const bySourceRows: StorageBreakdownEntry[] = Object.keys(summary.bySource)
     .map((key) => summary.bySource[key])
     .sort((a, b) => b.bytes - a.bytes);
 
-  const byProjectRows = Object.keys(summary.byProject)
+  const byProjectRows: (StorageProjectEntry & { projectId: string })[] = Object.keys(summary.byProject)
     .map((key) => ({ projectId: key, ...summary.byProject[key] }))
     .sort((a, b) => b.bytes - a.bytes);
 

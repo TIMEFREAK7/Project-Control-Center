@@ -4,11 +4,15 @@
   "version": "0.1.0",
   "description": "React source for PCC's progressive React migration (Post-Phase-5 Engineering Evolution, priority 1). Compiled by esbuild into src/js/vendor/react-bundle.js, an IIFE with React+ReactDOM bundled directly in (no CDN, no runtime npm dependency) — build.js then inlines it into index.html exactly like every other vendored library. This directory's own node_modules and esbuild step are dev/packaging-time only: the shipped Electron/Capacitor/file:// index.html never needs Node, npm, or this directory present.",
   "scripts": {
-    "build": "esbuild src/index.js --bundle --minify --define:process.env.NODE_ENV=\"'production'\" --format=iife --target=es2018 --outfile=../src/js/vendor/react-bundle.js"
+    "build": "esbuild src/index.js --bundle --minify --define:process.env.NODE_ENV=\"'production'\" --format=iife --target=es2018 --outfile=../src/js/vendor/react-bundle.js",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
     "esbuild": "^0.28.2",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "typescript": "^7.0.2"
   }
 }

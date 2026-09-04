@@ -6018,3 +6018,64 @@ survive outside jsdom too — zero console errors.
 **Next steps**: still no committed-to next feature. TypeScript (§11), PDF processing, and a
 reusable component library remain the open candidates from the original scoping conversation —
 ask Aditya directly before starting any of them, per this file's own standing caution.
+
+## TypeScript conversion — started, strict mode, pilot page (Storage Management), 2026-09-03
+
+Scoped and started per Aditya's own explicit direction after two rounds of `AskUserQuestion`:
+(1) strict mode from day one, not loosened-then-tightened-later, since retrofitting strict onto
+an already-converted codebase is its own separate, much more painful migration than starting
+strict when there's zero existing TypeScript debt to fight; (2) the `window.PCC.*` boundary
+(vanilla `src/js/` engines the React layer calls into) gets typed LAZILY — only the specific
+functions/fields a page actually calls, declared as that page converts — not all ~51 namespaces
+declared upfront and unverified. Both decisions mirror the JSX migration's own successful
+pacing: one pilot page first, proving the pattern, never front-loading work nothing exercises
+yet.
+
+**Scope, same fault line as the React migration itself**: TypeScript lives in `react/src/`
+only. `src/js/` (the vanilla domain engines — `store.js`, `blobStore.js`, every `*Engine.js`)
+is NOT converted and NOT type-checked — it's described to the TypeScript side only via hand-
+written `.d.ts` ambient declarations, one function at a time, as needed.
+
+**Pilot page: Storage Management** (`react/src/pages/StorageManagement.tsx` +
+`react/src/services/storageService.ts`) — the same page that was the ORIGINAL React migration's
+own pilot, reused deliberately: small (217 + 65 lines), self-contained, a clean 7-function
+`window.PCC.*` boundary (`store.get`, `blobStore.{listBlobIds,getBlob,deleteBlob}`,
+`storageAnalyticsEngine.{collectFileRecords,summarizeStorage,findOrphans}`, `notify`), no
+critical-path coupling. Converted 1:1 — same behavior, same test file
+(`test_storage_management_e2e.js`, all 27 checks pass unchanged), no logic changes.
+
+**Toolchain**:
+- `react/tsconfig.json` — `strict: true`, `allowJs: false`/`checkJs: false` (an unconverted
+  `.jsx` file is completely invisible to `tsc`, not even loosely checked — esbuild bundles it
+  exactly as before), `jsx: "react"`, `moduleResolution: "Bundler"`.
+- `typescript`, `@types/react@^18.3.31`, `@types/react-dom@^18.3.7` added as devDependencies —
+  pinned to the 18.x types line to match the actual installed `react`/`react-dom` (`^18.3.1`),
+  not the newer 19.x types the bare `npm view` latest-tag would have pulled in by default.
+- `react/package.json` gains a `"typecheck": "tsc --noEmit"` script.
+- **`build.js`'s `buildReactBundle()` now runs `npm run typecheck` before `npm run build`,
+  failing the whole `node build.js` if type-checking fails.** This was a deliberate addition,
+  not incidental: esbuild strips TypeScript's type annotations without ever checking them — it's
+  a bundler, not a type-checker — so without this, `node build.js` could succeed and ship a
+  real type error silently. Matches this project's own established "catch it before it ships"
+  discipline (the same reason the full test suite is a gate before every commit, not a periodic
+  check).
+
+**The `window.PCC.*` boundary** (`react/src/types/pcc.d.ts`) declares exactly what
+`StorageManagement.tsx`/`storageService.ts` call — nothing more. `PCCStoreData` (the shape of
+`window.PCC.store.get()`'s return value) is a deliberately CLOSED interface with only `projects`
+on it right now, no index signature/catch-all — every future page conversion extends this same
+shared interface with whatever new store fields IT needs, keeping the file always accurate to
+what's actually been verified against a real converted page, never silently permissive about
+fields nothing has checked yet. See the file's own header comment for the full reasoning.
+
+**Tests**: `test_storage_management_e2e.js` — all 27 checks pass unchanged (pure refactor, zero
+behavior change). Full suite: **2626 checks, 0 failures**. Verified in real Chromium too: seeded
+a project + document, navigated to Storage Management, ran Scan Storage — zero console errors.
+
+**Next steps for the NEXT page conversion** (whenever picked up): pick the next page, convert its
+`.jsx`/`.js` pair to `.tsx`/`.ts`, extend `react/src/types/pcc.d.ts` with only the new
+`window.PCC.*` functions/fields that page needs (don't pre-declare ones it doesn't call), run
+`cd react && npm run typecheck`, then the normal `node build.js` + `cd tests && npm test` +
+real-Chromium spot-check cycle. `Schedule.jsx`/`scheduleService.js` (4,273 + 1,902 lines) should
+be LAST, not first — it's by far the biggest file in the app; converting it before the pattern
+is well-proven on several smaller pages first would be starting with the hardest case.
