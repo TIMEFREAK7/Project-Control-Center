@@ -3,8 +3,26 @@
  * never reimplemented here. getData() returns a FRESH top-level object reference (see
  * CLAUDE.md's React migration notes).
  */
+import type {
+  PCCStoreData,
+  PCCProject,
+  PCCActivity,
+  PCCVendor,
+  PCCResource,
+  PCCResourceAssignment,
+  PCCResourceUnavailability,
+  ResourceUsageTimeline,
+  OverAllocationResult,
+  UtilisationResult,
+  UtilisationBucket,
+  UtilisationDay,
+  TimelineBucket,
+  ResourceTimelineDay,
+  PortfolioOverAllocationEntry,
+  LevelingResult,
+} from "../types/pcc";
 
-export var TYPE_LABELS = {
+export var TYPE_LABELS: { [type: string]: string } = {
   employee: "Employee",
   engineer: "Engineer",
   supervisor: "Supervisor",
@@ -18,32 +36,32 @@ export var TYPE_LABELS = {
   labor: "Labor (legacy)",
 };
 
-export function getData() {
+export function getData(): PCCStoreData {
   return Object.assign({}, window.PCC.store.get());
 }
 
-export function projectName(projects, projectId) {
+export function projectName(projects: PCCProject[], projectId: string | undefined): string {
   var p = projects.find(function (x) {
     return x.id === projectId;
   });
   return p ? p.name || "(unnamed project)" : "(project removed)";
 }
 
-export function resourceName(resources, resourceId) {
+export function resourceName(resources: PCCResource[], resourceId: string | undefined): string {
   var r = resources.find(function (x) {
     return x.id === resourceId;
   });
   return r ? r.name || "(unnamed resource)" : "(resource deleted)";
 }
 
-export function activityLabel(activities, activityId) {
+export function activityLabel(activities: PCCActivity[], activityId: string | undefined): string {
   var a = activities.find(function (x) {
     return x.id === activityId;
   });
   return a ? a.name || "(unnamed activity)" : "(activity deleted)";
 }
 
-export function vendorName(vendors, vendorId) {
+export function vendorName(vendors: PCCVendor[], vendorId: string | undefined): string {
   if (!vendorId) return "";
   var v = vendors.find(function (x) {
     return x.id === vendorId;
@@ -51,9 +69,14 @@ export function vendorName(vendors, vendorId) {
   return v ? v.vendor_name || "(unnamed vendor)" : "(vendor deleted)";
 }
 
-export function activitiesForProject(data, projectId) {
+export interface ActivityOption {
+  id: string;
+  label: string;
+}
+
+export function activitiesForProject(data: PCCStoreData, projectId: string): ActivityOption[] {
   if (!projectId) return [];
-  var scheduleNameById = {};
+  var scheduleNameById: { [id: string]: string | undefined } = {};
   data.schedules
     .filter(function (s) {
       return s.project_id === projectId;
@@ -70,17 +93,17 @@ export function activitiesForProject(data, projectId) {
     });
 }
 
-export function newResource() {
+export function newResource(): PCCResource {
   return window.PCC.store.newResource({});
 }
-export function newResourceAssignment() {
+export function newResourceAssignment(): PCCResourceAssignment {
   return window.PCC.store.newResourceAssignment({});
 }
-export function newResourceUnavailability() {
+export function newResourceUnavailability(): PCCResourceUnavailability {
   return window.PCC.store.newResourceUnavailability({});
 }
 
-export function saveResource(isNew, resourceId, values) {
+export function saveResource(isNew: boolean, resourceId: string | undefined, values: Partial<PCCResource>): void {
   window.PCC.store.update(function (data) {
     if (isNew) {
       data.resources.push(window.PCC.store.newResource(values));
@@ -97,7 +120,7 @@ export function saveResource(isNew, resourceId, values) {
   window.PCC.notify(isNew ? "Resource added." : "Resource updated.", "success");
 }
 
-export function deleteResource(id) {
+export function deleteResource(id: string): void {
   window.PCC.store.update(function (d) {
     d.resources = d.resources.filter(function (item) {
       return item.id !== id;
@@ -109,7 +132,7 @@ export function deleteResource(id) {
   window.PCC.notify("Resource deleted.", "success");
 }
 
-export function saveAssignment(isNew, assignmentId, values) {
+export function saveAssignment(isNew: boolean, assignmentId: string | undefined, values: Partial<PCCResourceAssignment>): void {
   window.PCC.store.update(function (d) {
     if (isNew) {
       d.resource_assignments.push(window.PCC.store.newResourceAssignment(values));
@@ -126,7 +149,7 @@ export function saveAssignment(isNew, assignmentId, values) {
   window.PCC.notify(isNew ? "Assignment added." : "Assignment updated.", "success");
 }
 
-export function deleteAssignment(id) {
+export function deleteAssignment(id: string): void {
   window.PCC.store.update(function (d) {
     d.resource_assignments = d.resource_assignments.filter(function (item) {
       return item.id !== id;
@@ -135,7 +158,7 @@ export function deleteAssignment(id) {
   window.PCC.notify("Assignment deleted.", "success");
 }
 
-export function saveUnavailability(isNew, recordId, values) {
+export function saveUnavailability(isNew: boolean, recordId: string | undefined, values: Partial<PCCResourceUnavailability>): void {
   window.PCC.store.update(function (d) {
     if (isNew) {
       d.resource_unavailability.push(window.PCC.store.newResourceUnavailability(values));
@@ -152,7 +175,7 @@ export function saveUnavailability(isNew, recordId, values) {
   window.PCC.notify(isNew ? "Unavailable period added." : "Unavailable period updated.", "success");
 }
 
-export function deleteUnavailability(id) {
+export function deleteUnavailability(id: string): void {
   window.PCC.store.update(function (d) {
     d.resource_unavailability = d.resource_unavailability.filter(function (item) {
       return item.id !== id;
@@ -161,7 +184,7 @@ export function deleteUnavailability(id) {
   window.PCC.notify("Period deleted.", "success");
 }
 
-export function portfolioOverAllocationSummary(data) {
+export function portfolioOverAllocationSummary(data: PCCStoreData): PortfolioOverAllocationEntry[] {
   return window.PCC.resourceLevelingEngine.portfolioOverAllocationSummary(
     data.resources,
     data.resource_assignments,
@@ -170,22 +193,22 @@ export function portfolioOverAllocationSummary(data) {
   );
 }
 
-export function computeResourceUsageTimeline(resource, data) {
+export function computeResourceUsageTimeline(resource: PCCResource, data: PCCStoreData): ResourceUsageTimeline {
   return window.PCC.resourceLevelingEngine.computeResourceUsageTimeline(resource, data.resource_assignments, data.activities);
 }
-export function detectOverAllocations(resource, timeline, data) {
+export function detectOverAllocations(resource: PCCResource, timeline: ResourceUsageTimeline, data: PCCStoreData): OverAllocationResult {
   return window.PCC.resourceLevelingEngine.detectOverAllocations(resource, timeline, data.resource_unavailability);
 }
-export function computeUtilisation(resource, timeline, data) {
+export function computeUtilisation(resource: PCCResource, timeline: ResourceUsageTimeline, data: PCCStoreData): UtilisationResult {
   return window.PCC.resourceLevelingEngine.computeUtilisation(resource, timeline, data.resource_unavailability);
 }
-export function bucketUtilisation(days, bucketSizeDays) {
+export function bucketUtilisation(days: UtilisationDay[], bucketSizeDays: number): UtilisationBucket[] {
   return window.PCC.resourceLevelingEngine.bucketUtilisation(days, bucketSizeDays);
 }
-export function bucketTimeline(days, bucketSizeDays) {
+export function bucketTimeline(days: ResourceTimelineDay[], bucketSizeDays: number): TimelineBucket[] {
   return window.PCC.resourceLevelingEngine.bucketTimeline(days, bucketSizeDays);
 }
-export function levelResourceWithinFloat(resource, data) {
+export function levelResourceWithinFloat(resource: PCCResource, data: PCCStoreData): LevelingResult {
   return window.PCC.resourceLevelingEngine.levelResourceWithinFloat(
     resource,
     data.resource_assignments,
@@ -194,7 +217,7 @@ export function levelResourceWithinFloat(resource, data) {
   );
 }
 
-export function applyLevelingProposal(activityId, proposedStart) {
+export function applyLevelingProposal(activityId: string, proposedStart: string): void {
   window.PCC.store.update(function (d) {
     var act = d.activities.find(function (a) {
       return a.id === activityId;
@@ -206,7 +229,7 @@ export function applyLevelingProposal(activityId, proposedStart) {
   });
 }
 
-export function viewActivityInSchedule(projectId, scheduleId, activityId) {
+export function viewActivityInSchedule(projectId: string, scheduleId: string, activityId: string): void {
   if (window.PCC.schedule) window.PCC.schedule.viewActivity(projectId, scheduleId, activityId);
   window.PCC.router.go("schedule");
 }

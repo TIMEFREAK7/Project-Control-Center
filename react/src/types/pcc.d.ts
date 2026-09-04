@@ -239,6 +239,10 @@ export interface PCCActivity {
   contractor?: string;
   percent_complete?: number;
   updated_at?: string;
+  early_finish?: string | null;
+  late_start?: string | null;
+  constraint_type?: string;
+  constraint_date?: string;
 }
 
 export interface PCCDelayRecord {
@@ -459,6 +463,141 @@ export interface PCCProjectDocumentRequirement {
   vendor_id?: string;
 }
 
+export interface PCCResource {
+  id: string;
+  name?: string;
+  type?: string;
+  unit?: string;
+  max_availability?: number | null;
+  notes?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface PCCResourceAssignment {
+  id: string;
+  resource_id?: string;
+  activity_id?: string;
+  quantity?: number | null;
+  actual_quantity?: number | null;
+  planned_hours_per_day?: number | null;
+  overtime_hours?: number | null;
+  vendor_id?: string;
+  notes?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface PCCResourceUnavailability {
+  id: string;
+  resource_id?: string;
+  start_date?: string;
+  end_date?: string;
+  quantity?: number | null;
+  reason?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ResourceTimelineContributor {
+  assignmentId: string;
+  activityId: string;
+  activityName: string;
+  projectId?: string;
+  quantity: number;
+}
+
+export interface ResourceTimelineDay {
+  date: string;
+  allocated: number;
+  contributors: ResourceTimelineContributor[];
+}
+
+export interface ResourceUsageTimeline {
+  days: ResourceTimelineDay[];
+  rangeStart: string | null;
+  rangeEnd: string | null;
+  skippedCount: number;
+}
+
+export interface OverAllocatedDay {
+  date: string;
+  allocated: number;
+  available: number | null;
+  overBy: number;
+  contributors: ResourceTimelineContributor[];
+}
+
+export interface OverAllocationResult {
+  available: boolean;
+  overAllocatedDays: OverAllocatedDay[];
+  count: number;
+  maxOverBy: number | null;
+  firstDate: string | null;
+  lastDate: string | null;
+}
+
+export interface UtilisationDay {
+  date: string;
+  allocated: number;
+  available: number | null;
+  utilisationPct: number | null;
+}
+
+export interface UtilisationResult {
+  available: boolean;
+  days: UtilisationDay[];
+  averageUtilisationPct: number | null;
+  totalDemandUnitDays: number;
+  totalAvailableUnitDays: number | null;
+  totalShortfallUnitDays: number | null;
+}
+
+export interface UtilisationBucket {
+  bucketStart: string;
+  bucketEnd: string;
+  avgUtilisationPct: number | null;
+}
+
+export interface TimelineBucket {
+  bucketStart: string;
+  bucketEnd: string;
+  allocatedMax: number;
+}
+
+export interface PortfolioOverAllocationEntry {
+  resourceId: string;
+  resourceName: string;
+  available: boolean;
+  overAllocatedDayCount: number;
+  maxOverBy: number | null;
+}
+
+export interface LevelingProposal {
+  activityId: string;
+  activityName: string;
+  originalStart: string;
+  originalFinish: string;
+  proposedStart: string;
+  proposedFinish: string;
+  shiftedByDays: number;
+}
+
+export interface UnresolvedOverAllocation {
+  date: string;
+  allocated: number;
+  available: number;
+  overBy: number;
+}
+
+export interface LevelingResult {
+  available: boolean;
+  leveled: boolean;
+  proposals: LevelingProposal[];
+  unresolved: UnresolvedOverAllocation[];
+  excludedActivityIds: string[];
+}
+
 export interface PCCStoreData {
   projects: PCCProject[];
   documents: PCCDocument[];
@@ -488,6 +627,9 @@ export interface PCCStoreData {
   document_types: PCCDocumentType[];
   vendors: PCCVendor[];
   project_document_requirements: PCCProjectDocumentRequirement[];
+  resources: PCCResource[];
+  resource_assignments: PCCResourceAssignment[];
+  resource_unavailability: PCCResourceUnavailability[];
 }
 
 export interface FileRecord {
@@ -587,6 +729,10 @@ declare global {
         newCostBudgetItem(values: Partial<PCCCostBudgetItem>): PCCCostBudgetItem;
         newCostActual(values: Partial<PCCCostActual>): PCCCostActual;
         COST_CATEGORIES: string[];
+        newResource(overrides: Partial<PCCResource>): PCCResource;
+        newResourceAssignment(overrides: Partial<PCCResourceAssignment>): PCCResourceAssignment;
+        newResourceUnavailability(overrides: Partial<PCCResourceUnavailability>): PCCResourceUnavailability;
+        RESOURCE_TYPES: string[];
       };
       pendingProjectPrefill?: { company_id?: string; client_id?: string };
       delayImpactEngine: {
@@ -702,6 +848,25 @@ declare global {
         getSchedulePerformanceSummary?(projectId: string): { unaddressedDelayDays: number };
         getDelayImpactSummary?(projectId: string): { openDelayCount: number; criticalDelayCount: number };
         getDiagnostics?(projectId: string): { severity: string; description: string }[];
+      };
+      resourceLevelingEngine: {
+        computeResourceUsageTimeline(resource: PCCResource, assignments: PCCResourceAssignment[], activities: PCCActivity[]): ResourceUsageTimeline;
+        detectOverAllocations(resource: PCCResource, timeline: ResourceUsageTimeline, unavailabilities: PCCResourceUnavailability[]): OverAllocationResult;
+        computeUtilisation(resource: PCCResource, timeline: ResourceUsageTimeline, unavailabilities: PCCResourceUnavailability[]): UtilisationResult;
+        portfolioOverAllocationSummary(
+          resources: PCCResource[],
+          assignments: PCCResourceAssignment[],
+          activities: PCCActivity[],
+          unavailabilities: PCCResourceUnavailability[]
+        ): PortfolioOverAllocationEntry[];
+        bucketTimeline(days: ResourceTimelineDay[], bucketSizeDays: number): TimelineBucket[];
+        bucketUtilisation(days: UtilisationDay[], bucketSizeDays: number): UtilisationBucket[];
+        levelResourceWithinFloat(
+          resource: PCCResource,
+          assignments: PCCResourceAssignment[],
+          activities: PCCActivity[],
+          unavailabilities: PCCResourceUnavailability[]
+        ): LevelingResult;
       };
     };
   }

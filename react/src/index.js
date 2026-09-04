@@ -43,7 +43,7 @@ import RfisPage from "./pages/Rfis.tsx";
 import DailyLogPage from "./pages/DailyLog.tsx";
 import MeetingsPage from "./pages/Meetings.tsx";
 import CostPage from "./pages/Cost.tsx";
-import ResourcesPage from "./pages/Resources.jsx";
+import ResourcesPage from "./pages/Resources.tsx";
 import PortfolioPage from "./pages/Portfolio.jsx";
 import SchedulePage from "./pages/Schedule.jsx";
 

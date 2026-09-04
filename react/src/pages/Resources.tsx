@@ -53,29 +53,48 @@ import {
   levelResourceWithinFloat,
   applyLevelingProposal,
   viewActivityInSchedule,
-} from "../services/resourcesService.js";
+} from "../services/resourcesService";
+import type {
+  PCCStoreData,
+  PCCResource,
+  PCCResourceAssignment,
+  PCCResourceUnavailability,
+  ResourceUsageTimeline,
+  OverAllocationResult,
+  UtilisationResult,
+  PortfolioOverAllocationEntry,
+  LevelingResult,
+  LevelingProposal,
+} from "../types/pcc";
 
 // ===== Register tab =====
 
-function ResourceForm({ isNew, resource, onCancel, onSaved }) {
+interface ResourceFormProps {
+  isNew: boolean;
+  resource: PCCResource;
+  onCancel: () => void;
+  onSaved: () => void;
+}
+
+function ResourceForm({ isNew, resource, onCancel, onSaved }: ResourceFormProps) {
   const [showError, setShowError] = useState(false);
 
-  function handleSubmit(e) {
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const form = e.target;
-    const name = form.querySelector("#resfield-name").value.trim();
+    const form = e.target as HTMLFormElement;
+    const name = (form.querySelector("#resfield-name") as HTMLInputElement).value.trim();
     if (!name) {
       setShowError(true);
       return;
     }
     setShowError(false);
-    const availRaw = form.querySelector("#resfield-max_availability").value;
-    const values = {
+    const availRaw = (form.querySelector("#resfield-max_availability") as HTMLInputElement).value;
+    const values: Partial<PCCResource> = {
       name: name,
-      type: form.querySelector("#resfield-type").value,
-      unit: form.querySelector("#resfield-unit").value,
+      type: (form.querySelector("#resfield-type") as HTMLSelectElement).value,
+      unit: (form.querySelector("#resfield-unit") as HTMLInputElement).value,
       max_availability: availRaw === "" ? null : Number(availRaw),
-      notes: form.querySelector("#resfield-notes").value,
+      notes: (form.querySelector("#resfield-notes") as HTMLTextAreaElement).value,
     };
     saveResource(isNew, resource.id, values);
     onSaved();
@@ -137,16 +156,30 @@ function ResourceForm({ isNew, resource, onCancel, onSaved }) {
   );
 }
 
-function RegisterTab({ data, editingId, onEdit, onAdd, onCancelEdit, onSaved, onViewLeveling, search, onSearchChange, typeFilter, onTypeFilterChange }) {
-  const resourceBeingEdited = !editingId ? null : editingId === "new" ? newResource() : data.resources.find((r) => r.id === editingId);
+interface RegisterTabProps {
+  data: PCCStoreData;
+  editingId: string | null;
+  onEdit: (id: string) => void;
+  onAdd: () => void;
+  onCancelEdit: () => void;
+  onSaved: () => void;
+  onViewLeveling: (id: string) => void;
+  search: string;
+  onSearchChange: (value: string) => void;
+  typeFilter: string;
+  onTypeFilterChange: (value: string) => void;
+}
 
-  function matches(r) {
+function RegisterTab({ data, editingId, onEdit, onAdd, onCancelEdit, onSaved, onViewLeveling, search, onSearchChange, typeFilter, onTypeFilterChange }: RegisterTabProps) {
+  const resourceBeingEdited: PCCResource | null | undefined = !editingId ? null : editingId === "new" ? newResource() : data.resources.find((r) => r.id === editingId);
+
+  function matches(r: PCCResource) {
     if (typeFilter && r.type !== typeFilter) return false;
     if (search && (r.name || "").toLowerCase().indexOf(search.toLowerCase()) === -1) return false;
     return true;
   }
 
-  function handleDelete(r) {
+  function handleDelete(r: PCCResource) {
     const assignmentCount = data.resource_assignments.filter((a) => a.resource_id === r.id).length;
     const warning =
       assignmentCount > 0
@@ -199,7 +232,7 @@ function RegisterTab({ data, editingId, onEdit, onAdd, onCancelEdit, onSaved, on
                   <strong>{r.name}</strong>
                   <br />
                   <span className="text-secondary" style={{ fontSize: 12 }}>
-                    {TYPE_LABELS[r.type]}
+                    {TYPE_LABELS[r.type || ""]}
                     {r.unit ? " · " + r.unit : ""}
                     {r.max_availability != null ? " · Max " + r.max_availability + "/day" : " · max availability not set"}
                     {" · " + assignmentCount + " assignment(s)"}
@@ -227,7 +260,15 @@ function RegisterTab({ data, editingId, onEdit, onAdd, onCancelEdit, onSaved, on
 
 // ===== Assignments tab =====
 
-function AssignmentForm({ isNew, assignment, data, onCancel, onSaved }) {
+interface AssignmentFormProps {
+  isNew: boolean;
+  assignment: PCCResourceAssignment;
+  data: PCCStoreData;
+  onCancel: () => void;
+  onSaved: () => void;
+}
+
+function AssignmentForm({ isNew, assignment, data, onCancel, onSaved }: AssignmentFormProps) {
   const [showError, setShowError] = useState(false);
   const currentActivity = assignment.activity_id ? data.activities.find((a) => a.id === assignment.activity_id) : null;
   const initialProjectId = currentActivity ? currentActivity.project_id : "";
@@ -247,34 +288,34 @@ function AssignmentForm({ isNew, assignment, data, onCancel, onSaved }) {
     );
   }
 
-  function handleProjectChange(e) {
+  function handleProjectChange(e: React.ChangeEvent<HTMLSelectElement>) {
     setSelectedProjectId(e.target.value);
     setProjectResetVersion((v) => v + 1);
   }
 
-  function handleSubmit(e) {
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const form = e.target;
-    const resourceId = form.querySelector("#asgfield-resource_id").value;
-    const activityId = form.querySelector("#asgfield-activity_id").value;
-    const qty = Number(form.querySelector("#asgfield-quantity").value);
+    const form = e.target as HTMLFormElement;
+    const resourceId = (form.querySelector("#asgfield-resource_id") as HTMLSelectElement).value;
+    const activityId = (form.querySelector("#asgfield-activity_id") as HTMLSelectElement).value;
+    const qty = Number((form.querySelector("#asgfield-quantity") as HTMLInputElement).value);
     if (!resourceId || !activityId || !qty || qty <= 0) {
       setShowError(true);
       return;
     }
     setShowError(false);
-    const actualQtyRaw = form.querySelector("#asgfield-actual_quantity").value;
-    const hoursRaw = form.querySelector("#asgfield-planned_hours_per_day").value;
-    const otRaw = form.querySelector("#asgfield-overtime_hours").value;
-    const values = {
+    const actualQtyRaw = (form.querySelector("#asgfield-actual_quantity") as HTMLInputElement).value;
+    const hoursRaw = (form.querySelector("#asgfield-planned_hours_per_day") as HTMLInputElement).value;
+    const otRaw = (form.querySelector("#asgfield-overtime_hours") as HTMLInputElement).value;
+    const values: Partial<PCCResourceAssignment> = {
       resource_id: resourceId,
       activity_id: activityId,
       quantity: qty,
       actual_quantity: actualQtyRaw === "" ? null : Number(actualQtyRaw),
       planned_hours_per_day: hoursRaw === "" ? null : Number(hoursRaw),
       overtime_hours: otRaw === "" ? null : Number(otRaw),
-      vendor_id: form.querySelector("#asgfield-vendor_id").value,
-      notes: form.querySelector("#asgfield-notes").value,
+      vendor_id: (form.querySelector("#asgfield-vendor_id") as HTMLSelectElement).value,
+      notes: (form.querySelector("#asgfield-notes") as HTMLTextAreaElement).value,
     };
     saveAssignment(isNew, assignment.id, values);
     onSaved();
@@ -290,7 +331,7 @@ function AssignmentForm({ isNew, assignment, data, onCancel, onSaved }) {
             <select id="asgfield-resource_id" defaultValue={assignment.resource_id || data.resources[0].id}>
               {data.resources.map((r) => (
                 <option key={r.id} value={r.id}>
-                  {r.name} ({TYPE_LABELS[r.type]})
+                  {r.name} ({TYPE_LABELS[r.type || ""]})
                 </option>
               ))}
             </select>
@@ -406,6 +447,19 @@ function AssignmentForm({ isNew, assignment, data, onCancel, onSaved }) {
   );
 }
 
+interface AssignmentsTabProps {
+  data: PCCStoreData;
+  editingId: string | null;
+  onEdit: (id: string) => void;
+  onAdd: () => void;
+  onCancelEdit: () => void;
+  onSaved: () => void;
+  resourceFilter: string;
+  onResourceFilterChange: (value: string) => void;
+  projectFilter: string;
+  onClearProjectFilter: () => void;
+}
+
 function AssignmentsTab({
   data,
   editingId,
@@ -417,10 +471,11 @@ function AssignmentsTab({
   onResourceFilterChange,
   projectFilter,
   onClearProjectFilter,
-}) {
-  const assignmentBeingEdited = !editingId ? null : editingId === "new" ? newResourceAssignment() : data.resource_assignments.find((a) => a.id === editingId);
+}: AssignmentsTabProps) {
+  const assignmentBeingEdited: PCCResourceAssignment | null | undefined =
+    !editingId ? null : editingId === "new" ? newResourceAssignment() : data.resource_assignments.find((a) => a.id === editingId);
 
-  function matches(a) {
+  function matches(a: PCCResourceAssignment) {
     if (resourceFilter && a.resource_id !== resourceFilter) return false;
     if (projectFilter) {
       const act = data.activities.find((x) => x.id === a.activity_id);
@@ -429,7 +484,7 @@ function AssignmentsTab({
     return true;
   }
 
-  function handleDelete(a) {
+  function handleDelete(a: PCCResourceAssignment) {
     if (!window.confirm("Delete this assignment?")) return;
     deleteAssignment(a.id);
     onSaved();
@@ -524,7 +579,15 @@ function AssignmentsTab({
 
 // ===== Unavailability tab =====
 
-function UnavailabilityForm({ isNew, record, data, onCancel, onSaved }) {
+interface UnavailabilityFormProps {
+  isNew: boolean;
+  record: PCCResourceUnavailability;
+  data: PCCStoreData;
+  onCancel: () => void;
+  onSaved: () => void;
+}
+
+function UnavailabilityForm({ isNew, record, data, onCancel, onSaved }: UnavailabilityFormProps) {
   const [showError, setShowError] = useState(false);
 
   if (data.resources.length === 0) {
@@ -539,25 +602,25 @@ function UnavailabilityForm({ isNew, record, data, onCancel, onSaved }) {
     );
   }
 
-  function handleSubmit(e) {
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const form = e.target;
-    const resourceId = form.querySelector("#unavfield-resource_id").value;
-    const startDate = form.querySelector("#unavfield-start_date").value;
-    const endDate = form.querySelector("#unavfield-end_date").value;
-    const qty = Number(form.querySelector("#unavfield-quantity").value);
+    const form = e.target as HTMLFormElement;
+    const resourceId = (form.querySelector("#unavfield-resource_id") as HTMLSelectElement).value;
+    const startDate = (form.querySelector("#unavfield-start_date") as HTMLInputElement).value;
+    const endDate = (form.querySelector("#unavfield-end_date") as HTMLInputElement).value;
+    const qty = Number((form.querySelector("#unavfield-quantity") as HTMLInputElement).value);
     const valid = resourceId && startDate && endDate && endDate >= startDate && qty && qty > 0;
     if (!valid) {
       setShowError(true);
       return;
     }
     setShowError(false);
-    const values = {
+    const values: Partial<PCCResourceUnavailability> = {
       resource_id: resourceId,
       start_date: startDate,
       end_date: endDate,
       quantity: qty,
-      reason: form.querySelector("#unavfield-reason").value,
+      reason: (form.querySelector("#unavfield-reason") as HTMLInputElement).value,
     };
     saveUnavailability(isNew, record.id, values);
     onSaved();
@@ -573,7 +636,7 @@ function UnavailabilityForm({ isNew, record, data, onCancel, onSaved }) {
             <select id="unavfield-resource_id" defaultValue={record.resource_id || data.resources[0].id}>
               {data.resources.map((r) => (
                 <option key={r.id} value={r.id}>
-                  {r.name} ({TYPE_LABELS[r.type]})
+                  {r.name} ({TYPE_LABELS[r.type || ""]})
                 </option>
               ))}
             </select>
@@ -615,10 +678,22 @@ function UnavailabilityForm({ isNew, record, data, onCancel, onSaved }) {
   );
 }
 
-function UnavailabilityTab({ data, editingId, onEdit, onAdd, onCancelEdit, onSaved, resourceFilter, onResourceFilterChange }) {
-  const recordBeingEdited = !editingId ? null : editingId === "new" ? newResourceUnavailability() : data.resource_unavailability.find((u) => u.id === editingId);
+interface UnavailabilityTabProps {
+  data: PCCStoreData;
+  editingId: string | null;
+  onEdit: (id: string) => void;
+  onAdd: () => void;
+  onCancelEdit: () => void;
+  onSaved: () => void;
+  resourceFilter: string;
+  onResourceFilterChange: (value: string) => void;
+}
 
-  function handleDelete(u) {
+function UnavailabilityTab({ data, editingId, onEdit, onAdd, onCancelEdit, onSaved, resourceFilter, onResourceFilterChange }: UnavailabilityTabProps) {
+  const recordBeingEdited: PCCResourceUnavailability | null | undefined =
+    !editingId ? null : editingId === "new" ? newResourceUnavailability() : data.resource_unavailability.find((u) => u.id === editingId);
+
+  function handleDelete(u: PCCResourceUnavailability) {
     if (!window.confirm("Delete this leave/unavailable period?")) return;
     deleteUnavailability(u.id);
     onSaved();
@@ -692,7 +767,7 @@ function UnavailabilityTab({ data, editingId, onEdit, onAdd, onCancelEdit, onSav
 
 // ===== Leveling tab =====
 
-function UtilisationTrend({ utilisation }) {
+function UtilisationTrend({ utilisation }: { utilisation: UtilisationResult }) {
   if (!utilisation.available || utilisation.days.length === 0) {
     return (
       <p className="text-secondary" style={{ fontSize: "var(--text-sm)" }}>
@@ -742,7 +817,7 @@ function UtilisationTrend({ utilisation }) {
   );
 }
 
-function Histogram({ timeline, maxAvailability }) {
+function Histogram({ timeline, maxAvailability }: { timeline: ResourceUsageTimeline; maxAvailability: number | null | undefined }) {
   if (timeline.days.length === 0) {
     return (
       <p className="text-secondary" style={{ fontSize: "var(--text-sm)" }}>
@@ -800,14 +875,20 @@ function Histogram({ timeline, maxAvailability }) {
   );
 }
 
-function SuggestedLeveling({ resource, data, onApplied }) {
-  const [proposals, setProposals] = useState(null);
+interface SuggestedLevelingProps {
+  resource: PCCResource;
+  data: PCCStoreData;
+  onApplied: () => void;
+}
+
+function SuggestedLeveling({ resource, data, onApplied }: SuggestedLevelingProps) {
+  const [proposals, setProposals] = useState<LevelingResult | null>(null);
 
   function handleSuggest() {
     setProposals(levelResourceWithinFloat(resource, data));
   }
 
-  function handleApply(p) {
+  function handleApply(p: LevelingProposal) {
     applyLevelingProposal(p.activityId, p.proposedStart);
     window.PCC.notify(
       "Start No Earlier Than " + p.proposedStart + " set on " + p.activityName + ". Re-run Calculate Schedule on its own schedule (with Honor Date Constraints on) to apply it.",
@@ -886,7 +967,14 @@ function SuggestedLeveling({ resource, data, onApplied }) {
   );
 }
 
-function LevelingTab({ data, levelingResourceId, onSelectResource, onChanged }) {
+interface LevelingTabProps {
+  data: PCCStoreData;
+  levelingResourceId: string;
+  onSelectResource: (id: string) => void;
+  onChanged: () => void;
+}
+
+function LevelingTab({ data, levelingResourceId, onSelectResource, onChanged }: LevelingTabProps) {
   const portfolioSummary = portfolioOverAllocationSummary(data);
 
   const summaryPanel = (
@@ -924,7 +1012,7 @@ function LevelingTab({ data, levelingResourceId, onSelectResource, onChanged }) 
   }
 
   const effectiveResourceId = levelingResourceId && data.resources.some((r) => r.id === levelingResourceId) ? levelingResourceId : data.resources[0].id;
-  const resource = data.resources.find((r) => r.id === effectiveResourceId);
+  const resource = data.resources.find((r) => r.id === effectiveResourceId)!;
   const timeline = computeResourceUsageTimeline(resource, data);
   const overAlloc = detectOverAllocations(resource, timeline, data);
   const utilisation = computeUtilisation(resource, timeline, data);
@@ -975,13 +1063,13 @@ function LevelingTab({ data, levelingResourceId, onSelectResource, onChanged }) 
         </div>
         <div className="kpi-card">
           <span className="kpi-card__label">Demand vs Available</span>
-          <span className="kpi-card__value mono" style={{ color: utilisation.available && utilisation.totalShortfallUnitDays > 0 ? "var(--status-critical)" : undefined }}>
+          <span className="kpi-card__value mono" style={{ color: utilisation.available && (utilisation.totalShortfallUnitDays || 0) > 0 ? "var(--status-critical)" : undefined }}>
             {utilisation.available ? utilisation.totalDemandUnitDays + " / " + utilisation.totalAvailableUnitDays + " unit-days" : "—"}
           </span>
         </div>
       </div>
 
-      {utilisation.available && utilisation.totalShortfallUnitDays > 0 ? (
+      {utilisation.available && (utilisation.totalShortfallUnitDays || 0) > 0 ? (
         <p style={{ fontSize: "var(--text-sm)", color: "var(--status-critical)", marginTop: -8, marginBottom: "var(--space-3)" }}>
           Shortfall: {utilisation.totalShortfallUnitDays} unit-day(s) of demand exceed availability across this resource's active date range.
         </p>
@@ -1049,12 +1137,18 @@ function LevelingTab({ data, levelingResourceId, onSelectResource, onChanged }) 
 
 // ===== Top-level render =====
 
-export default function ResourcesPage({ initialTab, initialProjectFilter, initialLevelingResourceId }) {
-  const [data, setData] = useState(() => getData());
+interface ResourcesPageProps {
+  initialTab?: string;
+  initialProjectFilter?: string;
+  initialLevelingResourceId?: string;
+}
+
+export default function ResourcesPage({ initialTab, initialProjectFilter, initialLevelingResourceId }: ResourcesPageProps) {
+  const [data, setData] = useState<PCCStoreData>(() => getData());
   const [tab, setTab] = useState(initialTab || "register");
-  const [editingResourceId, setEditingResourceId] = useState(null);
-  const [editingAssignmentId, setEditingAssignmentId] = useState(null);
-  const [editingUnavailabilityId, setEditingUnavailabilityId] = useState(null);
+  const [editingResourceId, setEditingResourceId] = useState<string | null>(null);
+  const [editingAssignmentId, setEditingAssignmentId] = useState<string | null>(null);
+  const [editingUnavailabilityId, setEditingUnavailabilityId] = useState<string | null>(null);
   const [resourceSearch, setResourceSearch] = useState("");
   const [resourceTypeFilter, setResourceTypeFilter] = useState("");
   const [assignmentResourceFilter, setAssignmentResourceFilter] = useState("");
@@ -1066,7 +1160,7 @@ export default function ResourcesPage({ initialTab, initialProjectFilter, initia
     setData(getData());
   }
 
-  function handleTabChange(key) {
+  function handleTabChange(key: string) {
     setTab(key);
     setEditingResourceId(null);
     setEditingAssignmentId(null);
