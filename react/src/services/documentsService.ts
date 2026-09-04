@@ -255,6 +255,65 @@ function extractDocx(buffer: ArrayBuffer): Promise<PCCDocumentExtraction> {
   });
 }
 
+interface PdfTextItem {
+  str: string;
+  hasEOL?: boolean;
+  transform?: number[];
+  width?: number;
+}
+
+/** Reconstructs one page's text from pdf.js's own getTextContent() items, preserving line
+ * breaks and rough column spacing instead of joining every item with a single fixed space —
+ * pdf.js hands back items in content-stream order with a `hasEOL` flag (set on the item that
+ * ends a line) and a `transform` matrix (`transform[4]`/`transform[5]` = x/y position,
+ * `transform[3]` ~= the item's own font size), which is enough to detect both explicit line
+ * breaks and ones pdf.js didn't flag (a vertical position jump — common when a layout uses
+ * separate text blocks per row, e.g. a table, rather than one flowing line). Within a line,
+ * a horizontal gap larger than a few average character widths (vs. glyphs sitting flush
+ * against each other) becomes extra spacing, a cheap approximation of column separation —
+ * not real table detection, just enough for the extracted text to read as more than one
+ * run-on string. */
+function reconstructPdfPageText(items: PdfTextItem[]): string {
+  var lines: string[] = [];
+  var currentLine = "";
+  var prevItem: PdfTextItem | null = null;
+  items.forEach(function (item) {
+    if (!item.str) return;
+    var transform = item.transform || [1, 0, 0, 1, 0, 0];
+    var x = transform[4];
+    var y = transform[5];
+    if (prevItem) {
+      var prevTransform = prevItem.transform || [1, 0, 0, 1, 0, 0];
+      var prevX = prevTransform[4];
+      var prevY = prevTransform[5];
+      var prevWidth = prevItem.width || 0;
+      var lineHeight = Math.abs(prevTransform[3]) || 10;
+      if (Math.abs(y - prevY) > lineHeight * 0.5) {
+        lines.push(currentLine);
+        currentLine = "";
+      } else {
+        var expectedX = prevX + prevWidth;
+        var gap = x - expectedX;
+        var avgCharWidth = prevItem.str.length ? prevWidth / prevItem.str.length : lineHeight * 0.5;
+        if (gap > avgCharWidth * 3) {
+          currentLine += "    ";
+        } else if (gap > avgCharWidth * 0.3) {
+          currentLine += " ";
+        }
+      }
+    }
+    currentLine += item.str;
+    prevItem = item;
+    if (item.hasEOL) {
+      lines.push(currentLine);
+      currentLine = "";
+      prevItem = null;
+    }
+  });
+  if (currentLine !== "") lines.push(currentLine);
+  return lines.join("\n");
+}
+
 function extractPdf(buffer: ArrayBuffer): Promise<PCCDocumentExtraction> {
   var typedArray = new Uint8Array(buffer);
   return window.pdfjsLib
@@ -266,11 +325,7 @@ function extractPdf(buffer: ArrayBuffer): Promise<PCCDocumentExtraction> {
         pagePromises.push(
           pdf.getPage(i).then(function (page: any) {
             return page.getTextContent().then(function (content: any) {
-              return content.items
-                .map(function (item: any) {
-                  return item.str;
-                })
-                .join(" ");
+              return reconstructPdfPageText(content.items);
             });
           })
         );
