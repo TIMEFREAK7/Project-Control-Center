@@ -6079,3 +6079,76 @@ a project + document, navigated to Storage Management, ran Scan Storage — zero
 real-Chromium spot-check cycle. `Schedule.jsx`/`scheduleService.js` (4,273 + 1,902 lines) should
 be LAST, not first — it's by far the biggest file in the app; converting it before the pattern
 is well-proven on several smaller pages first would be starting with the hardest case.
+
+## TypeScript conversion — COMPLETE, all pages, Batches A-G, 2026-09-04
+
+The pilot above proved the pattern; it then ran through to full completion in one continuous
+push (Aditya's own framing, echoing the original React/JSX migration's own "one continuous push"
+instruction) — every remaining page/service pair in `react/src/` converted from `.jsx`/`.js` to
+strict-mode `.tsx`/`.ts`, batch by batch, each batch fully verified (typecheck + build + full
+suite) before starting the next:
+
+- **Batch A**: actionCentre, documentTypes, projectLookahead, NotFound
+- **Batch B**: settings, myWork, lessonsLearned, knowledgeBase, organizations, delayRecoveryDashboard
+- **Batch C**: decisionRegister, dashboard, projectWorkspace
+- **Batch D**: reports, risks, commitments, changeOrders, rfis, dailyLog, meetings, cost
+- **Batch E**: resources
+- **Batch F**: portfolio, vendors, documents, executiveCenter, vendorPerformanceCentre, documentControlDashboard
+- **Batch G (last, largest)**: schedule — `Schedule.tsx` (4,273 lines) + `scheduleService.ts`
+  (1,902 lines), by far the biggest page/service pair in the app: WBS/Activities/Relationships/
+  Calendars CRUD, the Excel/MSP-XML/P6-XER import-export pipeline, the Excel Editor (via
+  `window.ExcelJS`), the Gantt chart with pointer-drag move/resize editing, the Activity Detail
+  Panel's linked-records/document-readiness/recovery-actions/delay-records sections, and the
+  Baselines/What-If tabs.
+
+Every `react/src/` page and service is now TypeScript. `src/js/` (the vanilla domain engines —
+`store.js`, `blobStore.js`, every `*Engine.js`) stays deliberately unconverted, described to the
+TypeScript side only through `react/src/types/pcc.d.ts`'s hand-written, incrementally-grown
+ambient declarations — same scope boundary the pilot established, held all the way through.
+
+**A real bug caught mid-way, not a hypothetical**: `portfolioService.ts`'s `saveProject` was
+coercing `planned_submission_date`'s `null` to `undefined` to satisfy an initially-too-narrow
+ambient type on `PCCProjectDocumentRequirement`, which silently broke the "linking an activity
+must not fabricate a due date" guarantee `test_project_document_requirements_e2e.js` checks for.
+Caught by the full suite before that commit went out, root-caused to the type (the field should
+always have allowed `null`, matching the store's real values — not another `|| undefined`
+coercion papering over it), and fixed at the type declaration plus the five
+`computeRequirementStatus` signatures that read the field. The same class of fix (a field/param
+that's really `T | null | undefined`, not just `T | undefined`) recurred a few more times through
+Batch G — e.g. `deriveDelayStatusLabel`'s day-count parameters, matching `delayImpactEngine.js`'s
+real return shapes.
+
+**A process bug, also caught and fixed, worth remembering for any future multi-file `git add`**:
+partway through this session, a `git add -A -- <path list>` call included one already-renamed
+`.jsx` path (from a prior `git mv`) alongside dozens of valid ones. Git's fatal error on that one
+invalid pathspec aborted the *entire* `git add` — nothing got staged — but the follow-up `git
+commit` ran anyway and silently committed whatever was already in the index from a much earlier
+point (right after that session's `git mv`, before any of the actual typing edits). The result:
+the "TypeScript Batch F" commit's message and diff summary looked right, but the six files it
+supposedly converted (Portfolio/Vendors/Documents/ExecutiveCenter/VendorPerformanceCentre/
+DocumentControlDashboard + their services) were still committed as their untyped, freshly-renamed
+selves — while the real, fully-typed, already-verified-by-typecheck-and-tests content sat
+uncommitted in the working tree the entire time (which is why nothing looked wrong in any
+verification run in between). Caught by diffing `HEAD` against the working tree before starting
+Batch G — a `git status --short` showing large, unexpected `M` diffs on already-"committed" files
+is the tell. Fixed in a new commit (never amended — the bad commit was already pushed) that both
+corrects Batch F's real content and adds Batch G. **Lesson for next time**: after any `git add`
+that errors, don't assume a subsequent `git commit` is a no-op or that it committed nothing — it
+commits whatever the index already holds, which may be stale. Re-run `git status --short` and
+confirm the diff actually matches intent before committing, especially after a failed prior
+staging command.
+
+**Final verification, done twice** — once against the working tree, once independently against a
+fresh `git worktree` checked out from `origin/claude/pcc-post-phase-5-evolution-hpq9n7` after
+pushing (to rule out exactly the kind of "index vs. working tree" mismatch above): `npm run
+typecheck` clean in both, `node build.js` clean in both, full suite **2,627 checks across 109
+test files, 0 failures** in both. Real-Chromium spot-check via Playwright: opened the built
+`index.html`, navigated to portfolio/vendors/documents/executiveCenter/schedule/resources/
+documentControlDashboard/vendorPerformanceCentre — every route rendered real content with zero
+console/page errors.
+
+**Repo state**: branch `claude/pcc-post-phase-5-evolution-hpq9n7`, 7 commits ahead of `main`
+(Batches A-E, the Batch-F-fix-plus-Batch-G commit), no PR open (per this repo's own standing
+"merge without asking, direct merge is fine" convention — see CLAUDE.md). This branch will be
+merged into `main` immediately after this write-up, then a fresh working branch restarted from
+the new `main`.
