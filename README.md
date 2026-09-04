@@ -6077,6 +6077,31 @@ zero behavior change, all 27 of its existing tests pass unchanged. `node build.j
 real Chromium too. See HANDOFF.md for the full write-up, including how the next page conversion
 should extend the `.d.ts` boundary.
 
+## TypeScript conversion — COMPLETE, all pages, Batches A-G, 2026-09-04
+
+Ran to full completion in one continuous push from the pilot above, batch by batch (A through G),
+each batch fully verified — `tsc --noEmit`, `node build.js`, and the full test suite — before the
+next started. Every page/service pair in `react/src/` is now strict-mode TypeScript: actionCentre,
+documentTypes, projectLookahead, settings, myWork, lessonsLearned, knowledgeBase, organizations,
+delayRecoveryDashboard, decisionRegister, dashboard, projectWorkspace, reports, risks,
+commitments, changeOrders, rfis, dailyLog, meetings, cost, resources, portfolio, vendors,
+documents, executiveCenter, vendorPerformanceCentre, documentControlDashboard, and — last, as
+planned, since it's by far the largest page/service pair in the app — schedule (`Schedule.tsx`,
+4,273 lines, and `scheduleService.ts`, 1,902 lines): WBS/Activities/Relationships/Calendars CRUD,
+the Excel/MSP-XML/P6-XER import-export pipeline, the Excel Editor, the pointer-drag Gantt chart,
+the Activity Detail Panel's linked-records/document-readiness/recovery-actions/delay-records
+sections, and Baselines/What-If. `src/js/` (the vanilla domain engines) stays deliberately
+unconverted throughout, described to the TypeScript side only via `react/src/types/pcc.d.ts`'s
+incrementally-grown ambient declarations — the same scope boundary the pilot established.
+
+Final verification: full suite **2,627 checks across 109 test files, 0 failures** — confirmed
+twice, once against the working tree and, after pushing, again independently against a fresh
+`git worktree` checkout of the pushed branch (catching and fixing a `git add`-related staging bug
+along the way; see HANDOFF.md for the full account). Real-Chromium spot-check via Playwright
+across eight of the converted routes: zero console/page errors. See HANDOFF.md for the complete
+write-up, including the two real bugs this conversion caught (a `null`-vs-`undefined` type
+looseness that briefly broke a document-requirement guarantee, and the `git add` staging issue).
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
