@@ -148,7 +148,7 @@ export default function MyWorkPage() {
 
       {allActiveProjects.length > 0 ? (
         <div className="toolbar no-print" style={{ marginBottom: 8 }}>
-          <select value={effectiveFilter} onChange={handleProjectFilterChange}>
+          <select aria-label="Filter by project" value={effectiveFilter} onChange={handleProjectFilterChange}>
             <option value="">All Projects</option>
             {allActiveProjects
               .slice()

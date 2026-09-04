@@ -250,6 +250,7 @@ export default function ProjectWorkspacePage({ initialProjectId }: { initialProj
 
       <div className="toolbar no-print" style={{ marginBottom: 10 }}>
         <select
+          aria-label="Select project"
           value={effectiveProjectId || ""}
           onChange={(e) => {
             setProjectId(e.target.value);

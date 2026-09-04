@@ -100,7 +100,7 @@ function CommitmentForm({
       <form onSubmit={handleSubmit}>
         <div className="form-grid">
           <div className="field">
-            <label>Project *</label>
+            <label htmlFor="cmtfield-project_id">Project *</label>
             <select id="cmtfield-project_id" value={selectedProjectId} onChange={(e) => setSelectedProjectId(e.target.value)}>
               <option value="">(none)</option>
               {activeProjects.map((p) => (
@@ -111,7 +111,7 @@ function CommitmentForm({
             </select>
           </div>
           <div className="field">
-            <label>Vendor</label>
+            <label htmlFor="cmtfield-vendor_id">Vendor</label>
             <select id="cmtfield-vendor_id" defaultValue={commitment.vendor_id || ""}>
               <option value="">(none)</option>
               {data.vendors.map((v) => (
@@ -122,7 +122,7 @@ function CommitmentForm({
             </select>
           </div>
           <div className="field">
-            <label>Package</label>
+            <label htmlFor="cmtfield-package_id">Package</label>
             <select id="cmtfield-package_id" defaultValue={commitment.package_id || ""}>
               <option value="">(none)</option>
               {data.packages.map((p) => (
@@ -133,7 +133,7 @@ function CommitmentForm({
             </select>
           </div>
           <div className="field">
-            <label>Type</label>
+            <label htmlFor="cmtfield-type">Type</label>
             <select id="cmtfield-type" defaultValue={commitment.type || "purchase_order"}>
               {window.PCC.store.COMMITMENT_TYPES.map((t) => (
                 <option key={t} value={t}>
@@ -143,23 +143,23 @@ function CommitmentForm({
             </select>
           </div>
           <div className="field">
-            <label>PO / Contract #</label>
+            <label htmlFor="cmtfield-po_contract_number">PO / Contract #</label>
             <input type="text" id="cmtfield-po_contract_number" defaultValue={commitment.po_contract_number || ""} />
           </div>
           <div className="field">
-            <label>Commitment Date</label>
+            <label htmlFor="cmtfield-commitment_date">Commitment Date</label>
             <input type="date" id="cmtfield-commitment_date" defaultValue={commitment.commitment_date || ""} />
           </div>
           <div className="field">
-            <label>Committed Value</label>
+            <label htmlFor="cmtfield-committed_value">Committed Value</label>
             <input type="number" step="any" id="cmtfield-committed_value" defaultValue={commitment.committed_value == null ? "" : commitment.committed_value} />
           </div>
           <div className="field">
-            <label>Approved Value</label>
+            <label htmlFor="cmtfield-approved_value">Approved Value</label>
             <input type="number" step="any" id="cmtfield-approved_value" defaultValue={commitment.approved_value == null ? "" : commitment.approved_value} />
           </div>
           <div className="field">
-            <label>Status</label>
+            <label htmlFor="cmtfield-status">Status</label>
             <select id="cmtfield-status" defaultValue={commitment.status || "draft"}>
               {window.PCC.store.COMMITMENT_STATUSES.map((s) => (
                 <option key={s} value={s}>
@@ -169,7 +169,7 @@ function CommitmentForm({
             </select>
           </div>
           <div className="field">
-            <label>Against Budget Item</label>
+            <label htmlFor="cmtfield-budget_item_id">Against Budget Item</label>
             <select id="cmtfield-budget_item_id" key={"bi-" + selectedProjectId} defaultValue={commitment.budget_item_id || ""}>
               <option value="">{selectedProjectId ? "(none)" : "(select a project first)"}</option>
               {budgetItemOptions.map((b) => (
@@ -180,7 +180,7 @@ function CommitmentForm({
             </select>
           </div>
           <div className="field">
-            <label>Related Activity</label>
+            <label htmlFor="cmtfield-activity_id">Related Activity</label>
             <select id="cmtfield-activity_id" key={"act-" + selectedProjectId} defaultValue={commitment.activity_id || ""}>
               <option value="">{selectedProjectId ? "(none)" : "(select a project first)"}</option>
               {activityOptions.map((a) => (
@@ -193,7 +193,7 @@ function CommitmentForm({
         </div>
 
         <div className="field">
-          <label>Notes</label>
+          <label htmlFor="cmtfield-notes">Notes</label>
           <textarea id="cmtfield-notes" rows={2} defaultValue={commitment.notes || ""} />
         </div>
 
@@ -394,6 +394,7 @@ function CommitmentsTab({
       <div className="toolbar">
         <input type="text" placeholder="Search PO/Contract #, notes…" value={search} onChange={(e) => setSearch(e.target.value)} />
         <select
+          aria-label="Filter by project"
           value={projectFilter}
           onChange={(e) => {
             setProjectFilter(e.target.value);
@@ -407,7 +408,7 @@ function CommitmentsTab({
             </option>
           ))}
         </select>
-        <select value={vendorFilter} onChange={(e) => setVendorFilter(e.target.value)}>
+        <select aria-label="Filter by vendor" value={vendorFilter} onChange={(e) => setVendorFilter(e.target.value)}>
           <option value="">All Vendors</option>
           {data.vendors.map((v) => (
             <option key={v.id} value={v.id}>
@@ -415,7 +416,7 @@ function CommitmentsTab({
             </option>
           ))}
         </select>
-        <select value={packageFilter} onChange={(e) => setPackageFilter(e.target.value)}>
+        <select aria-label="Filter by package" value={packageFilter} onChange={(e) => setPackageFilter(e.target.value)}>
           <option value="">All Packages</option>
           {data.packages.map((p) => (
             <option key={p.id} value={p.id}>
@@ -423,7 +424,7 @@ function CommitmentsTab({
             </option>
           ))}
         </select>
-        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+        <select aria-label="Filter by type" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
           <option value="">All Types</option>
           {window.PCC.store.COMMITMENT_TYPES.map((t) => (
             <option key={t} value={t}>
@@ -431,7 +432,7 @@ function CommitmentsTab({
             </option>
           ))}
         </select>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+        <select aria-label="Filter by status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
           <option value="">All Statuses</option>
           {window.PCC.store.COMMITMENT_STATUSES.map((s) => (
             <option key={s} value={s}>
@@ -506,16 +507,16 @@ function PackageForm({
       <form onSubmit={handleSubmit}>
         <div className="form-grid">
           <div className="field">
-            <label>Name *</label>
+            <label htmlFor="pkgfield-name">Name *</label>
             <input type="text" id="pkgfield-name" defaultValue={pkg.name || ""} required />
           </div>
           <div className="field">
-            <label>Code</label>
+            <label htmlFor="pkgfield-code">Code</label>
             <input type="text" id="pkgfield-code" defaultValue={pkg.code || ""} />
           </div>
         </div>
         <div className="field">
-          <label>Notes</label>
+          <label htmlFor="pkgfield-notes">Notes</label>
           <textarea id="pkgfield-notes" rows={2} defaultValue={pkg.notes || ""} />
         </div>
         {showError ? <p style={{ color: "var(--status-critical)", fontSize: 13 }}>Name is required.</p> : null}

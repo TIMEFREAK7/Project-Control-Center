@@ -1906,6 +1906,39 @@ a:focus-visible {
   }
 }
 
+/* ===== Responsive: title-block overflow gap (GATE 1 UI/UX audit, 2026-09-04) =====
+   Real, confirmed bug: the title-block header (SHEET/page-title cell, the Company/Client/
+   Project context-group, the Company/Date display cells, and the action-icon row) has no
+   flex-wrap and nothing thins it between the phone tier below (<=780px, which already hides
+   the non-growing cells) and roughly 1150px, where there's finally enough room again. Two
+   real device widths land squarely in that gap: 1024x768 (the standard tablet-landscape
+   resolution) — where the persistent sidebar first turns on at exactly min-width:1024px and
+   eats 236px of content width — and the ~800-1000px band generally, where the touch-target
+   tier's 44px icon buttons (see the <=1023px block below) take more room than the desktop
+   32px ones. Confirmed via real Chromium: every route overflows the page horizontally in
+   both bands (scrollWidth > clientWidth), visibly overlapping the SHEET/page-title text.
+   Fix: reuse the exact same "hide the non-essential display cells, let the grow cell and the
+   actions stay" strategy the phone tier already ships (see .title-block__cell:not(--grow)
+   inside the <=780px block near the end of this file) at a wider threshold that actually
+   covers the gap. The Company/Date cells are plain display text (see buildTitleBlock() in
+   layout.js — Date is just today's date, not an editable control), and the Company/Client/
+   Project context-group is a convenience duplicate of filtering every page already offers in
+   its own toolbar — nothing here removes a capability, only the same header-only redundancy
+   the phone tier already accepts. */
+@media (max-width: 1150px) {
+  body {
+    overflow-x: hidden;
+  }
+
+  .title-block__cell:not(.title-block__cell--grow) {
+    display: none;
+  }
+
+  .title-block__cell--grow {
+    min-width: 0;
+  }
+}
+
 /* ===== Responsive: Tablet tier (<= 1023px) — touch targets =====
    UI/UX Overhaul Gate 8. The first rule targeting this tier specifically (768-1023px
    per the brief; written as max-width:1023px since it also covers mobile, where these

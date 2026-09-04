@@ -79,19 +79,19 @@ function DocumentTypeForm({
       <form onSubmit={handleSubmit}>
         <div className="form-grid">
           <div className="field">
-            <label>Name *</label>
+            <label htmlFor="dtfield-name">Name *</label>
             <input id="dtfield-name" type="text" value={name} onChange={(e) => setName(e.target.value)} required />
           </div>
           <div className="field">
-            <label>Code (short abbreviation)</label>
+            <label htmlFor="dtfield-code">Code (short abbreviation)</label>
             <input id="dtfield-code" type="text" value={code} onChange={(e) => setCode(e.target.value)} />
           </div>
           <div className="field">
-            <label>Category (grouping label)</label>
+            <label htmlFor="dtfield-category">Category (grouping label)</label>
             <input id="dtfield-category" type="text" value={category} onChange={(e) => setCategory(e.target.value)} />
           </div>
           <div className="field">
-            <label>Default Criticality</label>
+            <label htmlFor="dtfield-criticality">Default Criticality</label>
             <select id="dtfield-criticality" value={criticality} onChange={(e) => setCriticality(e.target.value)}>
               {criticalityLevels().map((c) => (
                 <option key={c} value={c}>
@@ -103,8 +103,8 @@ function DocumentTypeForm({
         </div>
 
         <div className="field">
-          <label>Description</label>
-          <textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
+          <label htmlFor="dtfield-description">Description</label>
+          <textarea id="dtfield-description" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
         </div>
 
         {showError ? (
@@ -283,7 +283,7 @@ export default function DocumentTypesPage() {
           onChange={(e) => setSearch(e.target.value)}
         />
 
-        <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
+        <select aria-label="Filter by category" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
           <option value="">All Categories</option>
           {categories.map((c) => (
             <option key={c} value={c}>

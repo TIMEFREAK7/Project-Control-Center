@@ -384,7 +384,7 @@ export default function DelayRecoveryDashboardPage() {
         <div className="panel" style={{ marginTop: 16 }}>
           <h3 style={{ marginBottom: 8 }}>Delay Records (worst first)</h3>
           <div className="toolbar no-print" style={{ marginBottom: 8 }}>
-            <select value={registerStatusFilter} onChange={(e) => setRegisterStatusFilter(e.target.value)}>
+            <select aria-label="Filter by status" value={registerStatusFilter} onChange={(e) => setRegisterStatusFilter(e.target.value)}>
               <option value="">All Statuses</option>
               {delayRecordStatuses().map((s) => (
                 <option key={s} value={s}>

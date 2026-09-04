@@ -106,11 +106,11 @@ function ResourceForm({ isNew, resource, onCancel, onSaved }: ResourceFormProps)
       <form onSubmit={handleSubmit}>
         <div className="form-grid">
           <div className="field">
-            <label>Name *</label>
+            <label htmlFor="resfield-name">Name *</label>
             <input type="text" id="resfield-name" defaultValue={resource.name || ""} required />
           </div>
           <div className="field">
-            <label>Type</label>
+            <label htmlFor="resfield-type">Type</label>
             <select id="resfield-type" defaultValue={resource.type}>
               {window.PCC.store.RESOURCE_TYPES.map((t) => (
                 <option key={t} value={t}>
@@ -120,11 +120,11 @@ function ResourceForm({ isNew, resource, onCancel, onSaved }: ResourceFormProps)
             </select>
           </div>
           <div className="field">
-            <label>Unit (e.g. person, unit, m³)</label>
+            <label htmlFor="resfield-unit">Unit (e.g. person, unit, m³)</label>
             <input type="text" id="resfield-unit" defaultValue={resource.unit || ""} />
           </div>
           <div className="field">
-            <label>Max Availability (per day)</label>
+            <label htmlFor="resfield-max_availability">Max Availability (per day)</label>
             <input
               type="number"
               min="0"
@@ -137,7 +137,7 @@ function ResourceForm({ isNew, resource, onCancel, onSaved }: ResourceFormProps)
         </div>
 
         <div className="field">
-          <label>Notes</label>
+          <label htmlFor="resfield-notes">Notes</label>
           <textarea id="resfield-notes" rows={2} defaultValue={resource.notes || ""} />
         </div>
 
@@ -200,7 +200,7 @@ function RegisterTab({ data, editingId, onEdit, onAdd, onCancelEdit, onSaved, on
 
       <div className="toolbar">
         <input type="text" placeholder="Search resource name…" value={search} onChange={(e) => onSearchChange(e.target.value)} />
-        <select value={typeFilter} onChange={(e) => onTypeFilterChange(e.target.value)}>
+        <select aria-label="Filter by type" value={typeFilter} onChange={(e) => onTypeFilterChange(e.target.value)}>
           <option value="">All Types</option>
           {window.PCC.store.RESOURCE_TYPES.map((t) => (
             <option key={t} value={t}>
@@ -327,7 +327,7 @@ function AssignmentForm({ isNew, assignment, data, onCancel, onSaved }: Assignme
       <form onSubmit={handleSubmit}>
         <div className="form-grid">
           <div className="field">
-            <label>Resource *</label>
+            <label htmlFor="asgfield-resource_id">Resource *</label>
             <select id="asgfield-resource_id" defaultValue={assignment.resource_id || data.resources[0].id}>
               {data.resources.map((r) => (
                 <option key={r.id} value={r.id}>
@@ -338,13 +338,13 @@ function AssignmentForm({ isNew, assignment, data, onCancel, onSaved }: Assignme
           </div>
 
           <div className="field">
-            <label>Project *</label>
+            <label htmlFor="asgfield-project_id">Project *</label>
             {activeProjects.length === 0 ? (
-              <select disabled defaultValue="">
+              <select id="asgfield-project_id" disabled defaultValue="">
                 <option value="">No projects yet</option>
               </select>
             ) : (
-              <select value={selectedProjectId} onChange={handleProjectChange}>
+              <select id="asgfield-project_id" value={selectedProjectId} onChange={handleProjectChange}>
                 <option value="">(select a project)</option>
                 {activeProjects.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -356,7 +356,7 @@ function AssignmentForm({ isNew, assignment, data, onCancel, onSaved }: Assignme
           </div>
 
           <div className="field">
-            <label>Activity *</label>
+            <label htmlFor="asgfield-activity_id">Activity *</label>
             <select
               id="asgfield-activity_id"
               key={"asg-act-" + selectedProjectId + "-" + projectResetVersion}
@@ -372,12 +372,12 @@ function AssignmentForm({ isNew, assignment, data, onCancel, onSaved }: Assignme
           </div>
 
           <div className="field">
-            <label>Planned Quantity *</label>
+            <label htmlFor="asgfield-quantity">Planned Quantity *</label>
             <input type="number" min="0" step="any" id="asgfield-quantity" defaultValue={assignment.quantity == null ? "" : assignment.quantity} />
           </div>
 
           <div className="field">
-            <label>Actual Quantity</label>
+            <label htmlFor="asgfield-actual_quantity">Actual Quantity</label>
             <input
               type="number"
               min="0"
@@ -389,7 +389,7 @@ function AssignmentForm({ isNew, assignment, data, onCancel, onSaved }: Assignme
           </div>
 
           <div className="field">
-            <label>Planned Hours / Day</label>
+            <label htmlFor="asgfield-planned_hours_per_day">Planned Hours / Day</label>
             <input
               type="number"
               min="0"
@@ -401,7 +401,7 @@ function AssignmentForm({ isNew, assignment, data, onCancel, onSaved }: Assignme
           </div>
 
           <div className="field">
-            <label>Overtime Hours</label>
+            <label htmlFor="asgfield-overtime_hours">Overtime Hours</label>
             <input
               type="number"
               min="0"
@@ -413,7 +413,7 @@ function AssignmentForm({ isNew, assignment, data, onCancel, onSaved }: Assignme
           </div>
 
           <div className="field">
-            <label>Sourced From Vendor</label>
+            <label htmlFor="asgfield-vendor_id">Sourced From Vendor</label>
             <select id="asgfield-vendor_id" defaultValue={assignment.vendor_id || ""}>
               <option value="">(none)</option>
               {data.vendors.map((v) => (
@@ -426,7 +426,7 @@ function AssignmentForm({ isNew, assignment, data, onCancel, onSaved }: Assignme
         </div>
 
         <div className="field">
-          <label>Notes</label>
+          <label htmlFor="asgfield-notes">Notes</label>
           <textarea id="asgfield-notes" rows={2} defaultValue={assignment.notes || ""} />
         </div>
 
@@ -499,7 +499,7 @@ function AssignmentsTab({
       ) : null}
 
       <div className="toolbar">
-        <select value={resourceFilter} onChange={(e) => onResourceFilterChange(e.target.value)}>
+        <select aria-label="Filter by resource" value={resourceFilter} onChange={(e) => onResourceFilterChange(e.target.value)}>
           <option value="">All Resources</option>
           {data.resources.map((r) => (
             <option key={r.id} value={r.id}>
@@ -632,7 +632,7 @@ function UnavailabilityForm({ isNew, record, data, onCancel, onSaved }: Unavaila
       <form onSubmit={handleSubmit}>
         <div className="form-grid">
           <div className="field">
-            <label>Resource *</label>
+            <label htmlFor="unavfield-resource_id">Resource *</label>
             <select id="unavfield-resource_id" defaultValue={record.resource_id || data.resources[0].id}>
               {data.resources.map((r) => (
                 <option key={r.id} value={r.id}>
@@ -642,19 +642,19 @@ function UnavailabilityForm({ isNew, record, data, onCancel, onSaved }: Unavaila
             </select>
           </div>
           <div className="field">
-            <label>Start Date * (inclusive)</label>
+            <label htmlFor="unavfield-start_date">Start Date * (inclusive)</label>
             <input type="date" id="unavfield-start_date" defaultValue={record.start_date || ""} />
           </div>
           <div className="field">
-            <label>End Date * (inclusive)</label>
+            <label htmlFor="unavfield-end_date">End Date * (inclusive)</label>
             <input type="date" id="unavfield-end_date" defaultValue={record.end_date || ""} />
           </div>
           <div className="field">
-            <label>Quantity Unavailable *</label>
+            <label htmlFor="unavfield-quantity">Quantity Unavailable *</label>
             <input type="number" min="0" step="any" id="unavfield-quantity" placeholder="e.g. 2 of 5 electricians" defaultValue={record.quantity == null ? "" : record.quantity} />
           </div>
           <div className="field">
-            <label>Reason</label>
+            <label htmlFor="unavfield-reason">Reason</label>
             <input type="text" id="unavfield-reason" placeholder="e.g. Annual Leave, Maintenance, Public Holiday" defaultValue={record.reason || ""} />
           </div>
         </div>
@@ -711,7 +711,7 @@ function UnavailabilityTab({ data, editingId, onEdit, onAdd, onCancelEdit, onSav
       ) : null}
 
       <div className="toolbar">
-        <select value={resourceFilter} onChange={(e) => onResourceFilterChange(e.target.value)}>
+        <select aria-label="Filter by resource" value={resourceFilter} onChange={(e) => onResourceFilterChange(e.target.value)}>
           <option value="">All Resources</option>
           {data.resources.map((r) => (
             <option key={r.id} value={r.id}>
@@ -1027,7 +1027,7 @@ function LevelingTab({ data, levelingResourceId, onSelectResource, onChanged }: 
       {summaryPanel}
 
       <div className="toolbar">
-        <select value={effectiveResourceId} onChange={(e) => onSelectResource(e.target.value)}>
+        <select aria-label="Select resource" value={effectiveResourceId} onChange={(e) => onSelectResource(e.target.value)}>
           {data.resources.map((r) => (
             <option key={r.id} value={r.id}>
               {r.name}

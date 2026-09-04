@@ -89,7 +89,7 @@ function DecisionForm({
       ) : null}
       <form onSubmit={handleSubmit}>
         <div className="field">
-          <label>Project *</label>
+          <label htmlFor="decfield-project_id">Project *</label>
           {activeProjects.length === 0 ? (
             <select id="decfield-project_id" disabled defaultValue="">
               <option value="">No projects yet — add one in Portfolio first</option>
@@ -106,7 +106,7 @@ function DecisionForm({
         </div>
 
         <div className="field">
-          <label>Linked Activity (optional)</label>
+          <label htmlFor="decfield-activity_id">Linked Activity (optional)</label>
           <select id="decfield-activity_id" key={selectedProjectId} defaultValue={decision.activity_id || ""}>
             <option value="">(none)</option>
             {activityOptions.map((a) => (
@@ -336,7 +336,7 @@ export default function DecisionRegisterPage({
 
       <div className="toolbar">
         <input type="text" placeholder="Search title, context, decision, decided by…" value={search} onChange={(e) => setSearch(e.target.value)} />
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+        <select aria-label="Filter by status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
           <option value="">All statuses</option>
           {window.PCC.store.DECISION_STATUSES.map((s) => (
             <option key={s} value={s}>
@@ -345,6 +345,7 @@ export default function DecisionRegisterPage({
           ))}
         </select>
         <select
+          aria-label="Filter by project"
           value={projectFilter}
           onChange={(e) => {
             setProjectFilter(e.target.value);

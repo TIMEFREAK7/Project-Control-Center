@@ -105,11 +105,11 @@ function ArticleForm({
       <form onSubmit={handleSubmit}>
         <div className="form-grid">
           <div className="field">
-            <label>Title *</label>
+            <label htmlFor="kbfield-title">Title *</label>
             <input type="text" id="kbfield-title" defaultValue={article.title || ""} />
           </div>
           <div className="field">
-            <label>Category</label>
+            <label htmlFor="kbfield-category">Category</label>
             <select id="kbfield-category" defaultValue={article.category || "other"}>
               {categoryOptions().map((c) => (
                 <option key={c} value={c}>
@@ -119,7 +119,7 @@ function ArticleForm({
             </select>
           </div>
           <div className="field">
-            <label>Project (optional)</label>
+            <label htmlFor="kbfield-project_id">Project (optional)</label>
             <select id="kbfield-project_id" defaultValue={article.project_id || ""}>
               <option value="">General (no project)</option>
               {projects
@@ -132,18 +132,18 @@ function ArticleForm({
             </select>
           </div>
           <div className="field">
-            <label>Tags (comma-separated)</label>
+            <label htmlFor="kbfield-tags">Tags (comma-separated)</label>
             <input type="text" id="kbfield-tags" defaultValue={article.tags || ""} />
           </div>
         </div>
 
         <div className="field" style={{ marginTop: 8 }}>
-          <label>Body</label>
+          <label htmlFor="kbfield-body">Body</label>
           <textarea id="kbfield-body" rows={6} defaultValue={article.body || ""} />
         </div>
 
         <div className="field" style={{ marginTop: 8 }}>
-          <label>Attached File (optional)</label>
+          <label htmlFor="kbfield-file">Attached File (optional)</label>
 
           {showExistingFile ? (
             <>
@@ -329,7 +329,7 @@ export default function KnowledgeBasePage() {
 
       <div className="toolbar">
         <input type="text" placeholder="Search title, body, tags…" value={search} onChange={(e) => setSearch(e.target.value)} />
-        <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
+        <select aria-label="Filter by category" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
           <option value="">All categories</option>
           {categoryOptions().map((c) => (
             <option key={c} value={c}>
@@ -338,6 +338,7 @@ export default function KnowledgeBasePage() {
           ))}
         </select>
         <select
+          aria-label="Filter by project"
           value={projectFilter}
           onChange={(e) => {
             const value = e.target.value;

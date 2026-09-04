@@ -108,7 +108,7 @@ function DailyLogForm({
       <h3 style={{ marginBottom: 14 }}>{isNew ? "Add Daily Log" : "Edit Daily Log"}</h3>
       <form onSubmit={handleSubmit}>
         <div className="field">
-          <label>Project *</label>
+          <label htmlFor="dlfield-project_id">Project *</label>
           {projects.length === 0 ? (
             <select id="dlfield-project_id" disabled defaultValue="">
               <option value="">No projects yet — add one in Portfolio first</option>
@@ -132,7 +132,7 @@ function DailyLogForm({
         </div>
 
         <div className="field">
-          <label>Linked Activity (optional)</label>
+          <label htmlFor="dlfield-activity_id">Linked Activity (optional)</label>
           <select id="dlfield-activity_id" key={selectedProjectId} defaultValue={log.activity_id || ""}>
             <option value="">(none)</option>
             {activityOptions.map((a) => (
@@ -337,7 +337,7 @@ function CreateDelayForm({
       <form onSubmit={handleSubmit}>
         <div className="form-grid">
           <div className="field">
-            <label>Delay Category</label>
+            <label htmlFor="dailylogdelay-category">Delay Category</label>
             <select id="dailylogdelay-category" defaultValue="other">
               {window.PCC.store.DELAY_CATEGORIES.map((c) => (
                 <option key={c} value={c}>
@@ -347,12 +347,12 @@ function CreateDelayForm({
             </select>
           </div>
           <div className="field">
-            <label>Estimated Impact (days)</label>
+            <label htmlFor="dailylogdelay-days">Estimated Impact (days)</label>
             <input type="number" id="dailylogdelay-days" defaultValue="" />
           </div>
         </div>
         <div className="field">
-          <label>Description *</label>
+          <label htmlFor="dailylogdelay-description">Description *</label>
           <textarea id="dailylogdelay-description" rows={2} defaultValue="" />
         </div>
         {errorText ? <p style={{ color: "var(--status-critical)", fontSize: 13 }}>{errorText}</p> : null}
@@ -626,6 +626,7 @@ export default function DailyLogPage({
       <div className="toolbar">
         <input type="text" placeholder="Search activities, notes, weather…" value={search} onChange={(e) => setSearch(e.target.value)} />
         <select
+          aria-label="Filter by project"
           value={projectFilter}
           onChange={(e) => {
             setProjectFilter(e.target.value);

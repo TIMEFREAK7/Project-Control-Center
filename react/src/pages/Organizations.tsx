@@ -67,12 +67,12 @@ function CompanyForm({
       <form onSubmit={handleSubmit}>
         <div className="form-grid">
           <div className="field">
-            <label>Name *</label>
+            <label htmlFor="cofield-name">Name *</label>
             <input id="cofield-name" type="text" value={name} onChange={(e) => setName(e.target.value)} required />
           </div>
         </div>
         <div className="field">
-          <label>Notes</label>
+          <label htmlFor="cofield-notes">Notes</label>
           <textarea id="cofield-notes" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
         {showError ? <p style={{ color: "var(--status-critical)", fontSize: 13 }}>Name is required.</p> : null}
@@ -127,12 +127,12 @@ function ClientForm({
       <form onSubmit={handleSubmit}>
         <div className="form-grid">
           <div className="field">
-            <label>Name *</label>
+            <label htmlFor="clfield-name">Name *</label>
             <input id="clfield-name" type="text" value={name} onChange={(e) => setName(e.target.value)} required />
           </div>
         </div>
         <div className="field">
-          <label>Notes</label>
+          <label htmlFor="clfield-notes">Notes</label>
           <textarea id="clfield-notes" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
         {showError ? <p style={{ color: "var(--status-critical)", fontSize: 13 }}>Name is required.</p> : null}

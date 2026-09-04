@@ -80,7 +80,7 @@ function ActionRow({
       <input type="text" className="action-desc" placeholder="Action description" defaultValue={action.description || ""} style={{ flex: "2 1 200px" }} />
       <input type="text" className="action-owner" placeholder="Owner" defaultValue={action.owner || ""} style={{ flex: "1 1 120px" }} />
       <input type="date" className="action-due" defaultValue={action.due_date || ""} style={{ flex: "1 1 140px" }} />
-      <select className="action-status" defaultValue={action.status || "open"} style={{ flex: "0 1 100px" }}>
+      <select aria-label="Action status" className="action-status" defaultValue={action.status || "open"} style={{ flex: "0 1 100px" }}>
         <option value="open">Open</option>
         <option value="done">Done</option>
       </select>
@@ -258,7 +258,7 @@ function MeetingForm({
       <form onSubmit={handleSubmit}>
         <div className="form-grid">
           <div className="field">
-            <label>Project *</label>
+            <label htmlFor="meetingfield-project_id">Project *</label>
             {activeProjects.length === 0 ? (
               <select id="meetingfield-project_id" disabled defaultValue="">
                 <option value="">No projects yet — add one in Portfolio first</option>
@@ -275,7 +275,7 @@ function MeetingForm({
           </div>
 
           <div className="field">
-            <label>Linked Activity (optional)</label>
+            <label htmlFor="meetingfield-activity_id">Linked Activity (optional)</label>
             <select
               id="meetingfield-activity_id"
               key={"meeting-act-" + selectedProjectId + "-" + projectResetVersion}
@@ -291,33 +291,33 @@ function MeetingForm({
           </div>
 
           <div className="field">
-            <label>Title *</label>
+            <label htmlFor="meetingfield-title">Title *</label>
             <input type="text" id="meetingfield-title" defaultValue={meeting.title || ""} />
           </div>
 
           <div className="field">
-            <label>Date *</label>
+            <label htmlFor="meetingfield-meeting_date">Date *</label>
             <input type="date" id="meetingfield-meeting_date" defaultValue={meeting.meeting_date || todayStr()} />
           </div>
 
           <div className="field">
-            <label>Attendees</label>
+            <label htmlFor="meetingfield-attendees">Attendees</label>
             <input type="text" id="meetingfield-attendees" placeholder="Comma-separated names" defaultValue={meeting.attendees || ""} />
           </div>
 
           <div className="field" style={{ gridColumn: "1 / -1" }}>
-            <label>Agenda</label>
+            <label htmlFor="meetingfield-agenda">Agenda</label>
             <textarea id="meetingfield-agenda" rows={2} defaultValue={meeting.agenda || ""} />
           </div>
 
           <div className="field" style={{ gridColumn: "1 / -1" }}>
-            <label>Minutes</label>
+            <label htmlFor="meetingfield-minutes">Minutes</label>
             <textarea id="meetingfield-minutes" rows={4} defaultValue={meeting.minutes || ""} />
           </div>
         </div>
 
         <div className="field" style={{ gridColumn: "1 / -1" }}>
-          <label>Action Items</label>
+          <label htmlFor="action-rows-container">Action Items</label>
           <div id="action-rows-container">
             {actionRows.map((a) => (
               <ActionRow
@@ -336,7 +336,7 @@ function MeetingForm({
         </div>
 
         <div className="field" style={{ gridColumn: "1 / -1" }}>
-          <label>Recordings</label>
+          <label htmlFor="recording-rows-container">Recordings</label>
           <p className="text-secondary" style={{ fontSize: "var(--text-sm)", margin: "0 0 var(--space-2)" }}>
             Reference only — tracks the filename and details, but the actual audio/video file has to be placed in /files yourself. Recordings
             are too large to safely store inside the app's own data.
@@ -721,6 +721,7 @@ export default function MeetingsPage({
       <div className="toolbar">
         <input type="text" placeholder="Search title, attendees, agenda, minutes…" value={search} onChange={(e) => setSearch(e.target.value)} />
         <select
+          aria-label="Filter by project"
           value={projectFilter}
           onChange={(e) => {
             setProjectFilter(e.target.value);

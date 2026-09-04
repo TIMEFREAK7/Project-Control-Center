@@ -91,7 +91,7 @@ function RiskForm({
       ) : null}
       <form onSubmit={handleSubmit}>
         <div className="field">
-          <label>Project *</label>
+          <label htmlFor="riskfield-project_id">Project *</label>
           {activeProjects.length === 0 ? (
             <select id="riskfield-project_id" disabled defaultValue="">
               <option value="">No projects yet — add one in Portfolio first</option>
@@ -108,7 +108,7 @@ function RiskForm({
         </div>
 
         <div className="field">
-          <label>Linked Activity (optional)</label>
+          <label htmlFor="riskfield-activity_id">Linked Activity (optional)</label>
           <select id="riskfield-activity_id" key={selectedProjectId} defaultValue={risk.activity_id || ""}>
             <option value="">(none)</option>
             {activityOptions.map((a) => (
@@ -524,7 +524,7 @@ export default function RisksPage({
 
       <div className="toolbar">
         <input type="text" placeholder="Search title, description, owner…" value={search} onChange={(e) => setSearch(e.target.value)} />
-        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+        <select aria-label="Filter by type" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
           <option value="">All types</option>
           {window.PCC.store.RISK_TYPES.map((t) => (
             <option key={t} value={t}>
@@ -532,7 +532,7 @@ export default function RisksPage({
             </option>
           ))}
         </select>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+        <select aria-label="Filter by status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
           <option value="">All statuses</option>
           {window.PCC.store.RISK_STATUSES.map((s) => (
             <option key={s} value={s}>
@@ -541,6 +541,7 @@ export default function RisksPage({
           ))}
         </select>
         <select
+          aria-label="Filter by project"
           value={projectFilter}
           onChange={(e) => {
             setProjectFilter(e.target.value);

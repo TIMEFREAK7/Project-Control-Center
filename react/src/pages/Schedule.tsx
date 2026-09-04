@@ -518,28 +518,28 @@ function ScheduleForm({ schedule, isNew, projectId, onDone }: ScheduleFormProps)
       <form onSubmit={handleSubmit}>
         <div className="form-grid">
           <div className="field">
-            <label>Schedule Name *</label>
-            <input type="text" value={name} onChange={(e) => setName(e.target.value)} />
+            <label htmlFor="schedfield-name">Schedule Name *</label>
+            <input id="schedfield-name" type="text" value={name} onChange={(e) => setName(e.target.value)} />
           </div>
           <div className="field">
-            <label>Revision Number</label>
-            <input type="number" value={revisionNumber} onChange={(e) => setRevisionNumber(e.target.value)} />
+            <label htmlFor="schedfield-revision_number">Revision Number</label>
+            <input id="schedfield-revision_number" type="number" value={revisionNumber} onChange={(e) => setRevisionNumber(e.target.value)} />
           </div>
           <div className="field">
-            <label>Version</label>
-            <input type="text" value={version} onChange={(e) => setVersion(e.target.value)} />
+            <label htmlFor="schedfield-version">Version</label>
+            <input id="schedfield-version" type="text" value={version} onChange={(e) => setVersion(e.target.value)} />
           </div>
           <div className="field">
-            <label>Data Date</label>
-            <input type="date" value={dataDate} onChange={(e) => setDataDate(e.target.value)} />
+            <label htmlFor="schedfield-data_date">Data Date</label>
+            <input id="schedfield-data_date" type="date" value={dataDate} onChange={(e) => setDataDate(e.target.value)} />
           </div>
           <div className="field">
-            <label>Near-Critical Threshold (days)</label>
-            <input type="number" value={nearCriticalThresholdDays} onChange={(e) => setNearCriticalThresholdDays(e.target.value)} />
+            <label htmlFor="schedfield-near_critical_threshold_days">Near-Critical Threshold (days)</label>
+            <input id="schedfield-near_critical_threshold_days" type="number" value={nearCriticalThresholdDays} onChange={(e) => setNearCriticalThresholdDays(e.target.value)} />
           </div>
           <div className="field">
-            <label>Out-of-Sequence Calculation Mode</label>
-            <select value={calculationMode} onChange={(e) => setCalculationMode(e.target.value)}>
+            <label htmlFor="schedfield-calculation_mode">Out-of-Sequence Calculation Mode</label>
+            <select id="schedfield-calculation_mode" value={calculationMode} onChange={(e) => setCalculationMode(e.target.value)}>
               {window.PCC.store.CALCULATION_MODES.map((m) => (
                 <option key={m} value={m}>
                   {CALC_MODE_LABELS[m] || m}
@@ -560,8 +560,8 @@ function ScheduleForm({ schedule, isNew, projectId, onDone }: ScheduleFormProps)
             </label>
           </div>
           <div className="field">
-            <label>Status</label>
-            <select value={status} onChange={(e) => setStatus(e.target.value)}>
+            <label htmlFor="schedfield-status">Status</label>
+            <select id="schedfield-status" value={status} onChange={(e) => setStatus(e.target.value)}>
               {window.PCC.store.SCHEDULE_STATUSES.map((s) => (
                 <option key={s} value={s}>
                   {SCHEDULE_STATUS_LABELS[s]}
@@ -570,8 +570,8 @@ function ScheduleForm({ schedule, isNew, projectId, onDone }: ScheduleFormProps)
             </select>
           </div>
           <div className="field">
-            <label>Schedule Type</label>
-            <select value={scheduleType} onChange={(e) => setScheduleType(e.target.value)}>
+            <label htmlFor="schedfield-schedule_type">Schedule Type</label>
+            <select id="schedfield-schedule_type" value={scheduleType} onChange={(e) => setScheduleType(e.target.value)}>
               {window.PCC.store.SCHEDULE_TYPES.map((t) => (
                 <option key={t} value={t}>
                   {SCHEDULE_TYPE_LABELS[t] || t}
@@ -580,8 +580,8 @@ function ScheduleForm({ schedule, isNew, projectId, onDone }: ScheduleFormProps)
             </select>
           </div>
           <div className="field">
-            <label>Schedule Owner</label>
-            <input type="text" value={scheduleOwner} onChange={(e) => setScheduleOwner(e.target.value)} />
+            <label htmlFor="schedfield-owner">Schedule Owner</label>
+            <input id="schedfield-owner" type="text" value={scheduleOwner} onChange={(e) => setScheduleOwner(e.target.value)} />
           </div>
           {!isNew && schedule.source_platform ? (
             <div className="field">
@@ -594,8 +594,8 @@ function ScheduleForm({ schedule, isNew, projectId, onDone }: ScheduleFormProps)
             </div>
           ) : null}
           <div className="field" style={{ gridColumn: "1 / -1" }}>
-            <label>Description</label>
-            <textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
+            <label htmlFor="schedfield-description">Description</label>
+            <textarea id="schedfield-description" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
         </div>
         {error ? (
@@ -640,11 +640,11 @@ function ScheduleBar({
   return (
     <div className="toolbar focus-mode-hide">
       {activeProjects.length === 0 ? (
-        <select disabled>
+        <select aria-label="Select project" disabled>
           <option value="">No projects yet — add one in Portfolio first</option>
         </select>
       ) : (
-        <select value={projectId} onChange={(e) => onProjectChange(e.target.value)}>
+        <select aria-label="Select project" value={projectId} onChange={(e) => onProjectChange(e.target.value)}>
           {activeProjects.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name || "(unnamed project)"}
@@ -654,11 +654,11 @@ function ScheduleBar({
       )}
 
       {projectSchedules.length === 0 ? (
-        <select disabled>
+        <select aria-label="Select schedule" disabled>
           <option value="">No schedules yet</option>
         </select>
       ) : (
-        <select value={scheduleId} onChange={(e) => onScheduleChange(e.target.value)}>
+        <select aria-label="Select schedule" value={scheduleId} onChange={(e) => onScheduleChange(e.target.value)}>
           {projectSchedules.map((s) => {
             const typeSuffix = s.schedule_type && s.schedule_type !== "current" ? ", " + (SCHEDULE_TYPE_LABELS[s.schedule_type] || s.schedule_type) : "";
             return (
@@ -746,16 +746,16 @@ function WbsForm({ wbsItem, isNew, wbsItems, projectId, scheduleId, onDone }: Wb
       <form onSubmit={handleSubmit}>
         <div className="form-grid">
           <div className="field">
-            <label>WBS Code</label>
-            <input type="text" value={code} onChange={(e) => setCode(e.target.value)} />
+            <label htmlFor="wbsfield-code">WBS Code</label>
+            <input id="wbsfield-code" type="text" value={code} onChange={(e) => setCode(e.target.value)} />
           </div>
           <div className="field">
-            <label>Name *</label>
-            <input type="text" value={name} onChange={(e) => setName(e.target.value)} />
+            <label htmlFor="wbsfield-name">Name *</label>
+            <input id="wbsfield-name" type="text" value={name} onChange={(e) => setName(e.target.value)} />
           </div>
           <div className="field">
-            <label>Parent WBS</label>
-            <select value={parentWbsId} onChange={(e) => setParentWbsId(e.target.value)}>
+            <label htmlFor="wbsfield-parent_id">Parent WBS</label>
+            <select id="wbsfield-parent_id" value={parentWbsId} onChange={(e) => setParentWbsId(e.target.value)}>
               <option value="">(top level)</option>
               {wbsItems
                 .filter((w) => w.id !== wbsItem.id)
@@ -767,8 +767,8 @@ function WbsForm({ wbsItem, isNew, wbsItems, projectId, scheduleId, onDone }: Wb
             </select>
           </div>
           <div className="field" style={{ gridColumn: "1 / -1" }}>
-            <label>Description</label>
-            <textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
+            <label htmlFor="wbsfield-description">Description</label>
+            <textarea id="wbsfield-description" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
         </div>
         {error ? <p style={{ color: "var(--status-critical)", fontSize: "var(--text-sm)" }}>WBS name is required.</p> : null}
@@ -929,7 +929,7 @@ function RelationshipForm({ relationship, isNew, activities, scheduleId, onDone 
       <form onSubmit={handleSubmit}>
         <div className="form-grid">
           <div className="field">
-            <label>Predecessor *</label>
+            <label htmlFor="relfield-predecessor_id">Predecessor *</label>
             <select id="relfield-predecessor_id" value={predecessorId} onChange={(e) => setPredecessorId(e.target.value)}>
               {activities.map((a) => (
                 <option key={a.id} value={a.id}>
@@ -939,7 +939,7 @@ function RelationshipForm({ relationship, isNew, activities, scheduleId, onDone 
             </select>
           </div>
           <div className="field">
-            <label>Successor *</label>
+            <label htmlFor="relfield-successor_id">Successor *</label>
             <select id="relfield-successor_id" value={successorId} onChange={(e) => setSuccessorId(e.target.value)}>
               {activities.map((a) => (
                 <option key={a.id} value={a.id}>
@@ -949,7 +949,7 @@ function RelationshipForm({ relationship, isNew, activities, scheduleId, onDone 
             </select>
           </div>
           <div className="field">
-            <label>Relationship Type</label>
+            <label htmlFor="relfield-type">Relationship Type</label>
             <select id="relfield-type" value={type} onChange={(e) => setType(e.target.value)}>
               {window.PCC.store.RELATIONSHIP_TYPES.map((t) => (
                 <option key={t} value={t}>
@@ -959,7 +959,7 @@ function RelationshipForm({ relationship, isNew, activities, scheduleId, onDone 
             </select>
           </div>
           <div className="field">
-            <label>Lag (days, negative = lead)</label>
+            <label htmlFor="relfield-lag">Lag (days, negative = lead)</label>
             <input id="relfield-lag" type="number" value={lag} onChange={(e) => setLag(e.target.value)} />
           </div>
         </div>
@@ -1080,7 +1080,7 @@ function CalendarForm({ calendar, isNew, projectId, onDone }: CalendarFormProps)
       <h3 style={{ marginBottom: "var(--space-4)" }}>{isNew ? "Add Calendar" : "Edit Calendar"}</h3>
       <form onSubmit={handleSubmit}>
         <div className="field">
-          <label>Calendar Name *</label>
+          <label htmlFor="calfield-name">Calendar Name *</label>
           <input id="calfield-name" type="text" value={name} onChange={(e) => setName(e.target.value)} />
         </div>
         <div className="field">
@@ -1254,7 +1254,7 @@ function ActivityField({ cfg, value, onChange }: ActivityFieldProps) {
     const opts: string[] = cfg.options ? (window.PCC.store as any)[cfg.options] : cfg.staticOptions || [];
     return (
       <div className="field">
-        <label>{cfg.label + (cfg.required ? " *" : "")}</label>
+        <label htmlFor={id}>{cfg.label + (cfg.required ? " *" : "")}</label>
         <select id={id} value={value == null ? "" : value} onChange={(e) => onChange(e.target.value)}>
           {opts.map((val) => (
             <option key={val} value={val}>
@@ -1268,14 +1268,14 @@ function ActivityField({ cfg, value, onChange }: ActivityFieldProps) {
   if (cfg.type === "textarea") {
     return (
       <div className="field" style={{ gridColumn: "1 / -1" }}>
-        <label>{cfg.label + (cfg.required ? " *" : "")}</label>
+        <label htmlFor={id}>{cfg.label + (cfg.required ? " *" : "")}</label>
         <textarea id={id} rows={2} value={value || ""} onChange={(e) => onChange(e.target.value)} />
       </div>
     );
   }
   return (
     <div className="field">
-      <label>{cfg.label + (cfg.required ? " *" : "")}</label>
+      <label htmlFor={id}>{cfg.label + (cfg.required ? " *" : "")}</label>
       <input
         id={id}
         type={cfg.type}
@@ -1365,8 +1365,8 @@ function ActivityForm({ activity, isNew, wbsItems, vendors, calendars, projectId
       <h3 style={{ marginBottom: "var(--space-4)" }}>{isNew ? "Add Activity" : "Edit Activity"}</h3>
       <form onSubmit={handleSubmit}>
         <div className="field">
-          <label>WBS</label>
-          <select value={wbsId} onChange={(e) => setWbsId(e.target.value)}>
+          <label htmlFor="actfield-wbs_id">WBS</label>
+          <select id="actfield-wbs_id" value={wbsId} onChange={(e) => setWbsId(e.target.value)}>
             <option value="">(none)</option>
             {wbsItems.map((w) => (
               <option key={w.id} value={w.id}>
@@ -1376,7 +1376,7 @@ function ActivityForm({ activity, isNew, wbsItems, vendors, calendars, projectId
           </select>
         </div>
         <div className="field">
-          <label>Vendor</label>
+          <label htmlFor="actfield-vendor_id">Vendor</label>
           <select id="actfield-vendor_id" value={vendorId} onChange={(e) => setVendorId(e.target.value)}>
             <option value="">(none)</option>
             {vendors.map((v) => (
@@ -1387,7 +1387,7 @@ function ActivityForm({ activity, isNew, wbsItems, vendors, calendars, projectId
           </select>
         </div>
         <div className="field">
-          <label>Calendar</label>
+          <label htmlFor="actfield-calendar_id">Calendar</label>
           <select id="actfield-calendar_id" value={calendarId} onChange={(e) => setCalendarId(e.target.value)}>
             <option value="">(none)</option>
             {calendars.map((cal) => (
@@ -1592,6 +1592,7 @@ function ActivityRow({ a, wbsItems, visibleColumns, selected, onToggleSelect, in
         isEditingField("status") ? (
           <td>
             <select
+              aria-label={"Status for " + (a.name || "activity")}
               ref={focusSelectRef}
               defaultValue={a.status}
               onChange={(e) => {
@@ -1753,7 +1754,7 @@ function ActivitiesTab({ data, projectId, scheduleId, initialActivityTypeHint, i
 
       <div className="toolbar" style={{ flexWrap: "wrap" }}>
         <input type="text" placeholder="Search activity name…" value={filter.search} onChange={(e) => setFilter((f) => Object.assign({}, f, { search: e.target.value }))} />
-        <select value={filter.wbsId} onChange={(e) => setFilter((f) => Object.assign({}, f, { wbsId: e.target.value }))}>
+        <select aria-label="Filter by WBS" value={filter.wbsId} onChange={(e) => setFilter((f) => Object.assign({}, f, { wbsId: e.target.value }))}>
           <option value="">WBS: All</option>
           {wbsItems.map((w) => (
             <option key={w.id} value={w.id}>
@@ -1761,7 +1762,7 @@ function ActivitiesTab({ data, projectId, scheduleId, initialActivityTypeHint, i
             </option>
           ))}
         </select>
-        <select value={filter.status} onChange={(e) => setFilter((f) => Object.assign({}, f, { status: e.target.value }))}>
+        <select aria-label="Filter by status" value={filter.status} onChange={(e) => setFilter((f) => Object.assign({}, f, { status: e.target.value }))}>
           <option value="">Status: All</option>
           {Object.keys(ACTIVITY_STATUS_LABELS).map((s) => (
             <option key={s} value={s}>
@@ -2082,7 +2083,11 @@ function ImportPanel({ data, projectId, onDone, onImported }: ImportPanelProps) 
                 <div className="text-secondary" style={{ fontSize: "var(--text-sm)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {sampleVal instanceof Date ? sampleVal.toISOString().slice(0, 10) : String(sampleVal)}
                 </div>
-                <select value={columnMapping[i] || ""} onChange={(e) => setColumnMapping((prev) => Object.assign({}, prev, { [i]: e.target.value }))}>
+                <select
+                  aria-label={"Map column " + (String(h || "").trim() || i + 1)}
+                  value={columnMapping[i] || ""}
+                  onChange={(e) => setColumnMapping((prev) => Object.assign({}, prev, { [i]: e.target.value }))}
+                >
                   <option value="">— Ignore this column —</option>
                   {mappingTargets.map((t) => (
                     <option key={t.key} value={t.key}>
@@ -2161,8 +2166,8 @@ function ImportPanel({ data, projectId, onDone, onImported }: ImportPanelProps) 
       <ParsedIssuesToggle parsed={parsed!} />
 
       <div className="field" style={{ maxWidth: 360 }}>
-        <label>Schedule Name</label>
-        <input type="text" value={scheduleName} onChange={(e) => setScheduleName(e.target.value)} />
+        <label htmlFor="importfield-schedule_name">Schedule Name</label>
+        <input id="importfield-schedule_name" type="text" value={scheduleName} onChange={(e) => setScheduleName(e.target.value)} />
       </div>
 
       <div style={{ display: "flex", gap: "var(--space-3)", marginTop: "var(--space-4)" }}>
@@ -2188,7 +2193,7 @@ function ExcelCellControl({ rowIndex, field, value, onChange }: ExcelCellControl
   const id = "excelgrid-" + rowIndex + "-" + field.key;
   if (field.key === "activity_type") {
     return (
-      <select id={id} style={{ width: "100%" }} value={value || "task"} onChange={(e) => onChange(e.target.value)}>
+      <select id={id} aria-label={field.label + ", row " + (rowIndex + 1)} style={{ width: "100%" }} value={value || "task"} onChange={(e) => onChange(e.target.value)}>
         {["task", "milestone", "summary", "wbs_summary"].map((k) => (
           <option key={k} value={k}>
             {ACTIVITY_TYPE_LABELS[k]}
@@ -2199,7 +2204,7 @@ function ExcelCellControl({ rowIndex, field, value, onChange }: ExcelCellControl
   }
   if (field.key === "status") {
     return (
-      <select id={id} style={{ width: "100%" }} value={value || "not_started"} onChange={(e) => onChange(e.target.value)}>
+      <select id={id} aria-label={field.label + ", row " + (rowIndex + 1)} style={{ width: "100%" }} value={value || "not_started"} onChange={(e) => onChange(e.target.value)}>
         {Object.keys(ACTIVITY_STATUS_LABELS).map((k) => (
           <option key={k} value={k}>
             {ACTIVITY_STATUS_LABELS[k]}
@@ -2632,7 +2637,7 @@ function GanttToolbar({ data, projectId, allActivities, wbsItems, filter, setFil
           style={{ minWidth: 220 }}
           onChange={(e) => setFilter((f) => Object.assign({}, f, { search: e.target.value }))}
         />
-        <select value={filter.wbsId} onChange={(e) => setFilter((f) => Object.assign({}, f, { wbsId: e.target.value }))}>
+        <select aria-label="Filter by WBS" value={filter.wbsId} onChange={(e) => setFilter((f) => Object.assign({}, f, { wbsId: e.target.value }))}>
           <option value="">WBS: All</option>
           {wbsItems.map((w) => (
             <option key={w.id} value={w.id}>
@@ -2640,7 +2645,7 @@ function GanttToolbar({ data, projectId, allActivities, wbsItems, filter, setFil
             </option>
           ))}
         </select>
-        <select value={filter.discipline} onChange={(e) => setFilter((f) => Object.assign({}, f, { discipline: e.target.value }))}>
+        <select aria-label="Filter by discipline" value={filter.discipline} onChange={(e) => setFilter((f) => Object.assign({}, f, { discipline: e.target.value }))}>
           <option value="">Discipline: All</option>
           {uniqueValues("discipline").map((v) => (
             <option key={v} value={v}>
@@ -2648,7 +2653,7 @@ function GanttToolbar({ data, projectId, allActivities, wbsItems, filter, setFil
             </option>
           ))}
         </select>
-        <select value={filter.contractor} onChange={(e) => setFilter((f) => Object.assign({}, f, { contractor: e.target.value }))}>
+        <select aria-label="Filter by contractor" value={filter.contractor} onChange={(e) => setFilter((f) => Object.assign({}, f, { contractor: e.target.value }))}>
           <option value="">Contractor: All</option>
           {uniqueValues("contractor").map((v) => (
             <option key={v} value={v}>
@@ -2656,7 +2661,7 @@ function GanttToolbar({ data, projectId, allActivities, wbsItems, filter, setFil
             </option>
           ))}
         </select>
-        <select value={filter.responsiblePerson} onChange={(e) => setFilter((f) => Object.assign({}, f, { responsiblePerson: e.target.value }))}>
+        <select aria-label="Filter by responsible person" value={filter.responsiblePerson} onChange={(e) => setFilter((f) => Object.assign({}, f, { responsiblePerson: e.target.value }))}>
           <option value="">Responsible: All</option>
           {uniqueValues("responsible_person").map((v) => (
             <option key={v} value={v}>
@@ -2664,7 +2669,7 @@ function GanttToolbar({ data, projectId, allActivities, wbsItems, filter, setFil
             </option>
           ))}
         </select>
-        <select value={filter.quick} onChange={(e) => setFilter((f) => Object.assign({}, f, { quick: e.target.value }))}>
+        <select aria-label="Quick filter" value={filter.quick} onChange={(e) => setFilter((f) => Object.assign({}, f, { quick: e.target.value }))}>
           <option value="">Show: All Activities</option>
           <option value="critical">Critical</option>
           <option value="near_critical">Near Critical</option>
@@ -2707,7 +2712,7 @@ function GanttToolbar({ data, projectId, allActivities, wbsItems, filter, setFil
             <input type="checkbox" checked={showBaseline} onChange={(e) => onToggleBaseline(e.target.checked, projectBaselines)} />
             Show Baseline
           </label>
-          <select value={baselineId || projectBaselines[0].id} disabled={!showBaseline} onChange={(e) => onChangeBaselineId(e.target.value)}>
+          <select aria-label="Compare to baseline" value={baselineId || projectBaselines[0].id} disabled={!showBaseline} onChange={(e) => onChangeBaselineId(e.target.value)}>
             {projectBaselines.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}
@@ -3229,19 +3234,19 @@ function RecoveryActionForm({ editing, isNew, activity, data, onDone }: Recovery
       <form onSubmit={handleSubmit}>
         <div className="form-grid">
           <div className="field" style={{ gridColumn: "1 / -1" }}>
-            <label>Description *</label>
+            <label htmlFor="recactionfield-description">Description *</label>
             <textarea id="recactionfield-description" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
           <div className="field">
-            <label>Responsible Person</label>
+            <label htmlFor="recactionfield-responsible_person">Responsible Person</label>
             <input id="recactionfield-responsible_person" type="text" value={responsiblePerson} onChange={(e) => setResponsiblePerson(e.target.value)} />
           </div>
           <div className="field">
-            <label>Target Recovery Date</label>
+            <label htmlFor="recactionfield-target_recovery_date">Target Recovery Date</label>
             <input id="recactionfield-target_recovery_date" type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} />
           </div>
           <div className="field">
-            <label>Status</label>
+            <label htmlFor="recactionfield-status">Status</label>
             <select id="recactionfield-status" value={status} onChange={(e) => setStatus(e.target.value)}>
               {window.PCC.store.RECOVERY_ACTION_STATUSES.map((s) => (
                 <option key={s} value={s}>
@@ -3251,19 +3256,19 @@ function RecoveryActionForm({ editing, isNew, activity, data, onDone }: Recovery
             </select>
           </div>
           <div className="field">
-            <label>Estimated Recovery (days)</label>
+            <label htmlFor="recactionfield-estimated_recovery_days">Estimated Recovery (days)</label>
             <input id="recactionfield-estimated_recovery_days" type="number" value={estRecoveryDays} onChange={(e) => setEstRecoveryDays(e.target.value)} />
           </div>
           <div className="field">
-            <label>Estimated Cost</label>
+            <label htmlFor="recactionfield-estimated_cost">Estimated Cost</label>
             <input id="recactionfield-estimated_cost" type="number" value={estCost} onChange={(e) => setEstCost(e.target.value)} />
           </div>
           <div className="field">
-            <label>Actual Recovery (days)</label>
+            <label htmlFor="recactionfield-actual_recovery_days">Actual Recovery (days)</label>
             <input id="recactionfield-actual_recovery_days" type="number" value={actualRecoveryDays} onChange={(e) => setActualRecoveryDays(e.target.value)} />
           </div>
           <div className="field">
-            <label>Responds to Delay</label>
+            <label htmlFor="recactionfield-delay_id">Responds to Delay</label>
             <select id="recactionfield-delay_id" value={delayId} onChange={(e) => setDelayId(e.target.value)}>
               <option value="">No specific delay</option>
               {delaysForActivity.map((dr) => (
@@ -3274,7 +3279,7 @@ function RecoveryActionForm({ editing, isNew, activity, data, onDone }: Recovery
             </select>
           </div>
           <div className="field">
-            <label>Mitigation Type</label>
+            <label htmlFor="recactionfield-mitigation_type">Mitigation Type</label>
             <select id="recactionfield-mitigation_type" value={mitigationType} onChange={(e) => setMitigationType(e.target.value)}>
               {window.PCC.store.MITIGATION_TYPES.map((t) => (
                 <option key={t} value={t}>
@@ -3285,7 +3290,7 @@ function RecoveryActionForm({ editing, isNew, activity, data, onDone }: Recovery
           </div>
         </div>
         <div className="field">
-          <label>Comments</label>
+          <label htmlFor="recactionfield-comments">Comments</label>
           <textarea id="recactionfield-comments" rows={2} value={comments} onChange={(e) => setComments(e.target.value)} />
         </div>
         {error ? <p style={{ color: "var(--status-critical)", fontSize: "var(--text-sm)" }}>{error}</p> : null}
@@ -3572,7 +3577,7 @@ function DelayLinkActivityPicker({ delayRecord, links, data, scheduleId, refresh
   return (
     <div style={{ marginTop: "var(--space-2)" }}>
       <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center" }}>
-        <select value={selection} disabled={candidateActivities.length === 0} onChange={(e) => setSelection(e.target.value)}>
+        <select aria-label="Select activity to link" value={selection} disabled={candidateActivities.length === 0} onChange={(e) => setSelection(e.target.value)}>
           {candidateActivities.length === 0 ? (
             <option value="">No other activities on this schedule</option>
           ) : (
@@ -3612,7 +3617,7 @@ function DelayLinkActivityPicker({ delayRecord, links, data, scheduleId, refresh
 function RecordLinkField({ id, label, records, labelFn, value, onChange }: RecordLinkFieldProps) {
   return (
     <div className="field">
-      <label>{label}</label>
+      <label htmlFor={id}>{label}</label>
       <select id={id} value={value || ""} onChange={(e) => onChange(e.target.value)}>
         <option value="">(none)</option>
         {records.map((r) => (
@@ -3694,7 +3699,7 @@ function DelayRecordForm({ editing, isNew, activity, data, onDone }: DelayRecord
       <form onSubmit={handleSubmit}>
         <div className="form-grid">
           <div className="field">
-            <label>Status</label>
+            <label htmlFor="delayfield-status">Status</label>
             <select id="delayfield-status" value={status} onChange={(e) => setStatus(e.target.value)}>
               {window.PCC.store.DELAY_RECORD_STATUSES.map((s) => (
                 <option key={s} value={s}>
@@ -3704,7 +3709,7 @@ function DelayRecordForm({ editing, isNew, activity, data, onDone }: DelayRecord
             </select>
           </div>
           <div className="field">
-            <label>Delay Category</label>
+            <label htmlFor="delayfield-delay_category">Delay Category</label>
             <select id="delayfield-delay_category" value={category} onChange={(e) => setCategory(e.target.value)}>
               {window.PCC.store.DELAY_CATEGORIES.map((c) => (
                 <option key={c} value={c}>
@@ -3714,7 +3719,7 @@ function DelayRecordForm({ editing, isNew, activity, data, onDone }: DelayRecord
             </select>
           </div>
           <div className="field">
-            <label>Responsibility Classification</label>
+            <label htmlFor="delayfield-responsibility_classification">Responsibility Classification</label>
             <select id="delayfield-responsibility_classification" value={responsibility} onChange={(e) => setResponsibility(e.target.value)}>
               {window.PCC.store.DELAY_RESPONSIBILITY_CLASSIFICATIONS.map((c) => (
                 <option key={c} value={c}>
@@ -3724,7 +3729,7 @@ function DelayRecordForm({ editing, isNew, activity, data, onDone }: DelayRecord
             </select>
           </div>
           <div className="field">
-            <label>Delay Cause (contractual bucket)</label>
+            <label htmlFor="delayfield-delay_cause">Delay Cause (contractual bucket)</label>
             <select id="delayfield-delay_cause" value={cause} onChange={(e) => setCause(e.target.value)}>
               {window.PCC.store.DELAY_RECORD_CAUSES.map((c) => (
                 <option key={c} value={c}>
@@ -3734,19 +3739,19 @@ function DelayRecordForm({ editing, isNew, activity, data, onDone }: DelayRecord
             </select>
           </div>
           <div className="field">
-            <label>Estimated Impact (days)</label>
+            <label htmlFor="delayfield-delay_days">Estimated Impact (days)</label>
             <input id="delayfield-delay_days" type="number" value={delayDays} onChange={(e) => setDelayDays(e.target.value)} />
           </div>
           <div className="field">
-            <label>Actual Impact (days)</label>
+            <label htmlFor="delayfield-actual_impact_days">Actual Impact (days)</label>
             <input id="delayfield-actual_impact_days" type="number" value={actualDays} onChange={(e) => setActualDays(e.target.value)} />
           </div>
           <div className="field">
-            <label>Identified Date</label>
+            <label htmlFor="delayfield-identified_date">Identified Date</label>
             <input id="delayfield-identified_date" type="date" value={identifiedDate} onChange={(e) => setIdentifiedDate(e.target.value)} />
           </div>
           <div className="field">
-            <label>Responsible Party</label>
+            <label htmlFor="delayfield-responsible_party">Responsible Party</label>
             <input id="delayfield-responsible_party" type="text" value={responsibleParty} onChange={(e) => setResponsibleParty(e.target.value)} />
           </div>
           <div className="field">
@@ -3756,7 +3761,7 @@ function DelayRecordForm({ editing, isNew, activity, data, onDone }: DelayRecord
             </label>
           </div>
           <div className="field">
-            <label>Affected Milestone</label>
+            <label htmlFor="delayfield-milestone_activity_id">Affected Milestone</label>
             <select id="delayfield-milestone_activity_id" value={milestoneId} onChange={(e) => setMilestoneId(e.target.value)}>
               <option value="">(none)</option>
               {milestones.map((m) => (
@@ -3826,15 +3831,15 @@ function DelayRecordForm({ editing, isNew, activity, data, onDone }: DelayRecord
             onChange={setChangeOrderId}
           />
           <div className="field" style={{ gridColumn: "1 / -1" }}>
-            <label>Immediate Cause — what directly prevented/delayed the activity?</label>
+            <label htmlFor="delayfield-immediate_cause">Immediate Cause — what directly prevented/delayed the activity?</label>
             <input id="delayfield-immediate_cause" type="text" value={immediateCause} onChange={(e) => setImmediateCause(e.target.value)} />
           </div>
           <div className="field" style={{ gridColumn: "1 / -1" }}>
-            <label>Underlying Cause — why did that condition occur?</label>
+            <label htmlFor="delayfield-underlying_cause">Underlying Cause — why did that condition occur?</label>
             <input id="delayfield-underlying_cause" type="text" value={underlyingCause} onChange={(e) => setUnderlyingCause(e.target.value)} />
           </div>
           <div className="field" style={{ gridColumn: "1 / -1" }}>
-            <label>Description *</label>
+            <label htmlFor="delayfield-description">Description *</label>
             <textarea id="delayfield-description" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
         </div>
@@ -4385,7 +4390,7 @@ function WhatIfTab({ data, scheduleId }: WhatIfTabProps) {
       <div className="panel">
         <div className="form-grid">
           <div className="field">
-            <label>Activity</label>
+            <label htmlFor="whatiffield-activity">Activity</label>
             <select id="whatiffield-activity" value={activityId} onChange={(e) => setActivityId(e.target.value)}>
               <option value="">Select an activity…</option>
               {scheduleActivities.map((a) => (
@@ -4396,7 +4401,7 @@ function WhatIfTab({ data, scheduleId }: WhatIfTabProps) {
             </select>
           </div>
           <div className="field">
-            <label>Reduce Duration By (days)</label>
+            <label htmlFor="whatiffield-days">Reduce Duration By (days)</label>
             <input id="whatiffield-days" type="number" min="0" value={reduceDaysInput} onChange={(e) => setReduceDaysInput(e.target.value)} />
           </div>
         </div>

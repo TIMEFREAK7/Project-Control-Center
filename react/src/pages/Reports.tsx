@@ -170,12 +170,12 @@ export default function ReportsPage() {
       </h2>
 
       <div className="toolbar no-print">
-        <select value={reportType} onChange={(e) => handleReportTypeChange(e.target.value)}>
+        <select aria-label="Report type" value={reportType} onChange={(e) => handleReportTypeChange(e.target.value)}>
           <option value="project">Project Status Report</option>
           <option value="portfolio">Portfolio Summary Report</option>
         </select>
 
-        <select value={projectId} style={{ display: reportType === "project" ? "" : "none" }} onChange={(e) => handleProjectChange(e.target.value)}>
+        <select aria-label="Select project" value={projectId} style={{ display: reportType === "project" ? "" : "none" }} onChange={(e) => handleProjectChange(e.target.value)}>
           {projects.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name || "(unnamed project)"}
@@ -192,8 +192,8 @@ export default function ReportsPage() {
 
       <div className="panel no-print" style={{ marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 13 }}>Template:</span>
-          <select value={selectedTemplateId[reportType]} onChange={(e) => handleTemplateChange(e.target.value)}>
+          <span style={{ fontSize: 13 }} id="report-template-label">Template:</span>
+          <select aria-labelledby="report-template-label" value={selectedTemplateId[reportType]} onChange={(e) => handleTemplateChange(e.target.value)}>
             <option value="">— Custom selection —</option>
             {currentTemplates.map((t) => (
               <option key={t.id} value={t.id}>
@@ -267,6 +267,7 @@ export default function ReportsPage() {
               <label key={key} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
                 <span>{REPORT_DAY_SECTION_LABELS[key]}:</span>
                 <select
+                  aria-label={REPORT_DAY_SECTION_LABELS[key]}
                   value={reportSectionDays[key]}
                   disabled={!sections.project[key]}
                   onChange={(e) => setReportSectionDays((prev) => Object.assign({}, prev, { [key]: e.target.value }))}

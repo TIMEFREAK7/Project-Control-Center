@@ -134,7 +134,7 @@ function LessonForm({
 
       <form onSubmit={handleSubmit}>
         <div className="field">
-          <label>Project *</label>
+          <label htmlFor="lsnfield-project_id">Project *</label>
           {activeProjects.length === 0 ? (
             <select id="lsnfield-project_id" disabled>
               <option value="">No projects yet — add one in Portfolio first</option>
@@ -155,7 +155,7 @@ function LessonForm({
         </div>
 
         <div className="field">
-          <label>Linked Activity (optional)</label>
+          <label htmlFor="lsnfield-activity_id">Linked Activity (optional)</label>
           <select id="lsnfield-activity_id" defaultValue={lesson.activity_id || ""} key={"activity-" + selectedProjectId}>
             {activityOptions.map((o) => (
               <option key={o.id} value={o.id}>
@@ -394,7 +394,7 @@ export default function LessonsLearnedPage({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
+        <select aria-label="Filter by category" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
           <option value="">All categories</option>
           {optionsFor("LESSON_LEARNED_CATEGORIES").map((c) => (
             <option key={c} value={c}>
@@ -402,7 +402,7 @@ export default function LessonsLearnedPage({
             </option>
           ))}
         </select>
-        <select value={impactFilter} onChange={(e) => setImpactFilter(e.target.value)}>
+        <select aria-label="Filter by impact" value={impactFilter} onChange={(e) => setImpactFilter(e.target.value)}>
           <option value="">All impact</option>
           {optionsFor("LESSON_LEARNED_IMPACT_TYPES").map((i) => (
             <option key={i} value={i}>
@@ -411,6 +411,7 @@ export default function LessonsLearnedPage({
           ))}
         </select>
         <select
+          aria-label="Filter by project"
           value={projectFilter}
           onChange={(e) => {
             const value = e.target.value;

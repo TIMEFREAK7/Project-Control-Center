@@ -110,7 +110,7 @@ function ChangeOrderForm({
       <h3 style={{ marginBottom: 14 }}>{isNew ? "Add Change Order" : "Edit " + (co.number || "Entry")}</h3>
       <form onSubmit={handleSubmit}>
         <div className="field">
-          <label>Project *</label>
+          <label htmlFor="cofield-project_id">Project *</label>
           {activeProjects.length === 0 ? (
             <select id="cofield-project_id" disabled defaultValue="">
               <option value="">No projects yet — add one in Portfolio first</option>
@@ -127,7 +127,7 @@ function ChangeOrderForm({
         </div>
 
         <div className="field">
-          <label>Linked Activity (optional)</label>
+          <label htmlFor="cofield-activity_id">Linked Activity (optional)</label>
           <select id="cofield-activity_id" key={"act-" + selectedProjectId} defaultValue={co.activity_id || ""}>
             <option value="">(none)</option>
             {activityOptions.map((a) => (
@@ -180,7 +180,7 @@ function ChangeOrderForm({
           </div>
 
           <div className="field">
-            <label>Source RFI / TQ (optional)</label>
+            <label htmlFor="cofield-source_rfi_id">Source RFI / TQ (optional)</label>
             <select id="cofield-source_rfi_id" key={"rfi-" + selectedProjectId} defaultValue={co.source_rfi_id || ""}>
               <option value="">None</option>
               {sources.rfis.map((r) => (
@@ -191,7 +191,7 @@ function ChangeOrderForm({
             </select>
           </div>
           <div className="field">
-            <label>Source Risk / Issue (optional)</label>
+            <label htmlFor="cofield-source_risk_id">Source Risk / Issue (optional)</label>
             <select id="cofield-source_risk_id" key={"risk-" + selectedProjectId} defaultValue={co.source_risk_id || ""}>
               <option value="">None</option>
               {sources.risks.map((r) => (
@@ -576,7 +576,7 @@ export default function ChangeOrdersPage({
 
       <div className="toolbar">
         <input type="text" placeholder="Search number, title, description…" value={search} onChange={(e) => setSearch(e.target.value)} />
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+        <select aria-label="Filter by status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
           <option value="">All statuses</option>
           {window.PCC.store.CHANGE_ORDER_STATUSES.map((s) => (
             <option key={s} value={s}>
@@ -585,6 +585,7 @@ export default function ChangeOrdersPage({
           ))}
         </select>
         <select
+          aria-label="Filter by project"
           value={projectFilter}
           onChange={(e) => {
             setProjectFilter(e.target.value);

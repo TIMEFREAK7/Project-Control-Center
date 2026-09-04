@@ -115,7 +115,7 @@ export default function ProjectLookaheadPage() {
 
       {allActiveProjects.length > 0 ? (
         <div className="toolbar no-print" style={{ marginBottom: 8 }}>
-          <select value={validProjectFilter} onChange={handleProjectFilterChange}>
+          <select aria-label="Filter by project" value={validProjectFilter} onChange={handleProjectFilterChange}>
             <option value="">All Projects</option>
             {allActiveProjects
               .slice()

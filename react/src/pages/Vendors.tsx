@@ -215,7 +215,7 @@ function VendorForm({ isNew, vendor, data, onCancel, onSaved }: VendorFormProps)
         </div>
 
         <div className="field" style={{ marginTop: "var(--space-3)" }}>
-          <label>Notes</label>
+          <label htmlFor="vendorfield-notes">Notes</label>
           <textarea id="vendorfield-notes" rows={2} defaultValue={vendor.notes || ""} />
         </div>
 
@@ -313,7 +313,7 @@ function VendorList({ data, filters, setFilters, editingVendorId, onEdit, onAdd,
           value={filters.search}
           onChange={(e) => setFilters((prev) => Object.assign({}, prev, { search: e.target.value }))}
         />
-        <select value={filters.statusFilter} onChange={(e) => setFilters((prev) => Object.assign({}, prev, { statusFilter: e.target.value }))}>
+        <select aria-label="Filter by status" value={filters.statusFilter} onChange={(e) => setFilters((prev) => Object.assign({}, prev, { statusFilter: e.target.value }))}>
           <option value="">All statuses</option>
           {window.PCC.store.VENDOR_STATUSES.map((s) => (
             <option key={s} value={s}>
@@ -322,6 +322,7 @@ function VendorList({ data, filters, setFilters, editingVendorId, onEdit, onAdd,
           ))}
         </select>
         <select
+          aria-label="Filter by project"
           value={filters.projectFilter}
           onChange={(e) => {
             const value = e.target.value;
@@ -336,7 +337,7 @@ function VendorList({ data, filters, setFilters, editingVendorId, onEdit, onAdd,
             </option>
           ))}
         </select>
-        <select value={filters.tradeFilter} onChange={(e) => setFilters((prev) => Object.assign({}, prev, { tradeFilter: e.target.value }))}>
+        <select aria-label="Filter by trade" value={filters.tradeFilter} onChange={(e) => setFilters((prev) => Object.assign({}, prev, { tradeFilter: e.target.value }))}>
           <option value="">All trades</option>
           {distinctTrades.map((t) => (
             <option key={t} value={t}>
@@ -344,7 +345,7 @@ function VendorList({ data, filters, setFilters, editingVendorId, onEdit, onAdd,
             </option>
           ))}
         </select>
-        <select value={filters.docTypeFilter} onChange={(e) => setFilters((prev) => Object.assign({}, prev, { docTypeFilter: e.target.value }))}>
+        <select aria-label="Filter by document type" value={filters.docTypeFilter} onChange={(e) => setFilters((prev) => Object.assign({}, prev, { docTypeFilter: e.target.value }))}>
           <option value="">All document types</option>
           {window.PCC.store.VENDOR_DOCUMENT_CATEGORIES.map((c) => (
             <option key={c} value={c}>
@@ -605,7 +606,7 @@ function ProjectLinkForm({ isNew, link, vendor, data, onCancel, onSaved }: Proje
     <div className="panel" style={{ marginBottom: "var(--space-3)" }}>
       <form onSubmit={handleSubmit}>
         <div className="field">
-          <label>Project *</label>
+          <label htmlFor="vplfield-project_id">Project *</label>
           <select id="vplfield-project_id" defaultValue={link.project_id || (activeProjects[0] && activeProjects[0].id) || ""}>
             {activeProjects.map((p) => (
               <option key={p.id} value={p.id}>
@@ -623,7 +624,7 @@ function ProjectLinkForm({ isNew, link, vendor, data, onCancel, onSaved }: Proje
           />
         </div>
         <div className="field">
-          <label>Scope of Work</label>
+          <label htmlFor="vplfield-scope_of_work">Scope of Work</label>
           <textarea id="vplfield-scope_of_work" rows={2} defaultValue={link.scope_of_work || ""} />
         </div>
         <div style={{ display: "flex", gap: "var(--space-3)", marginTop: "var(--space-3)" }}>
@@ -883,7 +884,7 @@ function DocumentUploadForm({ vendor, data, pendingDocGroupId, initialCategory, 
 
       <div className="form-grid" style={{ marginTop: "var(--space-3)" }}>
         <div className="field">
-          <label>Document Category</label>
+          <label htmlFor="vdocfield-category">Document Category</label>
           <select id="vdocfield-category" value={category} onChange={(e) => setCategory(e.target.value)}>
             {window.PCC.store.VENDOR_DOCUMENT_CATEGORIES.map((c) => (
               <option key={c} value={c}>
@@ -894,12 +895,12 @@ function DocumentUploadForm({ vendor, data, pendingDocGroupId, initialCategory, 
         </div>
         {category === "other" ? (
           <div className="field">
-            <label>Custom Category Label</label>
+            <label htmlFor="vdocfield-custom_category_label">Custom Category Label</label>
             <input type="text" id="vdocfield-custom_category_label" defaultValue={initialCustomCategory || ""} />
           </div>
         ) : null}
         <div className="field">
-          <label>Project (optional)</label>
+          <label htmlFor="vdocfield-project_id">Project (optional)</label>
           <select id="vdocfield-project_id" defaultValue={initialProjectId || ""}>
             <option value="">— Not project-specific —</option>
             {data.projects.map((p) => (
@@ -910,17 +911,17 @@ function DocumentUploadForm({ vendor, data, pendingDocGroupId, initialCategory, 
           </select>
         </div>
         <div className="field">
-          <label>Expiry Date (optional)</label>
+          <label htmlFor="vdocfield-expiry_date">Expiry Date (optional)</label>
           <input type="date" id="vdocfield-expiry_date" defaultValue="" />
         </div>
         <div className="field">
-          <label>Tags (comma-separated)</label>
+          <label htmlFor="vdocfield-tags">Tags (comma-separated)</label>
           <input type="text" id="vdocfield-tags" defaultValue="" />
         </div>
       </div>
 
       <div className="field" style={{ marginTop: "var(--space-2)" }}>
-        <label>Comments</label>
+        <label htmlFor="vdocfield-comments">Comments</label>
         <textarea id="vdocfield-comments" rows={2} defaultValue="" />
       </div>
 
@@ -1072,7 +1073,7 @@ function LinkPickerPanel<T extends { id: string }>({ items, itemLabel, onLink, o
         </p>
       ) : (
         <>
-          <select value={selected} onChange={(e) => setSelected(e.target.value)}>
+          <select aria-label={buttonText} value={selected} onChange={(e) => setSelected(e.target.value)}>
             {items.map((item) => (
               <option key={item.id} value={item.id}>
                 {itemLabel(item)}
@@ -1398,25 +1399,25 @@ function PerformanceForm({ isNew, perf, vendor, onCancel, onSaved }: Performance
       <form onSubmit={handleSubmit}>
         <div className="form-grid">
           <div className="field">
-            <label>Quality Rating</label>
+            <label htmlFor="vperffield-quality_rating">Quality Rating</label>
             <select id="vperffield-quality_rating" defaultValue={String(perf.quality_rating || 0)}>
               {ratingOptions()}
             </select>
           </div>
           <div className="field">
-            <label>Delivery Rating</label>
+            <label htmlFor="vperffield-delivery_rating">Delivery Rating</label>
             <select id="vperffield-delivery_rating" defaultValue={String(perf.delivery_rating || 0)}>
               {ratingOptions()}
             </select>
           </div>
           <div className="field">
-            <label>Communication Rating</label>
+            <label htmlFor="vperffield-communication_rating">Communication Rating</label>
             <select id="vperffield-communication_rating" defaultValue={String(perf.communication_rating || 0)}>
               {ratingOptions()}
             </select>
           </div>
           <div className="field">
-            <label>Safety Rating</label>
+            <label htmlFor="vperffield-safety_rating">Safety Rating</label>
             <select id="vperffield-safety_rating" defaultValue={String(perf.safety_rating || 0)}>
               {ratingOptions()}
             </select>
@@ -1425,7 +1426,7 @@ function PerformanceForm({ isNew, perf, vendor, onCancel, onSaved }: Performance
           <Field cfg={{ key: "reviewed_by", label: "Reviewed By", type: "text" }} record={perf} idPrefix="vperffield-" />
         </div>
         <div className="field" style={{ marginTop: "var(--space-2)" }}>
-          <label>Comments</label>
+          <label htmlFor="vperffield-comments">Comments</label>
           <textarea id="vperffield-comments" rows={2} defaultValue={perf.comments || ""} />
         </div>
         <div style={{ display: "flex", gap: "var(--space-3)", marginTop: "var(--space-3)" }}>

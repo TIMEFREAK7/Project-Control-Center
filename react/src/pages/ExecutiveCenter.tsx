@@ -686,7 +686,7 @@ function UpcomingItemsPanel({ ctx }: { ctx: PopulatedProjectContext }) {
 
   return (
     <ChartCard title="Upcoming Items">
-      <select className="no-print" style={{ marginBottom: "var(--space-2)" }} value={rangeDays} onChange={(e) => setRangeDays(Number(e.target.value))}>
+      <select aria-label="Date range" className="no-print" style={{ marginBottom: "var(--space-2)" }} value={rangeDays} onChange={(e) => setRangeDays(Number(e.target.value))}>
         {[7, 14, 30, 60, 90].map((d) => (
           <option key={d} value={d}>
             Next {d} days
@@ -1509,28 +1509,28 @@ function WeeklyReviewsTab({ data, ctx, health, onProjectChanged }: { data: PCCSt
           <form onSubmit={handleSubmit}>
             <div className="form-grid">
               <div className="field">
-                <label>Review Date</label>
+                <label htmlFor="wrfield-review_date">Review Date</label>
                 <input id="wrfield-review_date" type="date" value={form.review_date} onChange={(e) => setForm((f) => Object.assign({}, f, { review_date: e.target.value }))} />
               </div>
               <div className="field">
-                <label>Reviewed By</label>
+                <label htmlFor="wrfield-reviewed_by">Reviewed By</label>
                 <input id="wrfield-reviewed_by" type="text" value={form.reviewed_by} onChange={(e) => setForm((f) => Object.assign({}, f, { reviewed_by: e.target.value }))} />
               </div>
               <div className="field">
-                <label>Attendees</label>
+                <label htmlFor="wrfield-attendees">Attendees</label>
                 <input id="wrfield-attendees" type="text" value={form.attendees} onChange={(e) => setForm((f) => Object.assign({}, f, { attendees: e.target.value }))} />
               </div>
             </div>
             <div className="field" style={{ marginTop: "var(--space-3)" }}>
-              <label>Progress This Week</label>
+              <label htmlFor="wrfield-progress_notes">Progress This Week</label>
               <textarea id="wrfield-progress_notes" rows={2} value={form.progress_notes} onChange={(e) => setForm((f) => Object.assign({}, f, { progress_notes: e.target.value }))} />
             </div>
             <div className="field" style={{ marginTop: "var(--space-3)" }}>
-              <label>Issues / Blockers</label>
+              <label htmlFor="wrfield-issues_notes">Issues / Blockers</label>
               <textarea id="wrfield-issues_notes" rows={2} value={form.issues_notes} onChange={(e) => setForm((f) => Object.assign({}, f, { issues_notes: e.target.value }))} />
             </div>
             <div className="field" style={{ marginTop: "var(--space-3)" }}>
-              <label>Actions for Next Week</label>
+              <label htmlFor="wrfield-actions_notes">Actions for Next Week</label>
               <textarea id="wrfield-actions_notes" rows={2} value={form.actions_notes} onChange={(e) => setForm((f) => Object.assign({}, f, { actions_notes: e.target.value }))} />
             </div>
             <div style={{ display: "flex", gap: "var(--space-3)", marginTop: "var(--space-3)" }}>
@@ -2035,7 +2035,7 @@ function OutputTab({ data, ctx, health, diagnostics }: ReportDocProps) {
   return (
     <>
       <div className="toolbar no-print">
-        <select value={mode} onChange={(e) => setMode(e.target.value)}>
+        <select aria-label="Report mode" value={mode} onChange={(e) => setMode(e.target.value)}>
           <option value="snapshot">Project Snapshot (1-page)</option>
           <option value="pack">Management Pack</option>
         </select>
@@ -2049,8 +2049,9 @@ function OutputTab({ data, ctx, health, diagnostics }: ReportDocProps) {
         <div className="panel no-print" style={{ marginBottom: "var(--space-4)" }}>
           <h4 style={{ marginBottom: "var(--space-2)" }}>Sections to include</h4>
           <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", flexWrap: "wrap", marginBottom: "var(--space-3)" }}>
-            <span style={{ fontSize: "var(--text-sm)" }}>Template:</span>
+            <span style={{ fontSize: "var(--text-sm)" }} id="mgmtpack-template-label">Template:</span>
             <select
+              aria-labelledby="mgmtpack-template-label"
               value={selectedTemplateId}
               onChange={(e) => {
                 var chosen = packTemplates.find((t) => t.id === e.target.value);
@@ -2196,11 +2197,12 @@ export default function ExecutiveCenterPage({ initialProjectId, initialTab }: Ex
 
       <div className="toolbar no-print">
         {activeProjects.length === 0 ? (
-          <select disabled>
+          <select aria-label="Select project" disabled>
             <option>No projects yet — add one in Portfolio first</option>
           </select>
         ) : (
           <select
+            aria-label="Select project"
             value={effectiveProjectId}
             onChange={(e) => {
               setProjectId(e.target.value);

@@ -357,13 +357,13 @@ function UploadForm({ data, prefill, onSaved, onCancel }: UploadFormProps) {
 
       <div className="form-grid">
         <div className="field">
-          <label>Project *</label>
+          <label htmlFor="docfield-project_id">Project *</label>
           {activeProjects.length === 0 ? (
-            <select disabled>
+            <select id="docfield-project_id" disabled>
               <option value="">No projects yet — add one in Portfolio first</option>
             </select>
           ) : (
-            <select value={form.projectId} onChange={(e) => handleProjectChange(e.target.value)}>
+            <select id="docfield-project_id" value={form.projectId} onChange={(e) => handleProjectChange(e.target.value)}>
               {activeProjects.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name || "(unnamed project)"}
@@ -373,8 +373,8 @@ function UploadForm({ data, prefill, onSaved, onCancel }: UploadFormProps) {
           )}
         </div>
         <div className="field">
-          <label>Linked Activity (optional)</label>
-          <select value={form.activityId} onChange={(e) => set("activityId", e.target.value)}>
+          <label htmlFor="docfield-activity_id">Linked Activity (optional)</label>
+          <select id="docfield-activity_id" value={form.activityId} onChange={(e) => set("activityId", e.target.value)}>
             <option value="">(none)</option>
             {activityOptions.map((a) => (
               <option key={a.id} value={a.id}>
@@ -384,8 +384,8 @@ function UploadForm({ data, prefill, onSaved, onCancel }: UploadFormProps) {
           </select>
         </div>
         <div className="field">
-          <label>Category</label>
-          <select value={form.category} onChange={(e) => set("category", e.target.value)}>
+          <label htmlFor="docfield-category">Category</label>
+          <select id="docfield-category" value={form.category} onChange={(e) => set("category", e.target.value)}>
             {window.PCC.store.DOCUMENT_CATEGORIES.map((c) => (
               <option key={c} value={c}>
                 {CATEGORY_LABELS[c] || c}
@@ -400,8 +400,8 @@ function UploadForm({ data, prefill, onSaved, onCancel }: UploadFormProps) {
       </h4>
       <div className="form-grid">
         <div className="field">
-          <label>Document Type</label>
-          <select value={form.documentTypeId} onChange={(e) => handleDocTypeChange(e.target.value)}>
+          <label htmlFor="docfield-document_type_id">Document Type</label>
+          <select id="docfield-document_type_id" value={form.documentTypeId} onChange={(e) => handleDocTypeChange(e.target.value)}>
             <option value="">(none)</option>
             {activeDocTypes.map((t) => (
               <option key={t.id} value={t.id}>
@@ -411,20 +411,20 @@ function UploadForm({ data, prefill, onSaved, onCancel }: UploadFormProps) {
           </select>
         </div>
         <div className="field">
-          <label>Discipline</label>
-          <input type="text" value={form.discipline} onChange={(e) => set("discipline", e.target.value)} />
+          <label htmlFor="docfield-discipline">Discipline</label>
+          <input type="text" id="docfield-discipline" value={form.discipline} onChange={(e) => set("discipline", e.target.value)} />
         </div>
         <div className="field">
-          <label>Document Number</label>
-          <input type="text" value={form.documentNumber} onChange={(e) => set("documentNumber", e.target.value)} />
+          <label htmlFor="docfield-document_number">Document Number</label>
+          <input type="text" id="docfield-document_number" value={form.documentNumber} onChange={(e) => set("documentNumber", e.target.value)} />
         </div>
         <div className="field">
-          <label>Revision</label>
-          <input type="text" value={form.revision} onChange={(e) => set("revision", e.target.value)} />
+          <label htmlFor="docfield-revision">Revision</label>
+          <input type="text" id="docfield-revision" value={form.revision} onChange={(e) => set("revision", e.target.value)} />
         </div>
         <div className="field">
-          <label>Package</label>
-          <select value={form.packageId} onChange={(e) => set("packageId", e.target.value)}>
+          <label htmlFor="docfield-package_id">Package</label>
+          <select id="docfield-package_id" value={form.packageId} onChange={(e) => set("packageId", e.target.value)}>
             <option value="">(none)</option>
             {data.packages.map((p) => (
               <option key={p.id} value={p.id}>
@@ -434,12 +434,12 @@ function UploadForm({ data, prefill, onSaved, onCancel }: UploadFormProps) {
           </select>
         </div>
         <div className="field">
-          <label>Contract / PO</label>
-          <input type="text" value={form.contractOrPo} onChange={(e) => set("contractOrPo", e.target.value)} />
+          <label htmlFor="docfield-contract_or_po">Contract / PO</label>
+          <input type="text" id="docfield-contract_or_po" value={form.contractOrPo} onChange={(e) => set("contractOrPo", e.target.value)} />
         </div>
         <div className="field">
-          <label>Vendor</label>
-          <select value={form.vendorId} onChange={(e) => set("vendorId", e.target.value)}>
+          <label htmlFor="docfield-vendor_id">Vendor</label>
+          <select id="docfield-vendor_id" value={form.vendorId} onChange={(e) => set("vendorId", e.target.value)}>
             <option value="">(none)</option>
             {data.vendors.map((v) => (
               <option key={v.id} value={v.id}>
@@ -449,8 +449,8 @@ function UploadForm({ data, prefill, onSaved, onCancel }: UploadFormProps) {
           </select>
         </div>
         <div className="field">
-          <label>Priority</label>
-          <select value={form.priority} onChange={(e) => set("priority", e.target.value)}>
+          <label htmlFor="docfield-priority">Priority</label>
+          <select id="docfield-priority" value={form.priority} onChange={(e) => set("priority", e.target.value)}>
             {["low", "medium", "high"].map((p) => (
               <option key={p} value={p}>
                 {PRIORITY_LABELS[p]}
@@ -459,8 +459,8 @@ function UploadForm({ data, prefill, onSaved, onCancel }: UploadFormProps) {
           </select>
         </div>
         <div className="field">
-          <label>Criticality</label>
-          <select value={form.criticality} onChange={(e) => set("criticality", e.target.value)}>
+          <label htmlFor="docfield-criticality">Criticality</label>
+          <select id="docfield-criticality" value={form.criticality} onChange={(e) => set("criticality", e.target.value)}>
             <option value="">(not set)</option>
             {window.PCC.store.DOCUMENT_TYPE_CRITICALITY_LEVELS.map((c) => (
               <option key={c} value={c}>
@@ -470,8 +470,8 @@ function UploadForm({ data, prefill, onSaved, onCancel }: UploadFormProps) {
           </select>
         </div>
         <div className="field">
-          <label>Status</label>
-          <select value={form.status} onChange={(e) => set("status", e.target.value)}>
+          <label htmlFor="docfield-status">Status</label>
+          <select id="docfield-status" value={form.status} onChange={(e) => set("status", e.target.value)}>
             {window.PCC.store.DOCUMENT_STATUSES.map((s) => (
               <option key={s} value={s}>
                 {STATUS_LABELS[s] || s}
@@ -482,13 +482,13 @@ function UploadForm({ data, prefill, onSaved, onCancel }: UploadFormProps) {
       </div>
 
       <div className="field" style={{ marginTop: "var(--space-2)" }}>
-        <label>Remarks</label>
-        <textarea rows={2} value={form.remarks} onChange={(e) => set("remarks", e.target.value)} />
+        <label htmlFor="docfield-remarks">Remarks</label>
+        <textarea id="docfield-remarks" rows={2} value={form.remarks} onChange={(e) => set("remarks", e.target.value)} />
       </div>
 
       <div className="field">
-        <label>File (.xlsx, .xls, .docx, .pdf)</label>
-        <input type="file" accept=".xlsx,.xls,.docx,.pdf" onChange={handleFileChange} />
+        <label htmlFor="docfield-file">File (.xlsx, .xls, .docx, .pdf)</label>
+        <input type="file" id="docfield-file" accept=".xlsx,.xls,.docx,.pdf" onChange={handleFileChange} />
       </div>
 
       {readingLabel ? (
@@ -662,13 +662,13 @@ function BulkImportPanel({ data, initialProjectId, onClose, onImported }: BulkIm
 
       <div className="form-grid">
         <div className="field">
-          <label>Project *</label>
+          <label htmlFor="docbulkfield-project_id">Project *</label>
           {activeProjects.length === 0 ? (
-            <select disabled>
+            <select id="docbulkfield-project_id" disabled>
               <option value="">No projects yet — add one in Portfolio first</option>
             </select>
           ) : (
-            <select value={projectId} onChange={(e) => handleProjectChange(e.target.value)}>
+            <select id="docbulkfield-project_id" value={projectId} onChange={(e) => handleProjectChange(e.target.value)}>
               {activeProjects.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name || "(unnamed project)"}
@@ -678,8 +678,8 @@ function BulkImportPanel({ data, initialProjectId, onClose, onImported }: BulkIm
           )}
         </div>
         <div className="field">
-          <label>Category (applied to every file)</label>
-          <select value={category} onChange={(e) => setCategory(e.target.value)}>
+          <label htmlFor="docbulkfield-category">Category (applied to every file)</label>
+          <select id="docbulkfield-category" value={category} onChange={(e) => setCategory(e.target.value)}>
             {window.PCC.store.DOCUMENT_CATEGORIES.map((c) => (
               <option key={c} value={c}>
                 {CATEGORY_LABELS[c] || c}
@@ -688,8 +688,8 @@ function BulkImportPanel({ data, initialProjectId, onClose, onImported }: BulkIm
           </select>
         </div>
         <div className="field">
-          <label>Discipline (applied to every file, optional)</label>
-          <input type="text" value={discipline} onChange={(e) => setDiscipline(e.target.value)} />
+          <label htmlFor="docbulkfield-discipline">Discipline (applied to every file, optional)</label>
+          <input type="text" id="docbulkfield-discipline" value={discipline} onChange={(e) => setDiscipline(e.target.value)} />
         </div>
       </div>
 
@@ -1025,8 +1025,9 @@ function DocumentPreviewPanel({
       </div>
 
       <div style={{ marginBottom: "var(--space-4)" }}>
-        <label className="detail-item__label">STATUS</label>
+        <label className="detail-item__label" htmlFor="docstatusfield-status">STATUS</label>
         <select
+          id="docstatusfield-status"
           style={{ display: "block", marginTop: "var(--space-1)" }}
           value={doc.status}
           onChange={(e) => {
@@ -1275,7 +1276,7 @@ export default function DocumentsPage({ initialFormOpen, initialProjectId, initi
           value={filters.search}
           onChange={(e) => setFilters((prev) => Object.assign({}, prev, { search: e.target.value }))}
         />
-        <select value={filters.categoryFilter} onChange={(e) => setFilters((prev) => Object.assign({}, prev, { categoryFilter: e.target.value }))}>
+        <select aria-label="Filter by category" value={filters.categoryFilter} onChange={(e) => setFilters((prev) => Object.assign({}, prev, { categoryFilter: e.target.value }))}>
           <option value="">All categories</option>
           {Object.keys(CATEGORY_LABELS).map((c) => (
             <option key={c} value={c}>
@@ -1283,7 +1284,7 @@ export default function DocumentsPage({ initialFormOpen, initialProjectId, initi
             </option>
           ))}
         </select>
-        <select value={filters.statusFilter} onChange={(e) => setFilters((prev) => Object.assign({}, prev, { statusFilter: e.target.value }))}>
+        <select aria-label="Filter by status" value={filters.statusFilter} onChange={(e) => setFilters((prev) => Object.assign({}, prev, { statusFilter: e.target.value }))}>
           <option value="">All statuses</option>
           {window.PCC.store.DOCUMENT_STATUSES.map((s) => (
             <option key={s} value={s}>
@@ -1292,6 +1293,7 @@ export default function DocumentsPage({ initialFormOpen, initialProjectId, initi
           ))}
         </select>
         <select
+          aria-label="Filter by project"
           value={filters.projectFilter}
           onChange={(e) => {
             var value = e.target.value;

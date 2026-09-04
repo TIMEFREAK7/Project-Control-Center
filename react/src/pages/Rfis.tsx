@@ -104,7 +104,7 @@ function RfiForm({
       ) : null}
       <form onSubmit={handleSubmit}>
         <div className="field">
-          <label>Project *</label>
+          <label htmlFor="rfifield-project_id">Project *</label>
           {activeProjects.length === 0 ? (
             <select id="rfifield-project_id" disabled defaultValue="">
               <option value="">No projects yet — add one in Portfolio first</option>
@@ -121,7 +121,7 @@ function RfiForm({
         </div>
 
         <div className="field">
-          <label>Linked Activity (optional)</label>
+          <label htmlFor="rfifield-activity_id">Linked Activity (optional)</label>
           <select id="rfifield-activity_id" key={selectedProjectId} defaultValue={rfi.activity_id || ""}>
             <option value="">(none)</option>
             {activityOptions.map((a) => (
@@ -567,7 +567,7 @@ export default function RfisPage({
 
       <div className="toolbar">
         <input type="text" placeholder="Search number, subject, question…" value={search} onChange={(e) => setSearch(e.target.value)} />
-        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+        <select aria-label="Filter by type" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
           <option value="">All types</option>
           {window.PCC.store.RFI_TYPES.map((t) => (
             <option key={t} value={t}>
@@ -575,7 +575,7 @@ export default function RfisPage({
             </option>
           ))}
         </select>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+        <select aria-label="Filter by status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
           <option value="">All statuses</option>
           {window.PCC.store.RFI_STATUSES.map((s) => (
             <option key={s} value={s}>
@@ -584,6 +584,7 @@ export default function RfisPage({
           ))}
         </select>
         <select
+          aria-label="Filter by project"
           value={projectFilter}
           onChange={(e) => {
             setProjectFilter(e.target.value);

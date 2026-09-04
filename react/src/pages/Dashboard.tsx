@@ -212,7 +212,7 @@ function FilterSelect({
   onChange: (value: string) => void;
 }) {
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value)}>
+    <select aria-label={"Filter by " + label} value={value} onChange={(e) => onChange(e.target.value)}>
       <option value="">All {label}</option>
       {options.map((v) => (
         <option key={v} value={v}>
@@ -343,7 +343,7 @@ export default function DashboardPage() {
           <FilterSelect label="PMs" value={pmFilter} options={distinctValues(active, "project_manager")} onChange={setPmFilter} />
           <FilterSelect label="planners" value={plannerFilter} options={distinctValues(active, "planner")} onChange={setPlannerFilter} />
           <FilterSelect label="types" value={typeFilter} options={distinctValues(active, "project_type")} onChange={setTypeFilter} />
-          <select value={yearFilter} onChange={(e) => setYearFilter(e.target.value)}>
+          <select aria-label="Filter by year" value={yearFilter} onChange={(e) => setYearFilter(e.target.value)}>
             <option value="">All years</option>
             {yearOptions.map((y) => (
               <option key={y} value={y}>

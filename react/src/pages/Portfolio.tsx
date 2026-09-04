@@ -295,7 +295,7 @@ function DocumentRequirementsField({ data, project, docReq, setDocReq }: Documen
       ) : (
         <>
           <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center", flexWrap: "wrap", marginTop: "var(--space-2)" }}>
-            <select value={docReq.templateKey} onChange={(e) => setDocReq((prev) => Object.assign({}, prev, { templateKey: e.target.value }))}>
+            <select aria-label="Apply a document requirements template" value={docReq.templateKey} onChange={(e) => setDocReq((prev) => Object.assign({}, prev, { templateKey: e.target.value }))}>
               <option value="">Apply a template…</option>
               {projectTemplates().map((t) => (
                 <option key={t.key} value={t.key}>
@@ -825,7 +825,7 @@ function VendorsSection({ p, data, onChanged }: { p: PCCProject; data: PCCStoreD
 
       {pickerOpen ? (
         <div style={{ marginTop: "var(--space-2)", display: "flex", gap: "var(--space-2)", alignItems: "center", flexWrap: "wrap" }}>
-          <select value={pickedVendorId} onChange={(e) => setPickedVendorId(e.target.value)}>
+          <select aria-label="Choose a vendor to link" value={pickedVendorId} onChange={(e) => setPickedVendorId(e.target.value)}>
             {unlinkedVendors.map((v) => (
               <option key={v.id} value={v.id}>
                 {v.vendor_name || "(unnamed vendor)"}
@@ -1309,7 +1309,7 @@ export default function PortfolioPage({ initialExpandedId, initialStatusFilter }
 
       <div className="toolbar">
         <input type="text" placeholder="Search by name, client, company, location, sector, PM, or planner…" value={search} onChange={(e) => setSearch(e.target.value)} />
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+        <select aria-label="Filter by status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
           <option value="">All statuses</option>
           {window.PCC.store.PROJECT_STATUSES.map((s) => (
             <option key={s} value={s}>
@@ -1317,12 +1317,12 @@ export default function PortfolioPage({ initialExpandedId, initialStatusFilter }
             </option>
           ))}
         </select>
-        <select value={healthFilter} onChange={(e) => setHealthFilter(e.target.value)}>
+        <select aria-label="Filter by health" value={healthFilter} onChange={(e) => setHealthFilter(e.target.value)}>
           <option value="">All health</option>
           <option value="On Schedule">On Schedule</option>
           <option value="Behind Schedule">Behind Schedule</option>
         </select>
-        <select value={clientFilter} onChange={(e) => setClientFilter(e.target.value)}>
+        <select aria-label="Filter by client" value={clientFilter} onChange={(e) => setClientFilter(e.target.value)}>
           <option value="">All clients</option>
           {distinctValues(data.projects, "client").map((v) => (
             <option key={v} value={v}>
@@ -1330,7 +1330,7 @@ export default function PortfolioPage({ initialExpandedId, initialStatusFilter }
             </option>
           ))}
         </select>
-        <select value={countryFilter} onChange={(e) => setCountryFilter(e.target.value)}>
+        <select aria-label="Filter by country" value={countryFilter} onChange={(e) => setCountryFilter(e.target.value)}>
           <option value="">All countries</option>
           {distinctValues(data.projects, "country").map((v) => (
             <option key={v} value={v}>
@@ -1338,7 +1338,7 @@ export default function PortfolioPage({ initialExpandedId, initialStatusFilter }
             </option>
           ))}
         </select>
-        <select value={locationFilter} onChange={(e) => setLocationFilter(e.target.value)}>
+        <select aria-label="Filter by location" value={locationFilter} onChange={(e) => setLocationFilter(e.target.value)}>
           <option value="">All locations</option>
           {distinctValues(data.projects, "location").map((v) => (
             <option key={v} value={v}>
@@ -1346,7 +1346,7 @@ export default function PortfolioPage({ initialExpandedId, initialStatusFilter }
             </option>
           ))}
         </select>
-        <select value={sectorFilter} onChange={(e) => setSectorFilter(e.target.value)}>
+        <select aria-label="Filter by sector" value={sectorFilter} onChange={(e) => setSectorFilter(e.target.value)}>
           <option value="">All sectors</option>
           {distinctValues(data.projects, "sector").map((v) => (
             <option key={v} value={v}>
@@ -1354,7 +1354,7 @@ export default function PortfolioPage({ initialExpandedId, initialStatusFilter }
             </option>
           ))}
         </select>
-        <select value={pmFilter} onChange={(e) => setPmFilter(e.target.value)}>
+        <select aria-label="Filter by PM" value={pmFilter} onChange={(e) => setPmFilter(e.target.value)}>
           <option value="">All PMs</option>
           {distinctValues(data.projects, "project_manager").map((v) => (
             <option key={v} value={v}>
@@ -1362,7 +1362,7 @@ export default function PortfolioPage({ initialExpandedId, initialStatusFilter }
             </option>
           ))}
         </select>
-        <select value={plannerFilter} onChange={(e) => setPlannerFilter(e.target.value)}>
+        <select aria-label="Filter by planner" value={plannerFilter} onChange={(e) => setPlannerFilter(e.target.value)}>
           <option value="">All planners</option>
           {distinctValues(data.projects, "planner").map((v) => (
             <option key={v} value={v}>
@@ -1370,7 +1370,7 @@ export default function PortfolioPage({ initialExpandedId, initialStatusFilter }
             </option>
           ))}
         </select>
-        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+        <select aria-label="Filter by type" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
           <option value="">All types</option>
           {distinctValues(data.projects, "project_type").map((v) => (
             <option key={v} value={v}>
@@ -1378,7 +1378,7 @@ export default function PortfolioPage({ initialExpandedId, initialStatusFilter }
             </option>
           ))}
         </select>
-        <select value={yearFilter} onChange={(e) => setYearFilter(e.target.value)}>
+        <select aria-label="Filter by year" value={yearFilter} onChange={(e) => setYearFilter(e.target.value)}>
           <option value="">All years</option>
           {Array.from(new Set(data.projects.filter((p) => p.start_date).map((p) => (p.start_date as string).slice(0, 4))))
             .sort()

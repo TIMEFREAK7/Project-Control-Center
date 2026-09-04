@@ -100,7 +100,7 @@ function BudgetForm({
       <h3 style={{ marginBottom: 14 }}>{isNew ? "Add Budget Item" : "Edit Budget Item"}</h3>
       <form onSubmit={handleSubmit}>
         <div className="field">
-          <label>Project *</label>
+          <label htmlFor="costbudgetfield-project_id">Project *</label>
           {activeProjects.length === 0 ? (
             <select id="costbudgetfield-project_id" disabled defaultValue="">
               <option value="">No projects yet — add one in Portfolio first</option>
@@ -118,7 +118,7 @@ function BudgetForm({
 
         <div className="form-grid">
           <div className="field">
-            <label>Category *</label>
+            <label htmlFor="costbudgetfield-category">Category *</label>
             <select id="costbudgetfield-category" defaultValue={item.category || "other"}>
               {window.PCC.store.COST_CATEGORIES.map((c) => (
                 <option key={c} value={c}>
@@ -129,17 +129,17 @@ function BudgetForm({
           </div>
 
           <div className="field">
-            <label>Name / Scope *</label>
+            <label htmlFor="costbudgetfield-name">Name / Scope *</label>
             <input type="text" id="costbudgetfield-name" defaultValue={item.name || ""} />
           </div>
 
           <div className="field">
-            <label>Planned Amount *</label>
+            <label htmlFor="costbudgetfield-planned_amount">Planned Amount *</label>
             <input type="number" step="0.01" id="costbudgetfield-planned_amount" defaultValue={item.planned_amount == null ? "" : item.planned_amount} />
           </div>
 
           <div className="field">
-            <label>Schedule Activity (for EVM)</label>
+            <label htmlFor="costbudgetfield-activity_id">Schedule Activity (for EVM)</label>
             <select
               id="costbudgetfield-activity_id"
               key={"budget-act-" + selectedProjectId + "-" + projectResetVersion}
@@ -156,7 +156,7 @@ function BudgetForm({
         </div>
 
         <div className="field">
-          <label>Notes</label>
+          <label htmlFor="costbudgetfield-notes">Notes</label>
           <textarea id="costbudgetfield-notes" rows={2} defaultValue={item.notes || ""} />
         </div>
 
@@ -233,7 +233,7 @@ function ActualForm({
       <h3 style={{ marginBottom: 14 }}>{isNew ? "Log Actual Cost" : "Edit Actual Cost"}</h3>
       <form onSubmit={handleSubmit}>
         <div className="field">
-          <label>Project *</label>
+          <label htmlFor="costactualfield-project_id">Project *</label>
           {activeProjects.length === 0 ? (
             <select id="costactualfield-project_id" disabled defaultValue="">
               <option value="">No projects yet — add one in Portfolio first</option>
@@ -250,7 +250,7 @@ function ActualForm({
         </div>
 
         <div className="field">
-          <label>Against Budget Item</label>
+          <label htmlFor="costactualfield-budget_item_id">Against Budget Item</label>
           <select
             id="costactualfield-budget_item_id"
             key={"actual-budget-" + selectedProjectId + "-" + projectResetVersion}
@@ -266,7 +266,7 @@ function ActualForm({
         </div>
 
         <div className="field">
-          <label>Against Commitment</label>
+          <label htmlFor="costactualfield-commitment_id">Against Commitment</label>
           <select
             id="costactualfield-commitment_id"
             key={"actual-cmt-" + selectedProjectId + "-" + projectResetVersion}
@@ -283,7 +283,7 @@ function ActualForm({
 
         <div className="form-grid">
           <div className="field">
-            <label>Category *</label>
+            <label htmlFor="costactualfield-category">Category *</label>
             <select id="costactualfield-category" defaultValue={entry.category || "other"}>
               {window.PCC.store.COST_CATEGORIES.map((c) => (
                 <option key={c} value={c}>
@@ -294,33 +294,33 @@ function ActualForm({
           </div>
 
           <div className="field">
-            <label>Description *</label>
+            <label htmlFor="costactualfield-description">Description *</label>
             <input type="text" id="costactualfield-description" defaultValue={entry.description || ""} />
           </div>
 
           <div className="field">
-            <label>Amount *</label>
+            <label htmlFor="costactualfield-amount">Amount *</label>
             <input type="number" step="0.01" id="costactualfield-amount" defaultValue={entry.amount == null ? "" : entry.amount} />
           </div>
 
           <div className="field">
-            <label>Date *</label>
+            <label htmlFor="costactualfield-date">Date *</label>
             <input type="date" id="costactualfield-date" defaultValue={entry.date || ""} />
           </div>
 
           <div className="field">
-            <label>Vendor</label>
+            <label htmlFor="costactualfield-vendor">Vendor</label>
             <input type="text" id="costactualfield-vendor" defaultValue={entry.vendor || ""} />
           </div>
 
           <div className="field">
-            <label>Invoice / Ref #</label>
+            <label htmlFor="costactualfield-invoice_ref">Invoice / Ref #</label>
             <input type="text" id="costactualfield-invoice_ref" defaultValue={entry.invoice_ref || ""} />
           </div>
         </div>
 
         <div className="field">
-          <label>Notes</label>
+          <label htmlFor="costactualfield-notes">Notes</label>
           <textarea id="costactualfield-notes" rows={2} defaultValue={entry.notes || ""} />
         </div>
 
@@ -370,7 +370,7 @@ function Toolbar({
         value={search}
         onChange={(e) => onSearchChange(e.target.value)}
       />
-      <select value={categoryFilter} onChange={(e) => onCategoryChange(e.target.value)}>
+      <select aria-label="Filter by category" value={categoryFilter} onChange={(e) => onCategoryChange(e.target.value)}>
         <option value="">All categories</option>
         {window.PCC.store.COST_CATEGORIES.map((c) => (
           <option key={c} value={c}>
@@ -378,7 +378,7 @@ function Toolbar({
           </option>
         ))}
       </select>
-      <select value={projectFilter} onChange={(e) => onProjectChange(e.target.value)}>
+      <select aria-label="Filter by project" value={projectFilter} onChange={(e) => onProjectChange(e.target.value)}>
         <option value="">All projects</option>
         {projects.map((p) => (
           <option key={p.id} value={p.id}>

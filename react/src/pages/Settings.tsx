@@ -223,12 +223,12 @@ export default function SettingsPage() {
         <h3 style={{ marginBottom: 14 }}>General</h3>
 
         <div className="field">
-          <label>Company name</label>
-          <input type="text" defaultValue={settings.company_name || ""} placeholder="e.g. PepsiCo India Holdings" onChange={handleCompanyNameInput} />
+          <label htmlFor="settingsfield-company_name">Company name</label>
+          <input id="settingsfield-company_name" type="text" defaultValue={settings.company_name || ""} placeholder="e.g. PepsiCo India Holdings" onChange={handleCompanyNameInput} />
         </div>
 
         <div className="field" style={{ marginTop: "var(--space-3)" }}>
-          <label>Company logo (used on printed reports)</label>
+          <label htmlFor="settingsfield-company_logo">Company logo (used on printed reports)</label>
           {settings.company_logo_filename ? (
             <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", marginBottom: "var(--space-2)" }}>
               <LogoPreview filename={settings.company_logo_filename} />
@@ -240,7 +240,7 @@ export default function SettingsPage() {
               </button>
             </div>
           ) : null}
-          <input type="file" accept="image/*" onChange={handleLogoChange} />
+          <input id="settingsfield-company_logo" type="file" accept="image/*" onChange={handleLogoChange} />
         </div>
       </div>
 
@@ -248,8 +248,9 @@ export default function SettingsPage() {
         <h3 style={{ marginBottom: 6 }}>Reminder &amp; Lookahead Windows</h3>
 
         <div className="field" style={{ maxWidth: 260 }}>
-          <label>Dashboard "Due Soon" window (days)</label>
+          <label htmlFor="settingsfield-due_soon_days">Dashboard "Due Soon" window (days)</label>
           <input
+            id="settingsfield-due_soon_days"
             type="number"
             min="1"
             step="1"
@@ -260,8 +261,9 @@ export default function SettingsPage() {
         </div>
 
         <div className="field" style={{ marginTop: "var(--space-3)", maxWidth: 260 }}>
-          <label>Action Centre "Upcoming" window (days)</label>
+          <label htmlFor="settingsfield-upcoming_days">Action Centre "Upcoming" window (days)</label>
           <input
+            id="settingsfield-upcoming_days"
             type="number"
             min="8"
             step="1"
@@ -287,8 +289,9 @@ export default function SettingsPage() {
         </label>
 
         <div className="field" style={{ marginTop: "var(--space-3)" }}>
-          <label>Pattern</label>
+          <label htmlFor="settingsfield-nomenclature_pattern">Pattern</label>
           <input
+            id="settingsfield-nomenclature_pattern"
             type="text"
             className="mono"
             defaultValue={settings.document_nomenclature_pattern || ""}
@@ -347,8 +350,9 @@ export default function SettingsPage() {
         </p>
 
         <div className="field" style={{ marginTop: "var(--space-3)", maxWidth: 220 }}>
-          <label>Remind me to export after (days)</label>
+          <label htmlFor="settingsfield-reminder_days">Remind me to export after (days)</label>
           <input
+            id="settingsfield-reminder_days"
             type="number"
             min="0"
             step="1"
