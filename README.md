@@ -6102,6 +6102,23 @@ across eight of the converted routes: zero console/page errors. See HANDOFF.md f
 write-up, including the two real bugs this conversion caught (a `null`-vs-`undefined` type
 looseness that briefly broke a document-requirement guarantee, and the `git add` staging issue).
 
+## Layout-aware PDF text extraction, 2026-09-04
+
+Post-Phase-5 Evolution's "PDF processing" line item. Inspection before proposing (this repo's own
+standing discipline) found the obvious reading — OCR for scanned/image-only PDFs — explicitly
+excluded by the original Tier 2 spec ("do not implement AI, OCR, document parsing"); surfaced that
+conflict rather than building it, and Aditya picked a real, non-OCR gap instead: `extractPdf()`
+joined every text item pdf.js returns with one fixed space, so extracted text read as a single
+run-on string with no line breaks regardless of the PDF's actual layout. Fixed with a new
+`reconstructPdfPageText()` that uses pdf.js's own per-item `hasEOL` flag and position data to
+preserve real line breaks (including ones pdf.js doesn't flag, via a vertical-position-jump
+fallback) and turn large horizontal gaps into extra spacing, a cheap approximation of column
+separation — no OCR, no new library. New end-to-end test coverage for PDF extraction (previously
+zero), verified against both a stubbed and the real vendored `pdf.js` in actual Chromium. Full
+suite: 2,630 checks, 0 failures. See HANDOFF.md for the complete write-up, including a real
+Playwright gotcha (the Documents page renders two file inputs at once, and a generic
+`input[type=file]` locator silently grabbed the wrong one).
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
