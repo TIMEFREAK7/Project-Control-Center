@@ -6147,8 +6147,57 @@ test files, 0 failures** in both. Real-Chromium spot-check via Playwright: opene
 documentControlDashboard/vendorPerformanceCentre — every route rendered real content with zero
 console/page errors.
 
-**Repo state**: branch `claude/pcc-post-phase-5-evolution-hpq9n7`, 7 commits ahead of `main`
-(Batches A-E, the Batch-F-fix-plus-Batch-G commit), no PR open (per this repo's own standing
-"merge without asking, direct merge is fine" convention — see CLAUDE.md). This branch will be
-merged into `main` immediately after this write-up, then a fresh working branch restarted from
-the new `main`.
+**Repo state**: merged into `main` (per this repo's own standing "merge without asking, direct
+merge is fine" convention — see CLAUDE.md), pushed, and the working branch
+(`claude/pcc-post-phase-5-evolution-hpq9n7`) restarted from the new `main` — same as every other
+gate/phase in this file. See the "Layout-aware PDF text extraction" section immediately below for
+what shipped next.
+
+## Layout-aware PDF text extraction (Post-Phase-5 Evolution — "PDF processing" line item), 2026-09-04
+
+Scoped and confirmed with Aditya directly, same discipline as every other gate on this page:
+inspect before proposing. The obvious reading of "PDF processing" — OCR for scanned/image-only
+PDFs — turned out to be explicitly excluded by the *original* Tier 2 spec ("do not implement AI,
+OCR, document parsing"), and `extractPdf()`'s own existing docstring already documented that as a
+known, accepted limit, not a gap. Surfaced that conflict to Aditya via `AskUserQuestion` rather
+than silently building or silently skipping; he picked a different, real, non-OCR gap instead.
+
+**What was actually open**: `extractPdf()` (in `react/src/services/documentsService.ts`) joined
+every text item pdf.js's `getTextContent()` returns with one fixed space, so a page's extracted
+text came out as a single run-on string regardless of the PDF's real layout — no line breaks, no
+sense of columns. **Fix**: a new `reconstructPdfPageText()` function uses pdf.js's own per-item
+data — `hasEOL` (the flag pdf.js itself sets on the item ending a line) and each item's
+`transform` matrix (`transform[4]`/`transform[5]` = x/y position, `transform[3]` ≈ font size) — to
+(1) end a line on `hasEOL`, (2) end a line on an *unflagged* vertical-position jump (layouts where
+pdf.js doesn't set `hasEOL`, e.g. table-like rows built from separate text blocks), and (3) turn a
+horizontal gap between same-line items larger than a few average character widths into extra
+spacing, a cheap approximation of column separation — not real table detection, just enough for
+the text to read as more than one run-on line. No OCR, no new library, no schema change
+(`PCCDocumentExtraction.text` stays a plain string) — everything downstream (the extraction
+preview, `extractionSummary()`) benefits automatically since they just render `.text`.
+
+**New test coverage — this was previously zero.** No existing test touched PDF extraction at all
+(`grep -rli "pdfjs" tests/*.js` came back empty before this). Added
+`tests/test_pdf_layout_aware_extraction_e2e.js`, wired into `tests/package.json`'s suite chain
+(the suite is an explicit file list, not a glob — a new test file does nothing until it's added
+there, confirmed the hard way when the first full-suite run after adding the test file came back
+at the old count). Drives the real Documents "+ Add Document" upload form end to end; only
+`window.pdfjsLib.getDocument` is stubbed (to return controlled `{str, hasEOL, transform, width}`
+items — the same shape pdf.js's own `getTextContent()` returns), same "stub the vendored
+library's own output shape, keep our own code real" pattern already established for
+`FileReader`/`ExcelJS` in other upload tests. Three checks: a large gap becomes extra spacing, a
+moderate gap becomes a single space, `hasEOL` and the unflagged y-jump fallback both produce real
+line breaks — engineered into one fake page's item data so all four branches of the reconstruction
+logic run in one test. Also verified against the **real, unstubbed** vendored `pdf.js` in actual
+Chromium via Playwright — a hand-built minimal PDF (two lines of real PDF content-stream text at
+different y-positions) extracted with the line break intact, zero console/page errors.
+
+**A real Playwright gotcha worth remembering**: the Documents page renders *two* `input[type=file]`
+elements simultaneously (the main upload form's own, plus the Bulk Import panel's, present in the
+DOM even when its panel isn't open) — `page.locator('input[type="file"]').first()` silently
+grabbed the wrong one and `setInputFiles()` appeared to succeed with no error while
+`input.files.length` stayed `0`. Fixed by scoping the locator to the upload form's own `accept`
+attribute (`input[accept=".xlsx,.xls,.docx,.pdf"]`) instead of the generic type selector.
+
+**Tests**: full suite **2,630 checks (2,627 + 3 new), 0 failures**. Merged into `main`, pushed,
+working branch restarted from the new `main` — same standing convention as every gate before it.
