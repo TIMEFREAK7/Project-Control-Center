@@ -19,7 +19,21 @@
     <link rel="stylesheet" href="css/styles.css" />
   </head>
   <body>
-    <div id="root"></div>
+    <!-- Loading screen: this app is one large inlined file (embedded fonts, vendored
+         libraries, the full React bundle) — layout.js's own boot sequence does
+         `root.innerHTML = ""` then rebuilds the real shell (see layout.js), which wipes
+         this out automatically the instant the app is actually ready. No JS of its own,
+         no removal step to maintain — it only ever exists in the gap between initial
+         paint and boot, which is exactly what it's for. Colors are hardcoded rather than
+         reading the --bg-default/--text-primary tokens' light-theme values, since this
+         has to render correctly before any script (including the theme toggle) has run;
+         data-theme="dark" above is this app's own hardcoded default for the same reason. -->
+    <div id="root">
+      <div style="position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; background-color: #0e1015; color: #edeef2; font-family: ui-sans-serif, sans-serif;">
+        <div class="spinner" style="width: 28px; height: 28px; border-width: 3px;"></div>
+        <div style="font-size: 13px; letter-spacing: 0.4px; opacity: 0.7;">Project Control Center</div>
+      </div>
+    </div>
 
     <!-- Classic scripts on purpose: type="module" is blocked by browsers under
          file:// (CORS restriction on module loading), which would break

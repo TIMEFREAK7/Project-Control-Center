@@ -99,6 +99,26 @@
 
   --transition-fast: 120ms ease;
   --transition-base: 180ms ease;
+
+  /* Status-badge icons (Lucide, ISC license, vendored as inline SVG data URIs — no
+     runtime package, matches how every other icon in this app ships). Applied via
+     mask-image on .status-badge::before so every existing call site (63 across 18 files)
+     picks these up automatically with zero JSX changes — see .status-badge--* below.
+     Shape only matters here (mask ignores color), so these are theme-independent. */
+  --icon-status-on-track: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%2212%22%20r%3D%2210%22/%3E%3Cpath%20d%3D%22m16%209-5.5%205.5L8%2012%22/%3E%3C/svg%3E");
+  --icon-status-at-risk: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m21.73%2018-8-14a2%202%200%200%200-3.48%200l-8%2014A2%202%200%200%200%204%2021h16a2%202%200%200%200%201.73-3%22/%3E%3Cpath%20d%3D%22M12%209v4%22/%3E%3Cpath%20d%3D%22M12%2017h.01%22/%3E%3C/svg%3E");
+  --icon-status-warning: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M12%2016h.01%22/%3E%3Cpath%20d%3D%22M12%208v4%22/%3E%3Cpath%20d%3D%22M15.312%202a2%202%200%200%201%201.414.586l4.688%204.688A2%202%200%200%201%2022%208.688v6.624a2%202%200%200%201-.586%201.414l-4.688%204.688a2%202%200%200%201-1.414.586H8.688a2%202%200%200%201-1.414-.586l-4.688-4.688A2%202%200%200%201%202%2015.312V8.688a2%202%200%200%201%20.586-1.414l4.688-4.688A2%202%200%200%201%208.688%202z%22/%3E%3C/svg%3E");
+  --icon-status-critical: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%2212%22%20r%3D%2210%22/%3E%3Cpath%20d%3D%22m15%209-6%206%22/%3E%3Cpath%20d%3D%22m9%209%206%206%22/%3E%3C/svg%3E");
+  --icon-status-info: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%2212%22%20r%3D%2210%22/%3E%3Cpath%20d%3D%22M12%2016v-4%22/%3E%3Cpath%20d%3D%22M12%208h.01%22/%3E%3C/svg%3E");
+
+  /* Generic "nothing here yet" icon for .empty-state — one icon, applied uniformly via CSS
+     across all ~30 .panel.empty-state call sites app-wide (Portfolio, Schedule, Documents,
+     every register), zero JSX changes needed. A single shared icon rather than a bespoke
+     one per page: these panels' own text already says exactly what's missing (real content,
+     not "nothing here"); the icon softens what's otherwise a wall of centered text; picking
+     30 individually "right" icons only that one page would ever see isn't worth the many
+     call sites it would need. */
+  --icon-empty-state: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%2222%2012%2016%2012%2014%2015%2010%2015%208%2012%202%2012%22/%3E%3Cpath%20d%3D%22M5.45%205.11%202%2012v6a2%202%200%200%200%202%202h16a2%202%200%200%200%202-2v-6l-3.45-6.89A2%202%200%200%200%2016.76%204H7.24a2%202%200%200%200-1.79%201.11z%22/%3E%3C/svg%3E");
 }
 
 html[data-theme="dark"] {
@@ -614,6 +634,7 @@ footer.app-footer {
 }
 
 .kpi-card {
+  position: relative;
   background-color: var(--bg-paper);
   border: 1px solid var(--divider);
   border-radius: var(--radius-md);
@@ -623,6 +644,37 @@ footer.app-footer {
 
 .kpi-card:hover {
   border-color: var(--text-secondary);
+}
+
+/* Same status icons as .status-badge (see --icon-status-* tokens), on the three KPI
+   tiles that actually represent a status (on_track/at_risk/critical) rather than a plain
+   count — ACTIVE PROJECTS/OVERDUE DOCS/DUE SOON carry no data-status and get no icon.
+   --kpi-accent is set inline per card (KpiCard in Dashboard.tsx) from the same colorVar
+   already driving the number's own color, so the icon never needs a separate token. */
+.kpi-card[data-status]::after {
+  content: "";
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 14px;
+  height: 14px;
+  background-color: var(--kpi-accent, var(--text-secondary));
+  mask-repeat: no-repeat;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+}
+.kpi-card[data-status="on_track"]::after {
+  mask-image: var(--icon-status-on-track);
+  -webkit-mask-image: var(--icon-status-on-track);
+}
+.kpi-card[data-status="at_risk"]::after {
+  mask-image: var(--icon-status-at-risk);
+  -webkit-mask-image: var(--icon-status-at-risk);
+}
+.kpi-card[data-status="critical"]::after {
+  mask-image: var(--icon-status-critical);
+  -webkit-mask-image: var(--icon-status-critical);
 }
 
 /* Daily-Use Audit Phase 5 ("Dashboard's own KPI tiles aren't clickable"): rendered as
@@ -919,6 +971,18 @@ a:focus-visible {
   color: #12141a;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
   animation: toast-in var(--transition-base);
+}
+
+/* Animation polish pass: applied by reactBridge.js's mount() to #page-outlet on every
+   route change (every route is React now, so this is the one place that reaches all of
+   them). Fast and opacity-only per the same Operate-mode motion rules as everywhere else
+   in this file — a cue that something changed, not a page-load sequence to sit through. */
+.route-fade-in {
+  animation: route-fade-in 150ms ease;
+}
+@keyframes route-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @keyframes toast-in {
@@ -1406,6 +1470,7 @@ a:focus-visible {
 .status-badge {
   display: inline-flex;
   align-items: center;
+  gap: 4px;
   font-family: var(--font-body);
   font-weight: 600;
   font-size: 10.5px;
@@ -1416,29 +1481,73 @@ a:focus-visible {
   white-space: nowrap;
 }
 
+/* Status icons (Lucide, see --icon-status-* tokens above) — status was already carried by
+   both color AND the text label, so this isn't fixing a real accessibility gap on its own;
+   it's the same information a third way, which reads faster at a glance across a dense
+   table of badges. mask-image + background-color:currentColor means the icon always
+   matches the badge's own (already-4.5:1-verified) text color automatically, in both
+   themes, with no separate icon-color token to keep in sync. */
+.status-badge::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+  background-color: currentColor;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+  mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+  -webkit-mask-position: center;
+}
+
 .status-badge--on_track {
   background-color: rgba(31, 157, 108, 0.15);
   color: var(--status-badge-on-track-text);
+}
+.status-badge--on_track::before {
+  mask-image: var(--icon-status-on-track);
+  -webkit-mask-image: var(--icon-status-on-track);
 }
 .status-badge--at_risk {
   background-color: rgba(214, 158, 46, 0.15);
   color: var(--status-badge-at-risk-text);
 }
+.status-badge--at_risk::before {
+  mask-image: var(--icon-status-at-risk);
+  -webkit-mask-image: var(--icon-status-at-risk);
+}
 .status-badge--warning {
   background-color: rgba(221, 107, 32, 0.15);
   color: var(--status-badge-warning-text);
+}
+.status-badge--warning::before {
+  mask-image: var(--icon-status-warning);
+  -webkit-mask-image: var(--icon-status-warning);
 }
 .status-badge--critical {
   background-color: rgba(229, 62, 62, 0.15);
   color: var(--status-badge-critical-text);
 }
+.status-badge--critical::before {
+  mask-image: var(--icon-status-critical);
+  -webkit-mask-image: var(--icon-status-critical);
+}
 .status-badge--complete {
   background-color: rgba(14, 154, 167, 0.15);
   color: var(--status-badge-info-text);
 }
+.status-badge--complete::before {
+  mask-image: var(--icon-status-on-track);
+  -webkit-mask-image: var(--icon-status-on-track);
+}
 .status-badge--info {
   background-color: rgba(14, 154, 167, 0.15);
   color: var(--status-badge-info-text);
+}
+.status-badge--info::before {
+  mask-image: var(--icon-status-info);
+  -webkit-mask-image: var(--icon-status-info);
 }
 
 .project-card__actions {
@@ -1554,6 +1663,24 @@ a:focus-visible {
   box-shadow: none;
   font-size: 13.5px;
   line-height: 1.6;
+}
+
+.empty-state::before {
+  content: "";
+  display: block;
+  width: 28px;
+  height: 28px;
+  margin: 0 auto var(--space-3);
+  background-color: var(--text-secondary);
+  opacity: 0.5;
+  mask-image: var(--icon-empty-state);
+  mask-repeat: no-repeat;
+  mask-size: contain;
+  mask-position: center;
+  -webkit-mask-image: var(--icon-empty-state);
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+  -webkit-mask-position: center;
 }
 
 .form-grid {
@@ -1835,6 +1962,36 @@ a:focus-visible {
 @keyframes drawer-in-left {
   from { transform: translateX(-100%); }
   to { transform: translateX(0); }
+}
+
+/* Animation polish pass: the nav drawer (layout.js's openNav/closeNav) previously only
+   animated in — closeNav() called overlay.remove() immediately, so it vanished instantly
+   while every open used the slide-in above. --closing is added by closeNav() before its
+   own setTimeout(..., 180) actually removes the node, giving the reverse motion time to
+   play — exit runs at the same duration as enter here (unlike the animate-skill's usual
+   "exit faster" guidance) because this is a full-height nav panel, not a small transient
+   control; a same-speed close reads as an undo of the same movement, not a lag. */
+.drawer-overlay--closing {
+  animation: overlay-out var(--transition-base) forwards;
+}
+.drawer-overlay--closing .drawer {
+  animation: drawer-out var(--transition-base) forwards;
+}
+.drawer-overlay--closing .drawer--left {
+  animation: drawer-out-left var(--transition-base) forwards;
+}
+
+@keyframes overlay-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes drawer-out {
+  from { transform: translateX(0); }
+  to { transform: translateX(100%); }
+}
+@keyframes drawer-out-left {
+  from { transform: translateX(0); }
+  to { transform: translateX(-100%); }
 }
 
 /* The nav overlay reuses .sidebar__nav/.sidebar__link (layout.js's buildNavList()) —

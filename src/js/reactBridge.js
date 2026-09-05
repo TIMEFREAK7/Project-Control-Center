@@ -46,6 +46,17 @@
     window.PCC.ReactDOM.flushSync(function () {
       root.render(window.PCC.React.createElement(Component, props || {}));
     });
+
+    // Animation polish pass: a fast, subtle fade so a route change reads as a real
+    // transition instead of an instant content swap — every route hits this one spot,
+    // so it's the one place that can apply it app-wide without touching each page.
+    // Content is already in the DOM from flushSync above (untouched contract for
+    // tests/callers); this only affects opacity, restarted via the remove/reflow/add
+    // sequence below since re-adding an already-present class does not restart a CSS
+    // animation on its own, which back-to-back navigations would otherwise hit.
+    container.classList.remove("route-fade-in");
+    void container.offsetWidth;
+    container.classList.add("route-fade-in");
   }
 
   window.PCC.reactBridge = {

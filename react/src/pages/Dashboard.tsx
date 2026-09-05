@@ -41,6 +41,40 @@ import {
 import type { Reminder, PortfolioExceptions, AttentionGroup } from "../services/dashboardService";
 import type { PCCProject, PCCStoreData } from "../types/pcc";
 
+/* First-run welcome (scoped and approved separately from the rest of this file's
+   migration): shown only when data.projects.length === 0 — never created a project at
+   all, archived included. Deliberately NOT active.length === 0, which also covers a
+   returning user who's archived every project; that's a legitimate different state and
+   keeps today's existing "no active projects" messaging below, untouched. Replaces the
+   context switcher + six zero-value KPI cards (meaningless before anything exists) with
+   something that actually orients a new user, per the plan confirmed before building
+   this: what PCC is, two concrete next steps, one CTA, one data-location reassurance
+   line addressing the single most common "wait, where did my data go" question for a
+   local-only offline app (see README.md's own framing of this same point). */
+function FirstRunWelcome() {
+  return (
+    <div className="panel">
+      <h3 style={{ marginBottom: 8 }}>Welcome to Project Control Center</h3>
+      <p className="text-secondary" style={{ marginTop: 0, marginBottom: 16 }}>
+        Project planning, controls, and portfolio management — schedules, risks, documents, cost tracking, and reporting, all in one
+        place, fully offline.
+      </p>
+      <ol style={{ margin: "0 0 16px", paddingLeft: 20, color: "var(--text-secondary)", lineHeight: 1.7 }}>
+        <li>
+          Add your first project in <strong style={{ color: "var(--text-primary)" }}>Portfolio</strong>.
+        </li>
+        <li>Build a schedule by hand, or import one from Excel, MS Project, or Primavera P6.</li>
+      </ol>
+      <button className="btn btn--primary" style={{ marginBottom: 16 }} onClick={() => goToKpiRoute("portfolio", undefined)}>
+        + Add Project
+      </button>
+      <p className="text-secondary" style={{ margin: 0, fontSize: "var(--text-sm)" }}>
+        Everything you enter autosaves to this browser as you go — no account, no server. Export a backup anytime from Settings.
+      </p>
+    </div>
+  );
+}
+
 function ContextSwitcherPanel() {
   const containerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -60,15 +94,23 @@ function KpiCard({
   label,
   value,
   colorVar,
+  status,
   onClick,
 }: {
   label: string;
   value: number;
   colorVar?: string | null;
+  status?: string;
   onClick: () => void;
 }) {
   return (
-    <button type="button" className="kpi-card kpi-card--link" onClick={onClick}>
+    <button
+      type="button"
+      className="kpi-card kpi-card--link"
+      data-status={status || undefined}
+      style={colorVar ? ({ "--kpi-accent": "var(" + colorVar + ")" } as React.CSSProperties) : undefined}
+      onClick={onClick}
+    >
       <span className="kpi-card__label">{label}</span>
       <span className="kpi-card__value mono" style={colorVar ? { color: "var(" + colorVar + ")" } : undefined}>
         {value}
@@ -300,6 +342,16 @@ export default function DashboardPage() {
     .sort((a, b) => new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime())
     .slice(0, 5);
 
+  if (data.projects.length === 0) {
+    return (
+      <>
+        <h2 style={{ marginBottom: 4 }}>Portfolio Overview</h2>
+        <p className="text-secondary" style={{ marginTop: 0, marginBottom: 20 }}>Nothing set up yet — let's fix that.</p>
+        <FirstRunWelcome />
+      </>
+    );
+  }
+
   return (
     <>
       <h2 style={{ marginBottom: 4 }}>Portfolio Overview</h2>
@@ -356,7 +408,7 @@ export default function DashboardPage() {
 
       <div className="kpi-grid">
         {kpis.map((kpi) => (
-          <KpiCard key={kpi.label} label={kpi.label} value={kpi.value} colorVar={kpi.colorVar} onClick={() => goToKpiRoute(kpi.route, kpi.status)} />
+          <KpiCard key={kpi.label} label={kpi.label} value={kpi.value} colorVar={kpi.colorVar} status={kpi.status} onClick={() => goToKpiRoute(kpi.route, kpi.status)} />
         ))}
       </div>
 

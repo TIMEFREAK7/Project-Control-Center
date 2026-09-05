@@ -423,7 +423,22 @@
 
   function closeNav() {
     var overlay = document.getElementById("nav-overlay");
-    if (overlay) overlay.remove();
+    if (overlay) {
+      // Animation polish pass: play the reverse of openNav()'s enter animation before
+      // actually removing the node, instead of the previous instant overlay.remove().
+      // The id comes off immediately, not after the animation — several existing tests
+      // (test_uiux_gate2_navigation_e2e.js) assert getElementById("nav-overlay") is null
+      // synchronously right after triggering a close (button/backdrop/Escape/route
+      // change), with no await, and that's the real contract: "is the nav considered
+      // closed" needs to flip instantly even though the fading node briefly lingers in
+      // the DOM purely for the visual exit. 180ms matches --transition-base; the timeout
+      // doesn't read the CSS var directly since it needs a plain JS number regardless.
+      overlay.removeAttribute("id");
+      overlay.classList.add("drawer-overlay--closing");
+      window.setTimeout(function () {
+        if (overlay.parentNode) overlay.remove();
+      }, 180);
+    }
     if (navKeydownHandler) {
       document.removeEventListener("keydown", navKeydownHandler);
       navKeydownHandler = null;
