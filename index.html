@@ -2116,6 +2116,30 @@ a:focus-visible {
   }
 }
 
+/* --- Reduced motion (GATE 1 UI/UX audit finding, 2026-09-04) ---
+   Real, confirmed gap: nothing in this file respected prefers-reduced-motion before this —
+   every transition/animation ran unconditionally regardless of the user's OS-level setting.
+   A blanket 0.01ms kill on every animation is the standard fix, but not a safe one to apply
+   completely blindly (see .claude/docs/MOTION_SYSTEM.md and the vendored WCAG skill's own
+   warning: killing a functional loading indicator's duration doesn't remove it, it freezes
+   it mid-rotation, which reads as more broken than either a spinning or a static state).
+   `.spinner`'s `animation: spin 700ms linear infinite` (the only `infinite` animation in this
+   file) is exactly that case — a functional "still working" indicator, not decorative motion —
+   so it's excluded here and keeps spinning under reduced motion. Every other transition/
+   animation in this file (toast/modal/drawer/overlay enter, hover/press feedback) is a one-shot
+   state-change cue with no continuous loop, so instant-ifying it loses nothing: the state change
+   itself still happens, only its animated cue does not. */
+@media (prefers-reduced-motion: reduce) {
+  *:not(.spinner),
+  *:not(.spinner)::before,
+  *:not(.spinner)::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* --- Print / Save-as-PDF (Phase 8: Basic Reporting) ---
    Browser-native printing, no bundled PDF library: hides the app chrome (sidebar,
    title block, footer, and anything with .no-print) so window.print() produces just
