@@ -114,6 +114,31 @@ html[data-theme="dark"] {
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.34);
   --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.42);
+
+  /* GATE 1 UI/UX audit finding (2026-09-04): axe's color-contrast rule flagged
+     .status-badge--on_track and --info as real violations (confirmed, not just
+     "incomplete") once tested with actual seeded data — every .status-badge--* variant
+     uses its bare --status-* token as text color directly against a 15%-opacity tint of
+     that SAME color, so text and background sit close together on the same hue. Measured
+     against a real .panel background (#15171e), all but --at_risk landed under the 4.5:1
+     AA minimum for normal-size text (3.78-4.40:1). Fix: theme-aware, slightly brighter
+     "badge text" variants used ONLY by .status-badge--* — the base --status-* tokens
+     (icons, chart legends, KPI figures, everything else that reads them) are untouched,
+     since those contexts don't have this same tinted-background problem. Values are the
+     minimum lightness shift off the base hue needed to clear 4.5:1 against the badge's own
+     background blend — not a palette redesign. */
+  --status-badge-on-track-text: #21a672;
+  --status-badge-at-risk-text: var(--status-at-risk);
+  --status-badge-warning-text: #df6e23;
+  --status-badge-critical-text: #ea6262;
+  --status-badge-info-text: #0e9eac;
+
+  /* Same audit, same root cause — the Risk Register heat map's severity cells (Gate 2's
+     own writeup already flagged these three as sharing the badges' un-tokenized hardcoded-
+     rgba() pattern). --low/--medium reuse the badge text tokens above (already clear 4.5:1
+     against the heat map's own slightly higher tint alphas); --high needs its own value
+     since its 0.22 alpha (vs badges' 0.15) pushes the badge critical shade back under 4.5:1. */
+  --heatmap-high-text: #ea6666;
 }
 
 html[data-theme="light"] {
@@ -127,6 +152,17 @@ html[data-theme="light"] {
   --shadow-sm: 0 1px 2px rgba(20, 24, 38, 0.06);
   --shadow-md: 0 8px 24px rgba(20, 24, 38, 0.1);
   --shadow-lg: 0 16px 48px rgba(20, 24, 38, 0.16);
+
+  /* Same GATE 1 fix as the dark theme block above, but light theme needed a much bigger
+     shift: the same 15%-tint badge backgrounds sit near-white here, so all five statuses
+     measured well under 4.5:1 (2.12-3.36:1) — --at_risk included, unlike dark theme. */
+  --status-badge-on-track-text: #17724f;
+  --status-badge-at-risk-text: #84611a;
+  --status-badge-warning-text: #a34f18;
+  --status-badge-critical-text: #c61b1b;
+  --status-badge-info-text: #0a737d;
+
+  --heatmap-high-text: #bd1919;
 }
 
 * {
@@ -1382,27 +1418,27 @@ a:focus-visible {
 
 .status-badge--on_track {
   background-color: rgba(31, 157, 108, 0.15);
-  color: var(--status-on-track);
+  color: var(--status-badge-on-track-text);
 }
 .status-badge--at_risk {
   background-color: rgba(214, 158, 46, 0.15);
-  color: var(--status-at-risk);
+  color: var(--status-badge-at-risk-text);
 }
 .status-badge--warning {
   background-color: rgba(221, 107, 32, 0.15);
-  color: var(--status-warning);
+  color: var(--status-badge-warning-text);
 }
 .status-badge--critical {
   background-color: rgba(229, 62, 62, 0.15);
-  color: var(--status-critical);
+  color: var(--status-badge-critical-text);
 }
 .status-badge--complete {
   background-color: rgba(14, 154, 167, 0.15);
-  color: var(--status-info);
+  color: var(--status-badge-info-text);
 }
 .status-badge--info {
   background-color: rgba(14, 154, 167, 0.15);
-  color: var(--status-info);
+  color: var(--status-badge-info-text);
 }
 
 .project-card__actions {
@@ -1577,15 +1613,15 @@ a:focus-visible {
 
 .heatmap-cell--low {
   background-color: rgba(31, 157, 108, 0.18);
-  color: var(--status-on-track);
+  color: var(--status-badge-on-track-text);
 }
 .heatmap-cell--medium {
   background-color: rgba(214, 158, 46, 0.2);
-  color: var(--status-at-risk);
+  color: var(--status-badge-at-risk-text);
 }
 .heatmap-cell--high {
   background-color: rgba(229, 62, 62, 0.22);
-  color: var(--status-critical);
+  color: var(--heatmap-high-text);
 }
 
 .heatmap-cell--active {
