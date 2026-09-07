@@ -132,6 +132,14 @@ function setReactTextareaValue(win, el, value) {
     setReactTextareaValue(win, outlet().querySelector("#recactionfield-description"), "Add night shift crew to catch up structural steel");
     setReactInputValue(win, outlet().querySelector("#recactionfield-responsible_person"), "Site Manager");
     setReactInputValue(win, outlet().querySelector("#recactionfield-target_recovery_date"), "2020-01-01");
+    // Follow-up feature #1 (2026-09-05): Status now lives behind "+ More details" on a
+    // new record's quick-add form (collapsed by default there; already open when editing
+    // an existing one — see the "editing the action..." check below, which needs no
+    // equivalent click). Status already defaults to "open" either way, so this click is
+    // only needed because the test wants to assert the field explicitly, not because the
+    // save would otherwise be wrong.
+    findButtonByText(dom, "+ More details").click();
+    await flush();
     setReactSelectValue(win, outlet().querySelector("#recactionfield-status"), "open");
     var form = Array.from(outlet().querySelectorAll("form")).find((f) => f.querySelector("#recactionfield-description"));
     form.dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));

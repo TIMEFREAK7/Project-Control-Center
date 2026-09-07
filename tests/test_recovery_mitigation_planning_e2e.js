@@ -219,6 +219,9 @@ function setReactTextareaValue(win, el, value) {
     addBtn.click();
     await flush();
 
+    findButtonByText(dom, "+ More details").click();
+    await flush();
+
     setReactTextareaValue(win, outlet().querySelector("#recactionfield-description"), "Add a second crew to Foundation.");
     setReactInputValue(win, outlet().querySelector("#recactionfield-responsible_person"), "Site Super");
     setReactInputValue(win, outlet().querySelector("#recactionfield-estimated_recovery_days"), "3");

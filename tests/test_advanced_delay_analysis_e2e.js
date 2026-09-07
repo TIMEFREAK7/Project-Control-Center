@@ -157,6 +157,9 @@ function setReactTextareaValue(win, el, value) {
     addBtn.click();
     await flush();
 
+    findButtonByText(dom, "+ More details").click();
+    await flush();
+
     var causeSelect = outlet().querySelector("#delayfield-delay_cause");
     var daysInput = outlet().querySelector("#delayfield-delay_days");
     var respInput = outlet().querySelector("#delayfield-responsible_party");

@@ -139,6 +139,8 @@ function setReactTextareaValue(win, el, value) {
     await flush();
     findButtonByText(dom, "+ Add Delay Record").click();
     await flush();
+    findButtonByText(dom, "+ More details").click();
+    await flush();
 
     setReactSelectValue(win, outlet().querySelector("#delayfield-risk_id"), riskId);
     setReactSelectValue(win, outlet().querySelector("#delayfield-issue_id"), issueId);

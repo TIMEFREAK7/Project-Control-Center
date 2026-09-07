@@ -117,6 +117,8 @@ function setReactTextareaValue(win, el, value) {
     await flush();
     findButtonByText(dom, "+ Add Delay Record").click();
     await flush();
+    findButtonByText(dom, "+ More details").click();
+    await flush();
 
     var milestoneSelect = outlet().querySelector("#delayfield-milestone_activity_id");
     assert.ok(milestoneSelect, "'Affected Milestone' picker not found on the Delay Record form");

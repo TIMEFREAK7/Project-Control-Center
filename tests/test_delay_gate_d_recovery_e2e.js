@@ -125,6 +125,8 @@ function setReactTextareaValue(win, el, value) {
   await check("TEST 3: adding a 5-day Recovery Action (with Mitigation Type and Comments) moves the Recovery Forecast to 25 Aug", async () => {
     findButtonByText(dom, "+ Add Recovery Action").click();
     await flush();
+    findButtonByText(dom, "+ More details").click();
+    await flush();
     setReactTextareaValue(win, outlet().querySelector("#recactionfield-description"), "Additional shift");
     setReactInputValue(win, outlet().querySelector("#recactionfield-responsible_person"), "Site Manager");
     setReactSelectValue(win, outlet().querySelector("#recactionfield-status"), "in_progress");

@@ -3191,6 +3191,31 @@ function LinkedRecordsSection({ activity, data }: ActivityDataProps) {
   );
 }
 
+/* Follow-up feature list item #1 (2026-09-05): DelayRecordForm and RecoveryActionForm
+   had every field visible at once (19 and 10 respectively) — real user feedback that
+   this was too complicated for a quick add. Neither form's field LIST changed; nothing
+   was removed or made harder to reach when editing an existing record (defaultOpen below
+   is keyed to !isNew specifically so editing something that already has real data in
+   its "more details" fields shows them immediately, not collapsed behind a click).
+   Only a NEW record's quick-add path got shorter: 2-3 fields, submit, done — everything
+   else is one click away under "More details", not gone. */
+function MoreDetailsToggle({ defaultOpen, children }: { defaultOpen: boolean; children: React.ReactNode }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div style={{ gridColumn: "1 / -1" }}>
+      <button
+        type="button"
+        className="btn btn--ghost btn--sm"
+        onClick={() => setOpen(!open)}
+        style={{ marginBottom: open ? "var(--space-3)" : 0 }}
+      >
+        {open ? "− Hide details" : "+ More details"}
+      </button>
+      {open ? <div className="form-grid" style={{ gridColumn: "1 / -1" }}>{children}</div> : null}
+    </div>
+  );
+}
+
 function RecoveryActionForm({ editing, isNew, activity, data, onDone }: RecoveryActionFormProps) {
   const [description, setDescription] = useState(editing.description || "");
   const [responsiblePerson, setResponsiblePerson] = useState(editing.responsible_person || "");
@@ -3234,64 +3259,67 @@ function RecoveryActionForm({ editing, isNew, activity, data, onDone }: Recovery
       <form onSubmit={handleSubmit}>
         <div className="form-grid">
           <div className="field" style={{ gridColumn: "1 / -1" }}>
-            <label htmlFor="recactionfield-description">Description *</label>
+            <label htmlFor="recactionfield-description">What's the recovery action? *</label>
             <textarea id="recactionfield-description" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
-          </div>
-          <div className="field">
-            <label htmlFor="recactionfield-responsible_person">Responsible Person</label>
-            <input id="recactionfield-responsible_person" type="text" value={responsiblePerson} onChange={(e) => setResponsiblePerson(e.target.value)} />
           </div>
           <div className="field">
             <label htmlFor="recactionfield-target_recovery_date">Target Recovery Date</label>
             <input id="recactionfield-target_recovery_date" type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} />
           </div>
           <div className="field">
-            <label htmlFor="recactionfield-status">Status</label>
-            <select id="recactionfield-status" value={status} onChange={(e) => setStatus(e.target.value)}>
-              {window.PCC.store.RECOVERY_ACTION_STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {RECOVERY_ACTION_STATUS_LABELS[s]}
-                </option>
-              ))}
-            </select>
+            <label htmlFor="recactionfield-responsible_person">Responsible Person</label>
+            <input id="recactionfield-responsible_person" type="text" value={responsiblePerson} onChange={(e) => setResponsiblePerson(e.target.value)} />
           </div>
-          <div className="field">
-            <label htmlFor="recactionfield-estimated_recovery_days">Estimated Recovery (days)</label>
-            <input id="recactionfield-estimated_recovery_days" type="number" value={estRecoveryDays} onChange={(e) => setEstRecoveryDays(e.target.value)} />
-          </div>
-          <div className="field">
-            <label htmlFor="recactionfield-estimated_cost">Estimated Cost</label>
-            <input id="recactionfield-estimated_cost" type="number" value={estCost} onChange={(e) => setEstCost(e.target.value)} />
-          </div>
-          <div className="field">
-            <label htmlFor="recactionfield-actual_recovery_days">Actual Recovery (days)</label>
-            <input id="recactionfield-actual_recovery_days" type="number" value={actualRecoveryDays} onChange={(e) => setActualRecoveryDays(e.target.value)} />
-          </div>
-          <div className="field">
-            <label htmlFor="recactionfield-delay_id">Responds to Delay</label>
-            <select id="recactionfield-delay_id" value={delayId} onChange={(e) => setDelayId(e.target.value)}>
-              <option value="">No specific delay</option>
-              {delaysForActivity.map((dr) => (
-                <option key={dr.id} value={dr.id}>
-                  {dr.description || "(untitled delay)"}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor="recactionfield-mitigation_type">Mitigation Type</label>
-            <select id="recactionfield-mitigation_type" value={mitigationType} onChange={(e) => setMitigationType(e.target.value)}>
-              {window.PCC.store.MITIGATION_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {MITIGATION_TYPE_LABELS[t]}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-        <div className="field">
-          <label htmlFor="recactionfield-comments">Comments</label>
-          <textarea id="recactionfield-comments" rows={2} value={comments} onChange={(e) => setComments(e.target.value)} />
+
+          <MoreDetailsToggle defaultOpen={!isNew}>
+            <div className="field">
+              <label htmlFor="recactionfield-status">Status</label>
+              <select id="recactionfield-status" value={status} onChange={(e) => setStatus(e.target.value)}>
+                {window.PCC.store.RECOVERY_ACTION_STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {RECOVERY_ACTION_STATUS_LABELS[s]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="recactionfield-mitigation_type">Mitigation Type</label>
+              <select id="recactionfield-mitigation_type" value={mitigationType} onChange={(e) => setMitigationType(e.target.value)}>
+                {window.PCC.store.MITIGATION_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {MITIGATION_TYPE_LABELS[t]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="recactionfield-estimated_recovery_days">Estimated Recovery (days)</label>
+              <input id="recactionfield-estimated_recovery_days" type="number" value={estRecoveryDays} onChange={(e) => setEstRecoveryDays(e.target.value)} />
+            </div>
+            <div className="field">
+              <label htmlFor="recactionfield-actual_recovery_days">Actual Recovery (days)</label>
+              <input id="recactionfield-actual_recovery_days" type="number" value={actualRecoveryDays} onChange={(e) => setActualRecoveryDays(e.target.value)} />
+            </div>
+            <div className="field">
+              <label htmlFor="recactionfield-estimated_cost">Estimated Cost</label>
+              <input id="recactionfield-estimated_cost" type="number" value={estCost} onChange={(e) => setEstCost(e.target.value)} />
+            </div>
+            <div className="field">
+              <label htmlFor="recactionfield-delay_id">Responds to Delay</label>
+              <select id="recactionfield-delay_id" value={delayId} onChange={(e) => setDelayId(e.target.value)}>
+                <option value="">No specific delay</option>
+                {delaysForActivity.map((dr) => (
+                  <option key={dr.id} value={dr.id}>
+                    {dr.description || "(untitled delay)"}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field" style={{ gridColumn: "1 / -1" }}>
+              <label htmlFor="recactionfield-comments">Comments</label>
+              <textarea id="recactionfield-comments" rows={2} value={comments} onChange={(e) => setComments(e.target.value)} />
+            </div>
+          </MoreDetailsToggle>
         </div>
         {error ? <p style={{ color: "var(--status-critical)", fontSize: "var(--text-sm)" }}>{error}</p> : null}
         <div style={{ display: "flex", gap: "var(--space-3)", marginTop: "var(--space-3)" }}>
@@ -3698,150 +3726,153 @@ function DelayRecordForm({ editing, isNew, activity, data, onDone }: DelayRecord
     <div className="panel" style={{ marginBottom: "var(--space-3)" }}>
       <form onSubmit={handleSubmit}>
         <div className="form-grid">
-          <div className="field">
-            <label htmlFor="delayfield-status">Status</label>
-            <select id="delayfield-status" value={status} onChange={(e) => setStatus(e.target.value)}>
-              {window.PCC.store.DELAY_RECORD_STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {DELAY_STATUS_LABELS[s]}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor="delayfield-delay_category">Delay Category</label>
-            <select id="delayfield-delay_category" value={category} onChange={(e) => setCategory(e.target.value)}>
-              {window.PCC.store.DELAY_CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {DELAY_CATEGORY_LABELS[c]}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor="delayfield-responsibility_classification">Responsibility Classification</label>
-            <select id="delayfield-responsibility_classification" value={responsibility} onChange={(e) => setResponsibility(e.target.value)}>
-              {window.PCC.store.DELAY_RESPONSIBILITY_CLASSIFICATIONS.map((c) => (
-                <option key={c} value={c}>
-                  {DELAY_RESPONSIBILITY_LABELS[c]}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor="delayfield-delay_cause">Delay Cause (contractual bucket)</label>
-            <select id="delayfield-delay_cause" value={cause} onChange={(e) => setCause(e.target.value)}>
-              {window.PCC.store.DELAY_RECORD_CAUSES.map((c) => (
-                <option key={c} value={c}>
-                  {DELAY_CAUSE_LABELS[c]}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor="delayfield-delay_days">Estimated Impact (days)</label>
-            <input id="delayfield-delay_days" type="number" value={delayDays} onChange={(e) => setDelayDays(e.target.value)} />
-          </div>
-          <div className="field">
-            <label htmlFor="delayfield-actual_impact_days">Actual Impact (days)</label>
-            <input id="delayfield-actual_impact_days" type="number" value={actualDays} onChange={(e) => setActualDays(e.target.value)} />
+          <div className="field" style={{ gridColumn: "1 / -1" }}>
+            <label htmlFor="delayfield-description">What happened? *</label>
+            <textarea id="delayfield-description" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
           <div className="field">
             <label htmlFor="delayfield-identified_date">Identified Date</label>
             <input id="delayfield-identified_date" type="date" value={identifiedDate} onChange={(e) => setIdentifiedDate(e.target.value)} />
           </div>
           <div className="field">
-            <label htmlFor="delayfield-responsible_party">Responsible Party</label>
-            <input id="delayfield-responsible_party" type="text" value={responsibleParty} onChange={(e) => setResponsibleParty(e.target.value)} />
+            <label htmlFor="delayfield-delay_days">Estimated Impact (days)</label>
+            <input id="delayfield-delay_days" type="number" value={delayDays} onChange={(e) => setDelayDays(e.target.value)} />
           </div>
-          <div className="field">
-            <label style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
-              <input id="delayfield-is_excusable" type="checkbox" checked={isExcusable} onChange={(e) => setIsExcusable(e.target.checked)} />
-              Excusable
-            </label>
-          </div>
-          <div className="field">
-            <label htmlFor="delayfield-milestone_activity_id">Affected Milestone</label>
-            <select id="delayfield-milestone_activity_id" value={milestoneId} onChange={(e) => setMilestoneId(e.target.value)}>
-              <option value="">(none)</option>
-              {milestones.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name || "(unnamed milestone)"}
-                </option>
-              ))}
-            </select>
-          </div>
-          <p className="text-secondary" style={{ gridColumn: "1 / -1", fontSize: 11, fontWeight: 600, letterSpacing: "0.4px", margin: "var(--space-2) 0 0" }}>
-            RELATED RECORDS (optional)
-          </p>
-          <RecordLinkField
-            id="delayfield-risk_id"
-            label="Related Risk"
-            records={data.risks.filter((r) => r.project_id === activity.project_id && r.type === "risk")}
-            labelFn={(r) => r.title || "(untitled risk)"}
-            value={riskId}
-            onChange={setRiskId}
-          />
-          <RecordLinkField
-            id="delayfield-issue_id"
-            label="Related Issue"
-            records={data.risks.filter((r) => r.project_id === activity.project_id && r.type === "issue")}
-            labelFn={(r) => r.title || "(untitled issue)"}
-            value={issueId}
-            onChange={setIssueId}
-          />
-          <RecordLinkField
-            id="delayfield-rfi_id"
-            label="Related RFI / TQ"
-            records={data.rfis.filter((r) => r.project_id === activity.project_id)}
-            labelFn={(r) => (r.number ? r.number + " — " : "") + (r.subject || "(untitled)")}
-            value={rfiId}
-            onChange={setRfiId}
-          />
-          <RecordLinkField
-            id="delayfield-daily_log_id"
-            label="Related Daily Log"
-            records={data.daily_logs.filter((r) => r.project_id === activity.project_id).sort((a, b) => (b.log_date || "").localeCompare(a.log_date || ""))}
-            labelFn={(r) => "Daily Log — " + (r.log_date || "(undated)")}
-            value={dailyLogId}
-            onChange={setDailyLogId}
-          />
-          <RecordLinkField
-            id="delayfield-meeting_id"
-            label="Related Meeting"
-            records={data.meetings.filter((r) => r.project_id === activity.project_id)}
-            labelFn={(r) => (r.title || "(untitled meeting)") + (r.meeting_date ? " (" + r.meeting_date + ")" : "")}
-            value={meetingId}
-            onChange={setMeetingId}
-          />
-          <RecordLinkField
-            id="delayfield-vendor_id"
-            label="Related Vendor"
-            records={data.vendors.filter((v) => projectVendorIds[v.id]).sort((a, b) => (a.vendor_name || "").localeCompare(b.vendor_name || ""))}
-            labelFn={(v) => v.vendor_name || "(unnamed vendor)"}
-            value={vendorId}
-            onChange={setVendorId}
-          />
-          <RecordLinkField
-            id="delayfield-change_order_id"
-            label="Related Change / Variation"
-            records={data.change_orders.filter((r) => r.project_id === activity.project_id)}
-            labelFn={(r) => (r.number ? r.number + " — " : "") + (r.title || "(untitled)")}
-            value={changeOrderId}
-            onChange={setChangeOrderId}
-          />
-          <div className="field" style={{ gridColumn: "1 / -1" }}>
-            <label htmlFor="delayfield-immediate_cause">Immediate Cause — what directly prevented/delayed the activity?</label>
-            <input id="delayfield-immediate_cause" type="text" value={immediateCause} onChange={(e) => setImmediateCause(e.target.value)} />
-          </div>
-          <div className="field" style={{ gridColumn: "1 / -1" }}>
-            <label htmlFor="delayfield-underlying_cause">Underlying Cause — why did that condition occur?</label>
-            <input id="delayfield-underlying_cause" type="text" value={underlyingCause} onChange={(e) => setUnderlyingCause(e.target.value)} />
-          </div>
-          <div className="field" style={{ gridColumn: "1 / -1" }}>
-            <label htmlFor="delayfield-description">Description *</label>
-            <textarea id="delayfield-description" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
-          </div>
+
+          <MoreDetailsToggle defaultOpen={!isNew}>
+            <div className="field">
+              <label htmlFor="delayfield-status">Status</label>
+              <select id="delayfield-status" value={status} onChange={(e) => setStatus(e.target.value)}>
+                {window.PCC.store.DELAY_RECORD_STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {DELAY_STATUS_LABELS[s]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="delayfield-delay_category">Delay Category</label>
+              <select id="delayfield-delay_category" value={category} onChange={(e) => setCategory(e.target.value)}>
+                {window.PCC.store.DELAY_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {DELAY_CATEGORY_LABELS[c]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="delayfield-responsibility_classification">Responsibility Classification</label>
+              <select id="delayfield-responsibility_classification" value={responsibility} onChange={(e) => setResponsibility(e.target.value)}>
+                {window.PCC.store.DELAY_RESPONSIBILITY_CLASSIFICATIONS.map((c) => (
+                  <option key={c} value={c}>
+                    {DELAY_RESPONSIBILITY_LABELS[c]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="delayfield-delay_cause">Delay Cause (contractual bucket)</label>
+              <select id="delayfield-delay_cause" value={cause} onChange={(e) => setCause(e.target.value)}>
+                {window.PCC.store.DELAY_RECORD_CAUSES.map((c) => (
+                  <option key={c} value={c}>
+                    {DELAY_CAUSE_LABELS[c]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="delayfield-actual_impact_days">Actual Impact (days)</label>
+              <input id="delayfield-actual_impact_days" type="number" value={actualDays} onChange={(e) => setActualDays(e.target.value)} />
+            </div>
+            <div className="field">
+              <label htmlFor="delayfield-responsible_party">Responsible Party</label>
+              <input id="delayfield-responsible_party" type="text" value={responsibleParty} onChange={(e) => setResponsibleParty(e.target.value)} />
+            </div>
+            <div className="field">
+              <label style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+                <input id="delayfield-is_excusable" type="checkbox" checked={isExcusable} onChange={(e) => setIsExcusable(e.target.checked)} />
+                Excusable
+              </label>
+            </div>
+            <div className="field">
+              <label htmlFor="delayfield-milestone_activity_id">Affected Milestone</label>
+              <select id="delayfield-milestone_activity_id" value={milestoneId} onChange={(e) => setMilestoneId(e.target.value)}>
+                <option value="">(none)</option>
+                {milestones.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name || "(unnamed milestone)"}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field" style={{ gridColumn: "1 / -1" }}>
+              <label htmlFor="delayfield-immediate_cause">Immediate Cause — what directly prevented/delayed the activity?</label>
+              <input id="delayfield-immediate_cause" type="text" value={immediateCause} onChange={(e) => setImmediateCause(e.target.value)} />
+            </div>
+            <div className="field" style={{ gridColumn: "1 / -1" }}>
+              <label htmlFor="delayfield-underlying_cause">Underlying Cause — why did that condition occur?</label>
+              <input id="delayfield-underlying_cause" type="text" value={underlyingCause} onChange={(e) => setUnderlyingCause(e.target.value)} />
+            </div>
+            <p className="text-secondary" style={{ gridColumn: "1 / -1", fontSize: 11, fontWeight: 600, letterSpacing: "0.4px", margin: "var(--space-2) 0 0" }}>
+              RELATED RECORDS (optional)
+            </p>
+            <RecordLinkField
+              id="delayfield-risk_id"
+              label="Related Risk"
+              records={data.risks.filter((r) => r.project_id === activity.project_id && r.type === "risk")}
+              labelFn={(r) => r.title || "(untitled risk)"}
+              value={riskId}
+              onChange={setRiskId}
+            />
+            <RecordLinkField
+              id="delayfield-issue_id"
+              label="Related Issue"
+              records={data.risks.filter((r) => r.project_id === activity.project_id && r.type === "issue")}
+              labelFn={(r) => r.title || "(untitled issue)"}
+              value={issueId}
+              onChange={setIssueId}
+            />
+            <RecordLinkField
+              id="delayfield-rfi_id"
+              label="Related RFI / TQ"
+              records={data.rfis.filter((r) => r.project_id === activity.project_id)}
+              labelFn={(r) => (r.number ? r.number + " — " : "") + (r.subject || "(untitled)")}
+              value={rfiId}
+              onChange={setRfiId}
+            />
+            <RecordLinkField
+              id="delayfield-daily_log_id"
+              label="Related Daily Log"
+              records={data.daily_logs.filter((r) => r.project_id === activity.project_id).sort((a, b) => (b.log_date || "").localeCompare(a.log_date || ""))}
+              labelFn={(r) => "Daily Log — " + (r.log_date || "(undated)")}
+              value={dailyLogId}
+              onChange={setDailyLogId}
+            />
+            <RecordLinkField
+              id="delayfield-meeting_id"
+              label="Related Meeting"
+              records={data.meetings.filter((r) => r.project_id === activity.project_id)}
+              labelFn={(r) => (r.title || "(untitled meeting)") + (r.meeting_date ? " (" + r.meeting_date + ")" : "")}
+              value={meetingId}
+              onChange={setMeetingId}
+            />
+            <RecordLinkField
+              id="delayfield-vendor_id"
+              label="Related Vendor"
+              records={data.vendors.filter((v) => projectVendorIds[v.id]).sort((a, b) => (a.vendor_name || "").localeCompare(b.vendor_name || ""))}
+              labelFn={(v) => v.vendor_name || "(unnamed vendor)"}
+              value={vendorId}
+              onChange={setVendorId}
+            />
+            <RecordLinkField
+              id="delayfield-change_order_id"
+              label="Related Change / Variation"
+              records={data.change_orders.filter((r) => r.project_id === activity.project_id)}
+              labelFn={(r) => (r.number ? r.number + " — " : "") + (r.title || "(untitled)")}
+              value={changeOrderId}
+              onChange={setChangeOrderId}
+            />
+          </MoreDetailsToggle>
         </div>
         {error ? <p style={{ color: "var(--status-critical)", fontSize: "var(--text-sm)" }}>{error}</p> : null}
         <div style={{ display: "flex", gap: "var(--space-3)", marginTop: "var(--space-3)" }}>

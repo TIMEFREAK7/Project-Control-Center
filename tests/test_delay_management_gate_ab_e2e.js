@@ -123,6 +123,9 @@ function setReactTextareaValue(win, el, value) {
     findButtonByText(dom, "+ Add Delay Record").click();
     await flush();
 
+    findButtonByText(dom, "+ More details").click();
+    await flush();
+
     setReactSelectValue(win, outlet().querySelector("#delayfield-status"), "investigating");
     setReactSelectValue(win, outlet().querySelector("#delayfield-delay_category"), "late_material");
     setReactSelectValue(win, outlet().querySelector("#delayfield-responsibility_classification"), "vendor");
@@ -215,6 +218,8 @@ function setReactTextareaValue(win, el, value) {
 
   await check("Recovery Action can link to this specific Delay (not just the activity), with its own Actual Recovery (days) field", async () => {
     findButtonByText(dom, "+ Add Recovery Action").click();
+    await flush();
+    findButtonByText(dom, "+ More details").click();
     await flush();
     setReactTextareaValue(win, outlet().querySelector("#recactionfield-description"), "Expedite rebar via air freight.");
     setReactInputValue(win, outlet().querySelector("#recactionfield-responsible_person"), "Site Manager");
