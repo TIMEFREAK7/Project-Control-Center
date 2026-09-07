@@ -1667,6 +1667,20 @@
       // same activity is never auto-resolved or duplicated, same "never helpfully
       // rewrite a user's own record" convention as Change Orders/contract_value.
       auto_generated: false,
+      // Bidirectional Delay Comments: a plain running thread — [{ id, text, created_at }]
+      // — on the Delay Record itself rather than on the activity or split into separate
+      // "Schedule comments" vs. "Delay Registry comments" arrays. The Schedule's Activity
+      // Detail Panel and the Delay & Recovery Dashboard are both just different VIEWS
+      // over this same data.delay_records array (there's no separate "Delay Registry"
+      // store collection — the dashboard is a rollup, not its own register), so a single
+      // shared array here already gives "comment from either place, see it in both"
+      // for free, with no separate sync mechanism to build or keep consistent — same
+      // "prefer reference over copy" principle this file's own header comments already
+      // apply to every other cross-module relationship on this record. No per-comment
+      // author field: this app has no multi-user/auth concept anywhere else either (see
+      // status_history above — no changed_by field), so there's nothing meaningful to
+      // attribute a comment to beyond the timestamp.
+      comments: [],
       created_at: now,
       updated_at: now,
     };

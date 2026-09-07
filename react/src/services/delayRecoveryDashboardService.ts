@@ -26,6 +26,7 @@ export var DELAY_STATUS_LABELS: { [status: string]: string } = {
   mitigation_in_progress: "Mitigation in Progress",
   recovery_in_progress: "Recovery in Progress",
   recovered: "Recovered",
+  resolved: "Resolved (Auto)",
   closed: "Closed",
 };
 export var DELAY_STATUS_BADGE_CLASS: { [status: string]: string } = {
@@ -34,6 +35,7 @@ export var DELAY_STATUS_BADGE_CLASS: { [status: string]: string } = {
   mitigation_in_progress: "info",
   recovery_in_progress: "info",
   recovered: "complete",
+  resolved: "complete",
   closed: "complete",
 };
 export var DELAY_CATEGORY_LABELS: { [category: string]: string } = {
@@ -135,4 +137,43 @@ export function viewActivityInSchedule(activity: PCCActivity): void {
 export function viewProjectInPortfolio(projectId: string): void {
   window.PCC.portfolio.viewProject(projectId);
   window.PCC.router.go("portfolio");
+}
+
+function newDelayCommentId(): string {
+  return "cmt_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+}
+
+/** Bidirectional Delay Comments (Aditya's #4). Deliberately its own copy of the same
+ * logic scheduleService.ts's addDelayComment()/deleteDelayComment() implement — this
+ * service file never imports from scheduleService.ts (see this file's own header
+ * comment on the per-module duplication convention every label map here already
+ * follows), but both copies write the exact same delay_records[].comments array, so a
+ * comment added from THIS dashboard or from the Schedule page's Activity Detail Panel
+ * shows up in both — the "sync" is just reading/writing one shared field, not two
+ * copies kept consistent by hand. */
+export function addDelayComment(delayId: string, text: string): void {
+  var trimmed = (text || "").trim();
+  if (!trimmed) return;
+  window.PCC.store.update(function (d) {
+    var rec = d.delay_records.find(function (r) {
+      return r.id === delayId;
+    });
+    if (!rec) return;
+    if (!rec.comments) rec.comments = [];
+    rec.comments.push({ id: newDelayCommentId(), text: trimmed, created_at: new Date().toISOString() });
+    rec.updated_at = new Date().toISOString();
+  });
+}
+
+export function deleteDelayComment(delayId: string, commentId: string): void {
+  window.PCC.store.update(function (d) {
+    var rec = d.delay_records.find(function (r) {
+      return r.id === delayId;
+    });
+    if (!rec || !rec.comments) return;
+    rec.comments = rec.comments.filter(function (c) {
+      return c.id !== commentId;
+    });
+    rec.updated_at = new Date().toISOString();
+  });
 }

@@ -1888,6 +1888,44 @@ export function linkDelayActivity(delayRecordId: string, activity: PCCActivity):
   window.PCC.notify("Activity linked to delay.", "success");
 }
 
+function newDelayCommentId(): string {
+  return "cmt_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+}
+
+/** Bidirectional Delay Comments (Aditya's #4: "I should be able to add comments to the
+ * delayed activities in schedule, in delay registry and the comment should sync with
+ * each other"). Both places a delay is visible — the Schedule page's Activity Detail
+ * Panel and the Delay & Recovery Dashboard — read/write the SAME delay_records[].comments
+ * array, so "sync" needs no extra plumbing: a comment added from either page is simply
+ * the same store write, visible the next time either page reads that record. Ignores a
+ * blank/whitespace-only body rather than pushing an empty comment. */
+export function addDelayComment(delayId: string, text: string): void {
+  var trimmed = (text || "").trim();
+  if (!trimmed) return;
+  window.PCC.store.update(function (d) {
+    var rec = d.delay_records.find(function (r) {
+      return r.id === delayId;
+    });
+    if (!rec) return;
+    if (!rec.comments) rec.comments = [];
+    rec.comments.push({ id: newDelayCommentId(), text: trimmed, created_at: new Date().toISOString() });
+    rec.updated_at = new Date().toISOString();
+  });
+}
+
+export function deleteDelayComment(delayId: string, commentId: string): void {
+  window.PCC.store.update(function (d) {
+    var rec = d.delay_records.find(function (r) {
+      return r.id === delayId;
+    });
+    if (!rec || !rec.comments) return;
+    rec.comments = rec.comments.filter(function (c) {
+      return c.id !== commentId;
+    });
+    rec.updated_at = new Date().toISOString();
+  });
+}
+
 /** The Delay & Recovery Gap note: Delay Days logged vs. open Recovery Actions'
  * estimated recovery days, floored at 0 — same computation as executiveCenter.js's
  * buildProjectContext() and delayRecoveryDashboard.js's portfolio rollup, independently

@@ -32,6 +32,8 @@ import {
   fmtMoney,
   viewActivityInSchedule,
   viewProjectInPortfolio,
+  addDelayComment,
+  deleteDelayComment,
 } from "../services/delayRecoveryDashboardService";
 import type { PCCActivity, PCCProject, PCCRecoveryAction, PCCDelayRecord, PCCStoreData } from "../types/pcc";
 
@@ -132,16 +134,69 @@ function AnalyticsLine({
   );
 }
 
+function DelayRegisterComments({ r, refresh }: { r: PCCDelayRecord; refresh: () => void }) {
+  const [draft, setDraft] = useState("");
+  const comments = r.comments || [];
+
+  function submit() {
+    if (!draft.trim()) return;
+    addDelayComment(r.id, draft);
+    setDraft("");
+    refresh();
+  }
+
+  return (
+    <details style={{ marginTop: 6 }} onClick={(e) => e.stopPropagation()}>
+      <summary className="text-secondary" style={{ cursor: "pointer", fontSize: 12 }}>
+        Comments ({comments.length})
+      </summary>
+      <div style={{ marginTop: 4 }}>
+        {comments.map((c) => (
+          <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginTop: 4 }}>
+            <div style={{ fontSize: 12 }}>
+              <span className="text-secondary">{new Date(c.created_at).toLocaleString()}</span> — {c.text}
+            </div>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              style={{ fontSize: 12, padding: "2px 6px", flexShrink: 0 }}
+              onClick={() => {
+                deleteDelayComment(r.id, c.id);
+                refresh();
+              }}
+            >
+              Remove
+            </button>
+          </div>
+        ))}
+        <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="Add a comment — visible here and on the Schedule's Activity Detail Panel"
+            style={{ flex: 1, fontSize: 12, minHeight: 32 }}
+          />
+          <button type="button" className="btn btn--ghost" style={{ fontSize: 12, alignSelf: "flex-start" }} onClick={submit}>
+            Add Comment
+          </button>
+        </div>
+      </div>
+    </details>
+  );
+}
+
 function DelayRegisterRow({
   r,
   data,
   activitiesById,
   projectsById,
+  refresh,
 }: {
   r: PCCDelayRecord;
   data: PCCStoreData;
   activitiesById: { [id: string]: PCCActivity };
   projectsById: { [id: string]: PCCProject };
+  refresh: () => void;
 }) {
   const activity = r.activity_id ? activitiesById[r.activity_id] : null;
   const project = projectsById[r.project_id];
@@ -174,6 +229,7 @@ function DelayRegisterRow({
           {DELAY_RESPONSIBILITY_LABELS[r.responsibility_classification || ""] || "Unconfirmed"}
           {criticality ? " · " + DELAY_CRITICALITY_LABELS[criticality] : ""}
         </p>
+        <DelayRegisterComments r={r} refresh={refresh} />
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
         <span className={"status-badge status-badge--" + (r.is_excusable ? "complete" : "at_risk")} style={{ fontSize: "var(--text-xs)" }}>
@@ -239,7 +295,14 @@ function GapRow({ g }: { g: GapActivity }) {
 }
 
 export default function DelayRecoveryDashboardPage() {
-  const [data] = useState(() => getData());
+  // Was a one-time useState(() => getData()) snapshot — fine while this page had no
+  // mutating actions of its own (only "View in Schedule"/"View Project" navigation).
+  // Bidirectional Delay Comments adds the page's first in-place mutation (adding/
+  // removing a comment on a Delay Record without leaving the dashboard), so this needs
+  // the same nonce-driven refresh() every other page with live edits already uses.
+  const [nonce, setNonce] = useState(0);
+  const refresh = () => setNonce((n) => n + 1);
+  const data = getData();
   const [registerStatusFilter, setRegisterStatusFilter] = useState("");
 
   const activeProjectIds: { [id: string]: boolean } = {};
@@ -399,7 +462,7 @@ export default function DelayRecoveryDashboardPage() {
             </p>
           ) : (
             sortedRegisterRecords.map((r) => (
-              <DelayRegisterRow key={r.id} r={r} data={data} activitiesById={activitiesById} projectsById={projectsById} />
+              <DelayRegisterRow key={r.id} r={r} data={data} activitiesById={activitiesById} projectsById={projectsById} refresh={refresh} />
             ))
           )}
         </div>

@@ -81,6 +81,8 @@ import {
   saveDelayRecord,
   deleteDelayRecord,
   linkDelayActivity,
+  addDelayComment,
+  deleteDelayComment,
   delayRecoveryGap,
   DELAY_CAUSE_LABELS,
   DELAY_STATUS_LABELS,
@@ -3620,6 +3622,57 @@ function DelayTimeline({ delayRecord }: DelayTimelineProps) {
   );
 }
 
+function DelayCommentThread({ delayRecord, refresh }: { delayRecord: PCCDelayRecord; refresh: () => void }) {
+  const [draft, setDraft] = useState("");
+  const comments = delayRecord.comments || [];
+
+  function submit() {
+    if (!draft.trim()) return;
+    addDelayComment(delayRecord.id, draft);
+    setDraft("");
+    refresh();
+  }
+
+  return (
+    <details style={{ marginTop: "var(--space-2)" }}>
+      <summary className="text-secondary" style={{ cursor: "pointer", fontSize: "var(--text-xs)" }}>
+        Comments ({comments.length})
+      </summary>
+      <div style={{ marginTop: 4 }}>
+        {comments.map((c) => (
+          <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginTop: 4 }}>
+            <div style={{ fontSize: "var(--text-xs)" }}>
+              <span className="text-secondary">{new Date(c.created_at).toLocaleString()}</span> — {c.text}
+            </div>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              style={{ fontSize: "var(--text-xs)", padding: "2px 6px", flexShrink: 0 }}
+              onClick={() => {
+                deleteDelayComment(delayRecord.id, c.id);
+                refresh();
+              }}
+            >
+              Remove
+            </button>
+          </div>
+        ))}
+        <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="Add a comment — visible here and on the Delay & Recovery Dashboard"
+            style={{ flex: 1, fontSize: "var(--text-xs)", minHeight: 32 }}
+          />
+          <button type="button" className="btn btn--ghost" style={{ fontSize: "var(--text-xs)", alignSelf: "flex-start" }} onClick={submit}>
+            Add Comment
+          </button>
+        </div>
+      </div>
+    </details>
+  );
+}
+
 function DelayLinkActivityPicker({ delayRecord, links, data, scheduleId, refresh }: DelayLinkActivityPickerProps) {
   const [linking, setLinking] = useState(false);
   const [selection, setSelection] = useState("");
@@ -3987,6 +4040,7 @@ function DelayRecordsSection({ activity, data, scheduleId, refresh }: DelayRecor
                 <DelayScheduleImpact delayRecord={r} links={links} data={data} scheduleId={scheduleId} />
                 <RecoveryForecastProgression delayRecord={r} links={links} data={data} />
                 <DelayTimeline delayRecord={r} />
+                <DelayCommentThread delayRecord={r} refresh={refresh} />
                 <DelayLinkActivityPicker delayRecord={r} links={links} data={data} scheduleId={scheduleId} refresh={refresh} />
               </div>
               <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "var(--space-2)", flexShrink: 0 }}>
