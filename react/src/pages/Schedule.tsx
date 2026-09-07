@@ -38,7 +38,10 @@ import {
   saveActivity,
   clonePrefillFrom,
   bulkShiftActivities,
+  bulkDeleteActivities,
   deleteActivityWithConfirm,
+  deleteSchedule,
+  scheduleDeleteImpact,
   commitInlineActivityEdit,
   addDaysIso,
   getExcelGridFields,
@@ -144,6 +147,7 @@ interface ScheduleBarProps {
   onCalculate: () => void;
   baselineSaving: boolean;
   onSaveBaseline: () => void;
+  onDeleteSchedule: () => void;
 }
 
 interface WbsFormProps {
@@ -631,11 +635,13 @@ function ScheduleBar({
   onCalculate,
   baselineSaving,
   onSaveBaseline,
+  onDeleteSchedule,
 }: ScheduleBarProps) {
   const activeProjects = data.projects.filter((p) => !p.archived);
   const projectSchedules = data.schedules.filter((s) => s.project_id === projectId);
   const currentSchedule = data.schedules.find((s) => s.id === scheduleId);
   const activityCount = data.activities.filter((a) => a.schedule_id === scheduleId).length;
+  const [scheduleMenuOpen, setScheduleMenuOpen] = useState(false);
 
   return (
     <div className="toolbar focus-mode-hide">
@@ -710,6 +716,28 @@ function ScheduleBar({
       <button className="btn btn--ghost" disabled={!scheduleId || baselineSaving || activityCount === 0} onClick={onSaveBaseline}>
         {baselineSaving ? "Saving Baseline…" : "Save Baseline"}
       </button>
+
+      <div className="card-menu">
+        <button className="icon-btn" aria-label="Schedule actions" disabled={!scheduleId} onClick={() => setScheduleMenuOpen((v) => !v)}>
+          ⋯
+        </button>
+        {scheduleMenuOpen ? (
+          <React.Fragment>
+            <button className="card-menu__overlay" aria-label="Close schedule actions menu" onClick={() => setScheduleMenuOpen(false)} />
+            <div className="card-menu__dropdown">
+              <button
+                className="card-menu__item"
+                onClick={() => {
+                  setScheduleMenuOpen(false);
+                  onDeleteSchedule();
+                }}
+              >
+                Delete Schedule…
+              </button>
+            </div>
+          </React.Fragment>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -1838,6 +1866,17 @@ function ActivitiesTab({ data, projectId, scheduleId, initialActivityTypeHint, i
           <div className="bulk-action-bar__spacer" />
           <button className="btn btn--ghost" onClick={() => setSelectedIds({})}>
             Clear Selection
+          </button>
+          <button
+            className="btn btn--ghost"
+            onClick={() => {
+              if (!confirm("Delete " + selectedCount + " selected " + (selectedCount === 1 ? "activity" : "activities") + "? This also removes any relationships, recovery actions, and Delay Record links referencing them.")) return;
+              bulkDeleteActivities(selectedIds);
+              setSelectedIds({});
+              refresh();
+            }}
+          >
+            Delete Selected
           </button>
         </div>
       ) : null}
@@ -4581,6 +4620,22 @@ export default function SchedulePage({ initialProjectId, initialScheduleId, init
     });
   }
 
+  function handleDeleteSchedule() {
+    const schedule = data.schedules.find((s) => s.id === currentScheduleId);
+    if (!schedule) return;
+    const impact = scheduleDeleteImpact(schedule.id);
+    const parts = [impact.activities + " activit" + (impact.activities === 1 ? "y" : "ies"), impact.relationships + " relationship(s)", impact.wbsItems + " WBS item(s)"];
+    if (impact.baselines > 0) parts.push(impact.baselines + " saved baseline(s)");
+    if (impact.recoveryActions > 0) parts.push(impact.recoveryActions + " recovery action(s)");
+    if (impact.delayRecords > 0) parts.push(impact.delayRecords + " delay record(s)");
+    if (!confirm('Permanently delete schedule "' + (schedule.name || "(unnamed)") + '" — ' + parts.join(", ") + "? This CANNOT be undone.")) return;
+    deleteSchedule(schedule.id).then(() => {
+      const remaining = data.schedules.filter((s) => s.project_id === schedule.project_id && s.id !== schedule.id);
+      setScheduleIdState(remaining.length > 0 ? remaining[0].id : "");
+      refresh();
+    });
+  }
+
   let editingSchedule = null;
   if (editingScheduleId) {
     editingSchedule = editingScheduleId === "new" ? window.PCC.store.newSchedule({}) : data.schedules.find((s) => s.id === editingScheduleId);
@@ -4610,6 +4665,7 @@ export default function SchedulePage({ initialProjectId, initialScheduleId, init
         onCalculate={handleCalculate}
         baselineSaving={baselineSaving}
         onSaveBaseline={handleSaveBaseline}
+        onDeleteSchedule={handleDeleteSchedule}
       />
 
       {importPanelOpen ? (

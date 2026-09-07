@@ -138,7 +138,11 @@ function setReactInputValue(win, el, value) {
     var editButtons = Array.from(outlet().querySelectorAll("button")).filter((b) => b.textContent.trim() === "Edit");
     // Open via the row menu if "Edit" isn't a direct button (fallback to the "..." menu).
     if (editButtons.length === 0) {
-      var menuBtns = Array.from(outlet().querySelectorAll("button")).filter((b) => b.textContent.trim() === "⋯");
+      // Scope to a ROW's own "⋯" (aria-label "More actions"), not textContent "⋯" alone
+      // — the Schedule page's toolbar also has its own "⋯" ("Schedule actions", for
+      // Delete Schedule) which renders earlier in the DOM and would otherwise be
+      // matched first, opening the wrong menu.
+      var menuBtns = Array.from(outlet().querySelectorAll('button[aria-label="More actions"]'));
       if (menuBtns.length) menuBtns[0].click();
       await flush();
       editButtons = Array.from(outlet().querySelectorAll("button")).filter((b) => b.textContent.trim() === "Edit");

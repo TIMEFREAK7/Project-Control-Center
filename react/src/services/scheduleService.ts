@@ -250,7 +250,7 @@ export function activityName(activities: PCCActivity[], activityId: string | nul
  * the same way — confirm, then remove the activity and any relationship/recovery
  * action referencing it. */
 export function deleteActivityWithConfirm(activity: PCCActivity, onDone?: () => void): boolean {
-  if (!confirm('Delete activity "' + activity.name + '"? This also removes any relationships and recovery actions referencing it.')) return false;
+  if (!confirm('Delete activity "' + activity.name + '"? This also removes any relationships, recovery actions, and Delay Record links referencing it.')) return false;
   window.PCC.store.update(function (data2) {
     data2.activities = data2.activities.filter(function (item) {
       return item.id !== activity.id;
@@ -261,10 +261,51 @@ export function deleteActivityWithConfirm(activity: PCCActivity, onDone?: () => 
     data2.recovery_actions = data2.recovery_actions.filter(function (r) {
       return r.activity_id !== activity.id;
     });
+    // A Delay Record can affect several activities (delay_activity_links — spec point
+    // 9, "one delay, many activities"), so deleting ONE activity un-links it from any
+    // Delay it was part of without touching the Delay Record itself, same "clean up
+    // join rows, never cascade-delete the primary record" convention this app already
+    // follows when a Delay Record's own Recovery Action link is cleared (see
+    // test_delay_management_gate_ab_e2e.js's "removing a Delay Record... un-links (not
+    // deletes) any Recovery Action").
+    data2.delay_activity_links = data2.delay_activity_links.filter(function (l) {
+      return l.activity_id !== activity.id;
+    });
   });
   window.PCC.notify("Activity deleted.", "success");
   if (onDone) onDone();
   return true;
+}
+
+/** Bulk counterpart to deleteActivityWithConfirm() above — same cleanup (relationships,
+ * recovery actions, delay_activity_links), applied to every selected id in one
+ * store.update() rather than one confirm/update per activity. Caller owns the confirm
+ * dialog (matching Documents.tsx's DocumentBulkBar convention: the bar itself asks
+ * "delete N selected documents?" once, not once per item) and clearing its own
+ * selection state afterward. */
+export function bulkDeleteActivities(selectedIds: { [id: string]: boolean }): number {
+  var n = 0;
+  window.PCC.store.update(function (data2) {
+    var idsToDelete: { [id: string]: boolean } = {};
+    data2.activities.forEach(function (a) {
+      if (selectedIds[a.id]) idsToDelete[a.id] = true;
+    });
+    n = Object.keys(idsToDelete).length;
+    data2.activities = data2.activities.filter(function (item) {
+      return !idsToDelete[item.id];
+    });
+    data2.relationships = data2.relationships.filter(function (rel) {
+      return !idsToDelete[rel.predecessor_id || ""] && !idsToDelete[rel.successor_id || ""];
+    });
+    data2.recovery_actions = data2.recovery_actions.filter(function (r) {
+      return !idsToDelete[r.activity_id || ""];
+    });
+    data2.delay_activity_links = data2.delay_activity_links.filter(function (l) {
+      return !idsToDelete[l.activity_id];
+    });
+  });
+  window.PCC.notify(n + " " + (n === 1 ? "activity" : "activities") + " deleted.", "success");
+  return n;
 }
 
 var DATE_FIELDS_AFFECTING_BASELINE_DELAY = ["planned_start", "planned_finish", "actual_start", "actual_finish"];
@@ -2051,6 +2092,100 @@ export function deleteBaseline(id: string): void {
     });
   });
   window.PCC.notify("Baseline deleted.", "success");
+}
+
+/** Counts of everything a real deleteSchedule() call below would remove — the caller
+ * (Schedule.tsx) shows these in a confirm dialog before committing, same "tell them
+ * exactly what's about to disappear" convention Documents.tsx's permanent-delete
+ * confirm already uses (counting revisions before wiping a document group). Read-only:
+ * takes no action itself. */
+export function scheduleDeleteImpact(scheduleId: string): { activities: number; relationships: number; wbsItems: number; baselines: number; recoveryActions: number; delayRecords: number } {
+  var data = window.PCC.store.get();
+  var activityIds: { [id: string]: boolean } = {};
+  data.activities.forEach(function (a) {
+    if (a.schedule_id === scheduleId) activityIds[a.id] = true;
+  });
+  return {
+    activities: Object.keys(activityIds).length,
+    relationships: data.relationships.filter(function (r) {
+      return r.schedule_id === scheduleId;
+    }).length,
+    wbsItems: data.wbs_items.filter(function (w) {
+      return w.schedule_id === scheduleId;
+    }).length,
+    baselines: data.schedule_baselines.filter(function (b) {
+      return b.schedule_id === scheduleId;
+    }).length,
+    recoveryActions: data.recovery_actions.filter(function (r) {
+      return !!r.activity_id && activityIds[r.activity_id];
+    }).length,
+    delayRecords: data.delay_records.filter(function (r) {
+      return !!r.activity_id && activityIds[r.activity_id];
+    }).length,
+  };
+}
+
+/** Completely removes a schedule and everything that only makes sense in the context of
+ * IT specifically — its own WBS/Activities/Relationships/Baselines (store rows AND
+ * their IndexedDB snapshots), plus Recovery Actions/Delay Records/delay_activity_links
+ * tied to those now-gone activities. Deliberately a real, full delete rather than this
+ * app's usual "archive, never delete" convention (schedule.status already has an
+ * "archived" state for the normal "keep this old revision for history" case) — this is
+ * specifically for undoing a bad import (wrong file, garbage data, duplicate) where the
+ * schedule and everything under it should never have existed in the first place, so
+ * there's no history worth keeping. Unlike a single activity's own delete (which only
+ * un-links it from any Delay Record it was part of, never deleting the Delay Record
+ * itself — see deleteActivityWithConfirm()), a Delay Record whose activity_id belongs
+ * ONLY to this schedule is fully removed here too: once the entire schedule is gone,
+ * so is the only context that delay's own history was about. Returns a Promise
+ * (baseline snapshots live in IndexedDB, deleted in parallel). The caller owns the
+ * confirm dialog, using scheduleDeleteImpact() above to word it. */
+export function deleteSchedule(scheduleId: string): Promise<void> {
+  var data = window.PCC.store.get();
+  var baselineIds = data.schedule_baselines.filter(function (b) {
+    return b.schedule_id === scheduleId;
+  }).map(function (b) {
+    return b.id;
+  });
+
+  return Promise.all(
+    baselineIds.map(function (id) {
+      return window.PCC.scheduleBaselineStore.deleteSnapshot(id).catch(function () {});
+    })
+  ).then(function () {
+    window.PCC.store.update(function (d) {
+      var activityIds: { [id: string]: boolean } = {};
+      d.activities.forEach(function (a) {
+        if (a.schedule_id === scheduleId) activityIds[a.id] = true;
+      });
+
+      d.schedules = d.schedules.filter(function (s) {
+        return s.id !== scheduleId;
+      });
+      d.wbs_items = d.wbs_items.filter(function (w) {
+        return w.schedule_id !== scheduleId;
+      });
+      d.activities = d.activities.filter(function (a) {
+        return a.schedule_id !== scheduleId;
+      });
+      d.relationships = d.relationships.filter(function (r) {
+        return r.schedule_id !== scheduleId;
+      });
+      d.schedule_baselines = d.schedule_baselines.filter(function (b) {
+        return b.schedule_id !== scheduleId;
+      });
+      d.recovery_actions = d.recovery_actions.filter(function (r) {
+        return !r.activity_id || !activityIds[r.activity_id];
+      });
+      d.delay_records = d.delay_records.filter(function (r) {
+        return !r.activity_id || !activityIds[r.activity_id];
+      });
+      d.delay_activity_links = d.delay_activity_links.filter(function (l) {
+        return !activityIds[l.activity_id];
+      });
+    });
+    window.PCC.notify("Schedule deleted.", "success");
+  });
 }
 
 // ---------------------------------------------------------------------------------
