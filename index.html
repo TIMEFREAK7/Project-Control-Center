@@ -4345,6 +4345,67 @@ window.PCC_SQL_WASM_BASE64 = "AGFzbQEAAAABnwRFYAJ/fwF/YAF/AX9gA39/fwBgA39/fwF/YA
     wbs_summary: "wbs_summary",
   };
 
+  // Real bug found in the field (Aditya): a Status column driven by an Excel data-
+  // validation dropdown reliably contains a human-readable label ("Not Started", "In
+  // Progress", "Complete", "On Hold" — or a close variant, since template authors don't
+  // all phrase the same list identically) rather than this app's own internal key
+  // (not_started/in_progress/complete/on_hold, exactly what store.js's newActivity()
+  // and ACTIVITY_STATUS_LABELS use). Before this alias table existed, parseRows() just
+  // stored that raw label string verbatim as activity.status — which silently didn't
+  // match any known status everywhere else in the app reads it (badges, filters, KPIs
+  // all compare against the internal keys), so an imported activity's status looked
+  // right in the spreadsheet but effectively vanished from every status-aware view in
+  // PCC. Deliberately NOT the "conditional formatting" case (a cell fill color with no
+  // effect on the cell's own text) — confirmed with Aditya via AskUserQuestion that's a
+  // separate, genuinely unrecoverable limitation of the trimmed xlsx build this app
+  // vendors (no cell-style parsing); this fixes the DATA the cell actually contains.
+  // Lookup keys are pre-normalized by normalizeStatusToken() below (lowercased, and
+  // -/_ collapsed to a single space) so "In-Progress"/"in_progress"/"In  Progress" all
+  // resolve identically — same alias-table shape and "unrecognized → default + warn"
+  // fallback ACTIVITY_TYPE_ALIASES above already established for Activity Type.
+  var ACTIVITY_STATUS_ALIASES = {
+    "not started": "not_started",
+    not_started: "not_started",
+    new: "not_started",
+    pending: "not_started",
+    "to do": "not_started",
+    todo: "not_started",
+    "not yet started": "not_started",
+    "in progress": "in_progress",
+    in_progress: "in_progress",
+    started: "in_progress",
+    ongoing: "in_progress",
+    active: "in_progress",
+    wip: "in_progress",
+    "work in progress": "in_progress",
+    underway: "in_progress",
+    complete: "complete",
+    completed: "complete",
+    done: "complete",
+    finished: "complete",
+    closed: "complete",
+    "100% complete": "complete",
+    "on hold": "on_hold",
+    on_hold: "on_hold",
+    hold: "on_hold",
+    held: "on_hold",
+    paused: "on_hold",
+    suspended: "on_hold",
+    stopped: "on_hold",
+    blocked: "on_hold",
+  };
+
+  /** Same normalization ACTIVITY_STATUS_ALIASES' own keys are written in — lowercase,
+   * trimmed, and every run of hyphens/underscores/whitespace collapsed to one space —
+   * so a dropdown's "In-Progress", a hand-typed "in_progress", and "In   Progress" (extra
+   * spacing from a copy-paste) all resolve to the exact same alias-table key. */
+  function normalizeStatusToken(raw) {
+    return String(raw || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[-_\s]+/g, " ");
+  }
+
   var HEADER_MAP = {
     // NOTE: "completion date" is mapped to planned_finish below on the assumption it
     // means the target/plan date, not an as-built actual finish \u2014 that's a real
@@ -4593,6 +4654,14 @@ window.PCC_SQL_WASM_BASE64 = "AGFzbQEAAAABnwRFYAJ/fwF/YAF/AX9gA39/fwBgA39/fwF/YA
         warnings.push({ row: lineNo, message: 'Unreadable % Complete "' + rec.percent_complete + '" \u2014 left blank.' });
       }
 
+      var statusRaw = String(rec.status || "").trim();
+      var statusToken = normalizeStatusToken(statusRaw);
+      var status = statusToken ? ACTIVITY_STATUS_ALIASES[statusToken] : "not_started";
+      if (statusRaw && !status) {
+        warnings.push({ row: lineNo, message: 'Unrecognized Status "' + statusRaw + '" \u2014 defaulted to Not Started.' });
+        status = "not_started";
+      }
+
       var wbsCode = String(rec.wbs_code || "").trim();
       if (!wbsCode) {
         warnings.push({ row: lineNo, message: 'Activity "' + externalId + '" has no WBS Code \u2014 imported without a WBS assignment.' });
@@ -4614,7 +4683,7 @@ window.PCC_SQL_WASM_BASE64 = "AGFzbQEAAAABnwRFYAJ/fwF/YAF/AX9gA39/fwBgA39/fwF/YA
         discipline: String(rec.discipline || "").trim(),
         contractor: String(rec.contractor || "").trim(),
         responsible_person: String(rec.responsible_person || "").trim(),
-        status: String(rec.status || "").trim() || "not_started",
+        status: status,
         notes: String(rec.notes || "").trim(),
       });
     });

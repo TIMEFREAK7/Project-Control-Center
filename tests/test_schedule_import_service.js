@@ -80,6 +80,82 @@ check("status round-trips as a raw key with no aliasing (matches how the grid's 
 });
 
 // ---------------------------------------------------------------------------
+// Real bug (Aditya, Daily-Use Audit): a Status column driven by an Excel data-
+// validation dropdown contains a human-readable label ("Not Started", "In Progress",
+// ...), not this app's own internal key — before ACTIVITY_STATUS_ALIASES existed,
+// parseRows() stored that label string verbatim, silently corrupting activity.status
+// into something no status-aware view in the app recognized.
+// ---------------------------------------------------------------------------
+
+check("a dropdown-style human-readable Status label ('In Progress') is normalized to the internal key, not stored verbatim", () => {
+  const headers = svc.CANONICAL_HEADERS.map((f) => f.label);
+  const row = svc.CANONICAL_HEADERS.map((f) => {
+    if (f.key === "external_id") return "A010";
+    if (f.key === "name") return "Test";
+    if (f.key === "status") return "In Progress";
+    return "";
+  });
+  const parsed = svc.parseRows(headers, [row]);
+  assert.strictEqual(parsed.activities[0].status, "in_progress");
+  assert.strictEqual(parsed.warnings.filter((w) => /unrecognized status/i.test(w.message)).length, 0, "a recognized label must not warn");
+});
+
+check("common dropdown-list phrasing variants for every status all resolve to their internal key", () => {
+  const cases = [
+    ["Not Started", "not_started"],
+    ["not started", "not_started"],
+    ["To Do", "not_started"],
+    ["In-Progress", "in_progress"],
+    ["in progress", "in_progress"],
+    ["Ongoing", "in_progress"],
+    ["Complete", "complete"],
+    ["Completed", "complete"],
+    ["Done", "complete"],
+    ["On Hold", "on_hold"],
+    ["on_hold", "on_hold"],
+    ["Paused", "on_hold"],
+  ];
+  cases.forEach(([label, expected]) => {
+    const headers = svc.CANONICAL_HEADERS.map((f) => f.label);
+    const row = svc.CANONICAL_HEADERS.map((f) => {
+      if (f.key === "external_id") return "A010";
+      if (f.key === "name") return "Test";
+      if (f.key === "status") return label;
+      return "";
+    });
+    const parsed = svc.parseRows(headers, [row]);
+    assert.strictEqual(parsed.activities[0].status, expected, 'label "' + label + '" should resolve to "' + expected + '"');
+  });
+});
+
+check("a genuinely unrecognized Status value defaults to not_started AND warns, same treatment as an unrecognized Activity Type", () => {
+  const headers = svc.CANONICAL_HEADERS.map((f) => f.label);
+  const row = svc.CANONICAL_HEADERS.map((f) => {
+    if (f.key === "external_id") return "A010";
+    if (f.key === "name") return "Test";
+    if (f.key === "status") return "Frobnicating";
+    return "";
+  });
+  const parsed = svc.parseRows(headers, [row]);
+  assert.strictEqual(parsed.activities[0].status, "not_started");
+  const statusWarnings = parsed.warnings.filter((w) => /unrecognized status/i.test(w.message));
+  assert.strictEqual(statusWarnings.length, 1);
+  assert.ok(statusWarnings[0].message.indexOf("Frobnicating") !== -1);
+});
+
+check("a blank Status cell still silently defaults to not_started with no warning (unchanged behavior)", () => {
+  const headers = svc.CANONICAL_HEADERS.map((f) => f.label);
+  const row = svc.CANONICAL_HEADERS.map((f) => {
+    if (f.key === "external_id") return "A010";
+    if (f.key === "name") return "Test";
+    return "";
+  });
+  const parsed = svc.parseRows(headers, [row]);
+  assert.strictEqual(parsed.activities[0].status, "not_started");
+  assert.strictEqual(parsed.warnings.filter((w) => /status/i.test(w.message)).length, 0);
+});
+
+// ---------------------------------------------------------------------------
 // Manual Column Mapping — schedule.js's mapping step lets a user tell parseRows()
 // exactly which uploaded column is which PCC field when the header text itself
 // doesn't match HEADER_MAP's known aliases.
