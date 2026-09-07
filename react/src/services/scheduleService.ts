@@ -140,6 +140,7 @@ export var DELAY_STATUS_LABELS: { [key: string]: string } = {
   mitigation_in_progress: "Mitigation in Progress",
   recovery_in_progress: "Recovery in Progress",
   recovered: "Recovered",
+  resolved: "Resolved (Auto)",
   closed: "Closed",
 };
 export var DELAY_STATUS_BADGE_CLASS: { [key: string]: string } = {
@@ -148,6 +149,7 @@ export var DELAY_STATUS_BADGE_CLASS: { [key: string]: string } = {
   mitigation_in_progress: "info",
   recovery_in_progress: "info",
   recovered: "complete",
+  resolved: "complete",
   closed: "complete",
 };
 export var DELAY_CATEGORY_LABELS: { [key: string]: string } = {
@@ -265,7 +267,16 @@ export function deleteActivityWithConfirm(activity: PCCActivity, onDone?: () => 
   return true;
 }
 
+var DATE_FIELDS_AFFECTING_BASELINE_DELAY = ["planned_start", "planned_finish", "actual_start", "actual_finish"];
+
+function touchesDelayRelevantDates(updates: Partial<PCCActivity>): boolean {
+  return DATE_FIELDS_AFFECTING_BASELINE_DELAY.some(function (key) {
+    return Object.prototype.hasOwnProperty.call(updates, key);
+  });
+}
+
 export function commitInlineActivityEdit(activityId: string, updates: Partial<PCCActivity>): void {
+  var scheduleId: string | undefined;
   window.PCC.store.update(function (data) {
     var existing = data.activities.find(function (a) {
       return a.id === activityId;
@@ -273,8 +284,10 @@ export function commitInlineActivityEdit(activityId: string, updates: Partial<PC
     if (existing) {
       Object.assign(existing, updates);
       existing.updated_at = new Date().toISOString();
+      scheduleId = existing.schedule_id;
     }
   });
+  if (scheduleId && touchesDelayRelevantDates(updates)) runAutoDelayDetection(scheduleId);
 }
 
 // ---------------------------------------------------------------------------------
@@ -467,6 +480,8 @@ export function runCalculation(scheduleId: string): void {
       insufficientCount > 0 ? "error" : "success"
     );
   }
+
+  runAutoDelayDetection(scheduleId);
 }
 
 // ---------------------------------------------------------------------------------
@@ -785,6 +800,7 @@ export function saveActivity(isNew: boolean, activity: PCCActivity, projectId: s
     }
   });
   window.PCC.notify(isNew ? "Activity added." : "Activity updated.", "success");
+  if (!isNew && touchesDelayRelevantDates(values)) runAutoDelayDetection(scheduleId);
 }
 
 export function clonePrefillFrom(a: PCCActivity): Partial<PCCActivity> {
@@ -809,6 +825,7 @@ export function clonePrefillFrom(a: PCCActivity): Partial<PCCActivity> {
 
 export function bulkShiftActivities(selectedIds: { [id: string]: boolean }, days: number): void {
   var n = Object.keys(selectedIds).length;
+  var scheduleIds: { [id: string]: boolean } = {};
   window.PCC.store.update(function (data2) {
     data2.activities.forEach(function (item) {
       if (!selectedIds[item.id]) return;
@@ -817,9 +834,13 @@ export function bulkShiftActivities(selectedIds: { [id: string]: boolean }, days
       if (item.actual_start) item.actual_start = addDaysIso(item.actual_start, days);
       if (item.actual_finish) item.actual_finish = addDaysIso(item.actual_finish, days);
       item.updated_at = new Date().toISOString();
+      scheduleIds[item.schedule_id] = true;
     });
   });
   window.PCC.notify(n + " " + (n === 1 ? "activity" : "activities") + " shifted by " + days + " day" + (Math.abs(days) === 1 ? "" : "s") + ".", "success");
+  Object.keys(scheduleIds).forEach(function (sid) {
+    runAutoDelayDetection(sid);
+  });
 }
 
 // ---------------------------------------------------------------------------------
@@ -1883,6 +1904,119 @@ export function runBaselineComparison(baseline: PCCScheduleBaseline, scheduleId:
   });
 }
 
+/** Keeps the Delay Registry in sync with what the project's OFFICIAL baseline (the
+ * same one toggleOfficialBaseline() marks, and the one Executive Center's Schedule
+ * Variance already measures against — reusing that existing anchor rather than
+ * inventing a second "which baseline counts" concept) already implies is late:
+ *   - An activity whose current effective finish is later than its baseline finish
+ *     (finish_variance_days > 0 — the same "delayed" definition
+ *     scheduleBaselineEngine.js's own summary.delayed_count already uses) gets a new
+ *     Delay Record + delay_activity_link created automatically, UNLESS it already has
+ *     one open auto-generated record (never duplicates).
+ *   - An activity that comes back within its baseline finish has its existing
+ *     auto-generated Delay Record's status flipped to "resolved" and a status_history
+ *     entry appended — never deleted (Aditya confirmed via AskUserQuestion: auto-
+ *     resolve, keep it, don't auto-delete).
+ * Only ever touches delay_records with auto_generated:true — a manually created Delay
+ * Record for the same activity is a planner's own narrative and is never auto-resolved
+ * or duplicated here, the same "never helpfully rewrite a user's own record"
+ * convention CLAUDE.md documents for Change Orders/contract_value.
+ * No baseline calculation happens here (no scheduleCpmEngine call) — this is pure date
+ * comparison against an already-captured snapshot, so it's safe to run over every
+ * activity in a schedule, unlike delayImpactEngine.js's computeProjectFinishImpact().
+ * No-ops (resolves to null) when the project has no Official baseline yet — this is a
+ * consequence of marking one official, not a background scan that starts flagging
+ * things before the planner has set anything up. Returns a Promise (baseline snapshots
+ * live in IndexedDB) resolving to a { created, resolved } summary the caller can
+ * notify with, or null if there was nothing to check. */
+export function runAutoDelayDetection(scheduleId: string): Promise<{ created: number; resolved: number } | null> {
+  var data = window.PCC.store.get();
+  var schedule = data.schedules.find(function (s) {
+    return s.id === scheduleId;
+  });
+  if (!schedule) return Promise.resolve(null);
+  var officialBaseline = data.schedule_baselines.find(function (b) {
+    return b.project_id === schedule!.project_id && b.is_official;
+  });
+  if (!officialBaseline) return Promise.resolve(null);
+
+  return runBaselineComparison(officialBaseline, scheduleId)
+    .then(function (comparison) {
+      var created = 0;
+      var resolved = 0;
+      var nowIso = new Date().toISOString();
+      var today = nowIso.slice(0, 10);
+
+      window.PCC.store.update(function (d) {
+        comparison.activities.matched.forEach(function (m) {
+          if (!m.comparable) return; // no usable date on one side — nothing to judge
+          var activity = d.activities.find(function (a) {
+            return a.id === m.id;
+          });
+          if (!activity) return;
+
+          var existingAuto = d.delay_records.find(function (r) {
+            return r.activity_id === m.id && r.auto_generated && r.status !== "resolved" && r.status !== "closed";
+          });
+
+          if (m.finish_variance_days != null && m.finish_variance_days > 0) {
+            if (existingAuto) return; // already flagged, nothing new to do
+            var delayRecord = window.PCC.store.newDelayRecord({
+              activity_id: m.id,
+              project_id: schedule!.project_id,
+              description:
+                "Auto-detected: " +
+                (activity.name || "This activity") +
+                " is forecast to finish " +
+                m.finish_variance_days +
+                " day(s) after its baseline (" +
+                m.baseline.finish +
+                " → " +
+                m.current.finish +
+                ").",
+              delay_days: m.finish_variance_days,
+              identified_date: today,
+              status: "open",
+              auto_generated: true,
+            });
+            delayRecord.status_history = [{ status: "open", changed_at: nowIso, note: "Auto-detected from baseline comparison." }];
+            d.delay_records.push(delayRecord);
+            d.delay_activity_links.push(
+              window.PCC.store.newDelayActivityLink({
+                delay_id: delayRecord.id,
+                activity_id: m.id,
+                project_id: schedule!.project_id,
+                original_planned_start: m.baseline.start || "",
+                original_planned_finish: m.baseline.finish || "",
+                original_total_float: m.baseline.total_float,
+              })
+            );
+            created++;
+          } else if (existingAuto) {
+            existingAuto.status = "resolved";
+            existingAuto.updated_at = nowIso;
+            existingAuto.status_history = (existingAuto.status_history || []).concat([
+              { status: "resolved", changed_at: nowIso, note: "Auto-resolved: schedule dates are back within baseline." },
+            ]);
+            resolved++;
+          }
+        });
+      });
+
+      if (created > 0 || resolved > 0) {
+        var parts: string[] = [];
+        if (created > 0) parts.push(created + " new delay record" + (created === 1 ? "" : "s") + " from baseline");
+        if (resolved > 0) parts.push(resolved + " auto-resolved");
+        window.PCC.notify("Baseline check: " + parts.join(", ") + ".", "success");
+      }
+      return { created: created, resolved: resolved };
+    })
+    .catch(function (err) {
+      console.error("Auto delay detection failed", err);
+      return null;
+    });
+}
+
 export function renameBaseline(id: string, newName: string): void {
   window.PCC.store.update(function (d) {
     var item = d.schedule_baselines.find(function (x) {
@@ -1901,6 +2035,12 @@ export function toggleOfficialBaseline(baseline: PCCScheduleBaseline): void {
     });
   });
   window.PCC.notify(wasOfficial ? "Baseline unmarked as Official." : "Baseline marked Official — Executive Center's Schedule Variance now measures against it.", "success");
+  // Marking a baseline Official is the moment the Delay Registry should first
+  // reconcile against it, not wait for the next unrelated activity edit — reuse the
+  // baseline's own schedule_id since that's the schedule this snapshot was captured
+  // from (the common case; a re-imported revision's own later edits still pick this up
+  // via runCalculation/saveActivity/commitInlineActivityEdit above).
+  if (!wasOfficial && baseline.schedule_id) runAutoDelayDetection(baseline.schedule_id);
 }
 
 export function deleteBaseline(id: string): void {

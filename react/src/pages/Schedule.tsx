@@ -3958,6 +3958,11 @@ function DelayRecordsSection({ activity, data, scheduleId, refresh }: DelayRecor
                   <span className={"status-badge status-badge--" + (r.is_excusable ? "complete" : "at_risk")} style={{ fontSize: "var(--text-xs)" }}>
                     {r.is_excusable ? "Excusable" : "Non-Excusable"}
                   </span>
+                  {r.auto_generated ? (
+                    <span className="status-badge status-badge--info" style={{ fontSize: "var(--text-xs)" }} title="Created automatically because this activity's dates slipped past the project's Official baseline">
+                      Auto-Detected
+                    </span>
+                  ) : null}
                 </div>
                 <div style={{ display: "flex", gap: "var(--space-2)" }}>
                   <button className="btn btn--ghost" onClick={() => setEditingDelayRecordId(r.id)}>

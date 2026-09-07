@@ -1657,6 +1657,16 @@
       // Gate A: lightweight auto-timeline (spec point 20) — [{ status, changed_at, note }],
       // appended by the save handler whenever `status` actually changes; never hand-edited.
       status_history: [],
+      // Auto Baseline Delay Detection: true only for a Delay Record the app itself
+      // created because an activity's current dates slipped past the project's Official
+      // baseline (see scheduleService.ts's runAutoDelayDetection()) — false for every
+      // Delay Record a planner enters by hand. The ONLY thing this flag gates is which
+      // records the auto-resolve pass is allowed to touch when dates come back within
+      // baseline (flip status to "resolved", never delete — Aditya confirmed via
+      // AskUserQuestion: auto-resolve and keep it) — a manually created record for the
+      // same activity is never auto-resolved or duplicated, same "never helpfully
+      // rewrite a user's own record" convention as Change Orders/contract_value.
+      auto_generated: false,
       created_at: now,
       updated_at: now,
     };
@@ -1665,7 +1675,12 @@
 
   var DELAY_RECORD_CAUSES = ["owner_caused", "contractor_caused", "weather_force_majeure", "design_rfi_driven", "other"];
 
-  var DELAY_RECORD_STATUSES = ["open", "investigating", "mitigation_in_progress", "recovery_in_progress", "recovered", "closed"];
+  // "resolved" is distinct from "recovered" (a planner's Recovery Actions worked) and
+  // "closed" (a planner manually closed it out) — it means "the schedule itself came
+  // back within baseline," and is set ONLY by the auto-detection pass, never chosen
+  // directly on the Add/Edit form's own Status picker (still offered there so an
+  // already-resolved record can be reviewed/re-opened by hand if needed).
+  var DELAY_RECORD_STATUSES = ["open", "investigating", "mitigation_in_progress", "recovery_in_progress", "recovered", "resolved", "closed"];
 
   // Gate A (spec point 7): operational delay categories, distinct from DELAY_RECORD_CAUSES'
   // contractual-excusability bucket above. A plain hardcoded list for this gate — spec

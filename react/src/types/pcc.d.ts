@@ -356,6 +356,7 @@ export interface PCCDelayRecord {
   underlying_cause?: string;
   actual_impact_days?: number | null;
   updated_at?: string;
+  auto_generated?: boolean;
 }
 
 export interface PCCDelayActivityLink {
