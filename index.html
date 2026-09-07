@@ -138,6 +138,8 @@
      30 individually "right" icons only that one page would ever see isn't worth the many
      call sites it would need. */
   --icon-empty-state: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%2222%2012%2016%2012%2014%2015%2010%2015%208%2012%202%2012%22/%3E%3Cpath%20d%3D%22M5.45%205.11%202%2012v6a2%202%200%200%200%202%202h16a2%202%200%200%200%202-2v-6l-3.45-6.89A2%202%200%200%200%2016.76%204H7.24a2%202%200%200%200-1.79%201.11z%22/%3E%3C/svg%3E");
+
+  --icon-chevron-right: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m9%2018%206-6-6-6%22/%3E%3C/svg%3E");
 }
 
 html[data-theme="dark"] {
@@ -1819,6 +1821,32 @@ a:focus-visible {
 
 .attention-item--clickable:hover {
   background-color: var(--hover-bg);
+}
+
+/* A resting-state chevron, not just the hover background above — a row that only
+   signals "clickable" once you're already hovering it isn't discoverable at all before
+   that first hover. Faint at rest, full opacity on hover, so it reads as a real
+   affordance without competing with the row's own text for attention. */
+.attention-item--clickable::after {
+  content: "";
+  align-self: center;
+  margin-left: auto;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  background-color: var(--text-secondary);
+  opacity: 0.35;
+  transition: opacity var(--transition-fast);
+  mask-image: var(--icon-chevron-right);
+  mask-repeat: no-repeat;
+  mask-size: contain;
+  -webkit-mask-image: var(--icon-chevron-right);
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+}
+
+.attention-item--clickable:hover::after {
+  opacity: 0.8;
 }
 
 .attention-item__icon {
@@ -13240,6 +13268,10 @@ window.PCC_SQL_WASM_BASE64 = "AGFzbQEAAAABnwRFYAJ/fwF/YAF/AX9gA39/fwBgA39/fwF/YA
     // overlay — a plain keyboard glyph (outline + a row of keys) in the same stroke
     // vocabulary as every other icon above.
     keyboard: '<svg ' + ICON_SVG_ATTRS + '><rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="10" x2="6" y2="10"/><line x1="10" y1="10" x2="10" y2="10"/><line x1="14" y1="10" x2="14" y2="10"/><line x1="18" y1="10" x2="18" y2="10"/><line x1="6" y1="14" x2="18" y2="14"/></svg>',
+    // Home button (item #6 of the follow-up feature list, 2026-09-05): every module gets
+    // a one-click way back to My Work, the cross-register "what needs my attention"
+    // aggregation page — not Dashboard, which is portfolio-wide KPIs, a different job.
+    home: '<svg ' + ICON_SVG_ATTRS + '><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
   };
 
   // Redesign Gate 3 (Icon System Expansion): the nav list's own per-page icons, the
@@ -13829,6 +13861,18 @@ window.PCC_SQL_WASM_BASE64 = "AGFzbQEAAAABnwRFYAJ/fwF/YAF/AX9gA39/fwBgA39/fwF/YA
     var actions = document.createElement("div");
     actions.className = "title-block__actions";
 
+    // Item #6 of the follow-up feature list (2026-09-05): one click back to My Work from
+    // any module. First in the actions row (leftmost, most-reached-for position) since
+    // it's the one button meant to be used constantly while working, not an occasional
+    // settings-style action like the ones after it.
+    var homeBtn = document.createElement("button");
+    homeBtn.className = "icon-btn";
+    homeBtn.title = "Go to My Work";
+    homeBtn.innerHTML = ICONS.home;
+    homeBtn.onclick = function () {
+      window.PCC.router.go("myWork");
+    };
+
     var exportBtn = document.createElement("button");
     exportBtn.className = "icon-btn";
     exportBtn.title = "Export all data to a single file";
@@ -13933,6 +13977,7 @@ window.PCC_SQL_WASM_BASE64 = "AGFzbQEAAAABnwRFYAJ/fwF/YAF/AX9gA39/fwBgA39/fwF/YA
       if (window.PCC.keyboardShortcuts) window.PCC.keyboardShortcuts.showHelp();
     };
 
+    actions.appendChild(homeBtn);
     actions.appendChild(exportBtn);
     actions.appendChild(importBtn);
     actions.appendChild(importInput);

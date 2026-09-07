@@ -172,6 +172,10 @@
     // overlay — a plain keyboard glyph (outline + a row of keys) in the same stroke
     // vocabulary as every other icon above.
     keyboard: '<svg ' + ICON_SVG_ATTRS + '><rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="10" x2="6" y2="10"/><line x1="10" y1="10" x2="10" y2="10"/><line x1="14" y1="10" x2="14" y2="10"/><line x1="18" y1="10" x2="18" y2="10"/><line x1="6" y1="14" x2="18" y2="14"/></svg>',
+    // Home button (item #6 of the follow-up feature list, 2026-09-05): every module gets
+    // a one-click way back to My Work, the cross-register "what needs my attention"
+    // aggregation page — not Dashboard, which is portfolio-wide KPIs, a different job.
+    home: '<svg ' + ICON_SVG_ATTRS + '><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
   };
 
   // Redesign Gate 3 (Icon System Expansion): the nav list's own per-page icons, the
@@ -761,6 +765,18 @@
     var actions = document.createElement("div");
     actions.className = "title-block__actions";
 
+    // Item #6 of the follow-up feature list (2026-09-05): one click back to My Work from
+    // any module. First in the actions row (leftmost, most-reached-for position) since
+    // it's the one button meant to be used constantly while working, not an occasional
+    // settings-style action like the ones after it.
+    var homeBtn = document.createElement("button");
+    homeBtn.className = "icon-btn";
+    homeBtn.title = "Go to My Work";
+    homeBtn.innerHTML = ICONS.home;
+    homeBtn.onclick = function () {
+      window.PCC.router.go("myWork");
+    };
+
     var exportBtn = document.createElement("button");
     exportBtn.className = "icon-btn";
     exportBtn.title = "Export all data to a single file";
@@ -865,6 +881,7 @@
       if (window.PCC.keyboardShortcuts) window.PCC.keyboardShortcuts.showHelp();
     };
 
+    actions.appendChild(homeBtn);
     actions.appendChild(exportBtn);
     actions.appendChild(importBtn);
     actions.appendChild(importInput);
