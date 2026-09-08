@@ -247,6 +247,68 @@ cd tests && npm test    # run the full jsdom/fake-indexeddb suite (must pass bef
 node --check src/js/whatever.js   # quick syntax check on a single file
 ```
 
+## Building release installers (Windows EXE / Android APK)
+
+Full detail/troubleshooting lives in `packaging/README.md` and `HANDOFF.md`'s dated build-session
+write-ups (search `Windows EXE + Android APK` there) — this is the fast-reference version. Always
+`node build.js` at the repo root first so both installers embed the current `index.html`.
+
+**Requirements — Windows (.exe, built via Electron + electron-builder, cross-built from Linux):**
+- `cd packaging && npm install` (first time only).
+- **Wine, both architectures** — `wine64` alone is NOT enough; NSIS's installer stub is a 32-bit
+  PE binary and needs `wine32:i386` (WOW64) too. If this sandbox also has a PHP PPA (e.g.
+  `ondrej/php`) enabled, installing `wine32:i386` can silently uninstall the `wine`/`wine64`
+  (amd64) packages as collateral — a `libgd3` version mismatch between the PPA's amd64 build and
+  the plain Ubuntu archive's i386 build. Fix: pin both architectures to the same version before
+  installing wine: `apt-get install -y --allow-downgrades --no-install-recommends
+  libgd3:amd64=2.3.3-9ubuntu5 libgd3:i386=2.3.3-9ubuntu5 wine wine64 wine32:i386`. If `~/.wine`
+  was already created by a failed amd64-only attempt, `rm -rf ~/.wine` first so a fresh
+  WOW64-capable prefix gets created.
+- **Build with the platform flag explicit**: `cd packaging && node scripts/copy-app.js && npx
+  electron-builder --win`. The bare `npm run electron:build` script has no `--win` flag and
+  electron-builder defaults to the HOST platform without one — on a Linux sandbox this silently
+  produces a Linux AppImage instead of a Windows installer, with no error. (Worth fixing the npm
+  script itself to always pass `--win`; flagged, not done, since it's outside whatever task
+  prompted the build.)
+- No code-signing certificate — deliberate, standing decision (personal use only); the installer
+  shows an "Unknown Publisher" SmartScreen warning, which is expected and accepted.
+- **Verify before sending**: extract `app.asar` (`npx asar extract release/win-unpacked/resources/app.asar <dir>`)
+  and `diff` its `electron/index.html` against the repo root's fresh build — must be byte-identical.
+
+**Requirements — Android (.apk, built via Capacitor + Gradle):**
+- JDK 21 (`JAVA_HOME`), and an Android SDK with `platform-tools`, `platforms;android-36`,
+  `build-tools;36.0.0` under `ANDROID_HOME`/`packaging/android/android/local.properties`
+  (`sdk.dir=...`). Bootstrap from scratch via `cmdline-tools` from
+  `https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip` +
+  `sdkmanager --sdk_root=<dir> --licenses` + `sdkmanager --sdk_root=<dir> "platform-tools"
+  "platforms;android-36" "build-tools;36.0.0"` if not already present.
+- **A real signing keystore** at `packaging/android/android/app/pcc-release.jks` +
+  `keystore.properties` (both gitignored, never committed — see the Android release-signing
+  bullet further below). Without it, `assembleRelease` silently falls back to an UNSIGNED APK
+  that fails to install on-device ("package appears to be invalid"), not just a warning. This
+  keystore lives only on Aditya's machine/password manager between sessions — a fresh container
+  has none and needs it re-supplied before a real release build.
+- **Bump `versionCode`/`versionName`** in `packaging/android/android/app/build.gradle` before
+  building — see the dedicated bullet below, this is a real, previously-shipped bug.
+- `cd packaging/android && npm install` (first time only), then `npm run android:build:release`
+  (runs `copy-app.js` + `cap sync android` + `gradlew assembleRelease`).
+- **Maven Central can return HTTP 429 (Too Many Requests) on a cold Gradle cache** — this has been
+  transient and self-resolving every time it's happened (each retry reuses already-cached
+  artifacts and has fewer failures than the last). Just retry; add a short `sleep` and
+  `--max-workers=1` if it recurs. Not a sign the SDK/toolchain setup is broken.
+- **A `gradlew ... | tee build.log` pipeline reports `tee`'s exit code, not gradle's** — a failed
+  build can still show exit code 0 to a caller checking `$?` afterward. Grep the log for `BUILD
+  SUCCESSFUL`/`BUILD FAILED`, or check `${PIPESTATUS[0]}` right after the pipeline, don't trust a
+  bare exit-code check.
+- **Verify before sending**: `apksigner verify --verbose <apk>` (confirms it's actually signed,
+  not just built) and `apksigner verify --print-certs <apk>` (confirms the signer cert's SHA-256
+  matches the keystore backup's own documented fingerprint — never assume, actually diff the
+  hex), plus `zipalign -c -v 4 <apk>`.
+
+**Delivery, both platforms**: `sha256sum` the final artifact; if it exceeds the ~30MB
+file-transfer limit (the Windows `.exe` always does, ~100-106MB), split per the standing
+convention below and verify the reassembled file's checksum matches before sending.
+
 ## Testing conventions (match the project's existing discipline)
 
 - Every phase/"Gate" in the README was shipped with a fresh test suite run before delivery —

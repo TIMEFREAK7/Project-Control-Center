@@ -6119,6 +6119,52 @@ suite: 2,630 checks, 0 failures. See HANDOFF.md for the complete write-up, inclu
 Playwright gotcha (the Documents page renders two file inputs at once, and a generic
 `input[type=file]` locator silently grabbed the wrong one).
 
+## Mobile & Desktop Packaging — Release Build Playbook: Windows EXE + Android APK (2026-09-08)
+
+Both installers had already been built successfully in earlier packaging gates (see "Gate 1:
+Desktop (Electron)" and "Android Release Signing" above), but the actual environment requirements
+and repeatable steps had only ever lived scattered across `HANDOFF.md`'s dated session write-ups —
+a fresh sandbox container starts with neither Wine nor an Android SDK, so every new session was
+re-deriving the same setup from scratch. This entry (and matching sections added to `CLAUDE.md`
+and `HANDOFF.md` the same day) is a single documented reference so that stops happening. No app
+code changed — only the two release version numbers were bumped (Android `versionCode` 4→5/
+`versionName` "1.3"→"1.4", Electron `packaging/package.json` 1.3.0→1.4.0) ahead of the builds, per
+the standing per-release-build convention.
+
+**Windows requirements**: `cd packaging && npm install`, plus Wine — both `wine64` **and**
+`wine32:i386` (NSIS's installer stub is a 32-bit PE binary; `wine64` alone silently produces a
+non-functional installer). Build with `node scripts/copy-app.js && npx electron-builder --win`
+from `packaging/` — the plain `npm run electron:build` script has no `--win` flag and
+electron-builder defaults to the host platform without one, which on a Linux sandbox means it
+silently builds a Linux AppImage instead, no error raised. No code-signing certificate by
+standing decision (personal use only; the "Unknown Publisher" warning is expected).
+
+**Android requirements**: JDK 21 + an Android SDK (`platform-tools`, `platforms;android-36`,
+`build-tools;36.0.0`) under `ANDROID_HOME`, and — the one that actually blocks a real release
+build — the project's dedicated signing keystore at `packaging/android/android/app/pcc-release.jks`
++ `keystore.properties` (gitignored, never committed; Aditya holds the only backup and re-supplies
+it to a fresh container). Bump `versionCode`/`versionName` first, then `cd packaging/android &&
+npm install && npm run android:build:release`.
+
+**Two new environment gotchas found this round, on top of the Wine/Android-SDK bootstrapping
+already documented in earlier gates**: installing `wine32:i386` on a sandbox that also has a PHP
+PPA enabled (this one does, for unrelated tooling) can silently remove the `wine`/`wine64` (amd64)
+packages as collateral — a version mismatch in `libgd3` between the PPA's amd64 build and the
+plain Ubuntu archive's i386 build, fixed by explicitly pinning both architectures to the same
+`libgd3` version before (re)installing wine. And Maven Central returned HTTP 429 (Too Many
+Requests) on the first two `assembleRelease` attempts against a cold Gradle cache — checked the
+sandbox's own network proxy status first (no relay failures reported there) before concluding this
+was genuine upstream throttling, which resolved itself on the third retry as Gradle's local cache
+filled in from the earlier partial successes.
+
+Both artifacts verified the same way prior packaging gates established — not just "it built":
+`apksigner verify --verbose`/`--print-certs` confirmed the APK's signer certificate SHA-256
+matches the keystore backup's own documented fingerprint exactly, `zipalign -c -v 4` passed, and
+the Windows `.exe`'s embedded `app.asar`'s `index.html` was diffed byte-for-byte against the fresh
+repo-root build. Delivered directly: the ~10.4MB signed APK as one file, the ~106MB `.exe` split
+into 5 parts via the standing `split -b 25M -d -a 2` convention with the reassembled file's
+SHA-256 verified to match before sending.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →

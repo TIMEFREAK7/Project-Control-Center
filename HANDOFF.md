@@ -86,6 +86,42 @@ that override default behavior).
   isn't as strict about this as Android, but keeping both packages' version numbers moving forward
   together is still correct practice. Also written into `CLAUDE.md` itself now.
 
+## Quick reference: building the Windows EXE / Android APK
+
+Added 2026-09-08 so a fresh session doesn't have to re-derive this from scattered session
+write-ups. Full troubleshooting detail (the exact apt/gradle commands, why each gotcha happens)
+is in this file's "2026-09-08 session: Windows EXE + Android APK release build" entry near the
+end of this file, and in `CLAUDE.md`'s "Building release installers" section — this is the
+short version. Always `node build.js` at the repo root first.
+
+**Windows** — requires Wine (`wine64` **and** `wine32:i386`; NSIS's stub is 32-bit). Build with
+`cd packaging && node scripts/copy-app.js && npx electron-builder --win` — NOT the bare `npm run
+electron:build` script, which has no `--win` flag and defaults to the host OS (silently builds a
+Linux AppImage on a Linux sandbox, no error). No code-signing cert (standing decision, personal
+use only — "Unknown Publisher" warning expected). Verify: extract `app.asar`, diff its
+`electron/index.html` against the fresh repo-root build, must be byte-identical.
+
+**Android** — requires JDK 21 + an Android SDK (`platform-tools`, `platforms;android-36`,
+`build-tools;36.0.0`) under `ANDROID_HOME`, and the project's real signing keystore at
+`packaging/android/android/app/{pcc-release.jks,keystore.properties}` (gitignored; **Aditya holds
+the only backup** — a fresh container has none and needs it re-supplied, or `assembleRelease`
+silently falls back to an unsigned APK that fails to install at all). **Bump `versionCode`/
+`versionName`** in `build.gradle` before every release build, no exceptions (real shipped bug,
+2026-08-24). Build: `cd packaging/android && npm install && npm run android:build:release`.
+Verify: `apksigner verify --verbose` + `--print-certs` (signer cert SHA-256 must match the
+keystore backup's own documented fingerprint exactly) + `zipalign -c -v 4`.
+
+**Both**: `sha256sum` the result; split anything over ~30MB with `split -b 25M -d -a 2` and verify
+the reassembled file's checksum before sending (the `.exe` always needs this, ~100-106MB).
+
+**Gotchas worth knowing before hitting them cold**: installing `wine32:i386` on a sandbox that
+also has a PHP PPA enabled can silently uninstall `wine`/`wine64` (amd64) as collateral — a
+`libgd3` cross-architecture version mismatch; fix by pinning both architectures to the same
+`libgd3` version before (re)installing wine. Maven Central can return HTTP 429 during a cold-cache
+Gradle build — transient, retry (each attempt reuses cached artifacts and fails less). A
+`gradlew ... | tee log` pipeline reports `tee`'s exit code, not gradle's — grep the log for
+`BUILD SUCCESSFUL`/`BUILD FAILED` rather than trusting a bare `$?` check.
+
 ## NEW INITIATIVE: UI/UX Overhaul (started 2026-08-20) — a THIRD, separate roadmap
 
 `main` is up to date through **UI/UX Overhaul Gate 8 — Tablet/Mobile Optimization, which CLOSES
