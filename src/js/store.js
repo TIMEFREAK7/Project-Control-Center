@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 63;
+  var SCHEMA_VERSION = 64;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -3214,6 +3214,19 @@
         if (s.constraints_enabled === undefined) s.constraints_enabled = false;
       });
       loaded.schema_version = 63;
+    }
+
+    if (loaded.schema_version < 64) {
+      // Auto Baseline Delay Detection + Bidirectional Delay Comments: every existing
+      // delay_records row backfilled with auto_generated:false (a record from before
+      // this feature existed was, by definition, entered by hand — see newDelayRecord()'s
+      // own comment) and comments:[] (see newDelayRecord()'s own comment on why this is
+      // a single shared array, not split per view).
+      (loaded.delay_records || []).forEach(function (r) {
+        if (r.auto_generated === undefined) r.auto_generated = false;
+        if (r.comments === undefined) r.comments = [];
+      });
+      loaded.schema_version = 64;
     }
 
     return loaded;

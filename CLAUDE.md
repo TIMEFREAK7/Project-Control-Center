@@ -178,6 +178,64 @@ it documents *why* things are shaped the way they are, not just what exists.
   portfolio-wide loop (that function's own header comment warns against exactly this — see it
   before calling it from a new list/dashboard). See the file's own header comment for the full
   reasoning before adding anything to it.
+- **There is no separate "Delay Registry" store collection.** The Schedule page's Activity Detail
+  Panel (per-activity Delay Records section) and the Delay & Recovery Dashboard's own "Delay
+  Records (worst first)" register are both just different VIEWS over the same `data.delay_records`
+  array — the dashboard is a portfolio-wide rollup, not its own register. Anything that needs to
+  show/edit the same delay data in both places (see Bidirectional Delay Comments below) just reads
+  and writes that one shared array — no sync mechanism needed or wanted.
+- **`react/src/services/delayRecoveryDashboardService.ts` never imports from
+  `scheduleService.ts`, on purpose** — it independently duplicates the label maps
+  (`DELAY_STATUS_LABELS`, `DELAY_CATEGORY_LABELS`, etc.) and even some logic
+  (`addDelayComment`/`deleteDelayComment`) that also exist in `scheduleService.ts`. This is a
+  real, deliberate per-module-duplication convention (see the file's own header comment), not
+  accidental drift — but it's a real trap for future changes: **adding a new delay-record status
+  or label to one service's copy and forgetting the other silently breaks only the
+  dashboard's own rendering** (exactly what happened when `resolved` was added to
+  `scheduleService.ts`'s `DELAY_STATUS_LABELS` for Auto Baseline Delay Detection but initially
+  missed in `delayRecoveryDashboardService.ts`'s copy — caught and fixed in the very next gate).
+  When touching any `delay_records`-related constant or status value, grep both files.
+- **`delay_records` gained two fields this session, both defaulting safely and read
+  defensively everywhere** (`store.js`'s `newDelayRecord()`): `auto_generated` (boolean, set only
+  by `scheduleService.ts`'s `runAutoDelayDetection()` — see below) and `comments` (an array of
+  `{id, text, created_at}`, the Bidirectional Delay Comments thread — no per-comment author field,
+  since this app has no multi-user/auth concept anywhere else either). Both are backfilled by the
+  schema v64 migration for any pre-existing record, but every read of `comments` should still
+  guard with `|| []` (matches how `status_history` is already read) since a hand-constructed test
+  fixture or an old in-memory reference from before a migration ran won't have it.
+- **`runAutoDelayDetection(scheduleId)` (`scheduleService.ts`) auto-creates/auto-resolves Delay
+  Records by comparing a schedule's current activities against its project's OFFICIAL baseline**
+  (the same one `toggleOfficialBaseline()` marks, and the one Executive Center's Schedule Variance
+  already measures against — reused rather than inventing a second "which baseline counts"
+  concept). It's pure date comparison via the existing `scheduleBaselineEngine.compareBaselineToCurrent()`
+  — no CPM engine call, so unlike `delayImpactEngine.js`'s `computeProjectFinishImpact()` it's safe
+  to run over every activity in a schedule. Wired into `runCalculation()`, `saveActivity()`,
+  `commitInlineActivityEdit()`, `bulkShiftActivities()`, and `toggleOfficialBaseline()` itself. It
+  ONLY ever touches `auto_generated:true` records (creating one when an activity's finish slips
+  past baseline with no existing open auto record for it; flipping an existing one's status to
+  `"resolved"` — never deleting — when the activity comes back within baseline) — a manually
+  created Delay Record for the same activity is never touched, matching this file's own
+  "never helpfully rewrite a user's own record" convention (see Change Orders/`contract_value`
+  below). `"resolved"` is a real `DELAY_RECORD_STATUSES` value distinct from `"recovered"`
+  (a planner's Recovery Actions worked) and `"closed"` (manually closed) — it specifically means
+  "the schedule itself came back within baseline on its own."
+- **Density convention for secondary/destructive actions: tuck them behind a small "⋯" icon-button
+  + `.card-menu__dropdown`, keep only the ONE primary action visible.** Established at Gate 6
+  (Risk Register: Edit/Delete moved off the card into "⋯", confirmed via AskUserQuestion) and
+  reused since for Portfolio project cards (Edit/Pin/Archive) and the Schedule page's own toolbar
+  ("Columns", and now "Delete Schedule…" under a new "Schedule actions" menu). When a feature
+  request reads like "there's no way to do X," check whether X is already implemented behind one
+  of these menus before assuming it's a genuine gap — this exact confusion is why Company/Client/
+  Project archive turned out to need zero new code (Company/Client already surface Archive
+  directly in Organizations.tsx; Project's Archive is deliberately one click deeper, in Portfolio's
+  own "⋯" menu).
+- **Bumping `SCHEMA_VERSION` (`store.js`) needs a matching migration step AND updated test
+  fixtures.** Multiple existing tests hardcode the expected final `schema_version` after migrating
+  an old dataset (search `assert.strictEqual(data.schema_version,` across `tests/*.js`) — bumping
+  the constant without updating those breaks otherwise-unrelated tests in confusing ways. Current
+  version is **64** (Auto Baseline Delay Detection's `auto_generated` + Bidirectional Delay
+  Comments' `comments`, both on `delay_records`) — see `tests/test_store_schema_v54_migration.js`
+  for the migration test pattern to copy for the next bump.
 
 ## Commands
 
