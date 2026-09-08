@@ -6357,3 +6357,97 @@ files, 0 failures**. `react/` TypeScript strict-mode conversion (all pages) stil
 unaffected by this session's work. **Next session should start by asking Aditya what `.sml`/
 `.plf` files actually are** before doing anything else on the original 10-item list — everything
 else on it is done.
+
+## 2026-09-08 session: Windows EXE + Android APK release build (no feature work)
+
+Aditya asked for a state check, then Windows/Android release builds using an uploaded keystore
+backup zip. No source code changed except the two version bumps below — this section exists for
+the environment-provisioning gotchas, which are real and will recur in a fresh container.
+
+**Repo state found at session start was confusing but resolved as harmless**: this container's
+local clone had a *stale* remote-tracking ref for `origin/main` (cached at `a8e0049`, an older
+commit) even though GitHub's actual `main` was already at `79295e3` — the tip of the designated
+working branch (`claude/build-windows-android-release-dl50u3`), which had never had a PR opened
+for it and whose own remote branch ref had been pruned (likely auto-delete-on-merge, even though
+no PR record exists — possibly merged by a different path). A `git fetch origin main` resolved
+the stale ref and confirmed `main` already contained all 13 commits' worth of Delay Management
+work (schema v64) with nothing left to merge. The working branch was pushed anyway (recreating
+the pruned ref, harmless) but no new merge commit was needed. **Takeaway for a future session**:
+don't trust a freshly-cloned container's local remote-tracking refs at face value if something
+looks unmerged that "shouldn't" be — `git fetch origin <branch>` before concluding anything.
+Full suite re-run clean: **2,659 checks, 0 failures**, `node build.js` byte-identical (nothing to
+commit from the rebuild itself).
+
+**Version bumps** (commit `053f5fd`): Android `versionCode` 4→5, `versionName` "1.3"→"1.4"
+(`packaging/android/android/app/build.gradle`); Electron `packaging/package.json` version
+1.3.0→1.4.0. Per the standing instruction, bumped before building, not after.
+
+**Keystore**: Aditya uploaded `pcckeystorebackup.zip` (the README inside it documents this is the
+*second* keystore — an earlier one's passwords were lost). Extracted, installed at
+`packaging/android/android/app/{pcc-release.jks,keystore.properties}`, verified via `keytool -list
+-v` that the cert fingerprints match the backup's own README exactly
+(SHA-256 `3B:48:02:E2:8A:96:E6:E4:70:3B:13:6E:05:56:1F:A1:54:FE:6A:29:E0:12:1A:FF:41:70:C5:12:F5:85:9C:E9`)
+before trusting it. Confirmed `packaging/android/.gitignore` already excludes both files — neither
+was ever staged. **This keystore lives only in this container's filesystem, not in git** — same
+as every prior session's note on this: a future fresh container needs Aditya to re-supply the zip.
+
+**New environment-provisioning gotchas this session, on top of the ones already documented above
+(wine ENOENT, wine32/WOW64, Android SDK bootstrap via `cmdline-tools` + `sdkmanager`)**:
+
+1. **Installing `wine32:i386` can silently uninstall `wine`/`wine64` (amd64) as collateral**, in
+   an environment that also has the `ondrej/php` (sury.org) PPA enabled (this container does, for
+   PHP tooling unrelated to this repo). Root cause: `libgphoto2-6t64` (a wine dependency) needs
+   `libgd3`, and the sury.org PPA ships a newer `libgd3:amd64` (`2.3.3-13+...`) than the plain
+   Ubuntu archive's `libgd3:i386` (`2.3.3-9ubuntu5`) — apt won't co-install mismatched versions of
+   the same package across architectures, so it silently removed the *amd64* `wine`/`wine64`/
+   `libwine` packages to resolve the conflict when `wine32:i386` pulled in `libgd3:i386`. Symptom:
+   `wine --version` → `command not found` right after an apparently-successful `apt-get install
+   wine32:i386`. **Fix**: explicitly pin both architectures to the same `libgd3` version before
+   (re)installing wine: `apt-get install -y --allow-downgrades --no-install-recommends
+   libgd3:amd64=2.3.3-9ubuntu5 libgd3:i386=2.3.3-9ubuntu5 wine wine64 wine32:i386`. Only relevant
+   to sandboxes that happen to have a PHP PPA already configured — a bare container may not hit
+   this at all, but it cost real time here and is worth checking (`apt-cache policy libgd3`) if
+   `wine` mysteriously goes missing after a `wine32:i386` install.
+2. **`gradlew assembleRelease` piped through `tee` reports a misleading exit code.** Running
+   `./gradlew assembleRelease | tee build.log` and checking `$?` afterward reflects `tee`'s exit
+   status (0, since `tee` itself succeeded), not gradle's — even though the log clearly shows
+   `BUILD FAILED`. **Always grep the log for `BUILD SUCCESSFUL`/`BUILD FAILED` (or check
+   `${PIPESTATUS[0]}` right after the pipeline, not a later `$?`)** rather than trusting a
+   generic "command completed / exit code 0" summary when gradle output is piped.
+3. **Maven Central (`repo.maven.apache.org`) returned HTTP 429 (Too Many Requests) through this
+   sandbox's proxy on the first `assembleRelease` attempt** — roughly 20 POM fetches failed at
+   once (Gradle's own dependency graph for AGP 8.13.0 + Capacitor plugins pulls ~30-40 Maven
+   artifacts). Checked `curl $HTTPS_PROXY/__agentproxy/status` first — no relay failures reported
+   there, so this reads as genuine upstream throttling on repo.maven.apache.org itself, not a
+   proxy misconfiguration. **This was transient and self-resolving, not a real blocker**: each
+   retry re-used Gradle's already-cached artifacts and had fewer failures than the last (~20 →
+   ~5 → 0 over three attempts, the last one adding a 15s sleep and `--max-workers=1` to reduce
+   burst request volume). If a future session hits 429s from Maven Central during an Android
+   build, just retry (with a short sleep and `--max-workers=1` if it recurs) rather than assuming
+   the SDK/toolchain setup is broken.
+
+**Builds produced and verified**:
+- **Android**: `packaging/android/android/app/build/outputs/apk/release/app-release.apk`,
+  10,396,195 bytes, SHA-256
+  `408285cc239d6bbba559c1d14ad4bcbee99cee576ece941e6f8e2a88d8132141`. Verified via `apksigner
+  verify --verbose` (v2 scheme, signed) and `apksigner verify --print-certs` (signer cert SHA-256
+  matches the keystore backup's own fingerprint exactly) and `zipalign -c -v 4` (aligned, no
+  errors). Sent to Aditya directly as a single file (well under the transfer limit).
+- **Windows**: `packaging/release/Project Control Center Setup 1.4.0.exe`, 106,230,493 bytes,
+  SHA-256 `c4990adbc809a46b2301cf9ec261979e69c017e039f47507264799b07f748694`. Built via `node
+  scripts/copy-app.js && npx electron-builder --win` (the plain `npm run electron:build` script
+  has **no `--win` flag and defaults to the host OS** — it built a Linux AppImage on the first
+  attempt in this sandbox; discarded and rebuilt correctly. **Worth fixing the `electron:build`
+  npm script itself to always pass `--win`, or adding a dedicated `electron:build:win` script, so
+  a future session doesn't repeat this** — not done this session since it's a packaging-script
+  change outside what was asked, flagging for Aditya instead.). Verified the embedded
+  `app.asar`'s `electron/index.html` is byte-identical to the repo root's fresh build (via `npx
+  asar extract` + `diff`) per the standing verification step. Split into 5 parts (`part00`-`part04`,
+  25MB each except the last ~1.3MB) via the standing `split -b 25M -d -a 2` method; reassembly
+  verified byte-exact (`cat parts > tmp && sha256sum` matches the original) before sending. Sent
+  to Aditya as 5 separate files with the exact SHA-256 and Windows `copy /b` reassembly command.
+
+**Not done this session, and not needed**: no zip end-user package (the standing "hand over a zip
+after every gate/phase" convention applies to feature work; this session shipped no feature
+changes, only version bumps + native builds, and the two installers were delivered directly
+instead). No GitHub Release / release notes — not asked for.
