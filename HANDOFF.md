@@ -6201,3 +6201,159 @@ attribute (`input[accept=".xlsx,.xls,.docx,.pdf"]`) instead of the generic type 
 
 **Tests**: full suite **2,630 checks (2,627 + 3 new), 0 failures**. Merged into `main`, pushed,
 working branch restarted from the new `main` — same standing convention as every gate before it.
+
+## UI/UX Toolchain + Daily-Use Feature Backlog (branch `claude/pcc-uiux-toolchain-npt6o1`), 2026-09-07/08
+
+Two separate pieces of work on the same branch, in order:
+
+**Part 1 — UI/UX toolchain install + audit + fixes.** Aditya's request to "install" several
+GitHub-hosted UI/UX tools (Impeccable, a WCAG skill, an animate-skill, Playwright, a visual-QA
+skill) resolved to vendoring their *conceptual* content into project-local `.claude/skills/pcc-ui`
+and `.claude/skills/pcc-visual-qa` (they're static-file-audit playbooks and a Chromium/axe-core QA
+procedure, not runnable CLI tools compatible with a single self-contained `index.html` opened via
+`file://`) — real Playwright was already usable in-sandbox, nothing to install there either. Ran a
+real-Chromium audit against the built app, found and fixed three real issues: P1 title-block
+overflow at narrow desktop widths (a new `@media (max-width: 1150px)` breakpoint reusing the
+existing phone-tier cell-hiding pattern) + missing accessible names on several `<select>`s, P2 no
+`prefers-reduced-motion` support (added, with a `.spinner` exemption so loading feedback doesn't
+just vanish), P3 insufficient status-badge/heatmap text contrast (new theme-aware
+`--status-badge-*-text`/`--heatmap-high-text` tokens, WCAG-AA-verified in both themes). Then, per a
+separate "make it feel like a real app" request: vendored Lucide icon SVGs as CSS `mask-image`
+data-URIs for NEW icon needs only (status badges, empty states, KPI card accents) — explicitly did
+**NOT** touch the existing 41 hand-built nav/chrome icons in `layout.js`, which already match
+Lucide's own visual convention and contain real documented bug fixes (a Meetings/Resources icon
+collision, a density-icon filled-vs-stroked bug) that a wholesale swap would have silently
+undone. Added a first-run welcome screen (`Dashboard.tsx`, shown only when
+`data.projects.length === 0` — carefully distinct from the pre-existing "all projects archived"
+empty state, which is a different, real situation), a static loading screen in `index.html`
+itself (no JS — `layout.js`'s own `root.innerHTML = ""` boot sequence wipes it automatically), a
+Home button on every module's title-block (nav straight to My Work), a resting-state chevron
+affordance on My Work's rows (they already navigated correctly on click — the actual gap was zero
+visual cue that they were clickable, confirmed via AskUserQuestion), and a handful of small CSS
+transition/exit-animation touches (nav drawer close, a route-change fade) — no animation library,
+just `@keyframes` + `transitionend`-timed DOM removal. Merged to `main` in stages as each piece was
+verified (full suite + real-Chromium spot-check every time).
+
+**Part 2 — the 10-item daily-use feature backlog.** Aditya sent a numbered list of 10 real
+friction points from actually using the app. Four AskUserQuestion rounds settled the ambiguous
+ones before building anything (auto-resolve vs. auto-delete for #2/#3, archive vs. hard-delete for
+#8/#9, what was actually wrong with #7's "My Work pills," which specific Excel-import failure mode
+#10 meant). Investigation before building surfaced that **two of the ten weren't gaps at all**:
+
+- **#7 (My Work pills "need to be linked")**: `MyWork.tsx`'s `ItemRow` already had a working
+  `onClick={item.view}` — the request was really about discoverability, already covered above.
+- **#8 (delete Company/Client/Project)**: Company and Client already have full, tested,
+  directly-visible Archive/Unarchive in `Organizations.tsx` (`toggleCompanyArchived`/
+  `toggleClientArchived`) — this app's own long-standing "archive, never delete" convention
+  (spec point 14, explicitly documented in that file's own header comment). Project archive also
+  fully works (`Portfolio.tsx`'s `ProjectCard`) but is one click deeper, behind the card's "⋯"
+  menu — a deliberate density choice from Gate 6 (Risk Register), not a bug. **Zero code changed**
+  for this item; see CLAUDE.md's new "density convention" note for why this kind of thing is worth
+  checking before assuming a gap.
+
+The other eight (well, nine — #2/#3 are the same feature) were real and got built, each as its own
+commit, each fully tested (full suite + a dedicated new test file + real-Chromium verification)
+before merging to `main`:
+
+- **#20 — Simplify Delay Record / Recovery Action forms** (`afdcb3b`): both forms were one flat
+  list of a dozen-plus fields. Restructured into quick-add (description/days/one or two more) +
+  a `MoreDetailsToggle` disclosure (collapsed for new records, open for edits) holding everything
+  else — status, category, all the `RecordLinkField` cross-register links, etc. No field `id`s
+  changed, so existing selectors kept working; several existing tests needed a
+  `findButtonByText(dom, "+ More details").click(); await flush();` added before querying
+  now-hidden fields on a *new* record (edit forms default open, so those didn't need it) — five
+  test files touched this way (`test_recovery_actions_e2e.js`,
+  `test_advanced_delay_analysis_e2e.js`, `test_recovery_mitigation_planning_e2e.js`,
+  `test_delay_management_gate_ab_e2e.js`, `test_delay_gate_c_impact_e2e.js`,
+  `test_delay_gate_d_recovery_e2e.js`, `test_delay_gate_e_integrations_e2e.js` — each one's own
+  root cause was the exact same pattern, confirmed individually rather than assumed).
+- **#2/#3 — Auto Baseline Delay Detection** (`c6e8687`): `runAutoDelayDetection(scheduleId)`
+  (`scheduleService.ts`) compares a schedule's current activities against its project's OFFICIAL
+  baseline (reusing the existing `is_official` concept Executive Center's Schedule Variance
+  already keys off, rather than inventing a second "which baseline" idea) via the existing
+  `scheduleBaselineEngine.compareBaselineToCurrent()` — pure date comparison, no CPM engine call,
+  so safe to run over every activity unlike `delayImpactEngine.js`'s
+  `computeProjectFinishImpact()`. An activity whose finish slips past baseline with no existing
+  open `auto_generated` Delay Record gets one created (+ its `delay_activity_links` snapshot);
+  coming back within baseline flips that record's status to a new `"resolved"` value (kept, never
+  deleted — Aditya's own confirmed choice) with a `status_history` entry. Never touches a manually
+  created Delay Record for the same activity. Wired into `runCalculation()`, `saveActivity()`,
+  `commitInlineActivityEdit()`, `bulkShiftActivities()`, and `toggleOfficialBaseline()` itself.
+  New `test_auto_baseline_delay_detection_e2e.js` (11 checks: create, dedup, auto-resolve, re-slip
+  after resolve creates a fresh record, manual records untouched).
+- **#10 — Excel import Status not reading dropdown/data-validation values** (`e54edd9`): root
+  cause confirmed via inspection, not guessed — `parseRows()` (`scheduleImportService.js`) stored
+  a Status cell's raw text verbatim as `activity.status`. A hand-typed value matching the internal
+  key (`not_started`) round-tripped fine; a data-validation dropdown's human-readable label
+  ("In Progress") did not — it silently became a status string nothing else in the app recognized.
+  Fixed with a new `ACTIVITY_STATUS_ALIASES` table (same shape as the existing
+  `ACTIVITY_TYPE_ALIASES`) plus `normalizeStatusToken()` (lowercase, collapse `-`/`_`/whitespace to
+  one space) so "In-Progress"/"in_progress"/"In Progress" all resolve identically; a genuinely
+  unrecognized value now warns and defaults to `not_started` instead of silently corrupting the
+  field. Explicitly does NOT attempt the conditional-formatting case (a cell's fill color with no
+  effect on its own text) — confirmed via AskUserQuestion that one stays a real, unrecoverable
+  limit of the trimmed xlsx build this app vendors. 8 new checks in
+  `test_schedule_import_service.js`.
+- **#9 — Bulk delete activities/documents + full schedule delete** (`36ecc8b`): Documents.tsx
+  already had full bulk-delete (`DocumentBulkBar` — soft-delete to Trash + a separate permanent
+  delete from Trash) before this session touched anything; confirmed by inspection, no code
+  needed there. Added `bulkDeleteActivities()` (Schedule's Activities tab bulk-action-bar, next to
+  the existing "Shift Selected") and a genuine `deleteSchedule()` + `scheduleDeleteImpact()` for
+  fully removing a schedule (its WBS/Activities/Relationships/Baselines — store rows AND their
+  IndexedDB snapshots — plus Recovery Actions/Delay Records/delay_activity_links tied to those
+  activities), surfaced as "Delete Schedule…" behind a new "⋯ Schedule actions" menu on the
+  schedule toolbar. Deliberately a real, full delete (not this app's usual archive convention) —
+  `schedule.status` already has an "archived" state for keeping an old revision around; this is
+  specifically for undoing a bad import that should never have existed, so there's no history
+  worth keeping. Also fixed a real pre-existing gap while touching this code: single-activity
+  delete (`deleteActivityWithConfirm`) was cleaning up relationships/recovery_actions but not
+  `delay_activity_links`, silently leaving a dangling link to a deleted activity — fixed in both
+  the single and bulk paths. New `test_schedule_bulk_and_full_delete_e2e.js` (6 checks).
+- **#4 — Bidirectional Delay Comments** (`3fde8eb`): realized there's no separate "Delay Registry"
+  store collection — the Schedule page's Activity Detail Panel and the Delay & Recovery
+  Dashboard's own "Delay Records (worst first)" register are both just views over the same
+  `data.delay_records` array, so a single shared `comments` field on the record itself
+  (`{id, text, created_at}[]`, no author — this app has no multi-user concept anywhere) gives
+  "add from either place, see it in both" with zero sync mechanism to build. Rendered as a
+  collapsible "Comments (N)" disclosure (matching the existing Timeline pattern) in both places.
+  `delayRecoveryDashboardService.ts` got its own independent copy of `addDelayComment`/
+  `deleteDelayComment` (it never imports from `scheduleService.ts` — a deliberate, pre-existing
+  per-module-duplication convention) — both write the same underlying array. This also required
+  giving `DelayRecoveryDashboardPage` its first-ever live refresh mechanism: `data` was previously
+  a one-time `useState(() => getData())` snapshot (fine when the page had zero mutating actions),
+  swapped for the same nonce-driven `refresh()` every other live-editing page already uses. Also
+  backfilled the `"resolved"` status label into `delayRecoveryDashboardService.ts`'s own
+  independently-duplicated label map — a real latent gap from the Auto Baseline Delay Detection
+  change above, which only updated `scheduleService.ts`'s copy (this exact trap is now called out
+  explicitly in CLAUDE.md). New `test_bidirectional_delay_comments_e2e.js` (7 checks) proves the
+  sync in both directions and that removal syncs too.
+
+**Schema bump, caught and fixed in a follow-up commit** (`8f3b717`): the two `delay_records`
+fields added above (`auto_generated`, `comments`) shipped without the schema-version bump +
+migration this project's own established convention requires for every new optional field (see
+v62/v63's own precedent) — every read of them was already defensive (`|| []`, falsy-checks) so
+nothing actually crashed, but it was still a real gap. **`SCHEMA_VERSION` is now `64`**, with a
+migration backfilling `auto_generated:false`/`comments:[]` onto any pre-existing delay record, a
+new dedicated migration test proving it, and the three tests that hardcode the expected final
+schema_version after migration updated from `63` to `64`.
+
+**Still open — needs Aditya's input, not yet actioned**: item #5 ("import/export should also
+support `.mpp, .sml, .xer, .plf`") only got partially resolved. `.xer` (Primavera P6) already
+worked. `.mpp` (Microsoft Project's native binary format) is flagged as realistically infeasible
+without a heavy new dependency — no viable pure-JS parser exists, and this app's whole
+architecture is built around staying a single dependency-free file. **`.sml` and `.plf` were never
+identified** — Aditya never said what tool produces them, and guessing would risk building the
+wrong thing. Ask him directly before touching this.
+
+**Verification discipline held throughout**: every one of the commits above went through the same
+cycle — `npx tsc --noEmit` clean, `node build.js` clean, full `cd tests && npm test` green, a
+dedicated real-Chromium Playwright check (screenshot + zero console/page errors) for anything
+UI-visible, then commit → push → merge to `main` → rebuild+retest on `main` → push `main` →
+restart the working branch from the new `main`. No exceptions taken on any of the items above.
+
+**Repo/schema state at the end of this session**: `main` and `claude/pcc-uiux-toolchain-npt6o1`
+are even, both at `8f3b717`. `SCHEMA_VERSION = 64`. Full suite: **2,659 checks across 113 test
+files, 0 failures**. `react/` TypeScript strict-mode conversion (all pages) still fully intact and
+unaffected by this session's work. **Next session should start by asking Aditya what `.sml`/
+`.plf` files actually are** before doing anything else on the original 10-item list — everything
+else on it is done.
