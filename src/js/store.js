@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 64;
+  var SCHEMA_VERSION = 65;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -106,6 +106,15 @@
         // Populated by projectContext.js's setCompany()/setClient()/set(), never read or
         // written directly by page modules.
         company_context_memory: {},
+        // One-way hourly data mirror (Windows -> Android, read-only — src/js/dataMirror.js):
+        // off by default, only ever activates once the user explicitly enables it AND picks
+        // a folder — never silently starts writing files anywhere. Windows writes a full
+        // export snapshot into this folder roughly hourly (plus once on quit); Android reads
+        // from its own copy of the same folder (kept in sync by a separate tool the user
+        // sets up themselves, e.g. Syncthing) on app resume and pull-to-refresh. Android
+        // never writes here — there is no write-back path, by design.
+        sync_mirror_enabled: false,
+        sync_mirror_folder_path: "",
       },
       // Company/Client/Project Management redesign: independent master-data entities.
       // Companies and Clients exist on their own (so PCC can keep a full historical
@@ -3229,6 +3238,17 @@
       loaded.schema_version = 64;
     }
 
+    if (loaded.schema_version < 65) {
+      // One-way hourly data mirror (Windows -> Android, read-only): two new settings,
+      // both default to a fully-off state so no existing install starts silently writing
+      // files anywhere without the user explicitly opting in and choosing a folder.
+      if (loaded.settings) {
+        if (loaded.settings.sync_mirror_enabled === undefined) loaded.settings.sync_mirror_enabled = false;
+        if (loaded.settings.sync_mirror_folder_path === undefined) loaded.settings.sync_mirror_folder_path = "";
+      }
+      loaded.schema_version = 65;
+    }
+
     return loaded;
   }
 
@@ -3419,8 +3439,13 @@
    * before this migration, even though the live in-memory/localStorage copy no longer
    * carries blobs inline. Never mutates the live `data`; persistToLocalStorage() at the
    * end still persists the original blob-free object. */
-  function exportToFile() {
-    data.meta.last_exported_at = new Date().toISOString();
+  /** Builds the same fully-resolved (blobs inlined) export JSON string exportToFile() and
+   * the data mirror (src/js/dataMirror.js) both need, without exportToFile()'s own
+   * save-dialog/download side effect — the one thing that differs between "download a
+   * copy" and "silently write a mirror snapshot." Does not touch last_exported_at or
+   * persist/notify; exportToFile() below still owns those, since they're specifically
+   * about a user-initiated export, not every mirror write. */
+  function buildExportJson() {
     var clone = JSON.parse(JSON.stringify(data));
     var refs = collectBlobRefs(clone).filter(function (r) {
       return !r.get();
@@ -3436,7 +3461,14 @@
         });
     });
     return Promise.all(fetches).then(function () {
-      var blob = new Blob([JSON.stringify(clone, null, 2)], { type: "application/json" });
+      return JSON.stringify(clone, null, 2);
+    });
+  }
+
+  function exportToFile() {
+    data.meta.last_exported_at = new Date().toISOString();
+    return buildExportJson().then(function (json) {
+      var blob = new Blob([json], { type: "application/json" });
       var stamp = new Date().toISOString().slice(0, 10);
       return window.PCC.nativeFile.save(blob, "project-data-" + stamp + ".json").then(function () {
         persistToLocalStorage();
@@ -3516,6 +3548,32 @@
       });
   }
 
+  /** Shared by importFromFile() below and the data mirror's read side
+   * (src/js/dataMirror.js, which reads a mirror snapshot as a plain string via
+   * Capacitor's Filesystem API — no File object, so no FileReader involved). */
+  function importFromJsonString(jsonText, callback) {
+    var parsed;
+    try {
+      parsed = JSON.parse(jsonText);
+      if (!parsed || typeof parsed !== "object" || !("schema_version" in parsed)) {
+        throw new Error("This doesn't look like a Project Control Center data file.");
+      }
+    } catch (e) {
+      callback(e);
+      return;
+    }
+
+    var migrated;
+    try {
+      migrated = migrate(parsed);
+    } catch (e) {
+      callback(e);
+      return;
+    }
+
+    writeInlineBlobsAndCommit(migrated, callback);
+  }
+
   /** Callback-based, same public shape as before. Internally: an imported file still
    * carries blobs inline (exportToFile() always embeds them for portability), so
    * writeInlineBlobsAndCommit() writes each one to IndexedDB and nulls it out of the
@@ -3523,26 +3581,7 @@
   function importFromFile(file, callback) {
     var reader = new FileReader();
     reader.onload = function () {
-      var parsed;
-      try {
-        parsed = JSON.parse(reader.result);
-        if (!parsed || typeof parsed !== "object" || !("schema_version" in parsed)) {
-          throw new Error("This doesn't look like a Project Control Center data file.");
-        }
-      } catch (e) {
-        callback(e);
-        return;
-      }
-
-      var migrated;
-      try {
-        migrated = migrate(parsed);
-      } catch (e) {
-        callback(e);
-        return;
-      }
-
-      writeInlineBlobsAndCommit(migrated, callback);
+      importFromJsonString(reader.result, callback);
     };
     reader.onerror = function () {
       callback(new Error("Could not read that file."));
@@ -3604,12 +3643,14 @@
     getLastUsedName: getLastUsedName,
     rememberLastUsedName: rememberLastUsedName,
     exportToFile: exportToFile,
+    buildExportJson: buildExportJson,
     migrateLegacyInlineBlobsToIndexedDb: migrateLegacyInlineBlobsToIndexedDb,
     getCorruptionRecovery: getCorruptionRecovery,
     listRecoveryBackups: listRecoveryBackups,
     downloadRecoveryBackup: downloadRecoveryBackup,
     deleteRecoveryBackup: deleteRecoveryBackup,
     importFromFile: importFromFile,
+    importFromJsonString: importFromJsonString,
     importFromSqliteBackup: importFromSqliteBackup,
     resetAll: resetAll,
     newProject: newProject,

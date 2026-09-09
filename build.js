@@ -80,6 +80,8 @@ const JS_ORDER = [
   "js/keyboardShortcuts.js",
   "js/loadingIndicator.js",
   "js/nativeFile.js",
+  "js/dataMirror.js",
+  "js/pullToRefresh.js",
   "js/fileViewer.js",
   "js/nativePrint.js",
   "js/archive.js",

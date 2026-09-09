@@ -1,6 +1,15 @@
-const { app, BrowserWindow } = require("electron");
+const { app, BrowserWindow, ipcMain } = require("electron");
 const path = require("node:path");
 const { computeRelocatedPath, migrateIfNeeded } = require("./relocateStorage");
+const { writeMirrorFile } = require("./mirrorFileWriter");
+
+// One-way hourly data mirror (Phase 4): the renderer is contextIsolated with no direct
+// filesystem access, so writing the mirror snapshot silently (no save dialog) goes
+// through this IPC handler instead. See mirrorFileWriter.js for the actual (testable)
+// write + validation logic.
+ipcMain.handle("pcc-write-mirror-file", (event, folderPath, filename, content) => {
+  writeMirrorFile(folderPath, filename, content);
+});
 
 // Affects app.getName() and the default userData path (confirmed: the running app's
 // userData directory does pick this up) — but NOT the Linux window manager class
@@ -68,6 +77,29 @@ function createWindow() {
   // index.html here is a build-time copy of the repo root's self-contained bundle —
   // see ../scripts/copy-app.js. Never hand-edit it; it's overwritten on every build.
   win.loadFile(path.join(__dirname, "index.html"));
+
+  // One-way hourly data mirror (Phase 4): give the renderer one chance to write a final
+  // mirror snapshot before the window actually closes. Hooked on the window's own
+  // 'close' event (not app-level 'before-quit'/'window-all-closed') specifically so the
+  // window and its webContents are still alive when the IPC message is sent — by the
+  // time an app-level quit event fires, the window may already be destroyed. A 5s safety
+  // timeout guarantees this never blocks quitting indefinitely if the renderer never
+  // responds (e.g. it has no data-mirror listener wired, or is stuck).
+  let quitExportDone = false;
+  win.on("close", (event) => {
+    if (quitExportDone) return; // second call, after finish() below — let it close for real
+    event.preventDefault();
+    const finish = () => {
+      quitExportDone = true;
+      win.close();
+    };
+    const timeout = setTimeout(finish, 5000);
+    ipcMain.once("pcc-mirror-export-on-quit-done", () => {
+      clearTimeout(timeout);
+      finish();
+    });
+    win.webContents.send("pcc-mirror-export-on-quit");
+  });
 }
 
 app.whenReady().then(createWindow);
