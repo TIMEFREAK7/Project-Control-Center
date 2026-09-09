@@ -62,43 +62,22 @@
  * converted to a `{id, ref}` pointer the next time that id is re-saved — no bulk rewrite.
  * DB_VERSION bumps 1 -> 2 solely to add the new `content` object store; the existing
  * `blobs` store and every record already in it are untouched by the upgrade itself.
+ *
+ * Storage consolidation (PCC storage/sync playbook, Phase 3): the physical database this
+ * module reads/writes is now the shared one from sharedIndexedDb.js (`pcc_data_v1`) instead
+ * of its own private `pcc_blobs_v1` database — see that file's header for why and how the
+ * one-time migration works. This is an internal-implementation-only change: every function
+ * below still takes/returns exactly what it always did.
  */
 (function () {
   "use strict";
   window.PCC = window.PCC || {};
 
-  var DB_NAME = "pcc_blobs_v1";
-  var STORE_NAME = "blobs";
-  var CONTENT_STORE_NAME = "content";
-  var DB_VERSION = 2;
-  var dbPromise = null;
+  var STORE_NAME = window.PCC.sharedIndexedDb.BLOBS_STORE;
+  var CONTENT_STORE_NAME = window.PCC.sharedIndexedDb.CONTENT_STORE;
 
   function openDb() {
-    if (dbPromise) return dbPromise;
-    dbPromise = new Promise(function (resolve, reject) {
-      if (!window.indexedDB) {
-        reject(new Error("IndexedDB is not available in this browser."));
-        return;
-      }
-      var req = window.indexedDB.open(DB_NAME, DB_VERSION);
-      req.onupgradeneeded = function () {
-        var db = req.result;
-        if (!db.objectStoreNames.contains(STORE_NAME)) {
-          db.createObjectStore(STORE_NAME, { keyPath: "id" });
-        }
-        if (!db.objectStoreNames.contains(CONTENT_STORE_NAME)) {
-          db.createObjectStore(CONTENT_STORE_NAME, { keyPath: "hash" });
-        }
-      };
-      req.onsuccess = function () {
-        resolve(req.result);
-      };
-      req.onerror = function () {
-        dbPromise = null; // allow retry on a later call rather than caching a dead promise
-        reject(req.error || new Error("Could not open IndexedDB."));
-      };
-    });
-    return dbPromise;
+    return window.PCC.sharedIndexedDb.openDb();
   }
 
   function dataUriToBytes(dataUri) {

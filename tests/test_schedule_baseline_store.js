@@ -31,6 +31,15 @@ function freshStore() {
   const dom = new JSDOM("<!doctype html><html><body></body></html>");
   dom.window.indexedDB = new FDBFactory();
   global.window = dom.window;
+  // scheduleBaselineStore.js now delegates to the shared consolidated database
+  // (sharedIndexedDb.js) — must be eval'd first, same load order build.js's JS_ORDER
+  // enforces for the real bundle.
+  const sharedSrc = fs.readFileSync(
+    path.join(__dirname, "..", "src", "js", "sharedIndexedDb.js"),
+    "utf8"
+  );
+  // eslint-disable-next-line no-eval
+  eval(sharedSrc);
   const src = fs.readFileSync(
     path.join(__dirname, "..", "src", "js", "scheduleBaselineStore.js"),
     "utf8"

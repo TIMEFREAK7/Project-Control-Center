@@ -54,6 +54,7 @@ const JS_ORDER = [
   "js/vendor/sql-wasm-binary.js",
   "js/sqliteMigrationEngine.js",
   "js/sqlitePersistence.js",
+  "js/sharedIndexedDb.js",
   "js/blobStore.js",
   "js/scheduleBaselineStore.js",
   "js/duplicateService.js",
