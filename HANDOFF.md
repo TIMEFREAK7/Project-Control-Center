@@ -6487,3 +6487,114 @@ as every prior session's note on this: a future fresh container needs Aditya to 
 after every gate/phase" convention applies to feature work; this session shipped no feature
 changes, only version bumps + native builds, and the two installers were delivered directly
 instead). No GitHub Release / release notes — not asked for.
+
+## 2026-09-09 session: one-way hourly data mirror + storage architecture (4 phases)
+
+Real feature work this time, not just a build session. Aditya wanted Windows/Android data sync;
+after a design conversation (bidirectional meeting write-back proposed, then explicitly scrapped
+in favor of a simpler one-way read-only mirror) the whole scope got written up as a single,
+phased implementation prompt via `/prompt-master` and handed back to build. `main` is now four
+commits ahead of where this session started, each its own gate-style checkpoint (rebuild + full
+suite green before the next phase started) — no half-finished phase was ever left uncommitted.
+
+**Phase 1 — Windows installer wizard.** `packaging/package.json`'s electron-builder `nsis` config:
+`oneClick: false` + `allowToChangeInstallationDirectory: true`, `perMachine: false` kept explicit
+(a per-machine/admin install defaults to `C:\Program Files`, unwritable by a standard user, which
+would have broken Phase 2). Config-only, zero JS.
+
+**Phase 2 — relocate Windows storage next to the installed app.** `app.setPath('userData', ...)`
+in `packaging/electron/main.js`, pointed at a `PCC-Data` folder next to the running `.exe` — only
+for a packaged build (`app.isPackaged`), never in dev. A real, previously-shipped user's data
+sitting at the OS default `%APPDATA%\Project Control Center` gets copied (never moved, never
+deleted) to the new location once, the first time this version runs — see
+`packaging/electron/relocateStorage.js` (factored out specifically so it's unit-testable without
+a real Electron process — `main.js` itself can't be `require()`d outside one). **Real bug caught
+and fixed while writing this**: the storage-relocation block was originally placed BEFORE
+`app.setName("Project Control Center")` — since Electron's default `userData` path is derived
+from `app.getName()`, capturing the "original" path before the rename would have checked the
+wrong location and silently skipped migrating an existing user's data. Caught by re-reading the
+diff before running anything, not by a failing test.
+
+**Phase 3 — consolidate the two IndexedDB databases into one.** `pcc_blobs_v1` (blobs+content) and
+`pcc_schedule_baselines_v1` (snapshots) merged into a single `pcc_data_v1` database with all three
+object stores (`src/js/sharedIndexedDb.js`). `blobStore.js`/`scheduleBaselineStore.js`'s public
+APIs are byte-for-byte unchanged — every other caller in the app needed zero edits. Deliberately
+did NOT fold `store.js`'s own synchronous `localStorage` JSON into this too, despite Aditya's
+original "one DB for everything" framing — flagged and scoped down explicitly before building,
+since `store.js` has dozens of synchronous call sites across the whole app and converting it to
+async IndexedDB would have been a much larger, separate rewrite. **Two real bugs found and fixed
+here, not glossed over**:
+1. `event.oldVersion` lives on the `IDBVersionChangeEvent` argument passed to `onupgradeneeded`,
+   not as a property on the request object itself (`req.oldVersion` is always `undefined`) —
+   broke "did this legacy database exist before" detection, confirmed via a minimal repro script
+   before touching the real fix.
+2. A legacy-database connection opened during the migration check was never explicitly closed.
+   IndexedDB's `onblocked` semantics mean an open, un-closed connection blocks any later attempt
+   to reopen that same database at a different version — this reproduced as a genuine, confirmed
+   test hang (`test_blob_compression_gate4_e2e.js`, spinning at 100% CPU for 7 minutes, not just
+   "slow"), root-caused by killing the stuck process, writing three progressively more targeted
+   repro scripts, and finding the exact missing `db.close()`. Fixed by adding a
+   `readAllThenClose()` helper that always closes the legacy connection once its data is read.
+   Also had to update two other e2e tests' raw-IndexedDB-inspection helpers
+   (`test_blob_compression_gate4_e2e.js`, `test_content_addressable_storage_e2e.js`) that
+   hardcoded `pcc_blobs_v1` — they were testing a database blobStore.js doesn't write to anymore.
+   Verified afterward in real Chromium (not just fake-indexeddb): exactly one physical database,
+   `pcc_data_v1`, all three stores, real `putBlob`/`getBlob` round trip, zero console errors.
+   No `SCHEMA_VERSION` bump needed — this only changes the physical storage backend, not any JSON
+   shape `store.js`'s own migration chain governs.
+
+**Phase 4 — the actual sync feature: one-way, hourly, read-only, Windows → Android.**
+- **Windows**: a 60-minute timer (plus once on app quit) silently writes the existing full-store
+  export JSON to a user-configured folder — no dialog. Since Electron's renderer is
+  `contextIsolation: true`/`nodeIntegration: false`, a new IPC bridge was needed just for this:
+  `packaging/electron/preload.js` exposes `window.PCC_ELECTRON.writeMirrorFile()`, backed by
+  `packaging/electron/mirrorFileWriter.js` (pure, unit-tested with a real temp dir, same pattern
+  as `relocateStorage.js`). The "export once on quit" part turned out non-trivial: an app-level
+  `before-quit`/`window-all-closed` handler can fire AFTER the window is already destroyed, with
+  nothing left to message — fixed by hooking each `BrowserWindow`'s own `close` event instead
+  (still alive at that point), `preventDefault()`-ing it, asking the renderer for one last export
+  over IPC, and only actually closing once it acks (or a 5s safety timeout fires either way).
+- **Android**: reads from a FIXED path, `Directory.Documents/PCC-Mirror/pcc-mirror.json` — never
+  an arbitrary user-chosen folder, deliberately, since Android's scoped storage would otherwise
+  need a one-time Storage-Access-Framework grant this design avoids entirely (the user points
+  their own sync tool, e.g. Syncthing, at that fixed app-accessible path instead). Checked on
+  every app resume (Capacitor `App` plugin) and on a brand-new pull-to-refresh gesture
+  (`src/js/pullToRefresh.js`) added to Dashboard/My Work/Action Centre/Portfolio.
+- **Pull-to-refresh design decision, made deliberately, not by accident**: implemented ONCE at
+  the router/outlet level rather than duplicated inside all four already-complex React page
+  components. Checked first, not assumed: none of the four pages currently subscribe to live
+  store updates at all (`Dashboard.tsx` captures its data via `const [data] = useState(() =>
+  getData())` — note the array destructuring never even keeps the setter). Editing four pages'
+  internal state architecture to add a live-refresh path would have been real, avoidable risk
+  (CLAUDE.md's own React section documents several sharp edges exactly like this). Instead, a
+  successful pull just calls `window.PCC.router.render()` — reusing `reactBridge.js`'s
+  already-correct "brand new root, fresh data" full-remount behavior. Page scroll happens at the
+  document level (`.main-column` has no scroll CSS of its own — confirmed by reading
+  `styles.css`, not assumed), so the gesture tracks `document.scrollingElement`/`documentElement`
+  scroll position, not any inner container.
+- **Two new settings** (`sync_mirror_enabled`, default `false`; `sync_mirror_folder_path`, Windows
+  only): `SCHEMA_VERSION` bumped 64 → 65 with a matching migration step. All ~36 hardcoded
+  `schema_version, 64` assertions across the test suite bulk-updated to 65 (mechanical, no
+  behavior changes) — turned out to be far more than the two files CLAUDE.md's own note names,
+  which was written when the schema was much younger; worth knowing a future bump will hit the
+  same wide blast radius.
+- `store.js` gained `buildExportJson()` and `importFromJsonString()`, both extracted from the
+  existing `exportToFile()`/`importFromFile()` rather than duplicated — the mirror reuses the
+  real serialization/parsing path.
+- Settings page gained a "Data Mirror (Windows → Android)" panel: an enable checkbox (shown on
+  both platforms) plus a folder-path field shown only when `window.PCC_ELECTRON` is present.
+
+**Verification standard held throughout, not just at the end**: every phase individually rebuilt
+and full-suite-tested before the next one started; the Phase 3 hang was root-caused with actual
+repro scripts, not worked around; a real-Chromium pass (not just jsdom/fake-indexeddb) confirmed
+Phase 3's consolidated database and Phase 4's Settings UI + all four routes, zero console errors
+either time. **Full suite, `main` HEAD: 2,699 checks, 0 failures.** `schema_version` is now **65**.
+
+**What Aditya still has to do himself, none of which this session can do from here**: install and
+pair Syncthing (or an equivalent) on both devices himself — this app deliberately never installs,
+configures, or knows about any sync transport, by design; enable the mirror and set a folder path
+in Settings on Windows; point his sync tool's Android side at the app's `Documents/PCC-Mirror/`
+folder. **Not done, and deliberately out of scope for this task** (per the implementation prompt's
+own explicit instruction): no new release build — `packaging/android/android/app/build.gradle`'s
+version wasn't touched, no Windows/Android installer was produced this session. Next real release
+build needs `versionCode`/`versionName` bumped first, per the standing rule above.
