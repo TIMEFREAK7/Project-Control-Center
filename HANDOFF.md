@@ -6590,6 +6590,32 @@ repro scripts, not worked around; a real-Chromium pass (not just jsdom/fake-inde
 Phase 3's consolidated database and Phase 4's Settings UI + all four routes, zero console errors
 either time. **Full suite, `main` HEAD: 2,699 checks, 0 failures.** `schema_version` is now **65**.
 
+**Follow-up the same day: the Windows write-path and quit-hook were verified against a genuinely
+running Electron app, not just jsdom mocks — worth knowing since jsdom mocking
+`window.PCC_ELECTRON` directly (as the automated test suite does) never actually exercises the
+real `contextBridge`/`ipcRenderer`/`ipcMain` plumbing.** Launched the real packaged app under Xvfb
+(`xvfb-run electron . --remote-debugging-port=NNNN --no-sandbox`, same technique the original
+Gate 1 Electron verification used) and drove it via Playwright's `chromium.connectOverCDP()`.
+Confirmed for real: `window.PCC_ELECTRON.writeMirrorFile()` writes a real file via the real IPC
+handler, with real content (`schema_version: 65`, real seeded project data) landing at the real
+configured path. **One real testing gotcha hit and worth recording**: calling `window.close()`
+from renderer JS via `page.evaluate()` over a CDP debugging session does **not** reliably reach
+the `BrowserWindow`'s `'close'` event in this sandbox — confirmed with a guaranteed-synchronous
+`fs.appendFileSync` debug log (ruling out stdout-buffering-on-fast-exit as an alternate
+explanation) that showed zero evidence the handler ever ran, even though the Electron process did
+exit. The quit-hook's actual production logic (`win.on('close', ...)`) is unaffected — the bug
+was in the *test harness's* way of triggering a close, not in the shipped code — confirmed by
+adding a temporary IPC channel that calls `win.close()` directly from the main process (exactly
+the API surface a real OS close-button click also drives) and observing the full round trip
+complete correctly in under 5ms: `close` fires → `preventDefault()` → IPC to renderer → renderer
+runs `runWindowsMirrorExport()` → IPC back → `win.close()` for real → app exits with the mirror
+file freshly written, containing data added moments before closing. All temporary debug
+instrumentation was removed afterward; `git diff` against the already-pushed commit was empty
+before moving on. **If a future session needs to test an Electron quit/close hook under CDP
+automation, don't trust renderer-side `window.close()`** — either add a temporary debug IPC
+channel that calls the real `BrowserWindow.close()` from the main process, or find another way to
+trigger a genuine OS-level close request.
+
 **What Aditya still has to do himself, none of which this session can do from here**: install and
 pair Syncthing (or an equivalent) on both devices himself — this app deliberately never installs,
 configures, or knows about any sync transport, by design; enable the mirror and set a folder path
