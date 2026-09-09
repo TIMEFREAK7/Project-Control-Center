@@ -18,39 +18,21 @@
  *     scheduleBaselineEngine.buildSnapshot), stored here, keyed by the same id.
  * This mirrors the blob pattern exactly: metadata stays synchronous, payload is async
  * and only loaded when something actually needs to compare against it.
+ *
+ * Storage consolidation (PCC storage/sync playbook, Phase 3): the physical database this
+ * module reads/writes is now the shared one from sharedIndexedDb.js (`pcc_data_v1`) instead
+ * of its own private `pcc_schedule_baselines_v1` database — see that file's header for why
+ * and how the one-time migration works. Internal-implementation-only change: every function
+ * below still takes/returns exactly what it always did.
  */
 (function () {
   "use strict";
   window.PCC = window.PCC || {};
 
-  var DB_NAME = "pcc_schedule_baselines_v1";
-  var STORE_NAME = "snapshots";
-  var DB_VERSION = 1;
-  var dbPromise = null;
+  var STORE_NAME = window.PCC.sharedIndexedDb.SNAPSHOTS_STORE;
 
   function openDb() {
-    if (dbPromise) return dbPromise;
-    dbPromise = new Promise(function (resolve, reject) {
-      if (!window.indexedDB) {
-        reject(new Error("IndexedDB is not available in this browser."));
-        return;
-      }
-      var req = window.indexedDB.open(DB_NAME, DB_VERSION);
-      req.onupgradeneeded = function () {
-        var db = req.result;
-        if (!db.objectStoreNames.contains(STORE_NAME)) {
-          db.createObjectStore(STORE_NAME, { keyPath: "id" });
-        }
-      };
-      req.onsuccess = function () {
-        resolve(req.result);
-      };
-      req.onerror = function () {
-        dbPromise = null; // allow retry on a later call rather than caching a dead promise
-        reject(req.error || new Error("Could not open IndexedDB."));
-      };
-    });
-    return dbPromise;
+    return window.PCC.sharedIndexedDb.openDb();
   }
 
   /** Store (or overwrite) a baseline snapshot payload under `id`. `snapshot` is a plain

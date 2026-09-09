@@ -517,6 +517,8 @@ export interface PCCSettings {
   document_nomenclature_pattern?: string;
   backup_reminder_days?: number | null;
   health_score_weights: PCCHealthScoreWeights;
+  sync_mirror_enabled?: boolean;
+  sync_mirror_folder_path?: string;
 }
 
 export interface PCCRelationship {
@@ -1827,6 +1829,13 @@ declare global {
           unavailabilities: PCCResourceUnavailability[]
         ): LevelingResult;
       };
+    };
+    // One-way hourly data mirror (Phase 4): only present under Electron, exposed via
+    // packaging/electron/preload.js's contextBridge — see src/js/dataMirror.js.
+    PCC_ELECTRON?: {
+      writeMirrorFile(folderPath: string, filename: string, content: string): Promise<void>;
+      onQuitExportRequested(callback: () => void): void;
+      notifyQuitExportDone(): void;
     };
   }
 }

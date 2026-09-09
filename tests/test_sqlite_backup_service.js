@@ -66,7 +66,9 @@ function freshWindow() {
 
 function loadModules(win) {
   global.window = win;
-  ["store.js", "blobStore.js", "sqliteMigrationEngine.js", "sqliteBackupService.js"].forEach((file) => {
+  // blobStore.js now delegates to the shared consolidated database (sharedIndexedDb.js) —
+  // must load before it, same order build.js's JS_ORDER enforces for the real bundle.
+  ["store.js", "sharedIndexedDb.js", "blobStore.js", "sqliteMigrationEngine.js", "sqliteBackupService.js"].forEach((file) => {
     const src = fs.readFileSync(path.join(__dirname, "..", "src", "js", file), "utf8");
     // eslint-disable-next-line no-eval
     eval(src);

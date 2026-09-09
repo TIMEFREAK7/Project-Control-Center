@@ -31,6 +31,11 @@
     "win": {
       "target": "nsis"
     },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    },
     "linux": {
       "target": "AppImage",
       "category": "Office",

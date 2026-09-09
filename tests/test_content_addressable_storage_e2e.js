@@ -46,7 +46,11 @@ async function check(label, fn) {
 // content entry) rather than trusting blobStore's own read path.
 function readRaw(win, storeName, key) {
   return new Promise((resolve, reject) => {
-    const req = win.indexedDB.open("pcc_blobs_v1", 2);
+    // Storage consolidation (Phase 3): blobStore.js's data now lives in the shared
+    // pcc_data_v1 database (sharedIndexedDb.js), not its own pcc_blobs_v1 — version-less
+    // open, since a fixed version number here would fight whatever version the app's own
+    // code already opened it at.
+    const req = win.indexedDB.open("pcc_data_v1");
     req.onsuccess = () => {
       const db = req.result;
       const tx = db.transaction(storeName, "readonly");
@@ -60,7 +64,11 @@ function readRaw(win, storeName, key) {
 
 function contentStoreKeyCount(win) {
   return new Promise((resolve, reject) => {
-    const req = win.indexedDB.open("pcc_blobs_v1", 2);
+    // Storage consolidation (Phase 3): blobStore.js's data now lives in the shared
+    // pcc_data_v1 database (sharedIndexedDb.js), not its own pcc_blobs_v1 — version-less
+    // open, since a fixed version number here would fight whatever version the app's own
+    // code already opened it at.
+    const req = win.indexedDB.open("pcc_data_v1");
     req.onsuccess = () => {
       const db = req.result;
       const tx = db.transaction("content", "readonly");
@@ -74,7 +82,11 @@ function contentStoreKeyCount(win) {
 
 function writeLegacyRecord(win, id, dataUri) {
   return new Promise((resolve, reject) => {
-    const req = win.indexedDB.open("pcc_blobs_v1", 2);
+    // Storage consolidation (Phase 3): blobStore.js's data now lives in the shared
+    // pcc_data_v1 database (sharedIndexedDb.js), not its own pcc_blobs_v1 — version-less
+    // open, since a fixed version number here would fight whatever version the app's own
+    // code already opened it at.
+    const req = win.indexedDB.open("pcc_data_v1");
     req.onsuccess = () => {
       const db = req.result;
       const tx = db.transaction("blobs", "readwrite");
