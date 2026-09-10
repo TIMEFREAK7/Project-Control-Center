@@ -159,6 +159,12 @@ it documents *why* things are shaped the way they are, not just what exists.
 - **Data layer:** `src/js/store.js` — single JS object, autosaved to `localStorage`, with a
   `schema_version` + `migrate()` chain so old exported JSON files upgrade cleanly. Bumping the
   schema is a real decision (new fields need defaults + a migration step), not a rename.
+- **Three separate apps ship from this one repo — Windows (Electron), the main Android app, and a
+  standalone read-only "At a Glance" Android app.** All three run the exact same `src/` domain
+  logic; only the shell around it differs. See "One-way data mirror + the 'At a Glance' mirror
+  app" below for the full architecture, the write-guard pattern, and every real bug hit building
+  it — read it before touching `src/js/dataMirror.js`, `mirror-app/`, or
+  `packaging/android-mirror/`.
 - **Blobs (photo/document file bytes) live in IndexedDB**, not `localStorage` —
   `src/js/blobStore.js`. This split is deliberate and scoped: *only* binary blobs moved off
   `localStorage` (Phase 12, after hitting the ~5-10MB browser storage quota with photos); every
@@ -232,10 +238,155 @@ it documents *why* things are shaped the way they are, not just what exists.
 - **Bumping `SCHEMA_VERSION` (`store.js`) needs a matching migration step AND updated test
   fixtures.** Multiple existing tests hardcode the expected final `schema_version` after migrating
   an old dataset (search `assert.strictEqual(data.schema_version,` across `tests/*.js`) — bumping
-  the constant without updating those breaks otherwise-unrelated tests in confusing ways. Current
-  version is **64** (Auto Baseline Delay Detection's `auto_generated` + Bidirectional Delay
-  Comments' `comments`, both on `delay_records`) — see `tests/test_store_schema_v54_migration.js`
-  for the migration test pattern to copy for the next bump.
+  the constant without updating those breaks otherwise-unrelated tests in confusing ways (last
+  time, ~36 assertions across the suite, not just the couple of files this note used to name).
+  Current version is **65** (`settings.sync_mirror_enabled`/`sync_mirror_folder_path` for the
+  one-way data mirror — see "One-way data mirror + the 'At a Glance' mirror app" above) — see
+  `tests/test_store_schema_v54_migration.js` for the migration test pattern to copy for the next
+  bump. `store.js` also exports `migrate: migrate` on `window.PCC.store` (purely additive, zero
+  behavior change to the main app) specifically so `mirror-app/` can reuse the real migration
+  chain without reimplementing it — see the mirror app section above.
+
+## One-way data mirror + the "At a Glance" mirror app
+
+Three apps ship from this one repo, all running the same unmodified `src/` domain logic:
+**Windows** (Electron, full editing), **the main Android app** (`com.pcc.projectcontrolcenter`,
+full editing), and **"PCC At a Glance"** (`com.pcc.projectcontrolcenter.mirror`, a genuinely
+separate, minimal, strictly READ-ONLY Android app — `mirror-app/` + `packaging/android-mirror/`).
+Deliberately three codebases sharing real components, not one app with a "restricted mode" flag —
+see `HANDOFF.md`'s 2026-09-09/10 sessions for the full build history and every bug hit along the
+way; this section is the standing reference.
+
+- **The mirror itself is one-way, Windows → Android, read-only, nothing more.** `src/js/
+  dataMirror.js` (Windows/Electron only) writes a full `buildExportJson()` snapshot to a
+  user-configured folder roughly hourly plus once on quit, via `packaging/electron/preload.js`'s
+  IPC bridge (`window.PCC_ELECTRON.writeMirrorFile`) — silent, no dialog. Gated behind
+  `settings.sync_mirror_enabled` (off by default; schema v65 fields, `sync_mirror_folder_path`
+  too). There is no write-back path anywhere, and there never has been — a prior "attach a
+  recording from phone" idea was explicitly scrapped for this simpler, safer scope. The Android
+  READ side used to live in the main app too, but was deliberately moved OUT entirely (see below)
+  — `dataMirror.js` today only ever runs the Windows write side.
+- **`mirror-app/` is a genuinely separate build, not a restricted relaunch of `index.html`.** Own
+  `package.json`/`tsconfig.json`/`build.js`/esbuild pipeline, `node mirror-app/build.js` produces
+  `mirror-app/index.html` — a single self-contained file at roughly **11% of the main app's
+  size**, since it excludes every editing-only vendor library and engine (xlsx, mammoth, pdf.js,
+  jszip, sql.js, the CPM/import engines). It reuses the REAL, unmodified `Dashboard.tsx`/
+  `MyWork.tsx`/`ActionCentre.tsx`/`Portfolio.tsx` and their real services from `react/src`
+  (imported by relative path, e.g. `mirror-app/src/App.tsx` imports
+  `../../react/src/pages/Dashboard.tsx` directly) — never forked, per the standing "React must not
+  own core calculations" rule extended to "the mirror app must not own a second copy of the UI
+  either." It also reuses the real `src/js/store.js`, `src/js/projectContext.js`, and
+  `src/js/notifications.js` verbatim, loaded as plain `<script>` tags before the React bundle
+  (`mirror-app/build.js` reads them straight from `src/js/`, same "one shared source of truth"
+  approach as everything else in this repo).
+  - **Reuses the SAME React/ReactDOM install `react/node_modules` already has — via symlinks, not
+    a second npm install.** `mirror-app/build.js`'s `ensureReactSymlinks()` creates
+    `mirror-app/node_modules/{react,react-dom,@types}` → `react/node_modules/{react,react-dom,
+    @types}` automatically on every build if missing, so a fresh clone's first `cd mirror-app &&
+    npm install && node build.js` just works. **Do not use esbuild `--alias`/tsconfig `paths`
+    remapping for this instead** — tried first, and it silently broke React's own JSX type
+    declarations (`JSX.IntrinsicElements` missing, the special-cased `key` prop treated as a real
+    one) because `paths` substitution bypasses the normal node_modules "fall back to `@types/<pkg>`"
+    resolution bare-specifier imports get for free. Plain symlinks behave exactly like a real local
+    install for both `tsc` and `esbuild`, with none of those edge cases, and guarantee exactly one
+    copy of React ends up in the bundle (two would break hooks/context).
+  - **`mirror-app/src/shim/pcc.ts` is the map of what's real vs. stubbed** for every other
+    `window.PCC.*` module the reused pages/services touch (meetings/rfis/portfolio/schedule/
+    changeOrders/vendors/risks/decisionRegister/documentTypes/files/archive/cost/
+    resourceLevelingEngine/executiveCenter). Almost all of it is "click an item → jump to and
+    pre-expand it on its own full editing page," which doesn't exist in a 4-tab read-only app —
+    stubbed to safe no-ops (never throws, never does anything). `router.ts` (a real, minimal
+    4-tab implementation, not a stub) and `shim/contextSwitcher.ts` (the Company/Client/Project
+    switcher, ported line-for-line from `layout.js`'s cascading-select logic) are the two
+    genuinely-real reimplementations, because they actually change what's displayed.
+  - **The write guard (`shim/writeGuard.ts`) is the single most important piece — read it in full
+    before touching any reused page's write path.** The reused components have full working
+    create/edit UI built in (they're the same code that powers real editing elsewhere), so without
+    this, "+ Add Project" and similar genuinely persist. `installWriteGuard()` wraps
+    `window.PCC.store.update()`: takes a **deep clone** (`JSON.parse(JSON.stringify(...))`) of
+    every non-`settings` top-level key BEFORE the real mutator runs, then restores from that clone
+    afterward — letting Company/Client/Project switching and pinned-projects (both `data.settings`-
+    only, via the real, reused `projectContext.js`) through untouched, while any content mutation
+    (`data.projects.push(...)` etc.) is silently undone before it's ever rendered.
+    **A shallow "preserve the reference" version of this guard is NOT a fix — it's a no-op that
+    looks like one.** First shipped as `preserved[k] = data[k]` (a reference, not a copy); since
+    real mutations in this codebase are almost always in-place (`d.projects.push(created)`, the
+    convention throughout `store.js`), pushing onto the array mutated the SAME array the "preserved"
+    reference already pointed at, so "restoring" `data[k] = preserved[k]` restored the object to
+    itself, new content and all. Shipped, reported by the user as still broken on a real device,
+    root-caused by re-testing with the EXACT real mutation pattern directly
+    (`window.PCC.store.update((d) => d.projects.push(...))`) instead of trusting a broader UI-click
+    test that happened to pass for unrelated reasons. **Any future guard/snapshot logic in this
+    codebase must deep-clone, never shallow-preserve a reference**, given how pervasively this
+    codebase mutates in place.
+  - **Silently reverting a write isn't enough on its own — the reused form still closes as if it
+    saved** (`Portfolio.tsx`'s `onSaved()` runs unconditionally after `saveProject()`), so
+    `writeGuard.ts` also compares each non-settings key's JSON before/after and fires a real toast
+    ("This is a read-only view — changes here aren't saved.") the instant it detects and reverts an
+    attempt — silent for genuine settings-only changes. `window.PCC.notify` is the REAL
+    `src/js/notifications.js` here (reused, not stubbed) specifically so this toast can exist.
+    **`window.PCC.notify` also drops every "success"-severity message globally** — the reused
+    `saveProject()` calls `notify("Project added.", "success")` unconditionally right after
+    `update()` returns, regardless of whether the guard reverted it, which without this produces two
+    contradictory stacked toasts. Correct in a strictly read-only app: a "success" toast is
+    definitionally reporting a create/update/delete that can never actually happen here.
+  - **Explicit user follow-up after the guard+toast fix: "I don't want the button itself" —
+    genuinely blocked-and-explained still wasn't enough; the create/edit UI shouldn't be reachable
+    at all.** `shim/hideWriteButtons.ts` hides `"+ Add Project"` and, within a project card's
+    `.card-menu__item` dropdown, `"Edit"`/`"Archive"`/`"Unarchive"` — matched by their known exact
+    button text, the only way to suppress specific elements of a reused, unmodified component
+    without forking it. `"Pin"`/`"Unpin"` in the same dropdown is deliberately left working: it only
+    ever touches `data.settings.pinned_project_ids`, a genuine, harmless, per-device preference the
+    write guard already lets through.
+    **A `MutationObserver` attached to `#mirror-app-outlet` directly will stop working after the
+    first mirror refresh.** `App.tsx`'s outlet carries `key={refreshTick}` (a deliberate
+    force-full-remount-on-every-refresh design, not an accident), so React destroys and recreates
+    that exact DOM node every time the mirror data reloads — orphaning any observer attached
+    directly to it. Observe the outer, never-recreated `.mirror-app-shell` instead (`subtree:
+    true` still catches everything inside, regardless of how many times the outlet itself gets
+    swapped out underneath it).
+  - **The Android read side (`mirror-app/src/mirrorRead.ts`) does NOT reuse
+    `store.js`'s `importFromJsonString()`** — that function migrates AND writes inline blobs out to
+    IndexedDB via `blobStore.putBlob()`, deliberately excluded from this app's bundle. Calling
+    `window.PCC.store.migrate()` directly (exposed on the real `store.js` for exactly this — see
+    its own export comment) and committing via the real `update()` keeps blobs inline in memory
+    instead, which is both simpler and correct for a stateless read-only viewer: `doc.file_data`
+    stays populated, ready to render, no IndexedDB round-trip needed.
+  - **Every reused page needs the real `main.page` wrapper class around it, or it renders
+    completely unpadded.** The main app's pages are only ever styled correctly inside
+    `.main-column > main.page#page-outlet` — `main.page` supplies the padding (`var(--space-5)`/
+    `var(--space-4)` on narrow viewports) every page's own filter-row/KPI-grid layout math
+    assumes it has. `mirror-app`'s own outlet needs the real `page` class (`<main className="page"
+    id="mirror-app-outlet">` in `App.tsx`), not a bespoke wrapper — confirmed by a real device
+    screenshot showing edge-to-edge unpadded content, fixed to pixel-parity with the main app's
+    own real mobile rendering of the same page.
+- **`packaging/android-mirror/` is a second, independent Capacitor project**, bootstrapped via
+  `npx cap add android` (not hand-copied from `packaging/android/` — that auto-generates the
+  correct `com.pcc.projectcontrolcenter.mirror` package directory structure rather than risking a
+  manual rename). Distinct `applicationId` from the main app so both install side by side on one
+  device. **Its own dedicated, separate release keystore**
+  (`packaging/android-mirror/android/app/pcc-mirror-release.jks` + `keystore.properties`, gitignored,
+  never committed) — explicit user instruction, not an oversight: the two apps stay independently
+  signable/updatable rather than tied to one shared signing identity. `scripts/copy-app.js` copies
+  from `mirror-app/index.html`, never the repo root's.
+  - **The adaptive icon gotcha below applies to BOTH Android projects equally** — this bit both
+    apps, not just the mirror one.
+
+**Adaptive icon gotcha — real bug, hit on BOTH Android apps, worth knowing before ever touching
+`copy-app.js` or regenerating launcher icons.** `@capacitor/assets`' "Custom Mode" needs
+`assets/icon-only.png` + `assets/icon-foreground.png` + `assets/icon-background.png` all three —
+`icon-only.png` ALONE only feeds the LEGACY `mipmap/ic_launcher.png`, never the Android 8+ (API
+26+) adaptive icon layers (`mipmap-anydpi-v26/ic_launcher.xml` → `mipmap/ic_launcher_foreground.png`
++ `ic_launcher_background`), which is what every real device actually renders on the home screen/
+app drawer. Both `packaging/android/scripts/copy-app.js` and `packaging/android-mirror/scripts/
+copy-app.js` originally supplied only `icon-only.png` — both apps shipped Capacitor's own stock
+placeholder icon on real devices for their first releases, confirmed by the user, neither app's
+actual custom icon ever took effect. Fixed by also copying the real logo to `icon-foreground.png`
+and a flat-color match to `icon-background.png` (`packaging/icons/pcc-icon-background.png` /
+`pcc-mirror-icon-background.png`) before `npx @capacitor/assets generate --android`. **Verify by
+opening the regenerated `android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_foreground.png`
+directly** — if it's a real logo, the fix worked; if it's Capacitor's own abstract blue mark, it
+didn't.
 
 ## Commands
 
@@ -245,13 +396,27 @@ node build.js          # rebuild index.html from src/ (also runs the react/ buil
 cd tests && npm install  # first time only
 cd tests && npm test    # run the full jsdom/fake-indexeddb suite (must pass before shipping)
 node --check src/js/whatever.js   # quick syntax check on a single file
+
+cd mirror-app && npm install  # first time only
+node mirror-app/build.js   # rebuild mirror-app/index.html — run after any src/js/{store,projectContext,notifications}.js
+                            # change, any react/src/{pages/{Dashboard,MyWork,ActionCentre,Portfolio},services/*}.ts(x)
+                            # change, or any mirror-app/src change. NOT run by the repo-root node build.js — separate app.
 ```
 
-## Building release installers (Windows EXE / Android APK)
+## Building release installers (Windows EXE / Android APK / mirror-app APK)
 
 Full detail/troubleshooting lives in `packaging/README.md` and `HANDOFF.md`'s dated build-session
 write-ups (search `Windows EXE + Android APK` there) — this is the fast-reference version. Always
 `node build.js` at the repo root first so both installers embed the current `index.html`.
+
+**There are now TWO Android projects, each needing its own `versionCode`/`versionName` bump and
+its own keystore before every release build — easy to bump only one and forget the other.**
+`packaging/android/` (the main app) and `packaging/android-mirror/` (the "At a Glance" mirror app,
+`node mirror-app/build.js` first so it embeds the current `mirror-app/index.html`) are entirely
+independent Capacitor projects with independent `build.gradle`s, independent keystores
+(`pcc-release.jks` vs. `pcc-mirror-release.jks`), and independent version histories — see "One-way
+data mirror + the 'At a Glance' mirror app" above for the full architecture. **Also see this
+section's own adaptive icon gotcha below — it bit both apps' first release, not just one.**
 
 **Requirements — Windows (.exe, built via Electron + electron-builder, cross-built from Linux):**
 - `cd packaging && npm install` (first time only).
@@ -304,6 +469,16 @@ write-ups (search `Windows EXE + Android APK` there) — this is the fast-refere
   not just built) and `apksigner verify --print-certs <apk>` (confirms the signer cert's SHA-256
   matches the keystore backup's own documented fingerprint — never assume, actually diff the
   hex), plus `zipalign -c -v 4 <apk>`.
+- **The mirror app (`packaging/android-mirror/`) needs everything above done a SECOND time,
+  independently** — same JDK/SDK (shared, nothing extra to install), but its own keystore
+  (`packaging/android-mirror/android/app/pcc-mirror-release.jks` + `keystore.properties`, own
+  password, never the main app's), its own `versionCode`/`versionName` in its own `build.gradle`,
+  `cd packaging/android-mirror && npm install` (first time) then `npm run
+  android:build:release` — and `node mirror-app/build.js` first (not the repo-root `node
+  build.js`) so it embeds the current `mirror-app/index.html`. Verify identically (`apksigner
+  verify`, `zipalign -c`), and confirm the two APKs' signer cert SHA-256 digests are genuinely
+  different from each other — that and the distinct `applicationId` are what let both install on
+  one device at once.
 
 **Delivery, both platforms**: `sha256sum` the final artifact; if it exceeds the ~30MB
 file-transfer limit (the Windows `.exe` always does, ~100-106MB), split per the standing
@@ -327,6 +502,15 @@ convention below and verify the reassembled file's checksum matches before sendi
   rendering/CSS/Chrome-specific issues (e.g. the `data:` URI navigation-block bug the README
   documents was exactly that kind of gap). This is the one thing genuinely un-verifiable from the
   README's own test suite; use it, don't skip it.
+- **`mirror-app/` has no jsdom suite of its own in `tests/`, on purpose** — it's real, reused
+  `src/js/*.js`/`react/src/pages/*.tsx` that's already covered there; adding a parallel suite would
+  just re-test the same code. `cd tests && npm test` after any `mirror-app/`-adjacent change still
+  matters (confirms the change didn't regress the main app), but the mirror app's OWN behavior —
+  the write guard, the button hider, the layout — is only ever verified via real Chromium at a
+  real mobile viewport (412×915) with `window.Capacitor` mocked at the JS boundary, checked
+  directly (e.g. `window.PCC.store.get().projects` after an attempted write, `offsetParent !==
+  null` for hidden-button checks), never just eyeballing a screenshot. Every real bug in the write
+  guard/button hider (see the mirror app section above) was caught exactly this way, not by jsdom.
 
 ## Working conventions specific to this project
 

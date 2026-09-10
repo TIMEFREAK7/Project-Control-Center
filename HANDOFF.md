@@ -6769,3 +6769,134 @@ correctly on-device (the one genuinely unverified-in-sandbox piece); back up
 gitignored by design); say whether/when to merge this branch into `main` and whether he wants the
 main app's icon reused or a visually distinct one for the mirror app (currently identical, only
 the app NAME differs on-screen).
+
+
+## 2026-09-10 session: logo confirmation, distinct mirror icon, and a real bug-fix round on the mirror app
+
+**Trigger**: Aditya replied to the 3-app-split handoff above with four things: merge to `main`
+(done, see that session's own close-out); a zip of the new mirror keystore (sent, see below); a
+distinct icon for the mirror app (the session above had left both apps visually identical except
+for name); and — separately, uploading a screenshot of the actual PCC brand logo — use that exact
+logo for the main app (confirmed byte-identical to what was already in
+`packaging/icons/pcc-icon-source.png`, so no change needed there) and design something different
+for the mirror app. Then, after delivering that, Aditya installed both real APKs on a real device
+and reported three concrete bugs — this session's real content is root-causing and fixing all
+three, more thoroughly than the first pass on two of them.
+
+**Distinct mirror-app icon**: `packaging/icons/pcc-mirror-icon-source.png` — same ascending-bars
+motif as the main logo (brand family resemblance) on a warm amber gradient instead of white, plus
+a magnifier "glance" badge and "At a Glance" tagline replacing "Plan | Control | Deliver".
+Rendered via the same Playwright/Chromium HTML→screenshot technique `generate-icons.js` already
+uses for the app's own favicon — no new dependency. `packaging/android-mirror/scripts/copy-app.js`
+now points at this file instead of the main app's `pcc-icon-source.png`.
+
+**Bug 1 (reported): both installed APKs showed the wrong icon — not either PCC design, a generic
+blue "X"/arrow mark.** Root cause: `@capacitor/assets`' "Custom Mode" needs
+`icon-only.png`+`icon-foreground.png`+`icon-background.png` all three; `icon-only.png` ALONE only
+feeds the LEGACY `mipmap/ic_launcher.png`, never the Android 8+ (API 26+) adaptive icon layers
+(`mipmap-anydpi-v26/ic_launcher.xml` → `mipmap/ic_launcher_foreground.png` +
+`ic_launcher_background`) — which is what every real device actually renders. Both apps'
+`copy-app.js` scripts had only ever supplied `icon-only.png` since Phase 3 — both apps had been
+shipping Capacitor's own stock placeholder icon this entire time, neither app's actual custom icon
+work had ever taken visible effect. Fixed both `copy-app.js` scripts to also copy the real logo to
+`icon-foreground.png` and a new flat-color match (`packaging/icons/pcc-icon-background.png` /
+`pcc-mirror-icon-background.png`) to `icon-background.png`, then re-ran `npx @capacitor/assets
+generate --android` for both projects. **Verified by opening the regenerated
+`ic_launcher_foreground.png` directly and looking at it** — not just trusting the build log — this
+is now documented as the standing verification step in `CLAUDE.md`, since a "successful" build
+gives zero indication either way.
+
+**Bug 2 (reported): "the add project bug is still present in mirror app."** This was Aditya
+correctly rejecting a fix from the prior session that had looked right but wasn't. Two real,
+sequential bugs here, not one:
+1. The FIRST write-guard (`mirror-app/src/shim/writeGuard.ts`, from the prior session) captured
+   `preserved[k] = data[k]` — a REFERENCE to each non-settings array/object, not a copy. Real
+   mutations in this codebase are almost always in-place (`portfolioService.ts`'s `saveProject()`:
+   `data.projects.push(created)`, confirmed by reading it directly, the convention throughout
+   `store.js`) — pushing onto the array mutates the SAME array the "preserved" reference already
+   pointed at, so "restoring" `data[k] = preserved[k]` was restoring the object to itself, already
+   containing the new project. A no-op dressed up as a fix; the prior session's own verification
+   pass just hadn't actually re-checked after the click, so it shipped believing it worked.
+   **Root-caused and fixed by re-testing with the exact real mutation pattern directly**
+   (`window.PCC.store.update((d) => d.projects.push(...))` called straight from a Playwright
+   `page.evaluate()`, bypassing all UI-targeting uncertainty) instead of trusting a broader
+   click-through test — real fix is an actual deep clone (`JSON.parse(JSON.stringify(...))`) taken
+   BEFORE the mutator runs, restored after. **General lesson for this codebase, not just this one
+   guard**: anything that needs to snapshot-and-restore part of `store.js`'s data MUST deep-clone,
+   never shallow-preserve a reference, given how pervasively mutations happen in place.
+2. Once persistence was genuinely blocked, the reused `ProjectForm` still closed and returned to
+   the list exactly as if it had saved (`onSaved()` runs unconditionally after `saveProject()`) —
+   no way for a user to tell "nothing happened" from "it worked." Fixed by reusing the real
+   `src/js/notifications.js` (loaded alongside `store.js`/`projectContext.js`, same pattern — no
+   longer stubbed as a no-op) so `writeGuard.ts` can compare each non-settings key's JSON
+   before/after the mutator and fire a real toast ("This is a read-only view — changes here aren't
+   saved.") the instant it detects and reverts an attempt; a Company/Client/Project switch
+   (settings-only) stays silent. Also had to make `window.PCC.notify` drop every "success"-severity
+   message globally, since the reused `saveProject()` calls `notify("Project added.", "success")`
+   unconditionally right after `update()` returns regardless of what the guard did — without this,
+   the user saw both toasts stacked, contradicting each other. Correct rule in a strictly
+   read-only app: "success" can never actually be true here.
+
+**Then Aditya pushed further: "I don't want the button itself."** Genuinely blocked-and-explained
+still wasn't the bar — the create/edit UI shouldn't be reachable at all in an app that's just a
+mirror. `mirror-app/src/shim/hideWriteButtons.ts` hides `"+ Add Project"` (both Dashboard's
+first-run welcome card and Portfolio's own toolbar) and, within a project card's
+`.card-menu__item` dropdown, `"Edit"`/`"Archive"`/`"Unarchive"` — matched by their known exact
+button text via a `MutationObserver`, the only way to suppress specific elements of a reused,
+unmodified component without forking it (`"Pin"`/`"Unpin"` in the same dropdown is deliberately
+left working — settings-only, genuinely harmless, nothing misleading about it). **Real bug hit
+building this, same shape as the write-guard one**: the observer's first version watched
+`#mirror-app-outlet` directly and stopped working after the very first mirror refresh, because
+`App.tsx`'s outlet carries `key={refreshTick}` — a deliberate full-remount-on-refresh design —
+which means React destroys and recreates that exact DOM node every refresh, orphaning any observer
+attached to it. Fixed by observing the outer, never-recreated `.mirror-app-shell` instead.
+Verified with actual `offsetParent !== null` checks per button, not a screenshot.
+
+**Bug 3 (reported): "the layout of the mirror is really bad."** Root cause, confirmed by a
+side-by-side real-Chromium comparison at a real phone viewport (412×915) against the main app's
+own rendering of the same Portfolio page: the main app's pages are only ever styled correctly
+inside `.main-column > main.page#page-outlet` — `main.page` supplies the padding every page's own
+filter-row/KPI-grid layout math assumes it has. `mirror-app`'s outlet had neither the class nor
+the padding, so every reused page rendered completely edge-to-edge. Fixed by giving
+`#mirror-app-outlet` the real `page` class in `App.tsx` instead of inventing new CSS, and rewrote
+the app's own custom tab bar (the one piece with no main-app equivalent to reuse) to a real mobile
+pattern — title on its own row, tabs in a horizontally-scrolling strip instead of `flex-wrap`,
+since the original wrapped into two ragged rows (title breaking mid-word) on a real phone width.
+Confirmed afterward at pixel-parity with the main app's own real mobile rendering of the same page
+— the stacked native `<select>` filter row that might look like a separate bug is actually the
+main app's own existing mobile behavior too, confirmed identical, not something introduced here.
+
+**Also fixed, same round**: "give me the new main apk" was answered by simply confirming the logo
+was already correct (no rebuild needed for that reason) and bumping `versionCode`/`versionName`
+for a fresh signed release build regardless, since the prior session's APK had never actually been
+delivered as a numbered release.
+
+**Current state after this session**: main app `versionCode` **7** / `versionName` **"1.6"**,
+mirror app `versionCode` **5** / `versionName` **"1.4"** — both signed with their own unchanged
+keystores (cert SHA-256 confirmed still `3b:48:02:e2:...` for the main app, `f9:eb:e3:fc:...` for
+the mirror app, i.e. no accidental re-keying happened across all these rebuilds), both zipaligned,
+both verified with embedded-`index.html` byte-diffs against fresh builds every single time. Full
+suite: **2687/2687**, unaffected throughout (every fix in this round touched only `mirror-app/` or
+`packaging/`, nothing in `src/`/`react/src/`). Every commit in this round
+(`fff1037`..`d9a2757`) is merged into `main` and pushed; the working branch
+(`claude/build-windows-android-release-dl50u3`) is fast-forwarded to match, same discipline as
+every prior round.
+
+**What Aditya still needs to do**: install the latest APKs (both delivered directly after every
+fix in this round, not batched) and confirm all three bugs are actually gone on his real device —
+this sandbox's own real-Chromium verification is strong evidence but, per this file's own standing
+caution, is not the same as a real Capacitor WebView on real Android. Back up the mirror app's
+keystore zip if he hasn't already (sent as `pcc-mirror-keystore-backup.zip` in the prior session,
+not resent this round since nothing about the keystore itself changed).
+
+**Lesson worth carrying into any future session on this codebase, stated once so it doesn't need
+re-learning**: **a fix that "looks right" in a quick manual click-through is not verified.** Both
+real bugs in this session (the write guard, the button hider) were shipped once already, believed
+fixed, and were still broken — in both cases because the original verification exercised the
+*general shape* of the problem instead of the *exact* mechanism (a UI click that happened to work
+around the reference-vs-copy bug by coincidence of timing; an observer that worked for the one
+DOM state it was tested against). The fix, both times, was re-testing against the precise
+mechanism directly — the exact mutation pattern, the exact DOM lifecycle event — not a broader
+end-to-end pass. Apply that standard going forward: when a fix touches a snapshot/guard/observer
+pattern, verify the specific mechanism it's supposed to defeat, not just "does the feature look
+right afterward."

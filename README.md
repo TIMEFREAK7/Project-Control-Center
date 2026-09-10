@@ -6165,6 +6165,80 @@ repo-root build. Delivered directly: the ~10.4MB signed APK as one file, the ~10
 into 5 parts via the standing `split -b 25M -d -a 2` convention with the reassembled file's
 SHA-256 verified to match before sending.
 
+## One-Way Hourly Data Mirror + Storage Architecture (Windows → Android), 2026-09-09
+
+Four-phase session: a real Windows installer wizard (Gate 1's Electron app previously required
+manual setup), a storage-relocation option (moving the app's data folder without losing data),
+consolidating `blobStore.js` and `scheduleBaselineStore.js` into one shared IndexedDB database
+(`sharedIndexedDb.js`) instead of two separate ones, and the actual feature: a one-way, read-only,
+hourly data mirror from Windows to Android, gated behind `settings.sync_mirror_enabled`
+(schema v65). Windows silently writes a full `buildExportJson()` snapshot to a user-configured
+folder roughly hourly plus once on quit, via a new IPC bridge
+(`packaging/electron/preload.js`/`main.js`) since a contextIsolated renderer has no direct
+filesystem access otherwise; the user points their own sync tool (Syncthing, etc.) at that folder
+themselves — this app never installs or knows about any sync transport, by design. No write-back
+path exists anywhere, deliberately — a prior "mark meeting complete from phone" idea was scrapped
+for this simpler, safer scope.
+
+The Android read side (pull-to-refresh, reading a fixed `Documents/PCC-Mirror/` path) originally
+shipped as part of the main Android app itself — **this was reversed one day later, see "3-App
+Split" below**; the main app has no mirror-reading capability anymore.
+
+Two real bugs worth remembering from this session, both root-caused with actual repro scripts, not
+assumed: (1) `req.oldVersion` inside an IndexedDB `onupgradeneeded` handler is always `undefined` —
+the real property lives on the `event` argument, not the `request`; (2) an unclosed legacy database
+connection during the migration check caused a genuine 7-minute test hang (IndexedDB's `onblocked`
+semantics block any later attempt to reopen that database at a different version) — fixed with a
+`readAllThenClose()` helper. The Windows write path and quit-hook were separately verified against
+a real running Electron instance (Xvfb + `--remote-debugging-port` + Playwright's
+`connectOverCDP()`), not just jsdom mocks — see `HANDOFF.md`'s own write-up for a real testing
+gotcha found there (`window.close()` via CDP doesn't reliably reach `BrowserWindow`'s `'close'`
+event; a temporary debug IPC channel calling `win.close()` from the main process directly is the
+fix for testing it, not for the shipped code, which was already correct).
+
+## 3-App Split — Standalone "At a Glance" Mirror App, 2026-09-09/10
+
+The mirror feature above shipped with the Android read side built into the main app — Aditya asked
+to change that before it went out: three separate apps instead (Windows full editing, the main
+Android app full editing with the mirror-reading capability removed entirely, and a new, genuinely
+separate, minimal, **strictly read-only** Android app, "PCC At a Glance"), confirmed via
+`AskUserQuestion` before building. Built as three explicitly gated phases (each stopped and
+reported before the next began, a standing instruction Aditya added mid-session after a first
+draft plan omitted it) — see `CLAUDE.md`'s "One-way data mirror + the 'At a Glance' mirror app"
+section for the standing architecture reference and `HANDOFF.md`'s three dated sessions for the
+full build/debug history; this entry is the rationale summary.
+
+**The core tension**: "genuinely separate, minimal app" vs. "reuse the real page components/
+services unmodified, no forked business logic." Resolved by reusing `Dashboard.tsx`/`MyWork.tsx`/
+`ActionCentre.tsx`/`Portfolio.tsx` and their real services completely unmodified (plus the real
+`store.js`/`projectContext.js`/`notifications.js`, loaded as plain scripts) while genuinely
+reimplementing only the two pieces that have no main-app equivalent (a 4-tab router, the
+Company/Client/Project context switcher) and safe-no-op-stubbing everything else those reused
+components touch that has no meaning in a 4-tab app (meetings/rfis/schedule/etc. "jump to full
+record" navigation). Result: a single self-contained `mirror-app/index.html` at roughly 11% of the
+main app's size — genuinely smaller, not just a restricted relaunch of the same bundle. Packaged
+as its own Capacitor Android project (`packaging/android-mirror/`, distinct `applicationId` so it
+installs alongside the main app) with its own dedicated signing keystore, per explicit instruction
+— the two apps stay independently signable rather than sharing one identity.
+
+**A real bug-fix round followed real-device installation**, and it's the more instructive part of
+this entry: a write guard that silently reverted content mutations shipped once, was reported
+still broken, and the actual bug was a shallow reference-preservation instead of a deep clone —
+`data.projects.push(...)` (this codebase's pervasive in-place-mutation convention) mutated the
+"preserved" reference right along with the live data, so "restoring" it was a no-op. A
+`MutationObserver` meant to hide the now-pointless "+ Add Project"/"Edit"/"Archive" buttons had the
+same shape of bug — it watched a DOM node that got destroyed and recreated on every mirror refresh
+(a deliberate `key={refreshTick}` remount design), orphaning the observer after the very first
+refresh. Both were caught only by re-verifying against the *exact* mechanism directly (the real
+mutation pattern via `window.PCC.store.update()`, real `offsetParent` checks per button) instead of
+a broader click-through pass that happened to look fine. Separately, both Android apps' launcher
+icons turned out to still be Capacitor's own stock placeholder on real devices — `icon-only.png`
+alone only feeds the legacy icon path, never the Android 8+ adaptive icon layers real devices
+actually render — fixed by supplying `icon-foreground.png`/`icon-background.png` too, verified by
+opening the regenerated PNG directly rather than trusting a successful build. See `CLAUDE.md`'s
+mirror-app section for the standing reference on all of this, since it's the kind of thing a fresh
+session needs before touching `mirror-app/` or either Android project again.
+
 ## Locked build order (unchanged)
 
 **Tier 1** (complete): Portfolio → Documents → Daily Site Log → Risk/Issue Register → Meetings →
@@ -6309,3 +6383,10 @@ explicitly deferred twice now (Gates 14 and 16) — worth revisiting once real u
 it's actually needed. Tier 3 (AI Document
 Processing, Knowledge Base, AI Project Assistant, Lessons Learned, final polish) remains deferred
 until Tier 1/2 are in daily use.
+
+**A separate track, outside the Tier/Gate roadmap above**: the one-way Windows→Android data mirror
+and its follow-on 3-app split (Windows / main Android / a new standalone read-only "At a Glance"
+Android app) are both complete — see their own sections above. This didn't add or change any
+Tier 1/2/3 feature; it's a packaging/distribution-shape change sitting alongside the roadmap, not
+inside it. Current release state: main app `versionCode` 7/`versionName` "1.6", mirror app
+`versionCode` 5/`versionName` "1.4", schema v65.
