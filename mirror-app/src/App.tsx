@@ -13,6 +13,7 @@ import PortfolioPage from "../../react/src/pages/Portfolio.tsx";
 import { registerTabHost, type TabName } from "./router";
 import { startMirrorListeners } from "./mirrorRead";
 import { installPullToRefresh } from "./pullToRefresh";
+import { installWriteButtonHider } from "./shim/hideWriteButtons";
 
 const TABS: { name: TabName; label: string }[] = [
   { name: "dashboard", label: "Dashboard" },
@@ -56,6 +57,10 @@ export default function App() {
       setHasMirrorData(true);
       setRefreshTick((n: number) => n + 1);
     });
+    // #mirror-app-outlet exists by the time this effect runs (it's rendered in the same
+    // pass, and effects fire after the DOM commit) -- installs its own MutationObserver so
+    // it keeps working across tab switches/refreshes without needing to re-run this effect.
+    installWriteButtonHider();
   }, []);
 
   return (
