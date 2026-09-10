@@ -6390,3 +6390,66 @@ Android app) are both complete — see their own sections above. This didn't add
 Tier 1/2/3 feature; it's a packaging/distribution-shape change sitting alongside the roadmap, not
 inside it. Current release state: main app `versionCode` 7/`versionName` "1.6", mirror app
 `versionCode` 5/`versionName` "1.4", schema v65.
+
+## Android UI/UX & Adaptive Design Overhaul — Gate 1: Edge-to-Edge + Predictive Back (2026-09-10)
+
+Aditya handed over a large (32-section) "Android UI/UX & Adaptive Design Overhaul" master prompt.
+Before building anything from it, it was checked against the real, current codebase rather than
+run phase-by-phase as written — a third of its sections describe work already shipped by the
+12-gate "PCC Redesign" (done 2026-08-22) or predate it entirely (it assumes no React migration and
+a ~3MB `index.html`; both are stale — every page is React/TypeScript now, `index.html` is 6.2MB).
+Scoped down with Aditya to the one section with zero existing coverage, confirmed by grep before
+writing any code: Android edge-to-edge layout and predictive back (§5/§7 of the prompt). Everything
+else in the prompt (global project context — already shipped as Gate 6 above, contrary to a stale
+note this session found and fixed in `.claude/docs/UI_ARCHITECTURE.md`; foldable/expanded-window
+QA; mobile Gantt simplification) is explicitly deferred to a future gate, scoped separately.
+
+**The gap was real, not hypothetical**: `targetSdkVersion` is already 36 (Android 16), which makes
+edge-to-edge layout *mandatory*, not optional, on any device running API 35+ — yet grep confirmed
+zero `safe-area`/`env(safe-area-inset-*)`/`viewport-fit` anywhere in `src/` or either Android
+project, and no `enableOnBackInvokedCallback` opt-in for predictive back. On a real API 35+ device
+this app was almost certainly already rendering content under the status/gesture bars with no way
+to detect it from this repo's jsdom/Chromium-only test suite — Chromium (desktop or headless)
+always reports `0` for every `safe-area-inset-*`, so this class of bug is invisible to every
+existing automated check here, on purpose confirmed rather than a gap in the check itself.
+
+**Fixed, both Android projects independently** (`packaging/android/` and
+`packaging/android-mirror/` — same "every Android-side fix happens twice" precedent as the
+adaptive-icon gotcha elsewhere in this file):
+- `AndroidManifest.xml`: `android:enableOnBackInvokedCallback="true"` on `<application>` (opt-in
+  for predictive back on API 33+; harmlessly ignored below that — `minSdkVersion` stays 24).
+- `MainActivity.java`: `WindowCompat.setDecorFitsSystemWindows(getWindow(), false)` in `onCreate`,
+  explicit rather than relying solely on API 35's mandatory enforcement, since this app still
+  supports API 24-34 devices where edge-to-edge would otherwise never activate at all. The mirror
+  app's `MainActivity` had no `onCreate` override before this; now has the minimal one needed.
+- `src/index.html` / `mirror-app/src/index.html`: added `viewport-fit=cover` to the viewport meta
+  tag — required for `env(safe-area-inset-*)` to report real values at all; without it every inset
+  the CSS reads silently resolves to `0`, identical to doing nothing.
+- `src/css/styles.css`: additive `env(safe-area-inset-*)` padding on every element that actually
+  touches a screen edge — `#app-shell` (left/right, for landscape/cutouts), `.title-block` and
+  `.sidebar` (top), `footer.app-footer` (bottom), `.drawer__header`/`.drawer__body` (top/bottom —
+  covers both the right-anchored drawer and the mobile nav's `.drawer--left`), and
+  `.modal-overlay`'s padding via `max()` against each side's inset. Every rule adds to the existing
+  padding via `calc()`/`max()` rather than replacing it, so desktop/Electron (where the env() term
+  is always `0`) is byte-for-byte unchanged — confirmed directly (see Verified below), not assumed.
+  Mirror app: `.mirror-app-tabbar` (its own sticky top-edge chrome, `mirror-app/src/mirror-app.css`)
+  got the same top-inset treatment.
+- No JS-level back-button interception existed to remove — `router.js` relies entirely on native
+  hash-history traversal already, which is exactly what predictive back needs; nothing to "fix" on
+  the JS side, confirmed by reading the file rather than assumed.
+
+**What this gate does NOT claim**: predictive back's actual gesture-preview animation is an
+Android-OS-level behavior on top of the Activity's `OnBackInvokedDispatcher`, which this sandbox
+has no Android emulator/device to actually exercise — the manifest opt-in and Capacitor 8.5's own
+WebView back-handling are the documented prerequisites, but the visual gesture itself needs
+on-device verification before calling it fully confirmed, not just opted-in. Flagged here rather
+than overclaimed.
+
+**Verified**: `node build.js` and `node mirror-app/build.js` both succeed clean (TypeScript
+strict-mode check included). Full jsdom suite (`cd tests && npm test`): every existing test passes,
+0 failures. Real-Chromium pass across 360×800/412×915/834×1112/1280×800: both apps boot, render,
+and zero console errors; `.title-block`'s computed `padding-top` is `0px` and
+`footer.app-footer`'s computed `padding-bottom` is `6px` at every viewport — i.e. identical to
+before this gate, confirming the `env()` additions are genuinely additive on any environment that
+reports zero insets, not just assumed to be. On-device Android verification (real insets, the
+predictive-back gesture itself) is the one thing still owed before calling this fully closed.

@@ -21,11 +21,13 @@ then the target page's render function. Every route is React now (`window.PCC.pa
 ~10-line stub calling `reactBridge.mount(reactPages.<name>, {}, outlet)`); the router's contract to
 page modules is unchanged from the vanilla-JS era, so it doesn't need to know that.
 
-**No shared "current project" context exists** — every project-scoped page keeps its own
-module-local project filter state; this was flagged as a real architectural gap during the PCC
-Redesign's Phase A inspection (its own Gate 6, "Global Project Context") and, per HANDOFF.md's
-"Next phase" section, has not been confirmed as started. Don't assume cross-page project context
-exists when scoping new work — check the current gate status with Aditya first.
+**A shared "current project" context does exist** — `src/js/projectContext.js`, backed by
+`settings.active_project_id` (schema v54+), a persistent "PROJECT" switcher in the shell header,
+and per-page-type wiring (4 mandatory-selector pages always prefer it; 12 filter-style pages
+pre-fill from it once on first render, fully overridable). Shipped and verified (73-file suite +
+real-Chromium end-to-end pass) as README's Gate 6, done 2026-08-22 — this file previously claimed
+it was unstarted; that was stale, corrected 2026-09-10. See README's Gate 6 entry for the full
+mandatory-vs-filter distinction before touching any project-scoped page.
 
 ## Page / component layer
 

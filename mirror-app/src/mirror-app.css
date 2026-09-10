@@ -28,6 +28,11 @@
   position: sticky;
   top: 0;
   z-index: 10;
+  /* Edge-to-edge gate (same as the main app's .title-block): this is the mirror app's
+     only top-edge chrome (position: sticky; top: 0), so it needs the status-bar inset
+     directly -- see src/css/styles.css's matching comments for the full reasoning, and
+     mirror-app/src/index.html for the required viewport-fit=cover meta tag. */
+  padding-top: calc(10px + env(safe-area-inset-top));
 }
 .mirror-app-tabbar__title {
   font-weight: 600;

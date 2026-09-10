@@ -2,7 +2,12 @@
 <html lang="en" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover: required for env(safe-area-inset-*) in styles.css to report
+         real, non-zero values under Android edge-to-edge (see MainActivity.java's
+         WindowCompat.setDecorFitsSystemWindows(getWindow(), false)) -- without this,
+         every safe-area-inset-* the CSS reads resolves to 0 and content silently renders
+         under the status/gesture bars again on a real device, with no error anywhere. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Project Control Center</title>
     <!-- PCC Redesign Gate 12 (App Icon & Branding): the favicon is embedded as an inline
          data URI (source: src/icons/favicon.svg) rather than a linked file, keeping
@@ -249,9 +254,19 @@ button {
 }
 
 /* ===== App shell ===== */
+/* Android UI/UX Overhaul (Edge-to-Edge + Predictive Back gate): left/right safe-area
+   insets here since #app-shell is the one element spanning the full window width --
+   matters in landscape (gesture nav bar/rounded-corner cutouts can sit on either side)
+   and on foldables/display cutouts. Top/bottom insets are handled by .title-block and
+   footer.app-footer below instead, since those are the actual elements touching the top
+   and bottom edges -- see MainActivity.java's WindowCompat.setDecorFitsSystemWindows()
+   for why non-zero values only ever appear on a real Android device (desktop Chromium
+   always reports 0 here, so this is additive and never a regression there). */
 #app-shell {
   display: flex;
   min-height: 100vh;
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
 }
 
 /* Redesign Gate 4: a real persistent sidebar again — reverses UI/UX Overhaul Gate 2's
@@ -272,6 +287,11 @@ button {
   background-color: var(--bg-paper);
   transition: width var(--transition-base);
   overflow: hidden;
+  /* Edge-to-edge gate: #app-shell's own left inset (above) covers the row as a whole, but
+     .sidebar is also the header's full height, so it separately needs the top inset --
+     .sidebar__header's collapse button would otherwise sit under the status bar in the
+     expanded/medium layouts where the sidebar is visible instead of the drawer. */
+  padding-top: env(safe-area-inset-top);
 }
 
 .sidebar__header {
@@ -449,6 +469,9 @@ button {
   align-items: stretch;
   border-bottom: 1px solid var(--divider);
   background-color: var(--bg-paper);
+  /* Edge-to-edge gate: .title-block is the header sitting at the very top of #app-shell's
+     flex column -- without this it renders under the status bar on a real device. */
+  padding-top: env(safe-area-inset-top);
 }
 
 .title-block__cell {
@@ -622,6 +645,11 @@ footer.app-footer {
   border-top: 1px solid var(--divider);
   background-color: var(--bg-paper);
   padding: 6px var(--space-4);
+  /* Edge-to-edge gate: the footer sits at the very bottom of #app-shell's flex column --
+     without this its "SAVED"/status text renders under the gesture nav bar on a real
+     device. calc() on top of the existing 6px rather than replacing it, so desktop (where
+     the env() term is always 0) is byte-for-byte unchanged. */
+  padding-bottom: calc(6px + env(safe-area-inset-bottom));
   display: flex;
   justify-content: space-between;
   font-family: var(--font-body);
@@ -1889,7 +1917,14 @@ a:focus-visible {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--space-4);
+  /* Edge-to-edge gate: max() so the overlay's own gutter never shrinks below the real
+     system-bar inset on a real device -- keeps the centered .modal itself clear of the
+     status/gesture bars without changing anything on desktop (env() is 0 there, so this
+     is identical to the plain var(--space-4) it replaces). */
+  padding: max(var(--space-4), env(safe-area-inset-top))
+    max(var(--space-4), env(safe-area-inset-right))
+    max(var(--space-4), env(safe-area-inset-bottom))
+    max(var(--space-4), env(safe-area-inset-left));
   z-index: 1100;
   animation: overlay-in var(--transition-base);
 }
@@ -1976,6 +2011,10 @@ a:focus-visible {
   gap: var(--space-3);
   padding: var(--space-4) var(--space-5);
   border-bottom: 1px solid var(--divider);
+  /* Edge-to-edge gate: both .drawer (right-anchored) and .drawer--left (the mobile nav
+     overlay) run the full viewport height (top:0; bottom:0) -- the header sits flush
+     against the top edge, so it needs the same top-inset treatment as .title-block. */
+  padding-top: calc(var(--space-4) + env(safe-area-inset-top));
 }
 
 .drawer__title {
@@ -1988,6 +2027,10 @@ a:focus-visible {
   padding: var(--space-3) var(--space-3) var(--space-5);
   overflow-y: auto;
   flex-grow: 1;
+  /* Edge-to-edge gate: the body is the element actually touching the bottom edge
+     (bottom:0 on .drawer/.drawer--left) -- without this the last nav item/form control
+     sits under the gesture nav bar. */
+  padding-bottom: calc(var(--space-5) + env(safe-area-inset-bottom));
 }
 
 @keyframes drawer-in {

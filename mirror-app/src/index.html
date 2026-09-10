@@ -2,7 +2,9 @@
 <html lang="en" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover: required for env(safe-area-inset-*) to report real values
+         under Android edge-to-edge -- see src/index.html's matching comment. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>PCC — At a Glance</title>
     <meta name="theme-color" content="#3d63dd" />
     <link rel="stylesheet" href="css/styles.css" />

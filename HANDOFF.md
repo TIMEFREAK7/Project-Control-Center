@@ -6900,3 +6900,54 @@ mechanism directly — the exact mutation pattern, the exact DOM lifecycle event
 end-to-end pass. Apply that standard going forward: when a fix touches a snapshot/guard/observer
 pattern, verify the specific mechanism it's supposed to defeat, not just "does the feature look
 right afterward."
+
+## 2026-09-10 session: Android UI/UX Overhaul, Gate 1 — Edge-to-Edge + Predictive Back
+
+**Trigger**: Aditya handed over a large (32-section) "Android UI/UX & Adaptive Design Overhaul"
+master prompt for PCC. Before writing any code, it was checked against the actual current
+codebase — a third of it describes work already shipped (the 12-gate "PCC Redesign," done
+2026-08-22 — React migration, responsive nav restructuring, design tokens) or is based on stale
+assumptions the prompt itself carries (it assumes no React and a ~3MB `index.html`; both wrong —
+every page is React/TypeScript, `index.html` is 6.2MB now). Scoped down with Aditya via
+`AskUserQuestion` to one real, confirmed-empty gap: Android edge-to-edge layout + predictive back
+(§5/§7 of the prompt), structured as a new Gate in this project's existing convention rather than
+adopting the prompt's own Phase 0-9 numbering. Full scoping detail is now in README.md's own new
+"Android UI/UX & Adaptive Design Overhaul — Gate 1" section — not duplicated here.
+
+**One stale doc found and fixed along the way, not part of this gate's actual work**:
+`.claude/docs/UI_ARCHITECTURE.md` claimed "no shared current-project context exists," flagging it
+as an unstarted gap — false. `src/js/projectContext.js` + the shared "PROJECT" switcher shipped and
+was verified as README's own Gate 6 ("Global Project Context"), 2026-08-22. Corrected in place;
+worth knowing in case anything else scoped off that doc's now-fixed claim.
+
+**What shipped**: `AndroidManifest.xml` (`android:enableOnBackInvokedCallback="true"`) and
+`MainActivity.java` (`WindowCompat.setDecorFitsSystemWindows(getWindow(), false)` in `onCreate`) in
+**both** `packaging/android/` and `packaging/android-mirror/` independently — same "every
+Android-side fix happens twice" precedent as the adaptive-icon gotcha earlier in this file.
+`viewport-fit=cover` added to both apps' viewport meta tag (`src/index.html`,
+`mirror-app/src/index.html`) — required for `env(safe-area-inset-*)` to report real values at all.
+`src/css/styles.css` and `mirror-app/src/mirror-app.css` got additive `env(safe-area-inset-*)`
+padding on every edge-touching element (`#app-shell`, `.title-block`, `.sidebar`, `footer.app-footer`,
+`.drawer__header`/`.drawer__body`, `.modal-overlay`, `.mirror-app-tabbar`) — `calc()`/`max()` on top
+of existing padding, never replacing it, so desktop/Electron stays byte-for-byte unchanged.
+
+**Verified**: `node build.js` + `node mirror-app/build.js` both clean (TypeScript strict-mode
+check included). Full suite: **2687/2687**, 0 failures — same count as the prior session, confirming
+zero regression. Real-Chromium pass at 360×800/412×915/834×1112/1280×800: both apps boot, render,
+zero console errors, and computed `padding-top`/`padding-bottom` on `.title-block`/`footer.app-footer`
+is identical to pre-gate values (env() resolves to `0` on desktop Chromium), confirming the CSS is
+genuinely additive rather than assumed to be. **Not verified**: predictive back's actual
+gesture-preview animation, which is an Android-OS-level behavior this sandbox has no
+emulator/device to exercise — the manifest opt-in is the documented prerequisite, but the visual
+gesture itself needs a real device before calling this fully closed. Say so plainly if Aditya asks
+whether predictive back "works" — the opt-in is done, the on-device confirmation isn't.
+
+**Not done, explicitly deferred to a future gate** (per the scoping conversation with Aditya):
+foldable/expanded-window QA pass, mobile Gantt simplification, and anything else from the master
+prompt not listed above — global project context needed no new work since it already existed.
+
+**Current state**: this gate's changes are committed on `claude/pcc-android-ui-overhaul-3p5z09` —
+check `git log`/`git status` for whether it's been merged to `main` yet before assuming either way.
+`SCHEMA_VERSION` unchanged at 65 (no data-shape change in this gate). `versionCode`/`versionName`
+NOT bumped for either Android app yet — this gate didn't produce a release build, only source
+changes; bump both before the next `assembleRelease`, per this file's own standing rule.
