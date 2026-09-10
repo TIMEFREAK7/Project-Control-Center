@@ -26,12 +26,32 @@
  * needs to replace the WHOLE data object (that's the entire point of loading a mirror
  * snapshot) -- it receives the real, unwrapped update function this call returns and uses
  * that directly instead of going through the now-guarded window.PCC.store.update.
+ *
+ * installWriteGuard() also wraps window.PCC.notify to drop every "success"-severity
+ * message. Real bug hit while verifying the toast fix below: portfolioService.ts's
+ * saveProject() calls window.PCC.notify("Project added.", "success") unconditionally,
+ * AFTER window.PCC.store.update() returns -- so even with the guard correctly reverting
+ * the write, the user saw BOTH "This is a read-only view..." AND "Project added." stacked
+ * together, which reads as contradictory nonsense. Can't suppress that one call without
+ * forking portfolioService.ts, so instead: every "success" notify in this codebase is
+ * definitionally reporting a create/update/delete that just happened -- which can never
+ * actually be true in a strictly read-only app -- so "success" is dropped globally, not
+ * just around this one call. "info"/"warning"/"error" (including this guard's own
+ * read-only notice) still show normally.
  */
 type Mutator = (data: any) => void;
 type UpdateFn = (mutator: Mutator) => void;
 
 export function installWriteGuard(): UpdateFn {
   const realUpdate: UpdateFn = window.PCC.store.update as UpdateFn;
+
+  const realNotify = window.PCC.notify;
+  if (realNotify) {
+    window.PCC.notify = function guardedNotify(message: string, severity?: string) {
+      if (severity === "success") return;
+      return realNotify(message, severity);
+    } as any;
+  }
 
   window.PCC.store.update = function guardedUpdate(mutator: Mutator) {
     return realUpdate((data: any) => {
@@ -47,11 +67,38 @@ export function installWriteGuard(): UpdateFn {
       // safe here specifically because every non-settings field in this store is plain
       // JSON-serializable data (the same guarantee buildExportJson() already relies on).
       const snapshot: { [key: string]: unknown } = {};
+      const snapshotJson: { [key: string]: string } = {};
       Object.keys(data).forEach((k) => {
-        if (k !== "settings") snapshot[k] = JSON.parse(JSON.stringify(data[k]));
+        if (k === "settings") return;
+        const json = JSON.stringify(data[k]);
+        snapshotJson[k] = json;
+        snapshot[k] = JSON.parse(json);
       });
 
       mutator(data);
+
+      // Real UX bug fixed alongside the reference-vs-copy bug above: reverting a write
+      // silently (the earlier version of this guard) leaves the real, reused form UI
+      // looking like it succeeded -- Portfolio.tsx's ProjectForm closes and returns to the
+      // list either way, since onSaved() runs unconditionally after saveProject(). A user
+      // has no way to tell "nothing happened" from "it saved" without this. So: compare
+      // each non-settings key's JSON against its pre-mutation snapshot; if anything
+      // outside settings actually changed, tell them via the real toast (src/js/
+      // notifications.js, loaded for exactly this) BEFORE reverting it -- a
+      // Company/Client/Project switch (settings-only) stays completely silent, same as
+      // it's always been.
+      let attemptedWrite = false;
+      Object.keys(data).forEach((k) => {
+        if (k === "settings") return;
+        if (JSON.stringify(data[k]) !== snapshotJson[k]) attemptedWrite = true;
+      });
+      Object.keys(data).forEach((k) => {
+        if (k === "settings") return;
+        if (!(k in snapshotJson)) attemptedWrite = true; // a whole new top-level key appeared
+      });
+      if (attemptedWrite && window.PCC.notify) {
+        window.PCC.notify("This is a read-only view — changes here aren't saved.", "info");
+      }
 
       Object.keys(data).forEach((k) => {
         if (k === "settings") return;

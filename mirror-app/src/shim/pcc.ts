@@ -4,9 +4,10 @@
  * this bundle in mirror-app/build.js, exactly like the main app's own JS_ORDER: the real
  * src/js/store.js (get/update/migrate/newX()/every *_STATUSES constant), the real
  * src/js/projectContext.js (get/set/isPinned/togglePin/setCompany/setClient/...), and the
- * real src/js/reactBridge.js (mount/unmount). None of PCC's actual domain logic is
- * reimplemented here — see CLAUDE.md's "React must not own core calculations" and this
- * task's own "no silent forking of business logic" constraint.
+ * real src/js/notifications.js (window.PCC.notify -- a genuine toast, not stubbed here;
+ * see shim/writeGuard.ts for why this app needs a REAL one, not a no-op). None of PCC's
+ * actual domain logic is reimplemented here — see CLAUDE.md's "React must not own core
+ * calculations" and this task's own "no silent forking of business logic" constraint.
  *
  * EVERYTHING ELSE below is either a genuinely small real reimplementation (router,
  * because this app has 4 tabs and no hash routing — see router.ts) or a deliberate,
@@ -27,13 +28,9 @@ import type { TabName } from "../router";
 export function installNoOpModules(): void {
   const PCC = window.PCC as any;
 
-  PCC.notify = function notify(): void {
-    // Deliberately silent: on the real app this shows a toast for things like "Choose or
-    // create a Company first" ahead of a create/save action. Every create/save action in
-    // this read-only app already no-ops before reaching notify() (nothing calls
-    // store.update() on a path a mirror-app user can actually trigger meaningfully), so
-    // there is nothing useful to tell them here.
-  };
+  // window.PCC.notify is NOT stubbed here -- src/js/notifications.js (real, unmodified)
+  // is loaded before this bundle and already set it to a genuine toast. writeGuard.ts
+  // calls it directly when it reverts a write attempt.
 
   PCC.layout = {
     refreshTitleBlock: function () {},

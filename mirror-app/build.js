@@ -97,13 +97,18 @@ function build() {
   const mirrorCss = fs.readFileSync(path.join(SRC, "mirror-app.css"), "utf8");
   const cssInlined = inlineFonts(realCss) + "\n" + mirrorCss;
 
-  // Real, unmodified store.js + projectContext.js, loaded before the React bundle --
-  // same load-order requirement the main app's own JS_ORDER documents for React vs.
-  // jszip, applied here for the same reason: window.PCC.store/window.PCC.projectContext
-  // must exist before index.tsx's top-level installRouter()/installNoOpModules() calls
-  // and before App.tsx's first render reads window.PCC.store.get().
+  // Real, unmodified store.js + projectContext.js + notifications.js, loaded before the
+  // React bundle -- same load-order requirement the main app's own JS_ORDER documents for
+  // React vs. jszip, applied here for the same reason: window.PCC.store/
+  // window.PCC.projectContext/window.PCC.notify must exist before index.tsx's top-level
+  // installRouter()/installWriteGuard() calls and before App.tsx's first render reads
+  // window.PCC.store.get(). notifications.js is the real toast implementation (plain DOM,
+  // no dependency on router.js/layout.js) -- reused so shim/writeGuard.ts can tell the
+  // user when it silently reverts a write attempt, instead of a form that closes as if it
+  // saved. This app's own shim no longer stubs window.PCC.notify as a no-op.
   const storeJs = fs.readFileSync(path.join(ROOT, "src", "js", "store.js"), "utf8");
   const projectContextJs = fs.readFileSync(path.join(ROOT, "src", "js", "projectContext.js"), "utf8");
+  const notificationsJs = fs.readFileSync(path.join(ROOT, "src", "js", "notifications.js"), "utf8");
   const mirrorBundle = fs.readFileSync(path.join(__dirname, ".build", "mirror-bundle.js"), "utf8");
 
   const jsBundle = [
@@ -111,6 +116,8 @@ function build() {
     storeJs,
     "/* ---- src/js/projectContext.js (real, unmodified) ---- */",
     projectContextJs,
+    "/* ---- src/js/notifications.js (real, unmodified) ---- */",
+    notificationsJs,
     "/* ---- mirror-app bundle (React + shim + 4 real page components) ---- */",
     mirrorBundle,
   ].join("\n\n");
