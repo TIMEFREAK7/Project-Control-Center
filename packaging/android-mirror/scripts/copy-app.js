@@ -7,7 +7,11 @@ const fs = require("fs");
 const path = require("path");
 
 const REPO_ROOT = path.join(__dirname, "..", "..", "..");
-const ICON_SRC = path.join(REPO_ROOT, "packaging", "icons", "pcc-icon-source.png");
+// This app's own distinct icon (amber background, magnifier "glance" badge) -- deliberately
+// NOT the main app's pcc-icon-source.png, so the two APKs are visually distinguishable on a
+// device's home screen/app drawer, not just by name. Same bars motif for brand family
+// resemblance; see the icon's own generation notes in HANDOFF.md for how it was made.
+const ICON_SRC = path.join(REPO_ROOT, "packaging", "icons", "pcc-mirror-icon-source.png");
 const INDEX_SRC = path.join(REPO_ROOT, "mirror-app", "index.html");
 
 const WWW_DIR = path.join(__dirname, "..", "www");
