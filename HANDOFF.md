@@ -6951,3 +6951,41 @@ check `git log`/`git status` for whether it's been merged to `main` yet before a
 `SCHEMA_VERSION` unchanged at 65 (no data-shape change in this gate). `versionCode`/`versionName`
 NOT bumped for either Android app yet — this gate didn't produce a release build, only source
 changes; bump both before the next `assembleRelease`, per this file's own standing rule.
+
+## Module accent tint + route-fade confirmation (2026-09-10)
+
+Aditya asked for "animations (fade in/out) and different backgrounds per module." Scoped down via
+`AskUserQuestion` before building anything (backgrounds-per-module as literally asked would have
+broken the Redesign's single-identity Operate-mode rule and theme-token discipline): shipped a
+**subtle per-nav-group accent tint on the persistent title-block header**, not full per-page
+backgrounds — see `DESIGN_SYSTEM.md`'s new "Module accent tokens" section for the mechanism
+(`layout.js`'s `setActiveNav()` sets `documentElement[data-nav-group]`, `styles.css`'s
+`[data-nav-group]` rules pick a `--module-accent-*` token into `.title-block`'s `color-mix()`
+border/background wash). OVERVIEW stays neutral by design.
+
+**Route-fade animation needed no new work** — `reactBridge.js`'s `mount()` already applies
+`.route-fade-in` on every navigation (added in an earlier, undocumented pass), and `styles.css`
+already has a working `prefers-reduced-motion` blanket rule despite `MOTION_SYSTEM.md` still
+claiming "zero matches" — that doc was stale, not the code; corrected it in place per this repo's
+own "styles.css is right, fix the file" policy.
+
+**Real bug hit and fixed**: a CSS comment describing the module-accent feature contained the
+literal substring `--status-*/--signal-amber` (two token names separated only by `/`) — the `*/`
+closed the CSS comment early, and every browser silently parsed the rest as garbage up to the next
+real `*/`, dropping the very next declaration (`--module-accent-planning`) with **no console
+error**. Only caught by an explicit real-Chromium check (`getComputedStyle` on the token returned
+`""` while its seven siblings resolved fine) — jsdom's own CSS parser already can't handle this
+file's modern CSS (`color-mix()`, etc.), so the jsdom suite passed the whole time regardless. Fixed
+by rewording the comment; added a permanent regression guard (`tests/test_module_accent_tint.js`,
+its last check) that greps the built `index.html` for all eight token declarations verbatim, so
+this exact silent-corruption failure mode can't sneak back in unnoticed. Worth remembering for any
+future CSS comment that mentions multiple `--token-*` prefixes side by side.
+
+**New test file**: `tests/test_module_accent_tint.js` (19 checks — every representative route's
+`data-nav-group` value, a full-nav-item sweep proving no route resolves to an empty group, and the
+CSS-declaration regression guard above), wired into `tests/package.json`'s `npm test` script.
+**Verified**: `node build.js` clean, full suite **2706/2706** (2687 prior + 19 new), 0 failures.
+Real-Chromium pass across all 9 nav groups × light/dark theme confirmed the tint renders and
+Overview stays untinted — screenshots taken but not committed (dev-only verification artifacts).
+**Not done**: no HANDOFF-zip/installer rebuild for this change — it's a UI-only source change with
+no schema bump, no release-artifact request from Aditya this session.

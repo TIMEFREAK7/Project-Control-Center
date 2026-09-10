@@ -98,6 +98,23 @@
     },
   ];
 
+  // Module accent tint (see styles.css's [data-nav-group] .title-block rules and the
+  // --module-accent-* tokens): maps each NAV_GROUPS label to the CSS-attribute-safe slug
+  // those rules key off of. OVERVIEW deliberately has no corresponding CSS rule (stays
+  // neutral) but keeps a slug here anyway for consistency with every other group rather
+  // than a special-cased empty string.
+  var GROUP_SLUGS = {
+    "OVERVIEW": "overview",
+    "PLANNING & SCHEDULE": "planning",
+    "PROJECT CONTROLS": "controls",
+    "PROJECT MANAGEMENT": "management",
+    "VENDORS": "vendors",
+    "DOCUMENTS": "documents",
+    "SITE & KNOWLEDGE": "site",
+    "REPORTING": "reporting",
+    "SYSTEM": "system",
+  };
+
   var PAGE_TITLES = {
     dashboard: "Dashboard",
     myWork: "My Work",
@@ -317,6 +334,14 @@
       expandedGroups[activeGroup.label] = true;
       syncGroupExpansionDOM();
     }
+    // Module accent tint: same "documentElement data-attribute the CSS keys off of"
+    // pattern as applyTheme/applyDensity above — reuses activeGroup, already computed
+    // just above for the accordion sync, so this is a one-line addition reaching every
+    // route (this function already runs on every navigation, initial load included).
+    document.documentElement.setAttribute(
+      "data-nav-group",
+      activeGroup ? GROUP_SLUGS[activeGroup.label] || "" : ""
+    );
     // Every route change closes the nav overlay if it's open — covers navigation
     // triggered by something other than clicking a link inside it (e.g. a button
     // elsewhere in the page calling router.go() directly).

@@ -96,6 +96,25 @@
   --status-critical: #e53e3e;
   --status-info: #0e9aa7;
 
+  /* Module accent tokens — per-nav-group identity cue (see .title-block's
+     [data-nav-group] rules below and layout.js's setActiveNav()), deliberately separate
+     from the --status-* and --signal-amber tokens above: those are semantic
+     (state/action), these are purely "which area of the app am I in," so reusing a
+     status hue here would make a Documents page's header tint misread as a status.
+     OVERVIEW has none (home base stays neutral); each other nav group gets one evenly-
+     spaced hue outside the status/accent hues' ranges (roughly hues 0-55 for
+     red/orange/amber and 140-243 for green/teal/blue are already spoken for), used only
+     as a low-opacity wash + border — see the [data-nav-group] rules, never as a solid
+     fill or text colour. */
+  --module-accent-planning: hsl(250 45% 60%);
+  --module-accent-controls: hsl(207 48% 55%);
+  --module-accent-management: hsl(268 40% 60%);
+  --module-accent-vendors: hsl(95 32% 40%);
+  --module-accent-documents: hsl(304 36% 56%);
+  --module-accent-site: hsl(340 45% 58%);
+  --module-accent-reporting: hsl(322 38% 56%);
+  --module-accent-system: hsl(220 8% 55%);
+
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 16px;
@@ -467,11 +486,46 @@ button {
 .title-block {
   display: flex;
   align-items: stretch;
-  border-bottom: 1px solid var(--divider);
-  background-color: var(--bg-paper);
+  border-bottom-width: 1px;
+  border-bottom-style: solid;
   /* Edge-to-edge gate: .title-block is the header sitting at the very top of #app-shell's
      flex column -- without this it renders under the status bar on a real device. */
   padding-top: env(safe-area-inset-top);
+  /* Module accent transition below is a static colour swap on navigation (not a
+     continuous animation), so it's deliberately left out of the .route-fade-in path —
+     background-color/border-color are cheap, non-layout-affecting properties, and this
+     stays correct under prefers-reduced-motion (the blanket kill further down just makes
+     the crossfade instant, never freezes it half-applied). border-bottom-color/
+     background-color themselves are set once, below, by the module-accent rule — this
+     block only owns the width/style so there's a single source of truth for the actual
+     colour values (including the accent-less default). */
+  transition: background-color var(--transition-base), border-color var(--transition-base);
+}
+
+/* Module accent tint (per-nav-group identity cue, one property per group set here from
+   the --module-accent-* tokens above; layout.js's setActiveNav() sets
+   documentElement[data-nav-group] to the active group's slug on every navigation).
+   OVERVIEW intentionally has no rule here — Dashboard/My Work/Portfolio etc. are the
+   app's home base and stay neutral. Kept as a subtle wash (6% background tint, accent-
+   coloured bottom border) rather than a solid fill — Operate-mode colour is restrained by
+   default (see DESIGN_SYSTEM.md); this is an identity cue, not decoration, and never
+   overlaps --status-*'s state vocabulary. */
+html[data-nav-group="planning"] .title-block { --module-accent: var(--module-accent-planning); }
+html[data-nav-group="controls"] .title-block { --module-accent: var(--module-accent-controls); }
+html[data-nav-group="management"] .title-block { --module-accent: var(--module-accent-management); }
+html[data-nav-group="vendors"] .title-block { --module-accent: var(--module-accent-vendors); }
+html[data-nav-group="documents"] .title-block { --module-accent: var(--module-accent-documents); }
+html[data-nav-group="site"] .title-block { --module-accent: var(--module-accent-site); }
+html[data-nav-group="reporting"] .title-block { --module-accent: var(--module-accent-reporting); }
+html[data-nav-group="system"] .title-block { --module-accent: var(--module-accent-system); }
+
+.title-block {
+  /* Fallback arg is the same colour being mixed INTO, not "transparent" — mixing a colour
+     with itself at any ratio is a no-op, so OVERVIEW (and any route with no
+     --module-accent set) renders pixel-identical to the plain var(--divider)/var(--bg-paper)
+     baseline above rather than a washed-out, partially-transparent version of it. */
+  border-bottom-color: color-mix(in srgb, var(--module-accent, var(--divider)) 55%, var(--divider));
+  background-color: color-mix(in srgb, var(--module-accent, var(--bg-paper)) 6%, var(--bg-paper));
 }
 
 .title-block__cell {
@@ -13586,6 +13640,23 @@ window.PCC_SQL_WASM_BASE64 = "AGFzbQEAAAABnwRFYAJ/fwF/YAF/AX9gA39/fwBgA39/fwF/YA
     },
   ];
 
+  // Module accent tint (see styles.css's [data-nav-group] .title-block rules and the
+  // --module-accent-* tokens): maps each NAV_GROUPS label to the CSS-attribute-safe slug
+  // those rules key off of. OVERVIEW deliberately has no corresponding CSS rule (stays
+  // neutral) but keeps a slug here anyway for consistency with every other group rather
+  // than a special-cased empty string.
+  var GROUP_SLUGS = {
+    "OVERVIEW": "overview",
+    "PLANNING & SCHEDULE": "planning",
+    "PROJECT CONTROLS": "controls",
+    "PROJECT MANAGEMENT": "management",
+    "VENDORS": "vendors",
+    "DOCUMENTS": "documents",
+    "SITE & KNOWLEDGE": "site",
+    "REPORTING": "reporting",
+    "SYSTEM": "system",
+  };
+
   var PAGE_TITLES = {
     dashboard: "Dashboard",
     myWork: "My Work",
@@ -13805,6 +13876,14 @@ window.PCC_SQL_WASM_BASE64 = "AGFzbQEAAAABnwRFYAJ/fwF/YAF/AX9gA39/fwBgA39/fwF/YA
       expandedGroups[activeGroup.label] = true;
       syncGroupExpansionDOM();
     }
+    // Module accent tint: same "documentElement data-attribute the CSS keys off of"
+    // pattern as applyTheme/applyDensity above — reuses activeGroup, already computed
+    // just above for the accordion sync, so this is a one-line addition reaching every
+    // route (this function already runs on every navigation, initial load included).
+    document.documentElement.setAttribute(
+      "data-nav-group",
+      activeGroup ? GROUP_SLUGS[activeGroup.label] || "" : ""
+    );
     // Every route change closes the nav overlay if it's open — covers navigation
     // triggered by something other than clicking a link inside it (e.g. a button
     // elsewhere in the page calling router.go() directly).

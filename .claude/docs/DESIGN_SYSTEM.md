@@ -60,6 +60,31 @@ sharper 4/8/12px "technical drawing" scale at Gate 1. Cascades through nearly ev
 automatically since border-radius is tokenized almost everywhere; a hand-written `border-radius`
 value on a new component is very likely wrong.
 
+## Module accent tokens
+
+Per-nav-group identity cue: `--module-accent-planning/controls/management/vendors/documents/
+site/reporting/system` (`styles.css`, defined once in `:root` — not theme-swapped, only used at
+low opacity so one hue works across both themes). `layout.js`'s `setActiveNav(routeName)` sets
+`documentElement[data-nav-group]` to the active NAV_GROUPS group's slug on every navigation
+(`GROUP_SLUGS` map, same file); `styles.css`'s `[data-nav-group="…"] .title-block` rules pick a
+token into `--module-accent`, and `.title-block` itself renders it as a ~6% background wash + a
+tinted bottom border via `color-mix()`. OVERVIEW has no rule and stays neutral (home base). This
+is an identity cue only ("which area of the app am I in"), never state — deliberately a separate
+palette from `--status-*`/`--signal-amber` so a module's header tint can never be misread as a
+status. Applies once, app-wide, via `.title-block` (the persistent shell header) — no per-page
+component changes needed, and nothing here overrides Operate mode's "colour is restrained by
+default" rule, since the wash is low-opacity and the border is the only saturated element.
+
+**Real bug hit shipping this**: a CSS comment describing this feature contained the literal
+substring `--status-*/--signal-amber` — the `*/` inside it closed the comment early, and
+everything until the next real `*/` got parsed as garbage, silently dropping the very next
+declaration (`--module-accent-planning`) with no console error. Confirmed via real Chromium
+(`getComputedStyle` returned `""` for that one token while its neighbors resolved fine) — jsdom's
+test suite didn't catch it since it doesn't validate `color-mix()` output. **Never write a bare
+`*/`-forming substring (e.g. `foo-*` immediately followed by `/bar`) inside a CSS comment** —
+review any new comment mentioning multiple `--token-*` prefixes side by side for this before
+shipping.
+
 ## Motion tokens
 
 `--transition-fast: 120ms ease` (hover/press feedback), `--transition-base: 180ms ease`

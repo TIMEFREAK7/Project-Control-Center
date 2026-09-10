@@ -8,11 +8,21 @@ already inside Impeccable's Operate-mode recommended band (150-250ms for product
 120ms hover token runs slightly under that band, which is fine for a press/hover micro-interaction
 specifically, not a violation).
 
-**Real gap found by this audit**: `grep -rn "prefers-reduced-motion" src/` returns **zero matches**.
-Every transition in the app currently runs unconditionally — nothing here yet respects a user's
-OS-level reduced-motion preference. This is the one concrete, actionable motion finding; see
-`VISUAL_QA.md`'s Gate 1 report for how it's tracked (finding, not yet fixed — this audit is
-report-only per current scope).
+**Gap found by this audit, since fixed**: at the time of the original audit, `grep -rn
+"prefers-reduced-motion" src/` returned zero matches — nothing respected a user's OS-level
+reduced-motion preference. That's since been closed: `styles.css` now has one blanket
+`@media (prefers-reduced-motion: reduce)` rule (search the file for "GATE 1 UI/UX audit finding"
+for the full reasoning, including why `.spinner`'s loading animation is deliberately excluded —
+freezing a functional "still working" indicator mid-rotation reads as more broken than either a
+spinning or a static state). If this file ever disagrees with `styles.css` again on what's
+actually shipped, `styles.css` is right — fix this file, per its own stated policy.
+
+A route-navigation fade (`.route-fade-in`, applied by `reactBridge.js`'s `mount()` on every
+navigation — see that file's own comments) and the module-accent title-block tint
+(`DESIGN_SYSTEM.md`'s "Module accent tokens" section) both ship today and are both already
+covered by the blanket reduced-motion rule above (the fade is a one-shot `animation`; the accent
+tint is a static `color-mix()` value with a `transition` that just gets instant-ified, never
+frozen mid-swap).
 
 ## Principles (apply to any new motion work)
 
