@@ -35,13 +35,31 @@ export function installWriteGuard(): UpdateFn {
 
   window.PCC.store.update = function guardedUpdate(mutator: Mutator) {
     return realUpdate((data: any) => {
-      const preserved: { [key: string]: unknown } = {};
+      // Real bug, fixed 2026-09-10: the first version of this guard captured
+      // `preserved[k] = data[k]` -- a REFERENCE to each array/object, not a copy. Real
+      // mutations in this codebase are almost always in-place (`d.projects.push(...)`,
+      // matching store.js's own convention throughout), which mutates that SAME
+      // referenced array -- so "restoring" `data[k] = preserved[k]` was a no-op, since
+      // preserved[k] and the already-mutated data[k] were the identical object the whole
+      // time. Confirmed on a real device: "+ Add Project" still persisted after the first
+      // fix. A real snapshot needs an actual deep copy, taken before the mutator runs, so
+      // it can't be affected by whatever the mutator does in place. JSON round-trip is
+      // safe here specifically because every non-settings field in this store is plain
+      // JSON-serializable data (the same guarantee buildExportJson() already relies on).
+      const snapshot: { [key: string]: unknown } = {};
       Object.keys(data).forEach((k) => {
-        if (k !== "settings") preserved[k] = data[k];
+        if (k !== "settings") snapshot[k] = JSON.parse(JSON.stringify(data[k]));
       });
+
       mutator(data);
-      Object.keys(preserved).forEach((k) => {
-        data[k] = preserved[k];
+
+      Object.keys(data).forEach((k) => {
+        if (k === "settings") return;
+        if (k in snapshot) {
+          data[k] = snapshot[k];
+        } else {
+          delete data[k]; // the mutator added a whole new top-level key -- revert that too
+        }
       });
     });
   } as any;
