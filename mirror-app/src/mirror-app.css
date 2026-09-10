@@ -1,0 +1,51 @@
+/* Small, mirror-app-specific additions on top of the real, reused src/css/styles.css --
+ * just the 4-tab shell chrome and the pull-to-refresh indicator (styling for
+ * .pull-to-refresh-indicator didn't exist in the main app's styles.css either -- see
+ * mirror-app build notes -- this is a new addition, not a port). */
+.mirror-app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+.mirror-app-tabbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4, 16px);
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-default, #262a35);
+  background: var(--bg-surface, #15171e);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.mirror-app-tabbar__title {
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.4px;
+  opacity: 0.8;
+  margin-right: 8px;
+}
+.mirror-app-tabbar__nav {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.mirror-app-tabbar__tab {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary, #9aa1b2);
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.mirror-app-tabbar__tab--active {
+  background: var(--accent-default, #3d63dd);
+  color: #fff;
+}
+.pull-to-refresh-indicator {
+  text-align: center;
+  font-size: 12px;
+  padding: 6px;
+  color: var(--text-secondary, #9aa1b2);
+}
