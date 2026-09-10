@@ -1,0 +1,7 @@
+node_modules/
+www/index.html
+assets/
+*.apk
+android/app/keystore.properties
+android/app/*.jks
+android/app/*.keystore

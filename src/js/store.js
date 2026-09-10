@@ -3638,6 +3638,12 @@
   window.PCC.store = {
     get: get,
     update: update,
+    // Exposed for the "At a Glance" mirror app's read-only shim, which needs the exact
+    // same schema migration chain a mirror JSON export goes through here, without pulling
+    // in importFromJsonString's blobStore-writing side effect (that function is designed
+    // to MOVE blobs out of the JSON into IndexedDB, the opposite of what a stateless
+    // read-only viewer wants — it just needs the migrated object with blobs still inline).
+    migrate: migrate,
     onChange: onChange,
     onPersisted: onPersisted,
     getLastUsedName: getLastUsedName,

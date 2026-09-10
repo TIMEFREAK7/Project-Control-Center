@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PCC — At a Glance</title>
+    <meta name="theme-color" content="#3d63dd" />
+    <link rel="stylesheet" href="css/styles.css" />
+  </head>
+  <body>
+    <div id="root">
+      <div style="position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; background-color: #0e1015; color: #edeef2; font-family: ui-sans-serif, sans-serif;">
+        <div class="spinner" style="width: 28px; height: 28px; border-width: 3px;"></div>
+        <div style="font-size: 13px; letter-spacing: 0.4px; opacity: 0.7;">At a Glance</div>
+      </div>
+    </div>
+
+    <!-- Classic script on purpose, same file:// reasoning as the main app's index.html:
+         type="module" is blocked under file:// (CORS restriction on module loading). -->
+    <script src="js/mirror-bundle.js"></script>
+  </body>
+</html>

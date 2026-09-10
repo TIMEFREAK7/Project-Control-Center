@@ -141,3 +141,9 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# mirror-app's intermediate esbuild output -- folded into the committed mirror-app/index.html
+# by mirror-app/build.js, not itself a deliverable (same relationship react-bundle.js has to
+# index.html, but that one is committed since it's also reused as a source input by build.js;
+# this one is purely a same-run intermediate).
+mirror-app/.build/

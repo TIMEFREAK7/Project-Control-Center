@@ -316,22 +316,21 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      <div className="panel" style={{ maxWidth: 480 }}>
-        <h3 style={{ marginBottom: 6 }}>Data Mirror (Windows → Android)</h3>
-        <p className="text-secondary" style={{ marginTop: 0, fontSize: 13 }}>
-          One-way, read-only: on Windows, this app writes a full data snapshot to the folder below roughly once an hour
-          (plus once when you close the app). On Android, opening the app or pulling down to refresh on Dashboard, My Work,
-          Action Centre, or Portfolio checks for a newer snapshot and loads it automatically. Getting the file from this
-          folder onto your phone is your own setup (e.g. Syncthing) — this app doesn't move it there itself, and Android
-          never writes back to Windows.
-        </p>
+      {window.PCC_ELECTRON ? (
+        <div className="panel" style={{ maxWidth: 480 }}>
+          <h3 style={{ marginBottom: 6 }}>Data Mirror</h3>
+          <p className="text-secondary" style={{ marginTop: 0, fontSize: 13 }}>
+            One-way, read-only: this app writes a full data snapshot to the folder below roughly once an hour (plus once
+            when you close the app). A separate, lightweight "At a Glance" app on Android reads this folder — see its own
+            setup for pointing a sync tool (e.g. Syncthing) at it; this app doesn't move the file there itself, and nothing
+            ever writes back to this Windows install.
+          </p>
 
-        <label style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", fontSize: "var(--text-sm)", marginTop: "var(--space-2)" }}>
-          <input type="checkbox" checked={!!settings.sync_mirror_enabled} onChange={handleMirrorEnabledChange} />
-          Enable data mirror
-        </label>
+          <label style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", fontSize: "var(--text-sm)", marginTop: "var(--space-2)" }}>
+            <input type="checkbox" checked={!!settings.sync_mirror_enabled} onChange={handleMirrorEnabledChange} />
+            Enable data mirror
+          </label>
 
-        {window.PCC_ELECTRON ? (
           <div className="field" style={{ marginTop: "var(--space-3)" }}>
             <label htmlFor="settingsfield-sync_mirror_folder_path">Mirror folder (on this PC)</label>
             <input
@@ -343,13 +342,8 @@ export default function SettingsPage() {
               onChange={handleMirrorFolderPathChange}
             />
           </div>
-        ) : (
-          <p className="text-secondary" style={{ fontSize: 13, marginTop: "var(--space-2)" }}>
-            On Android, this reads from a fixed folder inside the app's own storage — point your sync tool there, no path
-            to configure here.
-          </p>
-        )}
-      </div>
+        </div>
+      ) : null}
 
       <div className="panel" style={{ maxWidth: 480 }}>
         <h3 style={{ marginBottom: 6 }}>Data</h3>

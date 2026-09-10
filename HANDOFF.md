@@ -6624,3 +6624,148 @@ folder. **Not done, and deliberately out of scope for this task** (per the imple
 own explicit instruction): no new release build — `packaging/android/android/app/build.gradle`'s
 version wasn't touched, no Windows/Android installer was produced this session. Next real release
 build needs `versionCode`/`versionName` bumped first, per the standing rule above.
+
+
+## 2026-09-09/10 session: 3-app split — dedicated "At a Glance" mirror app (3 phases)
+
+**Trigger**: after the 2026-09-09 one-way-mirror session above was built and ready to hand over,
+Aditya asked to change the shape of the feature before shipping anything: instead of the main
+Android app also reading the mirror file, he wants **three separate apps** — Windows (full
+editing), the existing full Android app (full editing, no mirror capability), and a new, genuinely
+separate, minimal, read-only Android app ("At a Glance") that only reads the mirror file and shows
+Dashboard/My Work/Action Centre/Portfolio. Confirmed via `AskUserQuestion` before building: (1)
+mirror-reading moves OUT of the main Android app entirely, not duplicated; (2) the new app is a
+real separate codebase, not the same `index.html` relaunched restricted; (3) it shows exactly
+those same 4 pages. Built as 3 gated phases, each stopped-and-reported before the next began (a
+standing instruction Aditya added explicitly after the first draft plan omitted it — see the
+executed prompt in this session's own transcript for the exact wording, worth reusing verbatim for
+any future multi-phase task: hard-stop after each phase, rigorous verification every time, jsdom
+alone is not sufficient for anything touching real Electron/Capacitor/browser rendering).
+
+**Phase 1 — strip the Android read side out of the main app.** `src/js/dataMirror.js`'s
+`isCapacitorNative()`/`readAndroidMirrorFileIfNewer()`/`startAndroidMirrorListeners()` and the
+whole of `src/js/pullToRefresh.js` deleted — Windows write side (`runWindowsMirrorExport`, the
+hourly timer, the quit hook) untouched. Settings page's "Data Mirror" panel now only renders under
+`window.PCC_ELECTRON` (it never did anything meaningful on Android anyway, since per-device
+settings were never synced between devices — hiding it is a real UX improvement, not just
+mechanical cleanup). Test suite: 2699 → 2687 (net −12: full removal of
+`test_pull_to_refresh_e2e.js`'s 7 checks, `test_data_mirror_e2e.js` trimmed from 12 → 7 checks,
+replaced with one "the Android read API is gone" assertion + a route smoke test).
+
+**Phase 2 — build `mirror-app/`, a genuinely separate app.** The real tension this phase had to
+resolve: "genuinely separate, minimal codebase" vs. "reuse the real page components/services
+unmodified, no forked business logic." Landed on: reuse Dashboard/MyWork/ActionCentre/Portfolio
+and their 4 real services from `react/src` completely unmodified (imported directly by relative
+path — `mirror-app/src/App.tsx` imports `../../react/src/pages/Dashboard.tsx` etc.), plus the
+real `store.js`/`projectContext.js` loaded as plain scripts (byte-identical files, not copies).
+Everything those pages/services touch beyond `store`/`projectContext`/`router` — meetings/rfis/
+portfolio/schedule/changeOrders/vendors/risks/decisionRegister/documentTypes/files/archive/cost/
+resourceLevelingEngine/executiveCenter — is either genuinely real (the 4-tab router in
+`mirror-app/src/router.ts`; the Company/Client/Project context switcher in
+`mirror-app/src/shim/contextSwitcher.ts`, ported line-for-line from `layout.js`'s cascading-select
+logic, since it genuinely changes what's displayed) or a safe no-op stub
+(`mirror-app/src/shim/pcc.ts` — extends this task's pre-approved "write buttons may just no-op"
+allowance to "navigate-to-a-page-that-doesn't-exist-in-this-app buttons may also just no-op",
+flagged explicitly in the Phase 2 report rather than buried).
+
+- **Real-Chromium verification caught a genuine bug static reading missed**: `portfolioService.ts`'s
+  `getHealthSummary()`/`getSchedulePerformanceSummary()` (used by Portfolio's compare-projects
+  table) call `window.PCC.executiveCenter.getHealthSummary!`/`getSchedulePerformanceSummary!` with
+  a TypeScript non-null assertion — i.e. unconditionally at runtime, despite the type declaring
+  them optional (`?:`) and every OTHER `executiveCenter.*` call site actually being guarded. Typecheck
+  passed clean (the `!` suppresses the type error); only a real Chromium load with mocked
+  `window.Capacitor` surfaced the `TypeError: ...getHealthSummary is not a function` crash, on the
+  Action Centre tab. Fixed by adding those two methods to the `executiveCenter` stub with safe
+  zero/null defaults matching `ExecutiveCenterHealthSummary`/`ExecutiveCenterSchedulePerformanceSummary`.
+  **Lesson for future stub-writing against this codebase**: a method typed optional (`?:`) in
+  `pcc.d.ts` is NOT reliable evidence every call site actually guards it — grep for `!` non-null
+  assertions on that same property too, or just verify in real Chromium regardless.
+- **Own build pipeline, own `esbuild`/`tsc`, but reuses the SINGLE existing React install** at
+  `react/node_modules` rather than a second copy — first tried `esbuild --alias` + `tsconfig`
+  `paths` remapping, which technically "worked" for imports but produced broken/incomplete React
+  types (`JSX.IntrinsicElements` missing, `key` prop treated as a real prop instead of React's
+  special-cased one) because `paths` substitution bypasses the normal node_modules "fall back to
+  `@types/<pkg>`" resolution chain that bare-specifier resolution gets for free. **Fixed by
+  symlinking instead**: `mirror-app/build.js`'s `ensureReactSymlinks()` creates
+  `mirror-app/node_modules/{react,react-dom,@types}` → `react/node_modules/{react,react-dom,@types}`
+  automatically on every build if missing (so a fresh clone's first `npm install && node build.js`
+  just works, nothing to remember). Real, symlinked node_modules resolution behaves identically to
+  a real local install for both `tsc` and `esbuild`, with zero of the `paths`-remapping edge cases.
+  Confirmed the final bundle has exactly one copy of React (dedup by real resolved path, standard
+  esbuild/Node behavior for symlinked packages).
+- **Mirror-read logic ported forward, NOT reusing `importFromJsonString()`**: that function
+  migrates the JSON AND writes any inline blobs out to IndexedDB via `blobStore.putBlob()`
+  (deliberately excluded from this app to keep the bundle minimal — no SQLite/xlsx/mammoth/pdf.js/
+  jszip/CPM engines either, just store.js + projectContext.js + React + the 4 pages/services).
+  Calling `store.migrate()` directly (newly exposed on `window.PCC.store.migrate` — one purely
+  additive line in `src/js/store.js`, zero behavior change to the main app) and committing via
+  `store.update()` keeps blobs inline in memory instead, which is actually simpler AND correct for
+  a stateless read-only viewer: `doc.file_data` stays populated, ready to render directly, no
+  IndexedDB round-trip needed at all.
+- **Result**: `mirror-app/index.html` is 662 KB vs. the main app's 6,164 KB — about 11%.
+- **Verified**: full suite 2687/2687 (untouched, mirror-app is a separate codebase); real Chromium
+  — built `index.html` loaded fresh, `window.Capacitor.Plugins.Filesystem` mocked via
+  `page.addInitScript()` to feed a sample mirror JSON generated through the REAL `store.js`/
+  `buildExportJson()` (not hand-typed), all 4 tabs render real computed data, context switcher
+  works, several no-op stub clicks (Open Workspace/Executive Center/Details/+Add Project/a
+  stubbed meeting-expand) produce zero console errors after the fix above.
+
+**Phase 3 — `packaging/android-mirror/`, a second Capacitor Android project.** Bootstrapped via
+`npx cap add android` (not hand-copied from `packaging/android/`) so the package structure
+(`com.pcc.projectcontrolcenter.mirror`) came out correct automatically — `android/app/src/main/
+java/com/pcc/projectcontrolcenter/mirror/MainActivity.java`. `capacitor.config.json`:
+`appId: com.pcc.projectcontrolcenter.mirror`, `appName: "PCC At a Glance"` (same app icon as the
+main app for now — flagged to Aditya as easy to change later, not done proactively since it wasn't
+asked for). `scripts/copy-app.js` copies from `mirror-app/index.html`, not the repo root's.
+`android/app/build.gradle` gained the same keystore.properties-loading signing pattern as the main
+app's own `build.gradle` (copied, not reinvented). `versionCode 1`/`versionName "1.0"` — first
+release, same "bump every time" rule as the main app applies from here on.
+
+**Aditya explicitly corrected the plan mid-session on the signing key**: the original 3-phase spec
+said "reuse the SAME existing release keystore" — Aditya said no, generate a genuinely NEW,
+separate keystore, because he wants to keep both apps independently signable/updatable rather than
+tied to one shared signing identity. Generated via `keytool -genkeypair` exactly like the main
+app's own keystore originally was: `packaging/android-mirror/android/app/pcc-mirror-release.jks`,
+alias `pcc-mirror-release`, `CN=Project Control Center At a Glance`, 10950-day validity. **One real
+gotcha hit generating it**: modern `keytool` defaults to PKCS12 keystores, which do NOT support a
+separate key password from the store password (`keytool` silently ignores `-keypass` and prints
+"Different store and key passwords not supported for PKCS12 KeyStores") — the first
+`keystore.properties` written had two different passwords and would have failed signing at build
+time; caught by re-verifying the keystore actually opens with the intended password before
+building, fixed by using the store password for both fields (confirmed the main app's own existing
+`keystore.properties` already follows this same store==key convention, for the same underlying
+reason — not something previously called out explicitly in this doc, worth remembering for any
+future keystore generation: **PKCS12 keystores always need storePassword == keyPassword**).
+Both the `.jks` and `keystore.properties` are gitignored (`packaging/android-mirror/android/
+.gitignore`, same pattern as the main app's), never committed — sent directly to Aditya to back up
+(password manager), same one-time handoff the main app's keystore got.
+
+- **Verified**: `apksigner verify --verbose`/`--print-certs` confirm the APK is genuinely signed
+  (v2 scheme) with the new key, `zipalign -c -v 4` passes, the embedded `www/index.html` diffed
+  byte-identical against a fresh `mirror-app/` build. **Confirmed the two apps' signing certs are
+  genuinely different** (main app SHA-256 `3b:48:02:e2:...`, mirror app `f9:eb:e3:fc:...`) and
+  their `applicationId`s differ (`com.pcc.projectcontrolcenter` vs.
+  `com.pcc.projectcontrolcenter.mirror`) — both are the actual technical requirements for the two
+  APKs to install side by side on one device. Final signed APK: 3.4 MB (well under the ~30MB
+  transfer limit, no splitting needed). Full suite re-confirmed 2687/2687 after this phase too
+  (packaging-only changes, no `src/`/`react/src/` touched).
+- **Not verified in this sandbox, same standing gap every prior packaging phase has flagged**: a
+  real Android device/emulator. The Capacitor `Filesystem`/`App` plugin calls are only verified
+  via a mocked `window.Capacitor` at the JS boundary in real Chromium — the actual on-device
+  Filesystem read from `Documents/PCC-Mirror/pcc-mirror.json` and the `resume` lifecycle listener
+  are unverified until Aditya installs the real APK.
+
+**Repo/branch state after this session**: branch `claude/build-windows-android-release-dl50u3`,
+3 commits ahead of the `main` HEAD this branch was cut from (`e322612` Phase 1, `0e0d5b3` Phase 2,
+`fe57a75` Phase 3) — **not merged to `main` yet**, deliberately flagged as an open decision each
+phase rather than decided unilaterally (merging Phase 1 alone, for instance, would leave `main`
+with an Android app that has zero mirror-reading and no replacement built yet — a real regression
+if built from that exact point). No PR opened. Full suite: 2687/2687 passing on this branch.
+
+**What Aditya still needs to do**: install the delivered `PCC-AtAGlance-v1.0.apk` alongside the
+existing main Android app on a real device to confirm they coexist and the mirror actually reads
+correctly on-device (the one genuinely unverified-in-sandbox piece); back up
+`pcc-mirror-release.jks`/`keystore.properties` (sent directly, not just committed — they're
+gitignored by design); say whether/when to merge this branch into `main` and whether he wants the
+main app's icon reused or a visually distinct one for the mirror app (currently identical, only
+the app NAME differs on-screen).

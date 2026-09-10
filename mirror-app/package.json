@@ -1,0 +1,15 @@
+{
+  "name": "pcc-mirror-app",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Standalone, genuinely separate, read-only 'At a Glance' companion app (Post-Phase-5 Engineering Evolution, 3-app split). Reads the same one-way mirror snapshot src/js/dataMirror.js's Windows write side produces, and renders the real, unmodified Dashboard/MyWork/ActionCentre/Portfolio React page components + their real services from ../react/src — reusing the real domain logic, never forking it (see src/shim/pcc.ts's header for exactly what is real vs. a safe no-op stub). Deliberately excludes every vendor library the main app needs for editing (xlsx, mammoth, pdf.js, jszip, sql.js) and the CPM/import engines, so this app's bundle stays genuinely smaller than index.html's. This directory's own node_modules/esbuild/tsc are dev/packaging-time only, same as react/ and tests/ — the shipped APK never needs Node or npm present. react and react-dom are intentionally NOT devDependencies here: this project reuses the exact single copy already installed at ../react/node_modules via symlinks build.js creates in this directory's own node_modules/, so the two apps' React page components (built from ../react/src, shared unmodified) never end up bundled with two separate React copies.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build:bundle": "esbuild src/index.tsx --bundle --minify --define:process.env.NODE_ENV=\"'production'\" --format=iife --target=es2018 --outfile=.build/mirror-bundle.js",
+    "build": "node build.js"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
+  }
+}
