@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">PCC At a Glance</string>
+    <string name="title_activity_main">PCC At a Glance</string>
+    <string name="package_name">com.pcc.projectcontrolcenter.mirror</string>
+    <string name="custom_url_scheme">com.pcc.projectcontrolcenter.mirror</string>
+</resources>

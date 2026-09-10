@@ -1,0 +1,84 @@
+apply plugin: 'com.android.application'
+
+// Loads app/keystore.properties if present (gitignored — never committed). This makes
+// `assembleRelease` work identically with or without it: a real signed build when the
+// keystore exists, an unsigned build otherwise — no separate CI/dev path needed. Same
+// pattern as ../../android/android/app/build.gradle, but this app has its OWN dedicated
+// keystore (app/pcc-mirror-release.jks) — deliberately NOT the main app's pcc-release.jks,
+// so the two apps stay independently signable/updatable (explicit instruction, not an
+// oversight: two apps sharing one signing key would tie their release cadences together
+// for no benefit, since Android identifies them as separate apps by applicationId anyway,
+// not by signing key).
+def keystorePropertiesFile = rootProject.file("app/keystore.properties")
+def keystoreProperties = new Properties()
+def hasKeystoreConfig = keystorePropertiesFile.exists()
+if (hasKeystoreConfig) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
+android {
+    namespace = "com.pcc.projectcontrolcenter.mirror"
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "com.pcc.projectcontrolcenter.mirror"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        // Bump both on every subsequent release build — see the standing instruction in
+        // CLAUDE.md/HANDOFF.md for the main app's own versionCode bug; same rule applies
+        // here from day one so it's never hit for this app either.
+        versionCode 1
+        versionName "1.0"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    signingConfigs {
+        if (hasKeystoreConfig) {
+            release {
+                storeFile rootProject.file("app/${keystoreProperties['storeFile']}")
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (hasKeystoreConfig) signingConfig signingConfigs.release
+        }
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}
