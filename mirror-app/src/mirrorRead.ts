@@ -21,6 +21,16 @@ const MIRROR_PATH = "PCC-Mirror/pcc-mirror.json";
 
 let lastAppliedMirrorMtime: number | null = null;
 
+/* The real, UNWRAPPED store.update() -- see shim/writeGuard.ts's own header for why this
+ * needs to bypass the guard installed onto window.PCC.store.update (that guard reverts
+ * any non-"settings" mutation, which would otherwise also block this legitimate
+ * whole-data-object replacement). Set once by index.tsx right after installWriteGuard(). */
+let realUpdate: ((mutator: (data: any) => void) => void) | null = null;
+
+export function initMirrorRead(update: (mutator: (data: any) => void) => void): void {
+  realUpdate = update;
+}
+
 function isCapacitorNative(): boolean {
   return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
 }
@@ -28,12 +38,13 @@ function isCapacitorNative(): boolean {
 /* Real store.js's migrate() is reused unmodified (exposed on window.PCC.store.migrate
  * specifically for this, see store.js's own comment on that export) -- this function's
  * only job is committing its result into the same live `data` object store.js's get()
- * already returns, via the real update() so nothing here reimplements how the store
- * commits a change. */
+ * already returns, via the real (unwrapped) update() so nothing here reimplements how the
+ * store commits a change. */
 export function applyMirrorJson(jsonText: string): void {
+  if (!realUpdate) throw new Error("applyMirrorJson called before initMirrorRead()");
   const parsed = JSON.parse(jsonText);
   const migrated = (window.PCC.store as any).migrate(parsed);
-  window.PCC.store.update((d: any) => {
+  realUpdate((d: any) => {
     Object.keys(d).forEach((k) => delete d[k]);
     Object.assign(d, migrated);
   });

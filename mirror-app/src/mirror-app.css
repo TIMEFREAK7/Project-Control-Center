@@ -1,51 +1,69 @@
 /* Small, mirror-app-specific additions on top of the real, reused src/css/styles.css --
- * just the 4-tab shell chrome and the pull-to-refresh indicator (styling for
- * .pull-to-refresh-indicator didn't exist in the main app's styles.css either -- see
- * mirror-app build notes -- this is a new addition, not a port). */
-.mirror-app-shell {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-}
+ * just the 4-tab shell chrome and the pull-to-refresh indicator.
+ *
+ * Real layout bug fixed 2026-09-10, confirmed on a real device: the reused Portfolio.tsx
+ * (and every other reused page) is only ever styled correctly inside the main app's own
+ * `.main-column > main.page#page-outlet` structure -- `main.page` is what supplies the
+ * padding (`var(--space-5)`, `var(--space-4)` on narrow viewports) every page's own
+ * layout math (filter rows, KPI grids, etc.) assumes it has room within. This app's outlet
+ * had neither class, so reused pages rendered completely unpadded, edge-to-edge, which is
+ * what made the filter dropdowns and other rows look cramped/broken on a real phone --
+ * NOT a bug in the reused page components themselves. Fixed by giving #mirror-app-outlet
+ * the real `page` class (see App.tsx) instead of inventing new padding rules here.
+ *
+ * The custom tab bar below is the one piece with no main-app equivalent to reuse (the main
+ * app has no persistent top-level tab strip, just the sidebar) -- it was wrapping into two
+ * ragged rows on a real phone-width screen (title breaking mid-word, tabs overflowing).
+ * Fixed with a real mobile pattern: title on its own row, tabs in a horizontally-scrolling
+ * strip below (`overflow-x: auto`) instead of `flex-wrap`, so it never wraps regardless of
+ * screen width or text-size settings.
+ */
 .mirror-app-tabbar {
   display: flex;
-  align-items: center;
-  gap: var(--space-4, 16px);
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--border-default, #262a35);
-  background: var(--bg-surface, #15171e);
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px var(--space-4, 16px) 8px;
+  border-bottom: 1px solid var(--divider, rgba(155, 161, 175, 0.14));
+  background: var(--bg-paper, #15171e);
   position: sticky;
   top: 0;
   z-index: 10;
 }
 .mirror-app-tabbar__title {
   font-weight: 600;
-  font-size: 13px;
+  font-size: 12px;
   letter-spacing: 0.4px;
-  opacity: 0.8;
-  margin-right: 8px;
+  opacity: 0.7;
 }
 .mirror-app-tabbar__nav {
   display: flex;
   gap: 4px;
-  flex-wrap: wrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.mirror-app-tabbar__nav::-webkit-scrollbar {
+  display: none;
 }
 .mirror-app-tabbar__tab {
   border: none;
   background: transparent;
-  color: var(--text-secondary, #9aa1b2);
-  padding: 6px 12px;
+  color: var(--text-secondary, #9ba1af);
+  padding: 7px 14px;
   border-radius: 6px;
   font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .mirror-app-tabbar__tab--active {
-  background: var(--accent-default, #3d63dd);
+  background: var(--signal-amber, #3d63dd);
   color: #fff;
 }
 .pull-to-refresh-indicator {
   text-align: center;
   font-size: 12px;
   padding: 6px;
-  color: var(--text-secondary, #9aa1b2);
+  color: var(--text-secondary, #9ba1af);
 }

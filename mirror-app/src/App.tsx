@@ -75,17 +75,22 @@ export default function App() {
           ))}
         </nav>
       </header>
-      {!hasMirrorData ? (
-        <div className="panel" style={{ margin: 16 }}>
-          <p className="text-secondary" style={{ margin: 0 }}>
-            No mirror data found yet. Enable the Data Mirror in the Windows app's Settings, point a sync tool at the same
-            folder this device reads from, then pull down to refresh.
-          </p>
-        </div>
-      ) : null}
-      <div id="mirror-app-outlet" key={refreshTick}>
+      {/* Real "page" class, not a bespoke wrapper -- this is what the main app's own
+          main.page#page-outlet supplies (var(--space-5)/var(--space-4) padding, the base
+          every reused page's own filter-row/KPI-grid/etc. layout math assumes it has).
+          Without it every reused page rendered edge-to-edge unpadded -- a real bug caught
+          on a real device, see mirror-app.css's own header for the full explanation. */}
+      <main className="page" id="mirror-app-outlet" key={refreshTick}>
+        {!hasMirrorData ? (
+          <div className="panel" style={{ marginBottom: 16 }}>
+            <p className="text-secondary" style={{ margin: 0 }}>
+              No mirror data found yet. Enable the Data Mirror in the Windows app's Settings, point a sync tool at the
+              same folder this device reads from, then pull down to refresh.
+            </p>
+          </div>
+        ) : null}
         {renderActiveTab(activeTab)}
-      </div>
+      </main>
     </div>
   );
 }
