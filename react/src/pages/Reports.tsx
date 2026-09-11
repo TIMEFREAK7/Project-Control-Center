@@ -18,6 +18,7 @@
  * checkbox or switching report type before reading the assembled report's content.
  */
 import React, { useState, useRef, useEffect } from "react";
+import { isOllamaAvailable, askOllama, buildProjectReportPrompt } from "../services/ollamaService";
 import {
   PROJECT_SECTIONS,
   PORTFOLIO_SECTIONS,
@@ -94,6 +95,10 @@ export default function ReportsPage() {
   const [selectedTemplateId, setSelectedTemplateId] = useState<{ project: string; portfolio: string }>({ project: "", portfolio: "" });
   const [savingAsNew, setSavingAsNew] = useState(false);
   const [reportSectionDays, setReportSectionDays] = useState<{ [key: string]: string }>({ dailyLog: "", meetings: "", documents: "" });
+  const [aiReportModalOpen, setAiReportModalOpen] = useState(false);
+  const [aiReportGenerating, setAiReportGenerating] = useState(false);
+  const [aiReportText, setAiReportText] = useState("");
+  const [aiReportError, setAiReportError] = useState("");
 
   function refresh() {
     setData(getData());
@@ -163,6 +168,24 @@ export default function ReportsPage() {
     );
   }
 
+  function handleGenerateAiReport() {
+    if (!project) return;
+    setAiReportModalOpen(true);
+    setAiReportGenerating(true);
+    setAiReportText("");
+    setAiReportError("");
+    askOllama(buildProjectReportPrompt(project, data))
+      .then((text) => {
+        setAiReportText(text);
+      })
+      .catch((e: Error) => {
+        setAiReportError(e.message);
+      })
+      .finally(() => {
+        setAiReportGenerating(false);
+      });
+  }
+
   return (
     <>
       <h2 className="focus-mode-hide" style={{ marginBottom: 16 }}>
@@ -185,6 +208,11 @@ export default function ReportsPage() {
 
         <div className="toolbar__spacer" />
 
+        {reportType === "project" && project && isOllamaAvailable() ? (
+          <button className="btn btn--ghost" onClick={handleGenerateAiReport}>
+            Generate Project Report (AI)
+          </button>
+        ) : null}
         <button className="btn btn--primary" onClick={printPage}>
           Print / Save as PDF
         </button>
@@ -287,6 +315,28 @@ export default function ReportsPage() {
       <div className="panel">
         <ReportViewer reportType={reportType} project={project} data={data} sections={sections[reportType]} sectionDays={reportSectionDays} />
       </div>
+
+      {aiReportModalOpen ? (
+        <div className="modal-overlay no-print" onClick={(e) => { if (e.target === e.currentTarget) setAiReportModalOpen(false); }}>
+          <div className="modal" style={{ maxWidth: 640, width: "min(640px, 92vw)" }}>
+            <div className="modal__header">
+              <div className="modal__title">Project Report (AI)</div>
+              <button className="icon-btn" aria-label="Close" onClick={() => setAiReportModalOpen(false)}>
+                ✕
+              </button>
+            </div>
+            <div className="modal__body">
+              {aiReportGenerating ? (
+                <p className="text-secondary">Asking the local Ollama model — an extensive report can take a while on a CPU…</p>
+              ) : aiReportError ? (
+                <p style={{ color: "var(--status-critical)" }}>{aiReportError}</p>
+              ) : (
+                <p style={{ whiteSpace: "pre-wrap" }}>{aiReportText}</p>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

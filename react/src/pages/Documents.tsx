@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { isOllamaAvailable, askOllama, buildDocumentReviewPrompt, buildSpreadsheetReviewPrompt } from "../services/ollamaService";
 import {
   CATEGORY_LABELS,
   PRIORITY_LABELS,
@@ -998,6 +999,30 @@ function DocumentPreviewPanel({
   var linkedVendor = doc.vendor_id ? data.vendors.find((v) => v.id === doc.vendor_id) : null;
   var linkedPackage = doc.package_id ? data.packages.find((p) => p.id === doc.package_id) : null;
 
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
+  const [reviewText, setReviewText] = useState("");
+  const [reviewError, setReviewError] = useState("");
+
+  function handleReviewDocument() {
+    setReviewModalOpen(true);
+    setReviewing(true);
+    setReviewText("");
+    setReviewError("");
+    var isExcel = doc.extraction && doc.extraction.type === "excel";
+    var prompt = isExcel ? buildSpreadsheetReviewPrompt(doc, data) : buildDocumentReviewPrompt(doc, data);
+    askOllama(prompt)
+      .then((text) => {
+        setReviewText(text);
+      })
+      .catch((e: Error) => {
+        setReviewError(e.message);
+      })
+      .finally(() => {
+        setReviewing(false);
+      });
+  }
+
   function item(label: string, value: string | number | null | undefined) {
     return (
       <div key={label}>
@@ -1065,6 +1090,11 @@ function DocumentPreviewPanel({
         {doc.extraction ? (
           <button className="btn btn--ghost" onClick={onToggleExtraction}>
             {previewExtractionExpanded ? "Hide Extracted Data" : "View Extracted Data"}
+          </button>
+        ) : null}
+        {doc.extraction && isOllamaAvailable() ? (
+          <button className="btn btn--ghost" onClick={handleReviewDocument}>
+            Review Document (AI)
           </button>
         ) : null}
         <button className="btn btn--ghost" onClick={() => openStoredFile(doc)}>
@@ -1168,6 +1198,28 @@ function DocumentPreviewPanel({
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      ) : null}
+
+      {reviewModalOpen ? (
+        <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setReviewModalOpen(false); }}>
+          <div className="modal" style={{ maxWidth: 560, width: "min(560px, 92vw)" }}>
+            <div className="modal__header">
+              <div className="modal__title">Document Review (AI)</div>
+              <button className="icon-btn" aria-label="Close" onClick={() => setReviewModalOpen(false)}>
+                ✕
+              </button>
+            </div>
+            <div className="modal__body">
+              {reviewing ? (
+                <p className="text-secondary">Asking the local Ollama model — this can take a little while on a CPU…</p>
+              ) : reviewError ? (
+                <p style={{ color: "var(--status-critical)" }}>{reviewError}</p>
+              ) : (
+                <p style={{ whiteSpace: "pre-wrap" }}>{reviewText}</p>
+              )}
+            </div>
           </div>
         </div>
       ) : null}

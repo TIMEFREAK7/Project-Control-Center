@@ -7116,3 +7116,74 @@ artifact for a real forecast-accuracy bug.
 paragraph — check `git log`/`git status` for whether that happened by the time you're reading
 this. No new EXE built for this specific change yet at the moment this paragraph was written
 either — check whether one exists before assuming Aditya has the updated prompt in hand.
+
+## Two more Ollama capabilities: Document Review + Project Report (2026-09-11, same day)
+
+Aditya asked to use the `/prompt-master` skill to author production-quality prompts for the
+remaining capabilities he'd originally listed (report generation, PDF/Excel review), then "bake
+it into the project" as selectable buttons rather than free-text entry. Ran `/prompt-master`
+first to get the actual prompt text (all three prompts delivered to Aditya in-chat), then
+implemented two of them — Document Review and Project Report — following the exact plumbing
+pattern the Schedule Summary pilot established. The third (spreadsheet review) turned out to be
+the *same* capability as Document Review, not a separate one — see below.
+
+**Document Review (AI)** — new button on the Documents page's per-document preview panel
+(`DocumentPreviewPanel` in `react/src/pages/Documents.tsx`), next to "View Extracted Data"/"Open
+File". Gated on `doc.extraction` being present AND `isOllamaAvailable()`.
+- **Real finding while implementing, not assumed**: checked `documentsService.ts`'s actual
+  `extractPdf()`/`extractDocx()`/`extractExcel()` functions before writing anything (per this
+  project's own "never guess field names" discipline) and found PDF/Word extraction produces
+  `{type, text, char_count, ...}` while Excel extraction produces `{type: "excel", headers,
+  rows, ...}` — genuinely different shapes, not just a styling difference. So this shipped as
+  **two prompt-builder functions** (`buildDocumentReviewPrompt` for text, `buildSpreadsheetReviewPrompt`
+  for rows) behind **one button** that picks the right one based on `doc.extraction.type ===
+  "excel"` — Aditya's "PDF/Excel review" ask was one user-facing capability all along, the
+  distinction only matters internally.
+- Both in `react/src/services/ollamaService.ts`, both cap injected content at 12k characters
+  (`REVIEW_TEXT_CHAR_CAP`) with an explicit "(truncated to the first N characters of M total)"
+  note when they do, per prompt-master's own guidance that local models have limited context
+  and should never silently lose content the prompt doesn't disclose.
+
+**Project Report (AI)** — new button on the Reports page's toolbar (`react/src/pages/Reports.tsx`),
+next to "Print / Save as PDF", only shown for `reportType === "project"` with a project selected.
+Deliberately NOT wired into the existing `buildProjectReport()`/print pipeline (CLAUDE.md: "Reports
+are printable HTML, not generated PDFs") — it's a separate narrative document shown in the same
+kind of result modal as Schedule Summary/Document Review, not a new print template.
+- `buildProjectReportPrompt()` aggregates six already-existing modules for one project:
+  portfolio facts (direct fields), schedule facts (**reused**, not duplicated — see below), cost
+  facts (`window.PCC.cost.projectCostSummary()`, the same sanctioned call `costService.ts`
+  itself forwards to), open risks/issues, open RFIs, and recent daily-log/meeting activity. Each
+  empty section renders its own "No open risks or issues." / "No open RFIs." fallback text per
+  prompt-master's design — an empty section state, not silence the model could pad with invented
+  content.
+- **Refactor along the way**: `buildScheduleSummaryPrompt()` split into `buildScheduleFactsBlock()`
+  (just the facts, no instructions) + the original exported name now a two-line wrapper
+  (instructions + that block) — so the Project Report's `{{SCHEDULE_FACTS}}` slot reuses the
+  *exact* same fact-gathering code the Schedule Summary pilot already had, rather than a second
+  copy. Confirmed this refactor was behavior-preserving by running the full suite before AND
+  after (2734/2734 both times, the existing Schedule Summary e2e's exact-string prompt
+  assertions still passed unchanged) rather than assuming a "just extracted a function" refactor
+  is automatically safe.
+- `currentScheduleFor()` picks the project's `schedule_type === "current"` schedule if one
+  exists, else the most recently updated one — a project with zero schedules is a valid state
+  (early setup), handled with its own message, not an error.
+
+**New test file**: `tests/test_ollama_document_and_report_e2e.js` (7 checks) — same
+window.PCC_ELECTRON-stub-against-the-real-bundle approach as the other Ollama test files,
+including a captured-prompt assertion proving an Excel document's button click produces the
+spreadsheet-structured prompt (`"Totals Check"` present, `"Completeness Check"` absent) while a
+PDF document's produces the opposite — proving the type-based dispatch actually works, not just
+that a prompt got sent. Full suite: **2741/2741** (2734 prior + 7 new). Real-Chromium visual pass
+on both new modals (Document Review, Project Report) — both render cleanly, match the existing
+`.modal`/`.modal-overlay` styling exactly (reused component, no new dialog pattern), zero console
+errors.
+
+**Not done**: the third prompt-master-authored prompt text (the standalone "Excel/Spreadsheet
+Review" framing) exists only in this session's chat transcript, not as a separate code path —
+folded into Document Review's `extraction.type` dispatch instead, as explained above. If a
+future session is asked to add a distinct spreadsheet capability, check here first rather than
+assuming this doesn't already exist.
+
+**Current state**: check `git log`/`git status` for whether this has been committed, merged to
+`main`, pushed, and whether a new EXE has been built and sent for this specific change — all of
+that may or may not have happened yet depending on exactly when you're reading this paragraph.
