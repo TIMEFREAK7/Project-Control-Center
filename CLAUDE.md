@@ -240,8 +240,8 @@ it documents *why* things are shaped the way they are, not just what exists.
   an old dataset (search `assert.strictEqual(data.schema_version,` across `tests/*.js`) — bumping
   the constant without updating those breaks otherwise-unrelated tests in confusing ways (last
   time, ~36 assertions across the suite, not just the couple of files this note used to name).
-  Current version is **65** (`settings.sync_mirror_enabled`/`sync_mirror_folder_path` for the
-  one-way data mirror — see "One-way data mirror + the 'At a Glance' mirror app" above) — see
+  Current version is **66** (`settings.ollama_enabled`/`ollama_host`/`ollama_model` for the
+  Ollama AI integration — see "Ollama AI integration" above) — see
   `tests/test_store_schema_v54_migration.js` for the migration test pattern to copy for the next
   bump. `store.js` also exports `migrate: migrate` on `window.PCC.store` (purely additive, zero
   behavior change to the main app) specifically so `mirror-app/` can reuse the real migration
@@ -387,6 +387,75 @@ and a flat-color match to `icon-background.png` (`packaging/icons/pcc-icon-backg
 opening the regenerated `android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_foreground.png`
 directly** — if it's a real logo, the fix worked; if it's Capacitor's own abstract blue mark, it
 didn't.
+
+## Ollama AI integration (Electron/Windows only, pilot capability)
+
+Added per Aditya's request for AI features (fuzzy search everywhere + Ollama-backed
+summarization/report/document review). Scoped down deliberately, following the same
+"progressive, one capability at a time" playbook as the React migration: shared plumbing
+built once, then exactly ONE working feature (Schedule summarization) wired through it, with
+report generation and PDF/Excel review explicitly deferred to future gates rather than built
+speculatively.
+
+- **Electron-only, by architecture, not by omission.** The actual HTTP call to a local Ollama
+  server (`http://localhost:11434` by default) runs in the Electron **main process**, via IPC
+  (`packaging/electron/ollamaClient.js` — pure, testable with plain Node + mocked `fetch`;
+  registered as `pcc-ollama-generate`/`pcc-ollama-list-models` in `main.js`, exposed through
+  `preload.js`'s `contextBridge` as `window.PCC_ELECTRON.ollamaGenerate`/`ollamaListModels`) —
+  never a direct `fetch()` from the renderer. Reason: a `file://`-opened renderer sends
+  `Origin: null`, and rather than gamble on a given Ollama version's CORS defaults (or ask the
+  user to set `OLLAMA_ORIGINS` just to make a feature work), IPC sidesteps browser CORS
+  entirely. Same "only in the main process" pattern `writeMirrorFile` already established for
+  the data mirror. Real, accepted consequence: Ollama features do not exist on Android or in a
+  plain browser-opened `index.html` — `src/js/ollamaService.js`'s `isAvailable()` (checks for
+  `window.PCC_ELECTRON.ollamaGenerate`/`ollamaListModels`) is what enforces this, the same
+  "no-op elsewhere" posture as `dataMirror.js`'s `isElectronMirrorAvailable()`.
+- **Off by default, three new settings fields** (schema v66): `settings.ollama_enabled`
+  (boolean), `settings.ollama_host` (default `"http://localhost:11434"`), `settings.ollama_model`
+  (default `""`, deliberately left blank — there's no universally "right" model to assume
+  someone has pulled). Same "never silently call out anywhere" posture as the data mirror's
+  `sync_mirror_enabled`.
+- **`src/js/ollamaService.js`** is the single gate everything else goes through: `isAvailable()`,
+  `settings()`, `listModels()`, `ask(prompt)` — the last two reject with a clear message
+  ("Ollama integration is only available in the Windows desktop app." / "...is turned off in
+  Settings." / "No Ollama model is configured...") rather than throwing an opaque error, since a
+  calling UI needs something displayable. This file has **no opinion on what any capability
+  asks** — it only ever forwards a prompt string and returns Ollama's response text, so it stays
+  reusable for whatever capability comes after the pilot instead of hardcoding one.
+- **`react/src/services/ollamaService.ts`** is the thin React-side wrapper (master prompt §9:
+  React must not own core calculations) PLUS the one pure, fully-testable piece that belongs
+  here: `buildScheduleSummaryPrompt(data, scheduleId)`. It reads `total_float`/`early_finish`/
+  etc. straight off `data.activities` — the exact fields `scheduleCpmEngine.js`'s
+  `calculateSchedule()` already wrote there — and classifies criticality via the real, shared
+  `window.PCC.delayImpactEngine.classifyCriticality()`, **never** re-invoking the CPM engine or
+  inventing a second criticality rule. Same "read-only layer over persisted output" convention
+  `delayImpactEngine.js` itself documents in its own header comment. Any FUTURE Ollama capability
+  (report drafting, PDF/Excel review) should follow this same shape: a pure prompt-builder
+  function here, reading only already-computed/already-extracted data, never a second
+  calculation or a second text-extraction pass — PDF/Excel review specifically should reuse the
+  text `pdf.js`/`exceljs` already extract into `extraction.text` (see Document Types' own
+  extraction pipeline), never re-parse the binary itself.
+- **Pilot capability: "Summarize Schedule (AI)"** — a new item in the Schedule page's existing
+  "Schedule actions" ⋯ menu (`ScheduleBar` in `react/src/pages/Schedule.tsx`), gated behind
+  `isOllamaAvailable()` so it's simply absent outside Electron rather than shown-and-broken.
+  Opens a `.modal`/`.modal-overlay` (reusing the existing component, not inventing a new dialog
+  pattern — `src/js/keyboardShortcuts.js`'s help overlay uses the same two classes) showing a
+  loading state, then the model's response, or a clear error message on failure.
+- **Settings UI**: a new "AI Assistant (Ollama)" panel, gated behind `window.PCC_ELECTRON`
+  exactly like the existing "Data Mirror" panel right above it (same file, same pattern) — host
+  address, model name (with a `<datalist>` populated by "Test Connection", which calls
+  `listModels()` against `/api/tags` and reports success/failure via the existing toast system,
+  never a alert()).
+- **Testing**: `packaging/electron/ollamaClient.js` is tested directly with plain Node + a
+  mocked `global.fetch` (`tests/test_ollama_client.js`) — no real Electron process, no real
+  Ollama server, matching `mirrorFileWriter.js`'s own testing precedent. Everything above that
+  (`window.PCC.ollama`, the Settings panel, the Schedule pilot) is tested end-to-end against the
+  real bundled `index.html` via jsdom with `window.PCC_ELECTRON` stubbed
+  (`tests/test_ollama_integration_e2e.js`) — same "stub window.PCC_ELECTRON after/before load"
+  approach `test_data_mirror_e2e.js` already established. A stubbed `ollamaGenerate` captures the
+  actual prompt text sent to it so tests can assert the prompt contains real seeded data (e.g. a
+  specific critical activity's name), proving `buildScheduleSummaryPrompt` isn't just returning a
+  canned string — not just that the UI shows *some* response.
 
 ## Commands
 

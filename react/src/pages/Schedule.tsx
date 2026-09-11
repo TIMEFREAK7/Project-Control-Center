@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { isOllamaAvailable, buildScheduleSummaryPrompt, askOllama } from "../services/ollamaService";
 import {
   SCHEDULE_STATUS_LABELS,
   SCHEDULE_TYPE_LABELS,
@@ -644,6 +645,28 @@ function ScheduleBar({
   const currentSchedule = data.schedules.find((s) => s.id === scheduleId);
   const activityCount = data.activities.filter((a) => a.schedule_id === scheduleId).length;
   const [scheduleMenuOpen, setScheduleMenuOpen] = useState(false);
+  const [summaryModalOpen, setSummaryModalOpen] = useState(false);
+  const [summarizing, setSummarizing] = useState(false);
+  const [summaryText, setSummaryText] = useState("");
+  const [summaryError, setSummaryError] = useState("");
+
+  function handleSummarizeSchedule() {
+    setSummaryModalOpen(true);
+    setSummarizing(true);
+    setSummaryText("");
+    setSummaryError("");
+    const prompt = buildScheduleSummaryPrompt(data, scheduleId);
+    askOllama(prompt)
+      .then((text) => {
+        setSummaryText(text);
+      })
+      .catch((e: Error) => {
+        setSummaryError(e.message);
+      })
+      .finally(() => {
+        setSummarizing(false);
+      });
+  }
 
   return (
     <div className="toolbar focus-mode-hide">
@@ -727,6 +750,18 @@ function ScheduleBar({
           <React.Fragment>
             <button className="card-menu__overlay" aria-label="Close schedule actions menu" onClick={() => setScheduleMenuOpen(false)} />
             <div className="card-menu__dropdown">
+              {isOllamaAvailable() ? (
+                <button
+                  className="card-menu__item"
+                  disabled={activityCount === 0}
+                  onClick={() => {
+                    setScheduleMenuOpen(false);
+                    handleSummarizeSchedule();
+                  }}
+                >
+                  Summarize Schedule (AI)
+                </button>
+              ) : null}
               <button
                 className="card-menu__item"
                 onClick={() => {
@@ -740,6 +775,28 @@ function ScheduleBar({
           </React.Fragment>
         ) : null}
       </div>
+
+      {summaryModalOpen ? (
+        <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setSummaryModalOpen(false); }}>
+          <div className="modal" style={{ maxWidth: 560, width: "min(560px, 92vw)" }}>
+            <div className="modal__header">
+              <div className="modal__title">Schedule Summary (AI)</div>
+              <button className="icon-btn" aria-label="Close" onClick={() => setSummaryModalOpen(false)}>
+                ✕
+              </button>
+            </div>
+            <div className="modal__body">
+              {summarizing ? (
+                <p className="text-secondary">Asking the local Ollama model — this can take a little while on a CPU…</p>
+              ) : summaryError ? (
+                <p style={{ color: "var(--status-critical)" }}>{summaryError}</p>
+              ) : (
+                <p style={{ whiteSpace: "pre-wrap" }}>{summaryText}</p>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

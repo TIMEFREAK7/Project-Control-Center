@@ -17,4 +17,8 @@ contextBridge.exposeInMainWorld("PCC_ELECTRON", {
   notifyQuitExportDone: () => {
     ipcRenderer.send("pcc-mirror-export-on-quit-done");
   },
+  // Ollama AI integration — see ollamaClient.js's own header comment for why this goes
+  // through IPC to the main process instead of a direct renderer fetch().
+  ollamaGenerate: (host, model, prompt) => ipcRenderer.invoke("pcc-ollama-generate", host, model, prompt),
+  ollamaListModels: (host) => ipcRenderer.invoke("pcc-ollama-list-models", host),
 });

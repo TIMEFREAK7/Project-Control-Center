@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain } = require("electron");
 const path = require("node:path");
 const { computeRelocatedPath, migrateIfNeeded } = require("./relocateStorage");
 const { writeMirrorFile } = require("./mirrorFileWriter");
+const { ollamaGenerate, ollamaListModels } = require("./ollamaClient");
 
 // One-way hourly data mirror (Phase 4): the renderer is contextIsolated with no direct
 // filesystem access, so writing the mirror snapshot silently (no save dialog) goes
@@ -9,6 +10,16 @@ const { writeMirrorFile } = require("./mirrorFileWriter");
 // write + validation logic.
 ipcMain.handle("pcc-write-mirror-file", (event, folderPath, filename, content) => {
   writeMirrorFile(folderPath, filename, content);
+});
+
+// Ollama AI integration (Electron/Windows only — see ollamaClient.js's own header comment
+// for why this runs in the main process rather than a renderer fetch(), and
+// src/js/ollamaService.js for the app-side gating).
+ipcMain.handle("pcc-ollama-generate", (event, host, model, prompt) => {
+  return ollamaGenerate(host, model, prompt);
+});
+ipcMain.handle("pcc-ollama-list-models", (event, host) => {
+  return ollamaListModels(host);
 });
 
 // Affects app.getName() and the default userData path (confirmed: the running app's

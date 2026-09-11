@@ -9,7 +9,7 @@
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 65;
+  var SCHEMA_VERSION = 66;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -115,6 +115,14 @@
         // never writes here — there is no write-back path, by design.
         sync_mirror_enabled: false,
         sync_mirror_folder_path: "",
+        // Ollama AI integration (Electron/Windows only — see src/js/ollamaService.js and
+        // packaging/electron/ollamaClient.js): off by default, same "never silently call
+        // out anywhere" posture as the data mirror above. host defaults to Ollama's own
+        // standard local port; model is left blank on purpose — there's no universally
+        // "right" default model to assume someone has pulled.
+        ollama_enabled: false,
+        ollama_host: "http://localhost:11434",
+        ollama_model: "",
       },
       // Company/Client/Project Management redesign: independent master-data entities.
       // Companies and Clients exist on their own (so PCC can keep a full historical
@@ -3247,6 +3255,19 @@
         if (loaded.settings.sync_mirror_folder_path === undefined) loaded.settings.sync_mirror_folder_path = "";
       }
       loaded.schema_version = 65;
+    }
+
+    if (loaded.schema_version < 66) {
+      // Ollama AI integration (Electron/Windows only, pilot capability: Schedule
+      // summarization): same fully-off-by-default posture as the data mirror's v65
+      // migration just above — no existing install starts calling out to a local Ollama
+      // server without the user explicitly enabling it and configuring a model.
+      if (loaded.settings) {
+        if (loaded.settings.ollama_enabled === undefined) loaded.settings.ollama_enabled = false;
+        if (loaded.settings.ollama_host === undefined) loaded.settings.ollama_host = "http://localhost:11434";
+        if (loaded.settings.ollama_model === undefined) loaded.settings.ollama_model = "";
+      }
+      loaded.schema_version = 66;
     }
 
     return loaded;

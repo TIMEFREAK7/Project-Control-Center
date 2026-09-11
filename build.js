@@ -81,6 +81,7 @@ const JS_ORDER = [
   "js/loadingIndicator.js",
   "js/nativeFile.js",
   "js/dataMirror.js",
+  "js/ollamaService.js",
   "js/fileViewer.js",
   "js/nativePrint.js",
   "js/archive.js",

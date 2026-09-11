@@ -519,6 +519,9 @@ export interface PCCSettings {
   health_score_weights: PCCHealthScoreWeights;
   sync_mirror_enabled?: boolean;
   sync_mirror_folder_path?: string;
+  ollama_enabled?: boolean;
+  ollama_host?: string;
+  ollama_model?: string;
 }
 
 export interface PCCRelationship {
@@ -1592,6 +1595,7 @@ declare global {
       };
       pendingProjectPrefill?: { company_id?: string; client_id?: string };
       delayImpactEngine: {
+        classifyCriticality(totalFloat: number | null | undefined, nearCriticalThresholdDays?: number | null): "critical" | "near_critical" | "non_critical" | null;
         computeDelayImpact(delayRecord: PCCDelayRecord, links: PCCDelayActivityLink[], data: PCCStoreData): DelayImpactResult;
         computeProjectFinishImpact(scheduleId: string, data: PCCStoreData): ProjectFinishImpactResult;
         computeRecoveryForecast(
@@ -1829,6 +1833,13 @@ declare global {
           unavailabilities: PCCResourceUnavailability[]
         ): LevelingResult;
       };
+      // Ollama AI integration (Electron/Windows only — see src/js/ollamaService.js).
+      ollama: {
+        isAvailable(): boolean;
+        settings(): { enabled: boolean; host: string; model: string };
+        listModels(): Promise<string[]>;
+        ask(prompt: string): Promise<string>;
+      };
     };
     // One-way hourly data mirror (Phase 4): only present under Electron, exposed via
     // packaging/electron/preload.js's contextBridge — see src/js/dataMirror.js.
@@ -1836,6 +1847,8 @@ declare global {
       writeMirrorFile(folderPath: string, filename: string, content: string): Promise<void>;
       onQuitExportRequested(callback: () => void): void;
       notifyQuitExportDone(): void;
+      ollamaGenerate(host: string, model: string, prompt: string): Promise<string>;
+      ollamaListModels(host: string): Promise<string[]>;
     };
   }
 }

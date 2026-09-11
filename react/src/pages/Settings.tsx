@@ -35,6 +35,7 @@ import {
   downloadRecoveryBackup,
   deleteRecoveryBackup,
 } from "../services/settingsService";
+import { listOllamaModels } from "../services/ollamaService";
 
 var BLANK_IMG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1' height='1'%3E%3C/svg%3E";
 
@@ -59,6 +60,8 @@ export default function SettingsPage() {
   const [exporting, setExporting] = useState(false);
   const [backingUp, setBackingUp] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  const [testingOllama, setTestingOllama] = useState(false);
+  const [ollamaModels, setOllamaModels] = useState<string[] | null>(null);
   const settings = data.settings;
 
   function refresh() {
@@ -220,6 +223,46 @@ export default function SettingsPage() {
     refresh();
   }
 
+  function handleOllamaEnabledChange(e: React.ChangeEvent<HTMLInputElement>) {
+    updateSettings((s) => {
+      s.ollama_enabled = e.target.checked;
+    });
+    refresh();
+  }
+
+  function handleOllamaHostChange(e: React.ChangeEvent<HTMLInputElement>) {
+    updateSettings((s) => {
+      s.ollama_host = e.target.value;
+    });
+    refresh();
+  }
+
+  function handleOllamaModelChange(e: React.ChangeEvent<HTMLInputElement>) {
+    updateSettings((s) => {
+      s.ollama_model = e.target.value;
+    });
+    refresh();
+  }
+
+  function handleTestOllamaConnection() {
+    setTestingOllama(true);
+    setOllamaModels(null);
+    listOllamaModels()
+      .then((models) => {
+        setOllamaModels(models);
+        notify(
+          models.length ? "Connected. " + models.length + " model(s) available." : "Connected, but no models are pulled yet — run “ollama pull <model>” on this PC.",
+          models.length ? "success" : "warning"
+        );
+      })
+      .catch((e: Error) => {
+        notify(e.message, "error");
+      })
+      .finally(() => {
+        setTestingOllama(false);
+      });
+  }
+
   function handleDeleteRecovery(key: string) {
     if (!window.confirm("Delete this recovery snapshot? Make sure you've downloaded it if you might need it. This can't be undone.")) return;
     deleteRecoveryBackup(key);
@@ -341,6 +384,60 @@ export default function SettingsPage() {
               placeholder="e.g. C:\Users\you\PCC-Sync"
               onChange={handleMirrorFolderPathChange}
             />
+          </div>
+        </div>
+      ) : null}
+
+      {window.PCC_ELECTRON ? (
+        <div className="panel" style={{ maxWidth: 480 }}>
+          <h3 style={{ marginBottom: 6 }}>AI Assistant (Ollama)</h3>
+          <p className="text-secondary" style={{ marginTop: 0, fontSize: 13 }}>
+            Uses a locally-installed <a href="https://ollama.com" target="_blank" rel="noreferrer">Ollama</a> server on this
+            PC — nothing is sent anywhere else. Install Ollama, pull a model (e.g. <span className="mono">ollama pull llama3</span>),
+            then enter its name below. Off by default; only available in this Windows app, not on Android.
+          </p>
+
+          <label style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", fontSize: "var(--text-sm)", marginTop: "var(--space-2)" }}>
+            <input type="checkbox" checked={!!settings.ollama_enabled} onChange={handleOllamaEnabledChange} />
+            Enable AI features
+          </label>
+
+          <div className="field" style={{ marginTop: "var(--space-3)" }}>
+            <label htmlFor="settingsfield-ollama_host">Ollama server address</label>
+            <input
+              id="settingsfield-ollama_host"
+              type="text"
+              defaultValue={settings.ollama_host || "http://localhost:11434"}
+              key={"ollama-host-" + settings.ollama_host}
+              placeholder="http://localhost:11434"
+              onChange={handleOllamaHostChange}
+            />
+          </div>
+
+          <div className="field" style={{ marginTop: "var(--space-3)" }}>
+            <label htmlFor="settingsfield-ollama_model">Model name</label>
+            <input
+              id="settingsfield-ollama_model"
+              type="text"
+              defaultValue={settings.ollama_model || ""}
+              key={"ollama-model-" + settings.ollama_model}
+              placeholder="e.g. llama3"
+              list="ollama-model-options"
+              onChange={handleOllamaModelChange}
+            />
+            {ollamaModels ? (
+              <datalist id="ollama-model-options">
+                {ollamaModels.map((m) => (
+                  <option key={m} value={m} />
+                ))}
+              </datalist>
+            ) : null}
+          </div>
+
+          <div style={{ marginTop: "var(--space-3)" }}>
+            <button type="button" className="btn btn--ghost" disabled={testingOllama} onClick={handleTestOllamaConnection}>
+              {testingOllama ? "Testing…" : "Test Connection"}
+            </button>
           </div>
         </div>
       ) : null}

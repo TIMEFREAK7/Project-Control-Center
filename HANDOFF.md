@@ -6989,3 +6989,72 @@ Real-Chromium pass across all 9 nav groups × light/dark theme confirmed the tin
 Overview stays untinted — screenshots taken but not committed (dev-only verification artifacts).
 **Not done**: no HANDOFF-zip/installer rebuild for this change — it's a UI-only source change with
 no schema bump, no release-artifact request from Aditya this session.
+
+## Fuzzy search everywhere + Ollama AI integration pilot (2026-09-11)
+
+Two separate asks in one session, kept as two separate pieces of work (and two separate
+commits/merges) rather than one big change.
+
+**Fuzzy search**: one dependency-free matcher (`react/src/utils/fuzzyMatch.ts`, no npm package —
+same discipline that keeps React itself bundled rather than left as a live import), wired into
+all 20 existing search predicates across 17 files. Exact/partial substrings still match
+unchanged (fast path); per-word Levenshtein typo tolerance kicks in only for words 4+ characters,
+so short queries stay precise. Exposed as `window.PCC.fuzzyMatch` (same "purely additive, for
+testability/reuse" convention as `store.js`'s `migrate` export). New
+`tests/test_fuzzy_search.js` (10 checks, including a real Risk Register search-box e2e with a
+false-positive guard). Merged to `main` on its own (`claude/fuzzy-search-rollout`) before the
+Ollama work started.
+
+**Ollama AI integration — pilot only, see `CLAUDE.md`'s own "Ollama AI integration" section for
+the full architecture** (Electron-only via IPC, off-by-default settings, the
+`ollamaService.js`/`ollamaService.ts` split, why `buildScheduleSummaryPrompt` reads only
+already-calculated fields). Aditya asked for schedule summarization, report generation, PDF/Excel
+review, and "all the other capabilities" — pushed back on the unscoped part explicitly (this
+project has rejected exactly this kind of scope creep before) and proposed, then built, ONLY the
+shared plumbing plus one pilot capability (Schedule summarization), with his explicit
+confirmation via `AskUserQuestion` on both the Electron-only architecture call and the pilot
+choice before writing code.
+
+**Schema bump to 66** (`ollama_enabled`/`ollama_host`/`ollama_model`, all off/default) — migration
+test added to `tests/test_store_schema_v54_migration.js` per that file's own established pattern,
+all ~38 pre-existing hardcoded `schema_version` assertions across 4 files bumped from 65→66 (per
+this file's own standing warning about that exact failure mode).
+
+**New files**: `packaging/electron/ollamaClient.js` (pure, Node-testable HTTP client — the ONLY
+place that calls Ollama), `src/js/ollamaService.js` (Electron-availability gate + settings read),
+`react/src/services/ollamaService.ts` (React wrapper + the pilot's prompt builder),
+`react/src/types/pcc.d.ts` additions. **Modified**: `packaging/electron/main.js`/`preload.js` (2
+new IPC routes), `react/src/pages/Settings.tsx` (new "AI Assistant (Ollama)" panel, same
+Electron-gated pattern as the existing Data Mirror panel), `react/src/pages/Schedule.tsx` (new
+"Summarize Schedule (AI)" item in the existing Schedule actions ⋯ menu + a `.modal` showing the
+result/error — reuses the existing modal component, no new dialog pattern).
+
+**New tests**: `tests/test_ollama_client.js` (8 checks, plain Node + mocked `fetch` — validation,
+success, trailing-slash handling, unreachable-server and non-ok-status error messages, empty
+model list) and `tests/test_ollama_integration_e2e.js` (9 checks against the real bundled
+`index.html` via jsdom, `window.PCC_ELECTRON` stubbed — availability gating on/off, the Settings
+panel's presence/fields/Test Connection, the Schedule menu item's presence/absence, and critically
+a captured-prompt assertion proving the AI prompt contains real seeded activity names/counts, not
+a canned string).
+
+**Verified**: `node build.js` clean (TypeScript strict-mode check included), full suite
+**2734/2734**, 0 failures. Real-Chromium visual pass on the Settings panel, the Schedule ⋯ menu,
+and the summary modal (screenshots taken, not committed — dev-only verification artifacts) — all
+render correctly and match the existing design system with zero console errors.
+
+**Not verified — cannot be, from this sandbox**: an actual Electron process talking to a real,
+locally-running Ollama server. There is no Electron runtime and no Ollama installation available
+here; `packaging/electron/ollamaClient.js`'s own tests mock `fetch` entirely, and the e2e suite
+stubs `window.PCC_ELECTRON` rather than using the real IPC bridge. The IPC wiring itself
+(`ipcMain.handle`/`contextBridge`) follows the exact same pattern as the already-shipped,
+real-device-confirmed data mirror feature, so this is a real but bounded gap — say so plainly if
+Aditya asks whether Ollama "actually works" before he's tried it on his own machine with Ollama
+installed.
+
+**Current state**: committed and merged to `main` (two merges: `claude/fuzzy-search-rollout` then
+a second branch for the Ollama work — check `git log` for the exact branch name/commit if it
+matters). `SCHEMA_VERSION` now 66. `versionCode`/`versionName` NOT bumped (no release build this
+session) — bump both before the next `assembleRelease`, per this file's own standing rule. No
+HANDOFF-zip/installer rebuild produced yet for the Ollama piece specifically — pending Aditya's
+review of the pilot before deciding what (if anything) ships next: report generation, PDF/Excel
+review, or refinements to the schedule summary prompt itself.
