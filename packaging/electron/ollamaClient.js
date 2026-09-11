@@ -29,7 +29,12 @@ async function ollamaGenerate(host, model, prompt) {
     res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: model, prompt: prompt, stream: false }),
+      // num_predict: every capability this app sends to Ollama asks for a long-form
+      // structured document (a multi-section schedule analysis, eventually a report
+      // draft), never a short chat reply -- a generous explicit cap here avoids relying
+      // on whatever a given Ollama version's own default happens to be, which produced a
+      // noticeably truncated "bare minimum" response during the schedule-summary pilot.
+      body: JSON.stringify({ model: model, prompt: prompt, stream: false, options: { num_predict: 1200 } }),
     });
   } catch (e) {
     throw new Error("Could not reach Ollama at " + host + " — is it running? (" + e.message + ")");

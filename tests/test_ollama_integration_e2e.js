@@ -166,11 +166,21 @@ async function freshWindow() {
       d.schedules.push(s);
       schedId = s.id;
       d.activities.push(
-        { id: "act-ai-1", schedule_id: schedId, project_id: p.id, activity_type: "task", name: "Pour Foundation", status: "in_progress", total_float: 0, early_finish: "2026-10-01", percent_complete: 50 },
-        { id: "act-ai-2", schedule_id: schedId, project_id: p.id, activity_type: "task", name: "Erect Steel Frame", status: "not_started", total_float: 12, early_finish: "2026-11-15", percent_complete: 0 }
+        { id: "act-ai-1", schedule_id: schedId, project_id: p.id, activity_type: "task", name: "Pour Foundation", status: "in_progress", total_float: 0, early_finish: "2026-10-01", percent_complete: 50, discipline: "Concrete" },
+        { id: "act-ai-2", schedule_id: schedId, project_id: p.id, activity_type: "task", name: "Erect Steel Frame", status: "not_started", total_float: 12, early_finish: "2026-11-15", percent_complete: 0, discipline: "Steel" }
       );
-      d.delay_records.push(
-        win2.PCC.store.newDelayRecord({ project_id: p.id, activity_id: "act-ai-1", status: "open", delay_days: 4, delay_category: "weather" })
+      var delay = win2.PCC.store.newDelayRecord({
+        project_id: p.id,
+        activity_id: "act-ai-1",
+        status: "open",
+        delay_days: 4,
+        delay_category: "weather",
+        responsible_party: "Owner",
+        immediate_cause: "Heavy rain stopped concrete pours for 4 days",
+      });
+      d.delay_records.push(delay);
+      d.recovery_actions.push(
+        win2.PCC.store.newRecoveryAction({ project_id: p.id, delay_id: delay.id, status: "in_progress", description: "Weekend crew added to recover lost days" })
       );
     });
   });
@@ -222,7 +232,14 @@ async function freshWindow() {
     assert.ok(capturedPrompt, "expected a prompt to have been sent to Ollama");
     assert.ok(capturedPrompt.indexOf("Pour Foundation") !== -1, "prompt should mention the real critical activity by name, not a canned string");
     assert.ok(capturedPrompt.indexOf("Critical activities (total float <= 0): 1") !== -1, "prompt should report the real critical-activity count");
-    assert.ok(capturedPrompt.indexOf("Open delay records: 1") !== -1, "prompt should report the real open-delay-record count");
+    assert.ok(capturedPrompt.indexOf("Open/in-progress delay records: 1") !== -1, "prompt should report the real open-delay-record count");
+    assert.ok(capturedPrompt.indexOf("=== FORECAST FINISH ===") !== -1, "prompt should include a forecast-finish section (real computeProjectFinishImpact output)");
+    assert.ok(capturedPrompt.indexOf("Concrete: 1") !== -1, "prompt should break critical activities down by discipline");
+    assert.ok(capturedPrompt.indexOf("weather (1)") !== -1, "prompt should break open delays down by category");
+    assert.ok(capturedPrompt.indexOf("Owner (1)") !== -1, "prompt should break open delays down by responsible party");
+    assert.ok(capturedPrompt.indexOf("Heavy rain stopped concrete pours") !== -1, "prompt should include the real delay's immediate cause text, not just a count");
+    assert.ok(capturedPrompt.indexOf("=== RECOVERY ACTIONS ===") !== -1, "prompt should include a recovery-actions section");
+    assert.ok(capturedPrompt.indexOf("in_progress (1)") !== -1, "prompt should report the real recovery action's status");
 
     const modalBody = win2.document.querySelector(".modal__body");
     assert.ok(modalBody, "summary modal did not render");

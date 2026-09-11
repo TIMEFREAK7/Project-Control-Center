@@ -7058,3 +7058,61 @@ session) — bump both before the next `assembleRelease`, per this file's own st
 HANDOFF-zip/installer rebuild produced yet for the Ollama piece specifically — pending Aditya's
 review of the pilot before deciding what (if anything) ships next: report generation, PDF/Excel
 review, or refinements to the schedule summary prompt itself.
+
+## Schedule summary prompt: bare-minimum → in-depth (2026-09-11, same day, real-device feedback)
+
+Aditya installed the real Windows build, got Ollama actually working end-to-end (his own
+troubleshooting, not a code issue — a PowerShell-vs-cmd.exe `copy /b` quoting mismatch and a
+`setx` filename typo, nothing in PCC itself), and reported the schedule summary was "bare
+minimum." It was: the original pilot prompt only sent activity/delay *counts*, no causes, no
+baseline comparison, no recovery status, and the "write a few short paragraphs" instruction
+practically guaranteed a thin response.
+
+**`buildScheduleSummaryPrompt()` (`react/src/services/ollamaService.ts`) rewritten to use data
+that was already available but simply wasn't being sent**, still zero new calculations — every
+addition is either a stored field or one sanctioned read-only engine call:
+- **Real forecast-finish math**: now calls `window.PCC.delayImpactEngine.computeProjectFinishImpact(scheduleId,
+  data)` — the exact function CLAUDE.md documents as safe for a single schedule (never a
+  portfolio loop) — instead of the old naive "latest activity finish date" proxy.
+- **Baseline slippage**: compares the schedule's official baseline's own cached
+  `baseline_project_finish` (no IndexedDB snapshot load needed) against the current forecast.
+- **Delay records**: category breakdown, responsible-party breakdown, and up to 10 real open
+  delays' immediate-cause text (previously: a bare count).
+- **Recovery actions**: pulled via `delay_id` linkage, broken down by status — previously not
+  referenced in the prompt at all.
+- **Critical activities**: now grouped by discipline/contractor too, so the model can name which
+  trade is actually driving risk, not just list activities.
+- **Instructions rewritten** to ask for a structured 5-section analysis (Overview / Critical Path
+  & Schedule Risk / Delay Analysis / Recovery Status / Recommendations) instead of "a few short
+  paragraphs, no headers" — while keeping the same "use ONLY the facts given, never invent"
+  constraint against hallucination.
+- **`packaging/electron/ollamaClient.js`'s request body now sets `options: { num_predict: 1200 }`**
+  — every capability this app will ever send to Ollama is a long-form structured document, never
+  a short chat reply, so this is a deliberate app-wide default, not a one-off tweak; relying on
+  whatever a given Ollama version's own default happened to be was very likely the real reason
+  the first response looked artificially short.
+
+**Tests updated, not just left to bit-rot**: `tests/test_ollama_client.js`'s exact-body assertion
+now expects the `options` field; `tests/test_ollama_integration_e2e.js`'s seed data gained
+`discipline`, `responsible_party`, `immediate_cause`, and a real `recovery_actions` row, and its
+captured-prompt assertions now check for the new sections (forecast finish, discipline
+breakdown, delay category/responsible-party breakdown, the real cause text, recovery status) —
+not just that a prompt was sent. Full suite: **2734/2734** (same count as before — no new test
+*files* this round, existing ones got real new assertions instead). Manually inspected the actual
+generated prompt text via a throwaway jsdom script before committing, to confirm the new sections
+read sensibly rather than trusting the assertions alone.
+
+**One honest caveat carried into the new forecast-finish section**: `computeProjectFinishImpact`
+does a genuinely fresh CPM calculation from the schedule's current activities/relationships, not
+a cached read — so it's only as good as the schedule's own planning data. A schedule missing
+`planned_start`/`duration`/relationships (confirmed by testing against a deliberately sparse
+fixture) will produce a degenerate "today" forecast rather than a real one. This isn't a bug
+introduced here; it's inherent to the underlying engine call and was already true of the pilot.
+For any real schedule that's had "Calculate Schedule" run properly (PCC's normal workflow), this
+should be a non-issue — flagged here so a future session doesn't mistake a sparse-test-fixture
+artifact for a real forecast-accuracy bug.
+
+**Current state**: committed on a new branch off `main`, not yet merged/pushed as of writing this
+paragraph — check `git log`/`git status` for whether that happened by the time you're reading
+this. No new EXE built for this specific change yet at the moment this paragraph was written
+either — check whether one exists before assuming Aditya has the updated prompt in hand.

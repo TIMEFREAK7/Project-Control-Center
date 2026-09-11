@@ -48,7 +48,7 @@ function mockFetch(handler) {
     });
     const result = await ollamaGenerate("http://localhost:11434", "llama3", "Summarize this schedule.");
     assert.strictEqual(capturedUrl, "http://localhost:11434/api/generate");
-    assert.deepStrictEqual(capturedBody, { model: "llama3", prompt: "Summarize this schedule.", stream: false });
+    assert.deepStrictEqual(capturedBody, { model: "llama3", prompt: "Summarize this schedule.", stream: false, options: { num_predict: 1200 } });
     assert.strictEqual(result, "This is the summary.");
   });
 
