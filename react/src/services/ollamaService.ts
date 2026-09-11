@@ -194,16 +194,31 @@ export function buildScheduleFactsBlock(data: PCCStoreData, scheduleId: string):
   return lines.join("\n");
 }
 
+// Reviewed via /prompt-master against its own Ollama/Llama routing guidance (2026-09-11):
+// the original version packed role+task+grounding-constraint into one dense run-on sentence
+// before the numbered list, which buries the "never invent facts" rule for a weaker
+// open-weight model instead of isolating it. Restructured into a standalone RULES block
+// (strong signal words: NEVER, not "avoid") + a flat per-section instruction list, plus an
+// explicit no-preamble instruction and a fixed fallback string for empty sections -- local
+// models commonly prepend a chatty "Sure, here's the analysis:" greeting and phrase "no
+// data" differently every run without being told not to.
 var SCHEDULE_SUMMARY_INSTRUCTIONS =
-  "You are a senior project controls analyst reviewing a construction schedule for a project manager. " +
-  "Produce an in-depth, structured analysis using ONLY the facts given below -- never invent activities, " +
-  "dates, causes, or numbers that are not listed. If a section has no supporting data, say so briefly " +
-  "rather than guessing. Write these sections, each with a short heading:\n" +
-  "1. Overview -- overall progress and schedule health in plain language.\n" +
-  "2. Critical Path & Schedule Risk -- which activities/disciplines are driving risk, and how tight the float is.\n" +
-  "3. Delay Analysis -- root causes and who's responsible, grounded in the categories/descriptions given.\n" +
-  "4. Recovery Status -- what recovery effort exists (if any) and whether it looks sufficient given the numbers.\n" +
-  "5. Recommendations -- 2-4 concrete, specific next actions a planner could actually take this week.";
+  "You are a senior project controls analyst. Analyze the schedule data below and write a structured report for a project manager.\n\n" +
+  "RULES (follow exactly):\n" +
+  "- Use ONLY the facts given below. NEVER invent activities, dates, causes, or numbers.\n" +
+  '- If a section has no supporting data, write "No data available for this section" instead of guessing.\n' +
+  '- Do not add any introduction, greeting, or closing remarks. Start directly with "1. Overview".\n\n' +
+  "Write exactly 5 sections, in this order, each starting with its number and heading:\n\n" +
+  "1. Overview\n" +
+  "Summarize overall progress and schedule health in 2-3 sentences.\n\n" +
+  "2. Critical Path & Schedule Risk\n" +
+  "Name which activities or disciplines are driving risk. State how tight the float is.\n\n" +
+  "3. Delay Analysis\n" +
+  "State the root causes of delays and who is responsible, using only the categories and descriptions given.\n\n" +
+  "4. Recovery Status\n" +
+  "State what recovery effort exists, if any, and whether it looks sufficient based on the numbers given.\n\n" +
+  "5. Recommendations\n" +
+  "List 2-4 concrete, specific actions a planner could take this week.";
 
 /** The Schedule Summary (AI) pilot's own full prompt -- instructions + buildScheduleFactsBlock()'s
  * facts. Kept as its own exported entry point (same name callers already use) even though the
