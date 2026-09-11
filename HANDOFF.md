@@ -7187,3 +7187,89 @@ assuming this doesn't already exist.
 **Current state**: check `git log`/`git status` for whether this has been committed, merged to
 `main`, pushed, and whether a new EXE has been built and sent for this specific change — all of
 that may or may not have happened yet depending on exactly when you're reading this paragraph.
+
+## 2026-09-11: Android APK rebuild (main app + "At a Glance" mirror app) — both apps caught up
+
+**Why**: the same session's earlier work this file documents above (fuzzy search across every
+module's search boxes, per-module accent tint on the title-block header) had only ever shipped
+to Windows via the EXE builds — both Android apps still had a stale bundled `index.html`/
+`mirror-app/index.html` baked into their last-built APKs. Asked "scope the next phase" with no
+specific feature request attached; the real gap was this staleness, not a new feature, so that's
+what got scoped and built. No new Ollama capabilities were added — all four (Schedule Summary,
+Document Review, Spreadsheet Review, Project Report) were already complete as of the prior
+session covered above, and none were requested this round.
+
+**Sandbox bootstrap (this container had none of this before today — a fresh container needs the
+same steps)**: JDK 21 was already present (`/usr/lib/jvm/java-21-openjdk-amd64`); Android SDK was
+not. Bootstrapped via `cmdline-tools` from
+`https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip` into
+`/home/user/android-sdk/cmdline-tools/latest/` (the layout `sdkmanager` requires — extract, then
+move `bin`/`lib`/`NOTICE.txt`/`source.properties` into a `latest/` subdirectory), licenses
+accepted via `yes | sdkmanager --licenses`, then `sdkmanager "platform-tools" "platforms;android-36"
+"build-tools;36.0.0"`. Wrote `sdk.dir=/home/user/android-sdk` to both
+`packaging/android/android/local.properties` and `packaging/android-mirror/android/local.properties`
+(neither existed, both gitignored, both apps need their own copy since they're independent
+Capacitor projects). No Wine/electron-builder work this session — Android only.
+
+**Keystores**: Aditya supplied both existing release keystores as two uploaded zip backups
+(`pcckeystorebackup.zip`, `pccmirrorkeystorebackup.zip`), each containing the `.jks` + a
+ready-to-use `keystore.properties` + a self-documenting `README.txt` with the certificate's
+SHA-256/SHA-1 fingerprints. Extracted to the session scratchpad (never the repo), verified each
+with `keytool -list -v -keystore ... -storepass ...` before use — both opened cleanly with the
+supplied passwords, and the main keystore's printed SHA-256 fingerprint
+(`3B:48:02:E2:8A:96:E6:E4:70:3B:13:6E:05:56:1F:A1:54:FE:6A:29:E0:12:1A:FF:41:70:C5:12:F5:85:9C:E9`)
+matched its README exactly, confirming it's the real, current signing key (not the earlier lost
+one the same README documents). Copied into
+`packaging/android/android/app/{pcc-release.jks,keystore.properties}` and
+`packaging/android-mirror/android/app/{pcc-mirror-release.jks,keystore.properties}`; confirmed
+`git status` showed nothing after copying — both `.gitignore`s already correctly exclude
+`*.jks`/`keystore.properties`, no changes needed there.
+
+**Version bumps** (checked current values first, per standing instruction — did not assume a
+starting point): main app `versionCode` 8→9, `versionName` "1.7"→"1.8"
+(`packaging/android/android/app/build.gradle`); mirror app `versionCode` 6→7, `versionName`
+"1.5"→"1.6" (`packaging/android-mirror/android/app/build.gradle`).
+
+**Rebuild order**: `node build.js` at repo root (root `index.html`, unchanged content — nothing
+in `src/`/`react/src` had changed since the last root build), then `cd mirror-app && npm install`
+(first time this container needed it) `&& node mirror-app/build.js` — this one WAS stale, a real
+82-line diff landed in `mirror-app/index.html`, confirming the mirror app really had been behind
+on the fuzzy-search/accent-tint work. Full suite run after: **2741/2741 passed**, same count as
+the prior session (no test regressions from any of this).
+
+**Builds**: `npm run android:build:release` in each of `packaging/android/` and
+`packaging/android-mirror/` (each needed its own `npm install` first — 223/222 packages, several
+known `npm audit` advisories in Capacitor/Gradle tooling deps, not addressed — out of scope for a
+version-bump rebuild and this project's own `npm audit fix` isn't part of the standing release
+checklist). Main app: `BUILD SUCCESSFUL in 3m 22s`. Mirror app: `BUILD SUCCESSFUL in 36s`.
+
+**Verification** (both, per the standing checklist):
+- Main app APK: `apksigner verify --verbose` → Verifies (v2 scheme). `--print-certs` SHA-256
+  `3b4802e28a96e6e4703b136e05561fa154fe6a29e0121aff4170c512f5859ce9` — matches the keystore
+  backup's documented fingerprint exactly. `zipalign -c -v 4` → Verification successful.
+- Mirror app APK: same checks, SHA-256 `f9ebe3fc27004e21aafe1b12cd13753ee0aac7ca46479374cfa46128445da80c`
+  — matches its own keystore backup's fingerprint. `zipalign -c -v 4` → Verification successful.
+- Confirmed the two signer certs are genuinely different (different DN, different SHA-256/SHA-1)
+  — required, along with the distinct `applicationId`s, for both apps to install side by side on
+  one device.
+- Final APK sizes: main app 10.4MB, mirror app 6.6MB — both well under the ~30MB
+  file-transfer-split threshold, sent as single files, no splitting needed.
+
+**Git**: committed the three changed files (`mirror-app/index.html`, both `build.gradle`s) on
+`claude/module-animations-backgrounds-fncmnd` (that branch had already been merged into `main`
+earlier — restarted it from `origin/main` first, per the standing "merged branch → reset from
+main" instruction, rather than stacking on the stale branch ref), pushed, merged into `main`
+(direct merge, no PR — standing solo-repo instruction), pushed `main`, then restarted the working
+branch from the new `main` again so it's ready for whatever comes next.
+
+**Delivered**: both signed release APKs sent directly to Aditya (not zipped, not split — under
+the size threshold). Renamed for clarity on receipt: `PCC-app-release-v1.8.apk` (main),
+`PCC-AtAGlance-release-v1.6.apk` (mirror) — the actual on-disk build output filename for both is
+`app-release.apk`, distinguished only by directory, so renaming before sending avoids Aditya
+having two identically-named files in one Downloads folder.
+
+**Not done / explicitly out of scope this round**: no Windows EXE rebuild (nothing in `src/`
+changed since the last EXE build this repo's own `packaging/package.json` version history — still
+at 1.6.1 — already reflects); no new Ollama capabilities; no `npm audit fix` on either Android
+project's dependencies. If a future session is asked to address the `npm audit` findings, note
+they were already present and unaddressed as of this rebuild, not newly introduced.
