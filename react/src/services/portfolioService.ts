@@ -16,6 +16,7 @@ import type {
   ExecutiveCenterHealthSummary,
   ExecutiveCenterSchedulePerformanceSummary,
 } from "../types/pcc";
+import { fuzzyMatch } from "../utils/fuzzyMatch";
 
 export var STATUS_LABELS: { [status: string]: string } = {
   on_track: "On Track",
@@ -345,7 +346,7 @@ export function projectMatchesFilters(p: PCCProject, data: PCCStoreData, filters
     var haystack = (
       (p.name || "") + " " + (p.client || "") + " " + (p.company || "") + " " + (p.location || "") + " " + (p.sector || "") + " " + (p.project_manager || "") + " " + (p.planner || "")
     ).toLowerCase();
-    if (haystack.indexOf(filters.search.toLowerCase()) === -1) return false;
+    if (!fuzzyMatch(filters.search, haystack)) return false;
   }
   return true;
 }

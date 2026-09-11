@@ -42,6 +42,7 @@ import {
 } from "../services/commitmentsService";
 import type { ActivityOption, BudgetItemOption } from "../services/commitmentsService";
 import type { PCCCommitment, PCCPackage, PCCStoreData, PCCActivity } from "../types/pcc";
+import { fuzzyMatch } from "../utils/fuzzyMatch";
 
 function CommitmentForm({
   isNew,
@@ -360,7 +361,7 @@ function CommitmentsTab({
     if (statusFilter && c.status !== statusFilter) return false;
     if (search) {
       const haystack = ((c.po_contract_number || "") + " " + (c.notes || "")).toLowerCase();
-      if (haystack.indexOf(search.toLowerCase()) === -1) return false;
+      if (!fuzzyMatch(search, haystack)) return false;
     }
     return true;
   }

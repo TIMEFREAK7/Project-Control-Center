@@ -44,6 +44,7 @@ import {
 } from "../services/changeOrdersService";
 import type { ActivityOption } from "../services/changeOrdersService";
 import type { PCCChangeOrder, PCCProject, PCCStoreData, PCCRfi, PCCRisk } from "../types/pcc";
+import { fuzzyMatch } from "../utils/fuzzyMatch";
 
 function ChangeOrderForm({
   isNew,
@@ -487,7 +488,7 @@ export default function ChangeOrdersPage({
     if (projectFilter && co.project_id !== projectFilter) return false;
     if (search) {
       const haystack = ((co.number || "") + " " + (co.title || "") + " " + (co.description || "") + " " + (co.requested_by || "")).toLowerCase();
-      if (haystack.indexOf(search.toLowerCase()) === -1) return false;
+      if (!fuzzyMatch(search, haystack)) return false;
     }
     return true;
   }

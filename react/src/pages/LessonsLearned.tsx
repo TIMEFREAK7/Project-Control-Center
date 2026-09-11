@@ -37,6 +37,7 @@ import {
 } from "../services/lessonsLearnedService";
 import type { FieldConfig, ActivityOption } from "../services/lessonsLearnedService";
 import type { PCCLessonLearned, PCCProject, PCCStoreData } from "../types/pcc";
+import { fuzzyMatch } from "../utils/fuzzyMatch";
 
 function FormField({ cfg, lesson }: { cfg: FieldConfig; lesson: PCCLessonLearned }) {
   const id = "lsnfield-" + cfg.key;
@@ -364,7 +365,7 @@ export default function LessonsLearnedPage({
     if (projectFilter && l.project_id !== projectFilter) return false;
     if (search) {
       const haystack = ((l.title || "") + " " + (l.description || "") + " " + (l.recommendation || "") + " " + (l.identified_by || "")).toLowerCase();
-      if (haystack.indexOf(search.toLowerCase()) === -1) return false;
+      if (!fuzzyMatch(search, haystack)) return false;
     }
     return true;
   }

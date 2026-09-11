@@ -14,6 +14,7 @@
  * window.PCC.cost.projectCostSummary).
  */
 import type { PCCStoreData, PCCDocument, PCCDocumentExtraction } from "../types/pcc";
+import { fuzzyMatch } from "../utils/fuzzyMatch";
 
 export var CATEGORY_LABELS: { [category: string]: string } = {
   contract: "Contract",
@@ -130,7 +131,7 @@ export function documentMatchesFilters(doc: PCCDocument, filters: DocumentFilter
   if (filters.search) {
     var q = filters.search.toLowerCase();
     var haystack = ((doc.filename || "") + " " + (doc.document_number || "")).toLowerCase();
-    if (haystack.indexOf(q) === -1) return false;
+    if (!fuzzyMatch(q, haystack)) return false;
   }
   return true;
 }

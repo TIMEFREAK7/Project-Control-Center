@@ -13,6 +13,7 @@ import type {
   PCCVendorPerformance,
   PCCDelayActivityLink,
 } from "../types/pcc";
+import { fuzzyMatch } from "../utils/fuzzyMatch";
 
 export var VENDOR_STATUS_LABELS: { [status: string]: string } = { active: "Active", inactive: "Inactive", preferred: "Preferred Vendor", blacklisted: "Blacklisted" };
 export var CONTRACT_STATUS_LABELS: { [status: string]: string } = { draft: "Draft", active: "Active", completed: "Completed", terminated: "Terminated" };
@@ -310,7 +311,7 @@ export function vendorMatchesFilters(v: PCCVendor, data: PCCStoreData, filters: 
     if (!hasDocType) return false;
   }
   if (filters.search) {
-    if (vendorHaystack(v, data).indexOf(filters.search.toLowerCase()) === -1) return false;
+    if (!fuzzyMatch(filters.search, vendorHaystack(v, data))) return false;
   }
   return true;
 }

@@ -27,6 +27,7 @@ import {
   deleteDocumentType,
 } from "../services/documentTypesService";
 import type { PCCDocumentType } from "../types/pcc";
+import { fuzzyMatch } from "../utils/fuzzyMatch";
 
 function DocumentTypeForm({
   isNew,
@@ -245,7 +246,7 @@ export default function DocumentTypesPage() {
     if (search) {
       const q = search.toLowerCase();
       const hay = ((t.name || "") + " " + (t.code || "")).toLowerCase();
-      if (hay.indexOf(q) === -1) return false;
+      if (!fuzzyMatch(q, hay)) return false;
     }
     return true;
   });

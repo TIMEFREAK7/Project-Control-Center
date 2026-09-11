@@ -34,6 +34,7 @@ import {
 } from "../services/decisionRegisterService";
 import type { FieldConfig, ActivityOption } from "../services/decisionRegisterService";
 import type { PCCDecision, PCCProject, PCCStoreData, PCCMeeting } from "../types/pcc";
+import { fuzzyMatch } from "../utils/fuzzyMatch";
 
 function DecisionForm({
   isNew,
@@ -245,7 +246,7 @@ export default function DecisionRegisterPage({
     if (projectFilter && d.project_id !== projectFilter) return false;
     if (search) {
       const haystack = ((d.title || "") + " " + (d.description || "") + " " + (d.decision || "") + " " + (d.decided_by || "")).toLowerCase();
-      if (haystack.indexOf(search.toLowerCase()) === -1) return false;
+      if (!fuzzyMatch(search, haystack)) return false;
     }
     return true;
   }

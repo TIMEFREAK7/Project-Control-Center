@@ -41,6 +41,7 @@ import {
 } from "../services/rfisService";
 import type { FieldConfig, ActivityOption } from "../services/rfisService";
 import type { PCCRfi, PCCProject, PCCStoreData, PCCMeeting } from "../types/pcc";
+import { fuzzyMatch } from "../utils/fuzzyMatch";
 
 function RfiForm({
   isNew,
@@ -475,7 +476,7 @@ export default function RfisPage({
     if (projectFilter && r.project_id !== projectFilter) return false;
     if (search) {
       const haystack = ((r.number || "") + " " + (r.subject || "") + " " + (r.question || "") + " " + (r.raised_by || "") + " " + (r.assigned_to || "")).toLowerCase();
-      if (haystack.indexOf(search.toLowerCase()) === -1) return false;
+      if (!fuzzyMatch(search, haystack)) return false;
     }
     return true;
   }

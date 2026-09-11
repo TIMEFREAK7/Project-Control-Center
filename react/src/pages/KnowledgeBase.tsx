@@ -32,6 +32,7 @@ import {
 } from "../services/knowledgeBaseService";
 import type { PendingFile } from "../services/knowledgeBaseService";
 import type { PCCKnowledgeBaseArticle, PCCProject } from "../types/pcc";
+import { fuzzyMatch } from "../utils/fuzzyMatch";
 
 function ArticleForm({
   article,
@@ -299,7 +300,7 @@ export default function KnowledgeBasePage() {
     if (projectFilter && projectFilter !== "__general__" && a.project_id !== projectFilter) return false;
     if (search) {
       const haystack = ((a.title || "") + " " + (a.body || "") + " " + (a.tags || "")).toLowerCase();
-      if (haystack.indexOf(search.toLowerCase()) === -1) return false;
+      if (!fuzzyMatch(search, haystack)) return false;
     }
     return true;
   }

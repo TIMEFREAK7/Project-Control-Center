@@ -46,9 +46,15 @@ import CostPage from "./pages/Cost.tsx";
 import ResourcesPage from "./pages/Resources.tsx";
 import PortfolioPage from "./pages/Portfolio.tsx";
 import SchedulePage from "./pages/Schedule.tsx";
+import { fuzzyMatch } from "./utils/fuzzyMatch.ts";
 
 window.PCC = window.PCC || {};
 window.PCC.React = React;
+// Purely additive export (same convention as store.js's window.PCC.store.migrate) so the
+// jsdom test suite can unit-test the matcher directly instead of only exercising it
+// indirectly through a page's search box, and so any future non-React caller (or the
+// mirror app) can reuse the exact same matcher rather than growing a second copy.
+window.PCC.fuzzyMatch = fuzzyMatch;
 // flushSync lives in the main "react-dom" package, not "react-dom/client" — merged onto
 // the same window.PCC.ReactDOM object reactBridge.js already expects createRoot on.
 // reactBridge.js wraps every mount's initial root.render() in flushSync() specifically so

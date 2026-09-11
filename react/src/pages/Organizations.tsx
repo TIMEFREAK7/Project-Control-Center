@@ -33,6 +33,7 @@ import {
   newProjectHandoff,
 } from "../services/organizationsService";
 import type { PCCCompany, PCCClient, PCCProject, PCCStoreData } from "../types/pcc";
+import { fuzzyMatch } from "../utils/fuzzyMatch";
 
 function CompanyForm({
   isNew,
@@ -399,8 +400,8 @@ export default function OrganizationsPage() {
     .filter((c) => showArchived || !c.archived)
     .filter((c) => {
       if (!q) return true;
-      if ((c.name || "").toLowerCase().indexOf(q) !== -1) return true;
-      return clientsOf(data, c.id).some((cl) => (cl.name || "").toLowerCase().indexOf(q) !== -1);
+      if (fuzzyMatch(q, c.name || "")) return true;
+      return clientsOf(data, c.id).some((cl) => fuzzyMatch(q, cl.name || ""));
     })
     .slice()
     .sort((a, b) => (a.name || "").localeCompare(b.name || ""));

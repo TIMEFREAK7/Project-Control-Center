@@ -29,6 +29,7 @@ import type {
   ProjectFinishImpactResult,
   RecoveryForecastResult,
 } from "../types/pcc";
+import { fuzzyMatch } from "../utils/fuzzyMatch";
 
 export interface ActivityFieldConfig {
   key: string;
@@ -783,7 +784,7 @@ export function addDaysIso(isoDateStr: string, days: number): string {
 
 export function activityMatchesActivitiesTabFilter(a: PCCActivity, filter: ActivitiesTabFilter): boolean {
   if (filter.search) {
-    if ((a.name || "").toLowerCase().indexOf(filter.search.toLowerCase()) === -1) return false;
+    if (!fuzzyMatch(filter.search, a.name || "")) return false;
   }
   if (filter.wbsId && a.wbs_id !== filter.wbsId) return false;
   if (filter.status && a.status !== filter.status) return false;
@@ -1441,7 +1442,7 @@ export function activityMatchesGanttFilter(a: PCCActivity, wbsItems: PCCWbsItem[
       return w.id === a.wbs_id;
     });
     var haystack = [a.external_id || "", a.name || "", wbs ? (wbs.code || "") + " " + (wbs.name || "") : "", a.contractor || "", a.discipline || ""].join(" ").toLowerCase();
-    if (haystack.indexOf(needle) === -1) return false;
+    if (!fuzzyMatch(needle, haystack)) return false;
   }
   if (filter.wbsId && a.wbs_id !== filter.wbsId) return false;
   if (filter.discipline && a.discipline !== filter.discipline) return false;

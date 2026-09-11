@@ -66,6 +66,7 @@ import type {
   LevelingResult,
   LevelingProposal,
 } from "../types/pcc";
+import { fuzzyMatch } from "../utils/fuzzyMatch";
 
 // ===== Register tab =====
 
@@ -175,7 +176,7 @@ function RegisterTab({ data, editingId, onEdit, onAdd, onCancelEdit, onSaved, on
 
   function matches(r: PCCResource) {
     if (typeFilter && r.type !== typeFilter) return false;
-    if (search && (r.name || "").toLowerCase().indexOf(search.toLowerCase()) === -1) return false;
+    if (search && !fuzzyMatch(search, r.name || "")) return false;
     return true;
   }
 

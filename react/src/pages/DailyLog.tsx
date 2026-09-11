@@ -42,6 +42,7 @@ import {
 } from "../services/dailyLogService";
 import type { FieldConfig, ActivityOption } from "../services/dailyLogService";
 import type { PCCDailyLog, PCCDailyLogPhoto, PCCProject, PCCStoreData } from "../types/pcc";
+import { fuzzyMatch } from "../utils/fuzzyMatch";
 
 function DailyLogForm({
   isNew,
@@ -565,7 +566,7 @@ export default function DailyLogPage({
     if (search) {
       const pName = projectName(projects, log.project_id) || "";
       const haystack = [pName, log.activities, log.notes, log.weather].join(" ").toLowerCase();
-      if (haystack.indexOf(search.toLowerCase()) === -1) return false;
+      if (!fuzzyMatch(search, haystack)) return false;
     }
     return true;
   }

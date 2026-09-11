@@ -46,6 +46,7 @@ import {
 } from "../services/costService";
 import type { ActivityOption, LabeledOption } from "../services/costService";
 import type { PCCCostBudgetItem, PCCCostActual, PCCProject, PCCStoreData } from "../types/pcc";
+import { fuzzyMatch } from "../utils/fuzzyMatch";
 
 function BudgetForm({
   isNew,
@@ -428,7 +429,7 @@ function BudgetTab({
     if (projectFilter && b.project_id !== projectFilter) return false;
     if (search) {
       const haystack = ((b.name || "") + " " + (b.notes || "")).toLowerCase();
-      if (haystack.indexOf(search.toLowerCase()) === -1) return false;
+      if (!fuzzyMatch(search, haystack)) return false;
     }
     return true;
   }
@@ -546,7 +547,7 @@ function ActualsTab({
     if (projectFilter && a.project_id !== projectFilter) return false;
     if (search) {
       const haystack = ((a.description || "") + " " + (a.vendor || "") + " " + (a.invoice_ref || "")).toLowerCase();
-      if (haystack.indexOf(search.toLowerCase()) === -1) return false;
+      if (!fuzzyMatch(search, haystack)) return false;
     }
     return true;
   }

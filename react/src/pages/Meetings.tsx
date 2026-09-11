@@ -55,6 +55,7 @@ import {
 } from "../services/meetingsService";
 import type { ActivityOption, LabeledOption } from "../services/meetingsService";
 import type { PCCMeeting, PCCMeetingAction, PCCMeetingRecording, PCCProject, PCCStoreData } from "../types/pcc";
+import { fuzzyMatch } from "../utils/fuzzyMatch";
 
 function ActionRow({
   action,
@@ -677,7 +678,7 @@ export default function MeetingsPage({
     if (search) {
       const pName = projectName(projects, m.project_id);
       const haystack = [m.title, m.attendees, m.agenda, m.minutes, pName].join(" ").toLowerCase();
-      if (haystack.indexOf(search.toLowerCase()) === -1) return false;
+      if (!fuzzyMatch(search, haystack)) return false;
     }
     return true;
   }

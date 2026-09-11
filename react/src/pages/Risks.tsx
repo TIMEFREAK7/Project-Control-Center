@@ -36,6 +36,7 @@ import {
 } from "../services/risksService";
 import type { FieldConfig, ActivityOption } from "../services/risksService";
 import type { PCCRisk, PCCProject, PCCStoreData, PCCMeeting, PCCActivity } from "../types/pcc";
+import { fuzzyMatch } from "../utils/fuzzyMatch";
 
 function RiskForm({
   isNew,
@@ -425,7 +426,7 @@ export default function RisksPage({
     if (projectFilter && r.project_id !== projectFilter) return false;
     if (search) {
       const haystack = ((r.title || "") + " " + (r.description || "") + " " + (r.owner || "")).toLowerCase();
-      if (haystack.indexOf(search.toLowerCase()) === -1) return false;
+      if (!fuzzyMatch(search, haystack)) return false;
     }
     return true;
   }
