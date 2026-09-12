@@ -1,0 +1,10 @@
+src/js/vendor/
+react/node_modules/
+tests/node_modules/
+mirror-app/node_modules/
+mirror-app/.build/
+packaging/*/node_modules/
+packaging/*/android/
+packaging/*/www/
+index.html
+mirror-app/index.html

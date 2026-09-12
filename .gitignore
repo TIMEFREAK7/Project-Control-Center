@@ -147,3 +147,11 @@ vite.config.ts.timestamp-*
 # index.html, but that one is committed since it's also reused as a source input by build.js;
 # this one is purely a same-run intermediate).
 mirror-app/.build/
+
+# graphify's generated knowledge-graph output (graph.html/graph.json/GRAPH_REPORT.md) --
+# deterministic and regenerable in ~30s via `graphify update .` (no LLM calls, no API cost),
+# so a committed copy would just go stale the moment code changes without anything catching
+# it -- the exact "stale generated artifact" failure this repo has already hit twice with
+# mirror-app/index.html. .graphifyignore itself (the exclusion rules, not the output) IS
+# tracked, since that stays correct regardless of when the graph was last built.
+graphify-out/
