@@ -468,7 +468,7 @@ button {
      flex column -- without this it renders under the status bar on a real device. */
   padding-top: env(safe-area-inset-top);
   /* Module accent transition below is a static colour swap on navigation (not a
-     continuous animation), so it's deliberately left out of the .route-fade-in path —
+     continuous animation), so it's deliberately left out of the .route-slide-in path —
      background-color/border-color are cheap, non-layout-affecting properties, and this
      stays correct under prefers-reduced-motion (the blanket kill further down just makes
      the crossfade instant, never freezes it half-applied). border-bottom-color/
@@ -1054,14 +1054,19 @@ a:focus-visible {
 
 /* Animation polish pass: applied by reactBridge.js's mount() to #page-outlet on every
    route change (every route is React now, so this is the one place that reaches all of
-   them). Fast and opacity-only per the same Operate-mode motion rules as everywhere else
-   in this file — a cue that something changed, not a page-load sequence to sit through. */
-.route-fade-in {
-  animation: route-fade-in 150ms ease;
+   them). Fast, small-offset slide + fade — a cue that a new module opened, not a page-load
+   sequence to sit through. Uses --transition-base (the same 180ms token drawer-in-left
+   uses for the nav drawer's slide) and a small 16px offset rather than a full off-screen
+   distance: this fires on every single nav click, the single most frequent interaction in
+   the app, so it stays inside the same 150-250ms Operate-mode motion budget as everything
+   else in this file instead of a decorative full-width slide (see MOTION_SYSTEM.md's
+   "avoid large-distance movement" rule). */
+.route-slide-in {
+  animation: route-slide-in var(--transition-base);
 }
-@keyframes route-fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+@keyframes route-slide-in {
+  from { opacity: 0; transform: translateX(-16px); }
+  to { opacity: 1; transform: translateX(0); }
 }
 
 @keyframes toast-in {
