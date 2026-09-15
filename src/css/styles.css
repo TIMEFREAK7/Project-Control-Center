@@ -1075,10 +1075,21 @@ a:focus-visible {
   }
 }
 
+/* One-shot attention flash for warning toasts only, on top of the shared .toast entrance —
+   runs once (no iteration-count) after toast-in finishes, so it never loops. Covered by the
+   blanket prefers-reduced-motion kill further down like every other animation in this file. */
+@keyframes blink-1 {
+  0%, 50%, 100% { opacity: 1; }
+  25%, 75% { opacity: 0; }
+}
+
 .toast--success { background-color: var(--status-on-track); }
 .toast--error { background-color: var(--status-critical); color: #fff; }
 .toast--info { background-color: var(--status-info); color: #fff; }
-.toast--warning { background-color: var(--status-at-risk); }
+.toast--warning {
+  background-color: var(--status-at-risk);
+  animation: toast-in var(--transition-base), blink-1 0.6s 180ms both;
+}
 
 /* ===== Login-style splash (data file load) ===== */
 .splash {
