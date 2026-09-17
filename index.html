@@ -969,13 +969,55 @@ a:focus-visible {
   outline-offset: 2px;
 }
 
+/* Gooey hover pop, same family/technique as .sidebar__link-blob (grow a small blurred+
+   contrasted blob into the full shape via a plain CSS transition) -- but NOT a permanent
+   filter, because a primary button is solid/opaque at rest (unlike the nav row's
+   transparent rest state), and --signal-amber (#3d63dd, a saturated blue) is nowhere near
+   50% gray: a filter left applied at rest would blow it out toward pure rgb(0,0,255) (each
+   channel pushed away from 0.5 by the contrast factor, clamped). Transitioning `filter`
+   itself from blur(6px)/contrast(10) down to blur(0)/contrast(100%) (its identity, i.e. no
+   distortion) as PART of the same transition means the settled hover color is the real,
+   undistorted --signal-amber-dark once :hover finishes resolving -- the distortion only
+   exists during the brief transient. This is a `transition`, deliberately NOT a
+   `@keyframes`/`animation` (tried first): a real, confirmed browser quirk in this specific
+   document -- CSS `animation` triggered via `:hover` silently never starts when targeting
+   a `::before` pseudo-element here (verified directly: the identical keyframes apply fine
+   on the real element itself via :hover, and plain `transition`-driven properties apply
+   fine on this same ::before via :hover; only `::before` + `:hover` + `animation` together
+   fails, with no competing rule found) -- so this sticks to the mechanism already proven
+   to work for .sidebar__link-blob rather than fighting an unresolved engine quirk.
+   ::before (not a child span) so none of the 105 existing .btn--primary call sites across
+   the app need to change. inset:-1px (not 0) so it fully covers .btn's own transparent 1px
+   border ring -- inset:0 leaves a visible 1px gap at the border edge showing the page
+   behind it (same box-model gotcha the nav blob didn't have, since .sidebar__link has no
+   border). overflow:hidden on the button clips the transient blur bleed to the button's
+   own rounded corners. */
 .btn--primary {
+  position: relative;
+  z-index: 0;
+  isolation: isolate;
+  overflow: hidden;
   background-color: var(--signal-amber);
   color: #fff;
 }
 
-.btn--primary:hover:not(:disabled) {
+.btn--primary::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  border-radius: inherit;
   background-color: var(--signal-amber-dark);
+  opacity: 0;
+  transform: scale(0.4);
+  filter: blur(6px) contrast(10);
+  transition: opacity var(--transition-base), transform var(--transition-base), filter var(--transition-base);
+}
+
+.btn--primary:hover:not(:disabled)::before {
+  opacity: 1;
+  transform: scale(1);
+  filter: blur(0) contrast(100%);
 }
 
 .btn--ghost {
@@ -1222,6 +1264,7 @@ a:focus-visible {
 }
 
 .tab-btn {
+  position: relative;
   font-family: var(--font-body);
   font-weight: 600;
   font-size: 13.5px;
@@ -1232,16 +1275,56 @@ a:focus-visible {
   padding: 10px 14px;
   cursor: pointer;
   white-space: nowrap;
-  transition: color var(--transition-fast), border-color var(--transition-fast);
+  transition: color var(--transition-fast);
+}
+
+/* Gooey active/hover indicator: same family as .sidebar__link-blob (grows from a small
+   near-circle into its final shape through blur()+contrast(), same low-alpha-safe
+   reasoning), reshaped as a bar since tabs indicate selection via an underline, not a
+   filled pill. Sits on ::after (border-bottom above stays transparent, reserving the
+   layout space) so none of the existing .tab-btn call sites need markup changes.
+   filter resolves to blur(0) contrast(100%) -- i.e. no distortion -- at every SETTLED
+   state (hover and active alike), same reasoning as .btn--primary: --signal-amber is a
+   saturated, fully-opaque blue, so leaving any real contrast() applied permanently would
+   blow it out. Growth is scaleX-only, not a uniform scale: the bar is only 3px tall, and
+   scaling that down uniformly during the transient shrinks it to under 1px -- invisible.
+   First attempt used blur(4px) on a 3px-tall bar and left contrast(20) applied at rest,
+   which read as a permanent smudge rather than a liquid growth -- confirmed by
+   screenshotting it, same "verify before trusting the math" lesson as the other two. */
+.tab-btn::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: -2px;
+  height: 3px;
+  border-radius: 999px;
+  background-color: var(--signal-amber);
+  opacity: 0;
+  transform: scaleX(0.25);
+  filter: blur(2px) contrast(6);
+  transition: opacity var(--transition-base), transform var(--transition-base), filter var(--transition-base);
+  pointer-events: none;
 }
 
 .tab-btn:hover:not(.tab-btn--active) {
   color: var(--text-primary);
 }
 
+.tab-btn:hover:not(.tab-btn--active)::after {
+  opacity: 0.45;
+  transform: scaleX(0.75);
+  filter: blur(0) contrast(100%);
+}
+
 .tab-btn--active {
   color: var(--text-primary);
-  border-bottom-color: var(--signal-amber);
+}
+
+.tab-btn--active::after {
+  opacity: 1;
+  transform: scaleX(1);
+  filter: blur(0) contrast(100%);
 }
 
 .tab-btn:focus-visible {
