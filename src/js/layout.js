@@ -434,7 +434,7 @@
         a.href = "#/" + item.key;
         a.setAttribute("data-route", item.key);
         a.innerHTML =
-          '<span class="sidebar__icon">' + (NAV_ICONS[item.key] || "") + '</span><span class="sidebar__label">' + item.label + "</span>";
+          '<span class="sidebar__link-blob" aria-hidden="true"></span><span class="sidebar__icon">' + (NAV_ICONS[item.key] || "") + '</span><span class="sidebar__label">' + item.label + "</span>";
         a.addEventListener("click", closeNav);
         li.appendChild(a);
         itemsList.appendChild(li);

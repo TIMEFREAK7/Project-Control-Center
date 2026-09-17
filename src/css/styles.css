@@ -410,6 +410,7 @@ button {
 }
 
 .sidebar__link {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -422,27 +423,73 @@ button {
   font-size: var(--text-base);
   font-weight: 500;
   cursor: pointer;
-  transition: background-color var(--transition-fast), border-color var(--transition-fast);
+  transition: border-color var(--transition-fast);
 }
 
-.sidebar__link:hover {
+/* Gooey nav highlight: a single blurred+contrasted blob layer sits BEHIND the icon/label
+   (own stacking layer via z-index, not the link's own background) so the liquid edge only
+   ever affects the highlight shape, never the text on top of it. Standard CSS
+   blur()+contrast() "goo" technique — no SVG filter, no library. contrast() takes the soft
+   blurred edge and snaps it back to a firm-but-wobbly edge, which is what reads as
+   "liquid" rather than a flat scale/fade -- but ONLY if the shape actually deforms enough
+   for there to be something to snap back into; a rounded-rect scaling ~0.82->1 barely
+   changes shape and just reads as a soft fade (confirmed by screenshotting it in real
+   Chromium before settling on the values below -- don't shrink the scale/blur back toward
+   those first-try numbers without re-screenshotting). Starting from a small near-circle
+   (999px radius, scale(0.35)) and stretching into the row's actual rounded-rect gives the
+   blur+contrast filter real elongation to work with, which is what actually looks liquid.
+   Scoped to ONE row at a time (pop in place on hover/active), not a cross-row merge:
+   adjacent rows have a real gap (.sidebar__link's own margin-bottom) a shared blob would
+   need to visually bridge, which would force an even larger blur radius and make every row
+   look soft/mushy at rest, not just during the transition -- see the scoping discussion
+   before this was built. Covered by the existing blanket prefers-reduced-motion rule since
+   only opacity/transform (not the constant filter value) are transitioned. */
+.sidebar__link-blob {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: 999px;
   background-color: var(--hover-bg);
+  opacity: 0;
+  transform: scale(0.35);
+  filter: blur(8px) contrast(24);
+  transition: opacity var(--transition-base), transform var(--transition-base), border-radius var(--transition-base);
+  pointer-events: none;
+}
+
+.sidebar__link:hover .sidebar__link-blob {
+  opacity: 1;
+  transform: scale(1);
+  border-radius: var(--radius-sm);
+}
+
+.sidebar__link.active .sidebar__link-blob {
+  opacity: 1;
+  transform: scale(1);
+  border-radius: var(--radius-sm);
+  background-color: color-mix(in srgb, var(--signal-amber) 14%, var(--hover-bg));
 }
 
 .sidebar__link.active {
-  background-color: var(--hover-bg);
   border-left-color: var(--signal-amber);
 }
 
 /* Redesign Gate 3: was a 2-char mono text code, now an inline SVG — display:flex + a fixed
    svg size replaces the old text-align:center centering trick, which only worked for text. */
 .sidebar__icon {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   width: 18px;
   flex-shrink: 0;
   opacity: 0.85;
+}
+
+.sidebar__label {
+  position: relative;
+  z-index: 1;
 }
 
 .sidebar__icon svg {
