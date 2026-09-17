@@ -966,13 +966,17 @@ a:focus-visible {
    the app need to change. inset:-1px (not 0) so it fully covers .btn's own transparent 1px
    border ring -- inset:0 leaves a visible 1px gap at the border edge showing the page
    behind it (same box-model gotcha the nav blob didn't have, since .sidebar__link has no
-   border). overflow:hidden on the button clips the transient blur bleed to the button's
-   own rounded corners. */
+   border). Deliberately NOT overflow:hidden on the button: that would clip the ::before's
+   own -1px bleed at the padding edge, right back to the exact 1px ring inset:-1px exists
+   to cover -- caught by code review, verified by pixel-sampling a real-Chromium repro
+   (the settled hover state showed a 1px ring of the un-hovered color around every button).
+   The tradeoff is a few px of blur bleeding past the button's rounded corner during the
+   brief (~180ms) hover-enter/leave transient -- far less bad than a permanent
+   wrong-color ring on all 105 call sites. */
 .btn--primary {
   position: relative;
   z-index: 0;
   isolation: isolate;
-  overflow: hidden;
   background-color: var(--signal-amber);
   color: #fff;
 }
