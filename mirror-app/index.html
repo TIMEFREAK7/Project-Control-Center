@@ -420,6 +420,7 @@ button {
 }
 
 .sidebar__link {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -432,27 +433,73 @@ button {
   font-size: var(--text-base);
   font-weight: 500;
   cursor: pointer;
-  transition: background-color var(--transition-fast), border-color var(--transition-fast);
+  transition: border-color var(--transition-fast);
 }
 
-.sidebar__link:hover {
+/* Gooey nav highlight: a single blurred+contrasted blob layer sits BEHIND the icon/label
+   (own stacking layer via z-index, not the link's own background) so the liquid edge only
+   ever affects the highlight shape, never the text on top of it. Standard CSS
+   blur()+contrast() "goo" technique — no SVG filter, no library. contrast() takes the soft
+   blurred edge and snaps it back to a firm-but-wobbly edge, which is what reads as
+   "liquid" rather than a flat scale/fade -- but ONLY if the shape actually deforms enough
+   for there to be something to snap back into; a rounded-rect scaling ~0.82->1 barely
+   changes shape and just reads as a soft fade (confirmed by screenshotting it in real
+   Chromium before settling on the values below -- don't shrink the scale/blur back toward
+   those first-try numbers without re-screenshotting). Starting from a small near-circle
+   (999px radius, scale(0.35)) and stretching into the row's actual rounded-rect gives the
+   blur+contrast filter real elongation to work with, which is what actually looks liquid.
+   Scoped to ONE row at a time (pop in place on hover/active), not a cross-row merge:
+   adjacent rows have a real gap (.sidebar__link's own margin-bottom) a shared blob would
+   need to visually bridge, which would force an even larger blur radius and make every row
+   look soft/mushy at rest, not just during the transition -- see the scoping discussion
+   before this was built. Covered by the existing blanket prefers-reduced-motion rule since
+   only opacity/transform (not the constant filter value) are transitioned. */
+.sidebar__link-blob {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: 999px;
   background-color: var(--hover-bg);
+  opacity: 0;
+  transform: scale(0.35);
+  filter: blur(8px) contrast(24);
+  transition: opacity var(--transition-base), transform var(--transition-base), border-radius var(--transition-base);
+  pointer-events: none;
+}
+
+.sidebar__link:hover .sidebar__link-blob {
+  opacity: 1;
+  transform: scale(1);
+  border-radius: var(--radius-sm);
+}
+
+.sidebar__link.active .sidebar__link-blob {
+  opacity: 1;
+  transform: scale(1);
+  border-radius: var(--radius-sm);
+  background-color: color-mix(in srgb, var(--signal-amber) 14%, var(--hover-bg));
 }
 
 .sidebar__link.active {
-  background-color: var(--hover-bg);
   border-left-color: var(--signal-amber);
 }
 
 /* Redesign Gate 3: was a 2-char mono text code, now an inline SVG — display:flex + a fixed
    svg size replaces the old text-align:center centering trick, which only worked for text. */
 .sidebar__icon {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   width: 18px;
   flex-shrink: 0;
   opacity: 0.85;
+}
+
+.sidebar__label {
+  position: relative;
+  z-index: 1;
 }
 
 .sidebar__icon svg {
@@ -478,7 +525,7 @@ button {
      flex column -- without this it renders under the status bar on a real device. */
   padding-top: env(safe-area-inset-top);
   /* Module accent transition below is a static colour swap on navigation (not a
-     continuous animation), so it's deliberately left out of the .route-fade-in path —
+     continuous animation), so it's deliberately left out of the .route-slide-in path —
      background-color/border-color are cheap, non-layout-affecting properties, and this
      stays correct under prefers-reduced-motion (the blanket kill further down just makes
      the crossfade instant, never freezes it half-applied). border-bottom-color/
@@ -908,13 +955,59 @@ a:focus-visible {
   outline-offset: 2px;
 }
 
+/* Gooey hover pop, same family/technique as .sidebar__link-blob (grow a small blurred+
+   contrasted blob into the full shape via a plain CSS transition) -- but NOT a permanent
+   filter, because a primary button is solid/opaque at rest (unlike the nav row's
+   transparent rest state), and --signal-amber (#3d63dd, a saturated blue) is nowhere near
+   50% gray: a filter left applied at rest would blow it out toward pure rgb(0,0,255) (each
+   channel pushed away from 0.5 by the contrast factor, clamped). Transitioning `filter`
+   itself from blur(6px)/contrast(10) down to blur(0)/contrast(100%) (its identity, i.e. no
+   distortion) as PART of the same transition means the settled hover color is the real,
+   undistorted --signal-amber-dark once :hover finishes resolving -- the distortion only
+   exists during the brief transient. This is a `transition`, deliberately NOT a
+   `@keyframes`/`animation` (tried first): a real, confirmed browser quirk in this specific
+   document -- CSS `animation` triggered via `:hover` silently never starts when targeting
+   a `::before` pseudo-element here (verified directly: the identical keyframes apply fine
+   on the real element itself via :hover, and plain `transition`-driven properties apply
+   fine on this same ::before via :hover; only `::before` + `:hover` + `animation` together
+   fails, with no competing rule found) -- so this sticks to the mechanism already proven
+   to work for .sidebar__link-blob rather than fighting an unresolved engine quirk.
+   ::before (not a child span) so none of the 105 existing .btn--primary call sites across
+   the app need to change. inset:-1px (not 0) so it fully covers .btn's own transparent 1px
+   border ring -- inset:0 leaves a visible 1px gap at the border edge showing the page
+   behind it (same box-model gotcha the nav blob didn't have, since .sidebar__link has no
+   border). Deliberately NOT overflow:hidden on the button: that would clip the ::before's
+   own -1px bleed at the padding edge, right back to the exact 1px ring inset:-1px exists
+   to cover -- caught by code review, verified by pixel-sampling a real-Chromium repro
+   (the settled hover state showed a 1px ring of the un-hovered color around every button).
+   The tradeoff is a few px of blur bleeding past the button's rounded corner during the
+   brief (~180ms) hover-enter/leave transient -- far less bad than a permanent
+   wrong-color ring on all 105 call sites. */
 .btn--primary {
+  position: relative;
+  z-index: 0;
+  isolation: isolate;
   background-color: var(--signal-amber);
   color: #fff;
 }
 
-.btn--primary:hover:not(:disabled) {
+.btn--primary::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  border-radius: inherit;
   background-color: var(--signal-amber-dark);
+  opacity: 0;
+  transform: scale(0.4);
+  filter: blur(6px) contrast(10);
+  transition: opacity var(--transition-base), transform var(--transition-base), filter var(--transition-base);
+}
+
+.btn--primary:hover:not(:disabled)::before {
+  opacity: 1;
+  transform: scale(1);
+  filter: blur(0) contrast(100%);
 }
 
 .btn--ghost {
@@ -1064,14 +1157,19 @@ a:focus-visible {
 
 /* Animation polish pass: applied by reactBridge.js's mount() to #page-outlet on every
    route change (every route is React now, so this is the one place that reaches all of
-   them). Fast and opacity-only per the same Operate-mode motion rules as everywhere else
-   in this file — a cue that something changed, not a page-load sequence to sit through. */
-.route-fade-in {
-  animation: route-fade-in 150ms ease;
+   them). Fast, small-offset slide + fade — a cue that a new module opened, not a page-load
+   sequence to sit through. Uses --transition-base (the same 180ms token drawer-in-left
+   uses for the nav drawer's slide) and a small 16px offset rather than a full off-screen
+   distance: this fires on every single nav click, the single most frequent interaction in
+   the app, so it stays inside the same 150-250ms Operate-mode motion budget as everything
+   else in this file instead of a decorative full-width slide (see MOTION_SYSTEM.md's
+   "avoid large-distance movement" rule). */
+.route-slide-in {
+  animation: route-slide-in var(--transition-base);
 }
-@keyframes route-fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+@keyframes route-slide-in {
+  from { opacity: 0; transform: translateX(-16px); }
+  to { opacity: 1; transform: translateX(0); }
 }
 
 @keyframes toast-in {
@@ -1085,10 +1183,21 @@ a:focus-visible {
   }
 }
 
+/* One-shot attention flash for warning toasts only, on top of the shared .toast entrance —
+   runs once (no iteration-count) after toast-in finishes, so it never loops. Covered by the
+   blanket prefers-reduced-motion kill further down like every other animation in this file. */
+@keyframes blink-1 {
+  0%, 50%, 100% { opacity: 1; }
+  25%, 75% { opacity: 0; }
+}
+
 .toast--success { background-color: var(--status-on-track); }
 .toast--error { background-color: var(--status-critical); color: #fff; }
 .toast--info { background-color: var(--status-info); color: #fff; }
-.toast--warning { background-color: var(--status-at-risk); }
+.toast--warning {
+  background-color: var(--status-at-risk);
+  animation: toast-in var(--transition-base), blink-1 0.6s 180ms both;
+}
 
 /* ===== Login-style splash (data file load) ===== */
 .splash {
@@ -1145,6 +1254,7 @@ a:focus-visible {
 }
 
 .tab-btn {
+  position: relative;
   font-family: var(--font-body);
   font-weight: 600;
   font-size: 13.5px;
@@ -1155,16 +1265,56 @@ a:focus-visible {
   padding: 10px 14px;
   cursor: pointer;
   white-space: nowrap;
-  transition: color var(--transition-fast), border-color var(--transition-fast);
+  transition: color var(--transition-fast);
+}
+
+/* Gooey active/hover indicator: same family as .sidebar__link-blob (grows from a small
+   near-circle into its final shape through blur()+contrast(), same low-alpha-safe
+   reasoning), reshaped as a bar since tabs indicate selection via an underline, not a
+   filled pill. Sits on ::after (border-bottom above stays transparent, reserving the
+   layout space) so none of the existing .tab-btn call sites need markup changes.
+   filter resolves to blur(0) contrast(100%) -- i.e. no distortion -- at every SETTLED
+   state (hover and active alike), same reasoning as .btn--primary: --signal-amber is a
+   saturated, fully-opaque blue, so leaving any real contrast() applied permanently would
+   blow it out. Growth is scaleX-only, not a uniform scale: the bar is only 3px tall, and
+   scaling that down uniformly during the transient shrinks it to under 1px -- invisible.
+   First attempt used blur(4px) on a 3px-tall bar and left contrast(20) applied at rest,
+   which read as a permanent smudge rather than a liquid growth -- confirmed by
+   screenshotting it, same "verify before trusting the math" lesson as the other two. */
+.tab-btn::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: -2px;
+  height: 3px;
+  border-radius: 999px;
+  background-color: var(--signal-amber);
+  opacity: 0;
+  transform: scaleX(0.25);
+  filter: blur(2px) contrast(6);
+  transition: opacity var(--transition-base), transform var(--transition-base), filter var(--transition-base);
+  pointer-events: none;
 }
 
 .tab-btn:hover:not(.tab-btn--active) {
   color: var(--text-primary);
 }
 
+.tab-btn:hover:not(.tab-btn--active)::after {
+  opacity: 0.45;
+  transform: scaleX(0.75);
+  filter: blur(0) contrast(100%);
+}
+
 .tab-btn--active {
   color: var(--text-primary);
-  border-bottom-color: var(--signal-amber);
+}
+
+.tab-btn--active::after {
+  opacity: 1;
+  transform: scaleX(1);
+  filter: blur(0) contrast(100%);
 }
 
 .tab-btn:focus-visible {
