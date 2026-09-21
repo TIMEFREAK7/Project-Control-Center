@@ -5,3 +5,4 @@ assets/
 android/app/keystore.properties
 android/app/*.jks
 android/app/*.keystore
+android/.kotlin/
