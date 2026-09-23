@@ -19,6 +19,7 @@
  */
 import React, { useState, useRef, useEffect } from "react";
 import { isOllamaAvailable, askOllama, buildProjectReportPrompt } from "../services/ollamaService";
+import { useModalA11y } from "../utils/useModalA11y";
 import {
   PROJECT_SECTIONS,
   PORTFOLIO_SECTIONS,
@@ -96,6 +97,7 @@ export default function ReportsPage() {
   const [savingAsNew, setSavingAsNew] = useState(false);
   const [reportSectionDays, setReportSectionDays] = useState<{ [key: string]: string }>({ dailyLog: "", meetings: "", documents: "" });
   const [aiReportModalOpen, setAiReportModalOpen] = useState(false);
+  const aiReportOverlayRef = useModalA11y<HTMLDivElement>(aiReportModalOpen, () => setAiReportModalOpen(false));
   const [aiReportGenerating, setAiReportGenerating] = useState(false);
   const [aiReportText, setAiReportText] = useState("");
   const [aiReportError, setAiReportError] = useState("");
@@ -317,7 +319,7 @@ export default function ReportsPage() {
       </div>
 
       {aiReportModalOpen ? (
-        <div className="modal-overlay no-print" onClick={(e) => { if (e.target === e.currentTarget) setAiReportModalOpen(false); }}>
+        <div className="modal-overlay no-print" ref={aiReportOverlayRef} onClick={(e) => { if (e.target === e.currentTarget) setAiReportModalOpen(false); }}>
           <div className="modal" style={{ maxWidth: 640, width: "min(640px, 92vw)" }}>
             <div className="modal__header">
               <div className="modal__title">Project Report (AI)</div>

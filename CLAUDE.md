@@ -235,6 +235,36 @@ it documents *why* things are shaped the way they are, not just what exists.
   Project archive turned out to need zero new code (Company/Client already surface Archive
   directly in Organizations.tsx; Project's Archive is deliberately one click deeper, in Portfolio's
   own "⋯" menu).
+- **Every `.modal-overlay` dialog goes through `src/js/modalA11y.js` — never hand-roll its
+  Escape/focus handling.** `window.PCC.modalA11y.attach(overlayEl, {onClose, initialFocus?,
+  fallbackFocus?, label?})` returns a `detach()`; it sets `role="dialog"`/`aria-modal`/
+  `aria-labelledby` (from `.modal__title`), moves focus in, traps Tab, closes the TOPMOST modal
+  on Escape (capture phase + `stopPropagation`, so one Escape = one layer and never also reaches
+  the nav drawer's handler), and returns focus to the opener. React pages use
+  `react/src/utils/useModalA11y.ts` (`const ref = useModalA11y(open, onClose, fallbackFocus?)`
+  → `ref` on the `.modal-overlay` div). **Pass `fallbackFocus` when the opener is a "⋯"
+  dropdown item** — the item unmounts as the modal opens, so there's nothing to return focus to
+  (Schedule's AI summary passes the "Schedule actions" toggle). `modalA11y.isOpen()` is what
+  `keyboardShortcuts.js` and the palette check to stay inert while any dialog is up. Optional on
+  `window.PCC` typings because `mirror-app/` doesn't load it.
+- **Command palette (`src/js/commandPalette.js`, Ctrl/Cmd+K, title-block search icon, and the
+  nav drawer's "Search pages and records…" row at phone width) owns no navigation logic.** Pages
+  come from `layout.js`'s `navItems()` (the sidebar's own `NAV_GROUPS`, so they can't drift).
+  Records jump via each page module's existing public hand-off — `filterByProject(projectId)`
+  THEN `expand<X>(id)`, then `router.go(route)`. The `filterByProject` call is load-bearing, not
+  decoration: most registers default to "open only" + the current project context, so expand
+  alone lands on a list that hides a closed or other-project record. Adding a new register?
+  Add one `RECORD_TYPES` entry (usually a one-line `registerType(...)`) and a case to
+  `tests/test_command_palette_e2e.js`'s `CASES`, which checks plain navigation hides the record
+  and palette navigation shows it. **Gotcha found building this: Documents' public API is
+  `window.PCC.files`, NOT `window.PCC.documents`** — `scheduleService.ts` calls
+  `window.PCC.documents.expandDocument`, which is always undefined, so that Schedule → document
+  link has silently never pre-expanded (flagged, not fixed — out of scope).
+- **Header space at phone width is exhausted.** At 412px the title-block page title already had
+  only ~36px (14px at 390px) before the palette gate; one more 44px title-block icon took it to
+  0px and scrolled the page sideways by 12px (caught in real Chromium, not jsdom). New
+  shell-level actions go in the nav drawer at phone width (`.icon-btn--hide-mobile` on the
+  title-block copy), like the palette's own entry point.
 - **Bumping `SCHEMA_VERSION` (`store.js`) needs a matching migration step AND updated test
   fixtures.** Multiple existing tests hardcode the expected final `schema_version` after migrating
   an old dataset (search `assert.strictEqual(data.schema_version,` across `tests/*.js`) — bumping

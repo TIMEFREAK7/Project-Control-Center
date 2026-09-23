@@ -1616,6 +1616,20 @@ declare global {
         show(message: string): void;
         hide(): void;
       };
+      // src/js/modalA11y.js — optional because mirror-app/ doesn't load it (none of its
+      // four reused pages open a modal); useModalA11y() no-ops when it's absent.
+      modalA11y?: {
+        attach(
+          overlay: HTMLElement,
+          opts?: {
+            onClose?: () => void;
+            initialFocus?: HTMLElement | null;
+            fallbackFocus?: () => HTMLElement | null;
+            label?: string;
+          }
+        ): () => void;
+        isOpen(): boolean;
+      };
       fileViewer: {
         open(file: { filename: string; mimeType: string; blob: Blob }): void;
       };

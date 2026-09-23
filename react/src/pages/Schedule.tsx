@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { isOllamaAvailable, buildScheduleSummaryPrompt, askOllama } from "../services/ollamaService";
+import { useModalA11y } from "../utils/useModalA11y";
 import {
   SCHEDULE_STATUS_LABELS,
   SCHEDULE_TYPE_LABELS,
@@ -649,6 +650,10 @@ function ScheduleBar({
   const [summarizing, setSummarizing] = useState(false);
   const [summaryText, setSummaryText] = useState("");
   const [summaryError, setSummaryError] = useState("");
+  // The "Summarize Schedule (AI)" item that opens this modal lives in the "⋯" dropdown,
+  // which unmounts as it opens — so focus returns to the menu's own toggle on close.
+  const scheduleMenuToggleRef = React.useRef<HTMLButtonElement>(null);
+  const summaryOverlayRef = useModalA11y<HTMLDivElement>(summaryModalOpen, () => setSummaryModalOpen(false), () => scheduleMenuToggleRef.current);
 
   function handleSummarizeSchedule() {
     setSummaryModalOpen(true);
@@ -743,7 +748,7 @@ function ScheduleBar({
       </button>
 
       <div className="card-menu">
-        <button className="icon-btn" aria-label="Schedule actions" disabled={!scheduleId} onClick={() => setScheduleMenuOpen((v) => !v)}>
+        <button ref={scheduleMenuToggleRef} className="icon-btn" aria-label="Schedule actions" disabled={!scheduleId} onClick={() => setScheduleMenuOpen((v) => !v)}>
           ⋯
         </button>
         {scheduleMenuOpen ? (
@@ -777,7 +782,7 @@ function ScheduleBar({
       </div>
 
       {summaryModalOpen ? (
-        <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setSummaryModalOpen(false); }}>
+        <div className="modal-overlay" ref={summaryOverlayRef} onClick={(e) => { if (e.target === e.currentTarget) setSummaryModalOpen(false); }}>
           <div className="modal" style={{ maxWidth: 560, width: "min(560px, 92vw)" }}>
             <div className="modal__header">
               <div className="modal__title">Schedule Summary (AI)</div>

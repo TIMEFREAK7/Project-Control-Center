@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { isOllamaAvailable, askOllama, buildDocumentReviewPrompt, buildSpreadsheetReviewPrompt } from "../services/ollamaService";
+import { useModalA11y } from "../utils/useModalA11y";
 import {
   CATEGORY_LABELS,
   PRIORITY_LABELS,
@@ -1003,6 +1004,7 @@ function DocumentPreviewPanel({
   const [reviewing, setReviewing] = useState(false);
   const [reviewText, setReviewText] = useState("");
   const [reviewError, setReviewError] = useState("");
+  const reviewOverlayRef = useModalA11y<HTMLDivElement>(reviewModalOpen, () => setReviewModalOpen(false));
 
   function handleReviewDocument() {
     setReviewModalOpen(true);
@@ -1203,7 +1205,7 @@ function DocumentPreviewPanel({
       ) : null}
 
       {reviewModalOpen ? (
-        <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setReviewModalOpen(false); }}>
+        <div className="modal-overlay" ref={reviewOverlayRef} onClick={(e) => { if (e.target === e.currentTarget) setReviewModalOpen(false); }}>
           <div className="modal" style={{ maxWidth: 560, width: "min(560px, 92vw)" }}>
             <div className="modal__header">
               <div className="modal__title">Document Review (AI)</div>

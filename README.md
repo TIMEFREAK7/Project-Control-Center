@@ -6453,3 +6453,43 @@ and zero console errors; `.title-block`'s computed `padding-top` is `0px` and
 before this gate, confirming the `env()` additions are genuinely additive on any environment that
 reports zero insets, not just assumed to be. On-device Android verification (real insets, the
 predictive-back gesture itself) is the one thing still owed before calling this fully closed.
+
+## Modal Accessibility + Command Palette (Ctrl/Cmd+K), 2026-09-23
+
+Scoped from an uploaded vanilla "UI component library" demo page. Of its eight components, only
+two addressed real PCC gaps; the rest were rejected on purpose: scroll-reveal/count-up/confetti
+are landing-page motion that fights PCC's dense "Operate mode" registers, theme tokens and toasts
+already exist, and its Font Awesome CDN link would break the offline single-file `index.html`.
+The two kept were rewritten against PCC's real architecture, not pasted.
+
+**Gate 1: modal accessibility.** Before this, every `.modal-overlay` dialog (three React
+AI-output modals, the keyboard-shortcuts help, the file viewer) closed on a backdrop click, but
+none moved focus in, kept Tab inside, returned focus to its opener, or carried
+`role="dialog"`/`aria-modal`, so keyboard Tab walked out into the page behind. New
+`src/js/modalA11y.js` does all of that once, for every modal, with stacking (one Escape closes
+one layer, each layer restores its own opener) and a fallback-focus hook for openers that
+unmount (a "⋯" dropdown item). React pages reach it through `react/src/utils/useModalA11y.ts`.
+`keyboardShortcuts.js` and `fileViewer.js` dropped their own ad-hoc Escape listeners for it.
+Single-key shortcuts (`/`, `n`) now stay inert while any dialog is open.
+
+**Gate 2: command palette.** Ctrl/Cmd+K (or the title-block search icon; at phone width, a
+"Search pages and records…" row at the top of the nav drawer) searches every sidebar page plus
+projects, schedule activities, risks/issues, RFIs/TQs, change orders, decisions, meetings,
+documents (latest revision), vendors, lessons learned, daily logs and commitments. It uses the
+same `fuzzyMatch` as every register's search box. Selecting a record jumps through that page's
+existing public hand-off (`filterByProject` + `expand<X>`), so a **closed record in a different
+project than the current context still lands visible**. Plain navigation would hide it, and the
+test suite checks both sides of that for every type. Ranking: title-prefix, then title-contains,
+then any-field, then typo matches. Groups are ordered by their best hit, so an exact RFI match
+isn't buried under a typo-level risk match in an earlier group (a real bug caught during the
+build). Records under archived projects and trashed documents are excluded.
+
+**Verified**: `node build.js` + `node mirror-app/build.js` clean (TS strict). Full suite
+`cd tests && npm test`: 124 test files, 2,778 checks, 0 failures, including new
+`test_modal_a11y_e2e.js` (11) and `test_command_palette_e2e.js` (26). Real Chromium at
+1440/1024/1023/800/412/390: real keyboard Ctrl+K → type → arrows → Enter jump; real Tab trap
+in the help dialog; axe-core (WCAG 2.2 AA tags) on the open palette: 0 violations, 0
+incomplete; no horizontal scroll at any width; searching 3,000 activities with a typo
+takes ~6ms. One regression caught and fixed before shipping: a title-block search icon at
+phone width squeezed the page title to 0px and scrolled the page 12px sideways, so the phone
+entry point moved into the nav drawer.

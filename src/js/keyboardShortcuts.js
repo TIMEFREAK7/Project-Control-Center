@@ -47,20 +47,25 @@
   }
 
   var SHORTCUTS = [
+    { key: "Ctrl+K", desc: "Search pages and records" },
     { key: "/", desc: "Focus this page's search box" },
     { key: "n", desc: "Add a new entry on this page" },
     { key: "Esc", desc: "Close the open menu or dialog" },
     { key: "?", desc: "Show this list" },
   ];
 
+  // Escape, Tab-trapping, and focus-return are modalA11y.js's job (shared by every
+  // modal in the app) — this only has to remember how to undo its own attach().
+  var detachHelpA11y = null;
+
   function closeHelp() {
     var overlay = document.getElementById("shortcuts-help-overlay");
     if (overlay) overlay.remove();
-    document.removeEventListener("keydown", handleHelpEscape);
-  }
-
-  function handleHelpEscape(e) {
-    if (e.key === "Escape") closeHelp();
+    if (detachHelpA11y) {
+      var detach = detachHelpA11y;
+      detachHelpA11y = null;
+      detach();
+    }
   }
 
   function showShortcutsHelp() {
@@ -122,13 +127,13 @@
     note.style.fontSize = "12px";
     note.style.marginTop = "12px";
     note.style.marginBottom = "0";
-    note.textContent = "Shortcuts are ignored while typing in a field.";
+    note.textContent = "Single-key shortcuts are ignored while typing in a field.";
     body.appendChild(note);
     modal.appendChild(body);
 
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
-    document.addEventListener("keydown", handleHelpEscape);
+    detachHelpA11y = window.PCC.modalA11y.attach(overlay, { onClose: closeHelp });
   }
 
   document.addEventListener("keydown", function (e) {
@@ -137,6 +142,9 @@
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (isTypingTarget(document.activeElement)) return;
     if (document.getElementById("nav-overlay") || document.getElementById("shortcuts-help-overlay")) return;
+    // Any other open dialog (file viewer, an AI-output modal, the command palette): "/" or
+    // "n" would otherwise act on the page hidden behind it.
+    if (window.PCC.modalA11y && window.PCC.modalA11y.isOpen()) return;
 
     if (e.key === "/") {
       if (focusPrimarySearch()) e.preventDefault();

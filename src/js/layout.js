@@ -192,6 +192,8 @@
     // Home button (item #6 of the follow-up feature list, 2026-09-05): every module gets
     // a one-click way back to My Work, the cross-register "what needs my attention"
     // aggregation page — not Dashboard, which is portfolio-wide KPIs, a different job.
+    // Command palette (commandPalette.js): the same magnifier every "search" affordance uses.
+    search: '<svg ' + ICON_SVG_ATTRS + '><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
     home: '<svg ' + ICON_SVG_ATTRS + '><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
   };
 
@@ -497,11 +499,29 @@
     closeBtn.title = "Close menu";
     closeBtn.innerHTML = ICONS.close;
     closeBtn.onclick = closeNav;
+    // Command palette entry point at phone width, where the title-block search button is
+    // hidden (.icon-btn--hide-mobile): the title bar has no room left for one more 44px
+    // button — adding it there squeezed the page title to 0px and scrolled the page
+    // sideways at 412px (caught in real Chromium). The drawer is where phone users
+    // already go to move between pages, so the "jump anywhere" search belongs here too.
+    // A full-width labelled row at the top of the drawer body rather than one more header
+    // icon: a bigger, self-explanatory tap target, and the header keeps its close button
+    // as its only .icon-btn.
+    var searchBtn = document.createElement("button");
+    searchBtn.type = "button";
+    searchBtn.className = "drawer__search";
+    searchBtn.id = "nav-search-btn";
+    searchBtn.innerHTML = ICONS.search + "<span>Search pages and records…</span>";
+    searchBtn.onclick = function () {
+      closeNav();
+      if (window.PCC.commandPalette) window.PCC.commandPalette.open();
+    };
     header.appendChild(title);
     header.appendChild(closeBtn);
 
     var body = document.createElement("div");
     body.className = "drawer__body";
+    body.appendChild(searchBtn);
     body.appendChild(buildNavList());
 
     drawer.appendChild(header);
@@ -906,7 +926,21 @@
       if (window.PCC.keyboardShortcuts) window.PCC.keyboardShortcuts.showHelp();
     };
 
+    // Command palette entry point. Hidden at phone width like the keyboard-shortcuts
+    // button (no room left in the title bar — see openNav()'s drawer search button, which
+    // is the phone entry point instead, since there's no Ctrl+K on a phone either).
+    var searchBtn = document.createElement("button");
+    searchBtn.className = "icon-btn icon-btn--hide-mobile";
+    searchBtn.id = "command-palette-btn";
+    searchBtn.title = "Search pages and records (Ctrl+K)";
+    searchBtn.setAttribute("aria-label", "Search pages and records");
+    searchBtn.innerHTML = ICONS.search;
+    searchBtn.onclick = function () {
+      if (window.PCC.commandPalette) window.PCC.commandPalette.open();
+    };
+
     actions.appendChild(homeBtn);
+    actions.appendChild(searchBtn);
     actions.appendChild(exportBtn);
     actions.appendChild(importBtn);
     actions.appendChild(importInput);
@@ -1191,5 +1225,16 @@
     // prominent copy of the same Company/Client/Project cascade (spec point 6) without
     // duplicating the cascading-select logic.
     buildContextSwitcher: buildContextSwitcherGroup,
+    // Command palette (commandPalette.js): the one list of real routes + their sidebar
+    // labels, so the palette's "Pages" can never drift from the sidebar.
+    navItems: function () {
+      var out = [];
+      NAV_GROUPS.forEach(function (g) {
+        g.items.forEach(function (item) {
+          out.push({ key: item.key, label: item.label, group: g.label, icon: NAV_ICONS[item.key] || "" });
+        });
+      });
+      return out;
+    },
   };
 })();

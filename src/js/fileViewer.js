@@ -22,17 +22,23 @@
     return m ? m[1].toLowerCase() : "";
   }
 
+  // Escape, Tab-trapping, and focus-return live in modalA11y.js (shared by every modal).
+  var detachViewerA11y = null;
+
   function closeViewer() {
     var overlay = document.getElementById("file-viewer-overlay");
     if (overlay) overlay.remove();
-    document.removeEventListener("keydown", handleEscape);
-  }
-
-  function handleEscape(e) {
-    if (e.key === "Escape") closeViewer();
+    if (detachViewerA11y) {
+      var detach = detachViewerA11y;
+      detachViewerA11y = null;
+      detach();
+    }
   }
 
   function buildChrome(filename, blob) {
+    // One viewer at a time — replacing (not stacking) keeps the single element id and the
+    // single modalA11y attachment above consistent.
+    closeViewer();
     var overlay = document.createElement("div");
     overlay.id = "file-viewer-overlay";
     overlay.className = "modal-overlay";
@@ -89,7 +95,7 @@
 
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
-    document.addEventListener("keydown", handleEscape);
+    detachViewerA11y = window.PCC.modalA11y.attach(overlay, { onClose: closeViewer });
 
     return body;
   }

@@ -7273,3 +7273,34 @@ changed since the last EXE build this repo's own `packaging/package.json` versio
 at 1.6.1 — already reflects); no new Ollama capabilities; no `npm audit fix` on either Android
 project's dependencies. If a future session is asked to address the `npm audit` findings, note
 they were already present and unaddressed as of this rebuild, not newly introduced.
+
+## 2026-09-23: Modal accessibility + Command palette (2 gates, branch `claude/file-understanding-scope-8ochbn`)
+
+Aditya uploaded a generic "UI component library" HTML demo and asked to scope how it could be
+used. Scoping verdict: only two of its eight components fit PCC (accessible modal behavior and a
+Ctrl+K command palette). Scroll-reveal, count-up, confetti, a second theme-token set, the toast
+and the Font Awesome CDN were rejected, with reasons in README's section of the same name.
+Aditya approved both gates: "palette with pages plus records".
+
+- **Gate 1, `src/js/modalA11y.js`** (new, in `JS_ORDER` after `notifications.js`) +
+  `react/src/utils/useModalA11y.ts` (new). Applied to all five existing modals: Schedule AI
+  summary, Documents AI review, Reports AI report, keyboard-shortcuts help, file viewer.
+- **Gate 2, `src/js/commandPalette.js`** (new, after `keyboardShortcuts.js`) + `layout.js`
+  (`search` icon, title-block `#command-palette-btn` hidden ≤780px, drawer `#nav-search-btn`
+  row, new additive `layout.navItems()` export) + palette/drawer CSS in `styles.css`.
+- **No schema change**, still **66**. No store writes except the palette's jumps calling each
+  page's existing `filterByProject()`, which already sets project context, as before.
+- **Tests**: 124 files, 2,778 checks, 0 failures (new: `test_modal_a11y_e2e.js`,
+  `test_command_palette_e2e.js`). Real-Chromium + axe pass documented in README.
+- **New conventions/gotchas** (all in CLAUDE.md now): every modal goes through `modalA11y`;
+  palette record jumps need `filterByProject` BEFORE `expand<X>`; header width at phone size is
+  exhausted, so new shell actions go in the nav drawer. **Pre-existing bug found, not fixed**:
+  Documents' API is `window.PCC.files`, but `scheduleService.ts:1610` calls
+  `window.PCC.documents.expandDocument`, which is always undefined, so Schedule's "open linked
+  document" never pre-expands the document. One-line fix candidate for a future gate.
+- **Test-harness gotcha hit**: rebuilding `index.html` while `npm test` is running produces a
+  bogus failure in whichever test is loading at that moment (it hit `test_p6_xer_import_e2e.js`).
+  Don't rebuild mid-suite.
+- **Not rebuilt this session**: Windows EXE / Android APKs. No keystores in this container, and
+  the change is web-layer only. The next installer build picks it up automatically from
+  `index.html`.
