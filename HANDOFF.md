@@ -7294,10 +7294,14 @@ Aditya approved both gates: "palette with pages plus records".
   `test_command_palette_e2e.js`). Real-Chromium + axe pass documented in README.
 - **New conventions/gotchas** (all in CLAUDE.md now): every modal goes through `modalA11y`;
   palette record jumps need `filterByProject` BEFORE `expand<X>`; header width at phone size is
-  exhausted, so new shell actions go in the nav drawer. **Pre-existing bug found, not fixed**:
-  Documents' API is `window.PCC.files`, but `scheduleService.ts:1610` calls
-  `window.PCC.documents.expandDocument`, which is always undefined, so Schedule's "open linked
-  document" never pre-expands the document. One-line fix candidate for a future gate.
+  exhausted, so new shell actions go in the nav drawer.
+- **Follow-up fix, same day (Aditya asked)**: Schedule's Linked Records "Document" row called
+  the nonexistent `window.PCC.documents.expandDocument`, so it opened Documents on the default
+  (newest) document instead of the linked one. It now calls `window.PCC.files.filterByProject()`
+  + `expandDocument()`. The fake `documents?` typing in `pcc.d.ts` was moved onto `files`, and
+  the mirror shim was updated to match. New regression check in `test_activity_linking_e2e.js`,
+  confirmed to FAIL on the old code (it selected `newer-drawing.pdf`) and pass on the new. Suite:
+  124 files, 2,779 checks, 0 failures.
 - **Test-harness gotcha hit**: rebuilding `index.html` while `npm test` is running produces a
   bogus failure in whichever test is loading at that moment (it hit `test_p6_xer_import_e2e.js`).
   Don't rebuild mid-suite.

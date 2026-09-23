@@ -52,7 +52,6 @@ export function installNoOpModules(): void {
   PCC.commitments = { filterByProject: stubNav, expandCommitment: stubNav };
   PCC.projectWorkspace = { viewProject: stubNav };
   PCC.lessonsLearned = { createFromMeeting: stubNav };
-  PCC.documents = { expandDocument: stubNav };
 
   // Optional per the real app's own interface (activeTypes() gates Portfolio's document
   // requirements UI) -- omitting it entirely is exactly what an install with no document
@@ -63,6 +62,7 @@ export function installNoOpModules(): void {
   PCC.files = {
     filterByProject: stubNav,
     open: stubNav, // real app opens the file viewer; nothing to view/preview here
+    expandDocument: stubNav,
     createFromMeeting: stubNav,
     latestOnly: function (documents: unknown[]) {
       return documents; // real app's own de-dup-by-revision logic; identity is a safe, honest fallback

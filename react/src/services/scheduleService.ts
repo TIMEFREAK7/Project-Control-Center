@@ -1607,7 +1607,14 @@ var LINKED_RECORD_SOURCES: LinkedRecordSource[] = [
     label: function (d) { return "Document: " + d.filename; },
     list: function (data, activityId) { return data.documents.filter(function (d) { return d.activity_id === activityId && !d.trashed_at; }); },
     view: function (d) {
-      if (window.PCC.documents && window.PCC.documents.expandDocument) window.PCC.documents.expandDocument(d.id);
+      // documents.js publishes its cross-page API as window.PCC.files — this used to call a
+      // nonexistent window.PCC.documents, so the document never pre-expanded. filterByProject
+      // first (same hand-off as the command palette) so the register isn't filtered away
+      // from the document's own project on arrival.
+      if (window.PCC.files) {
+        window.PCC.files.filterByProject(d.project_id);
+        if (window.PCC.files.expandDocument) window.PCC.files.expandDocument(d.id);
+      }
       window.PCC.router.go("documents");
     },
   },

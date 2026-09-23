@@ -256,10 +256,14 @@ it documents *why* things are shaped the way they are, not just what exists.
   alone lands on a list that hides a closed or other-project record. Adding a new register?
   Add one `RECORD_TYPES` entry (usually a one-line `registerType(...)`) and a case to
   `tests/test_command_palette_e2e.js`'s `CASES`, which checks plain navigation hides the record
-  and palette navigation shows it. **Gotcha found building this: Documents' public API is
-  `window.PCC.files`, NOT `window.PCC.documents`** — `scheduleService.ts` calls
-  `window.PCC.documents.expandDocument`, which is always undefined, so that Schedule → document
-  link has silently never pre-expanded (flagged, not fixed — out of scope).
+  and palette navigation shows it. **Gotcha: Documents' public API is `window.PCC.files`, NOT
+  `window.PCC.documents`.** `scheduleService.ts`'s Linked Records "Document" row used to call a
+  nonexistent `window.PCC.documents.expandDocument`, so it never selected the document. That was
+  fixed 2026-09-23 (it now calls `files.filterByProject` + `files.expandDocument`), and the fake
+  `documents?` typing was removed so the wrong name no longer typechecks. **Documents
+  auto-selects the newest upload when nothing is selected**, so a jump that silently fails still
+  "works" whenever the target is the newest document. Any test of a Documents jump needs a
+  NEWER decoy document (see `test_activity_linking_e2e.js`).
 - **Header space at phone width is exhausted.** At 412px the title-block page title already had
   only ~36px (14px at 390px) before the palette gate; one more 44px title-block icon took it to
   0px and scrolled the page sideways by 12px (caught in real Chromium, not jsdom). New

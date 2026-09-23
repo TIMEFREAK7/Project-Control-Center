@@ -286,6 +286,38 @@ function findButtonByText(dom, text) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
+  // Regression: the Document row used to call window.PCC.documents.expandDocument(), which
+  // doesn't exist (documents.js publishes window.PCC.files), so it navigated to Documents
+  // without selecting the document. That was invisible whenever the linked document
+  // happened to be the register's default selection (the newest upload), so this adds a
+  // NEWER, unlinked document that a plain visit selects instead.
+  await check("the Linked Records 'Document' row opens Documents with THAT document selected, not the register's default", async () => {
+    win.PCC.store.update(function (data) {
+      var newer = win.PCC.store.newDocument({ project_id: projectId, filename: "newer-drawing.pdf" });
+      newer.uploaded_at = new Date(Date.now() + 60000).toISOString();
+      data.documents.push(newer);
+    });
+    function selectedName() {
+      var el = win.document.querySelector(".doc-register-item--selected");
+      return el ? el.textContent : "";
+    }
+    win.PCC.router.go("documents");
+    await flush();
+    assert.ok(selectedName().indexOf("newer-drawing.pdf") !== -1, "control: a plain visit should select the newest document, got: " + selectedName());
+
+    win.PCC.schedule.viewActivity(projectId, scheduleId, activityId);
+    win.PCC.router.go("schedule");
+    await flush();
+    var docRow = Array.from(win.document.querySelectorAll(".attention-item--clickable")).find((r) => r.textContent.indexOf("spec.pdf") !== -1);
+    assert.ok(docRow, "Document's row not found in Linked Records");
+    docRow.click();
+    await flush();
+    assert.strictEqual(win.PCC.router.currentRouteName(), "documents");
+    assert.ok(selectedName().indexOf("spec.pdf") !== -1, "spec.pdf should be the selected document, got: " + selectedName());
+    assert.ok(win.document.getElementById("page-outlet").textContent.indexOf("Pour Foundation") !== -1, "its detail should show the linked activity");
+    assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
+  });
+
   await check("an activity with no linked records shows the empty state, not fabricated content", () => {
     win.PCC.schedule.viewActivity(projectId, scheduleId, activity2Id);
     win.PCC.router.go("schedule");

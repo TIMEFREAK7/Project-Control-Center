@@ -6493,3 +6493,13 @@ incomplete; no horizontal scroll at any width; searching 3,000 activities with a
 takes ~6ms. One regression caught and fixed before shipping: a title-block search icon at
 phone width squeezed the page title to 0px and scrolled the page 12px sideways, so the phone
 entry point moved into the nav drawer.
+
+**Follow-up (same day): Schedule → linked Document fix.** The Activity Detail Panel's Linked
+Records "Document" row called `window.PCC.documents.expandDocument`, but Documents publishes its
+API as `window.PCC.files`. For as long as git history shows, that row opened the Documents page on
+whichever document was newest instead of the linked one. It went unnoticed because Documents
+auto-selects the newest upload, and the only test had a single document. Now it uses
+`files.filterByProject` + `files.expandDocument`, like the command palette. The wrong typing was
+removed, so the bad name can't compile again. A new regression check with a newer decoy
+document fails on the old code and passes on the new (suite: 124 files, 2,779 checks, 0
+failures; also confirmed with a real click in Chromium).

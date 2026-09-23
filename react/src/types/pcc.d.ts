@@ -1759,9 +1759,8 @@ declare global {
         latestOnly(documents: PCCDocument[]): PCCDocument[];
         summary(extraction: PCCDocumentExtraction): string;
         categoryLabel(category: string | undefined): string;
-      };
-      documents?: {
-        expandDocument(documentId: string): void;
+        // Optional: the mirror app's shim (mirror-app/src/shim/pcc.ts) doesn't provide it.
+        expandDocument?(documentId: string): void;
       };
       decisionRegister: {
         expandDecision(decisionId: string): void;
