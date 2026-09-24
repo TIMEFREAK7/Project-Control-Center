@@ -116,6 +116,9 @@
       pendingFormOpen = true;
       pendingProjectId = projectId;
       pendingMeetingId = meetingId;
+      // Show the meeting's project in the register too, or a document attached from a
+      // meeting in another project saves fine but is hidden by the list's project filter.
+      pendingProjectFilter = projectId;
     },
     expandDocument: function (docId) {
       pendingSelectedDocId = docId;

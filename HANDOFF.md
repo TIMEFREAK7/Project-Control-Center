@@ -7308,3 +7308,24 @@ Aditya approved both gates: "palette with pages plus records".
 - **Not rebuilt this session**: Windows EXE / Android APKs. No keystores in this container, and
   the change is web-layer only. The next installer build picks it up automatically from
   `index.html`.
+
+## 2026-09-24: audit of every link into Documents, one fix + regression tests
+
+Follow-up to the Schedule → document fix above. Aditya asked to check the other Documents
+callers for the same bug. None had the nonexistent-API bug, but two had no tests. Aditya then
+asked for the one small issue found to be fixed, and for tests on the callers.
+
+- **Audit result**: the only links into the Documents register are Schedule Linked Records
+  (fixed 2026-09-23), the command palette, Project Workspace's "Documents" module link, and
+  Meetings' "+ Attach Document". The Document Control Dashboard and Action Centre "Document"
+  rows are document *requirements* and go to Portfolio by design. `files.open()` callers open
+  the file viewer and don't navigate. Every `window.PCC.files.*` method called exists.
+- **Fix (`src/js/pages/documents.js`, 1 line)**: `files.createFromMeeting()` now also sets
+  `pendingProjectFilter`. Before this, attaching a document from a meeting in another project
+  than the current context saved it correctly but hid it behind the list's project filter.
+- **New `tests/test_documents_callers_e2e.js` (5 checks)**: context = Alpha with the NEWEST
+  document, target = Bravo. It covers Project Workspace → Documents and Meeting → Attach
+  Document (form preset, meeting link shown, list switched). Confirmed to FAIL with only the
+  new line removed.
+- **Suite**: 125 files, 2,784 checks, 0 failures. Real Chromium confirms the attach flow. Schema
+  still 66. `mirror-app` doesn't load `documents.js`, so no mirror rebuild was needed.

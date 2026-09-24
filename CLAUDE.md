@@ -263,7 +263,12 @@ it documents *why* things are shaped the way they are, not just what exists.
   `documents?` typing was removed so the wrong name no longer typechecks. **Documents
   auto-selects the newest upload when nothing is selected**, so a jump that silently fails still
   "works" whenever the target is the newest document. Any test of a Documents jump needs a
-  NEWER decoy document (see `test_activity_linking_e2e.js`).
+  NEWER decoy document in a DIFFERENT project than the current context. The list's project
+  filter also defaults to the context, so a same-project decoy isn't enough (see
+  `test_activity_linking_e2e.js` and `test_documents_callers_e2e.js`, which cover every link
+  into Documents: Schedule, command palette, Project Workspace, and Meetings' "+ Attach
+  Document". Its `createFromMeeting()` sets the list filter to the meeting's project as well as
+  presetting the upload form, since 2026-09-24).
 - **Header space at phone width is exhausted.** At 412px the title-block page title already had
   only ~36px (14px at 390px) before the palette gate; one more 44px title-block icon took it to
   0px and scrolled the page sideways by 12px (caught in real Chromium, not jsdom). New

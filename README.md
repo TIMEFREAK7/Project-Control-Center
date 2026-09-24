@@ -6503,3 +6503,11 @@ auto-selects the newest upload, and the only test had a single document. Now it 
 removed, so the bad name can't compile again. A new regression check with a newer decoy
 document fails on the old code and passes on the new (suite: 124 files, 2,779 checks, 0
 failures; also confirmed with a real click in Chromium).
+
+**Follow-up (2026-09-24): every link into Documents audited.** None of the other callers had the
+nonexistent-API bug. One smaller issue was fixed: Meetings' "+ Attach Document" preset the upload
+form to the meeting's project but left the list filtered to the current project, so a document
+attached from another project's meeting saved but was hidden. `files.createFromMeeting()` now
+switches the list too. New `test_documents_callers_e2e.js` covers Project Workspace → Documents
+and Meeting → Attach Document with a cross-project, newest-document decoy (confirmed to fail
+without the fix). Suite: 125 files, 2,784 checks, 0 failures.
