@@ -5,6 +5,7 @@
  * Deliberately CPM-engine-free, same as the vanilla page — see its own header comment.
  */
 import type { PCCStoreData, PCCProject, PCCActivity, PCCRisk, PCCRfi, PCCChangeOrder } from "../types/pcc";
+import { localTodayIso } from "../utils/localDate";
 
 export var STATUS_LABELS: { [status: string]: string } = { on_track: "On Track", at_risk: "At Risk", critical: "Critical", complete: "Complete" };
 
@@ -58,7 +59,7 @@ export var NAV_GROUPS: NavGroup[] = [
 ];
 
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localTodayIso();
 }
 
 function riskSeverity(r: PCCRisk): string {

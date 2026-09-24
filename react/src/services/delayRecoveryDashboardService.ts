@@ -11,6 +11,7 @@
  * comment, for why looping that function portfolio-wide is explicitly disallowed).
  */
 import type { PCCStoreData, PCCDelayRecord, PCCRecoveryAction, PCCActivity } from "../types/pcc";
+import { localTodayIso } from "../utils/localDate";
 
 export var RECOVERY_ACTION_STATUS_LABELS: { [status: string]: string } = { open: "Open", in_progress: "In Progress", completed: "Completed", cancelled: "Cancelled" };
 export var DELAY_CAUSE_LABELS: { [cause: string]: string } = {
@@ -115,7 +116,7 @@ export function delayCriticality(delayRecord: PCCDelayRecord, data: PCCStoreData
 }
 
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localTodayIso();
 }
 
 export function recoveryActionOverdue(action: PCCRecoveryAction): boolean {

@@ -147,6 +147,15 @@
  */
 (function () {
   "use strict";
+
+  // Local calendar date as YYYY-MM-DD. `new Date().toISOString().slice(0, 10)` is the UTC
+  // date, which in IST (UTC+5:30) still reads "yesterday" until 05:30 local time — the
+  // 2026-09-24 audit found that across ~30 files. Per-file copy, per this repo's
+  // per-module-helpers convention (engines are also unit-tested standalone).
+  function localIsoDate(d) {
+    var dt = d || new Date();
+    return dt.getFullYear() + "-" + String(dt.getMonth() + 1).padStart(2, "0") + "-" + String(dt.getDate()).padStart(2, "0");
+  }
   window.PCC = window.PCC || {};
 
   var DAY_MS = 24 * 60 * 60 * 1000;
@@ -487,7 +496,7 @@
 
   function calculateSchedule(activities, relationships, options) {
     options = options || {};
-    var dataDate = options.dataDate || new Date().toISOString().slice(0, 10);
+    var dataDate = options.dataDate || localIsoDate();
     var dataDay = toDayNumber(dataDate);
     var nearCriticalThreshold = options.nearCriticalThresholdDays != null ? options.nearCriticalThresholdDays : 5;
     var ignoreActuals = !!options.ignoreActuals;

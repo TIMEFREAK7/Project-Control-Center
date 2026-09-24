@@ -6,6 +6,15 @@
 (function () {
   "use strict";
 
+  // Local calendar date as YYYY-MM-DD. `new Date().toISOString().slice(0, 10)` is the UTC
+  // date, which in IST (UTC+5:30) still reads "yesterday" until 05:30 local time — the
+  // 2026-09-24 audit found that across ~30 files. Per-file copy, per this repo's
+  // per-module-helpers convention (engines are also unit-tested standalone).
+  function localIsoDate(d) {
+    var dt = d || new Date();
+    return dt.getFullYear() + "-" + String(dt.getMonth() + 1).padStart(2, "0") + "-" + String(dt.getDate()).padStart(2, "0");
+  }
+
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
@@ -509,7 +518,7 @@
     var base = {
       id: newDailyLogId(),
       project_id: "",
-      log_date: now.slice(0, 10),
+      log_date: localIsoDate(new Date(now)),
       weather: "",
       manpower: "",
       equipment: "",
@@ -623,7 +632,7 @@
       id: newMeetingId(),
       project_id: "",
       title: "",
-      meeting_date: now.slice(0, 10),
+      meeting_date: localIsoDate(new Date(now)),
       attendees: "",
       agenda: "",
       minutes: "",
@@ -674,7 +683,7 @@
   function newRfiRevision(overrides) {
     var base = {
       id: newRfiRevisionId(),
-      date: new Date().toISOString().slice(0, 10),
+      date: localIsoDate(),
       author: "",
       note: "",
     };
@@ -706,7 +715,7 @@
       question: "",
       raised_by: "",
       assigned_to: "",
-      date_raised: now.slice(0, 10),
+      date_raised: localIsoDate(new Date(now)),
       date_required: "",
       priority: "medium",
       status: "open",
@@ -755,7 +764,7 @@
   function newChangeOrderRevision(overrides) {
     var base = {
       id: newChangeOrderRevisionId(),
-      date: new Date().toISOString().slice(0, 10),
+      date: localIsoDate(),
       author: "",
       note: "",
     };
@@ -779,7 +788,7 @@
       description: "",
       justification: "",
       requested_by: "",
-      date_requested: now.slice(0, 10),
+      date_requested: localIsoDate(new Date(now)),
       date_decided: "",
       decision_by: "",
       status: "pending",
@@ -898,7 +907,7 @@
       category: "other",
       description: "",
       amount: null,
-      date: now.slice(0, 10),
+      date: localIsoDate(new Date(now)),
       vendor: "",
       invoice_ref: "",
       notes: "",
@@ -1098,7 +1107,7 @@
       package_id: "",
       type: "purchase_order",
       po_contract_number: "",
-      commitment_date: now.slice(0, 10),
+      commitment_date: localIsoDate(new Date(now)),
       committed_value: null,
       approved_value: null,
       budget_item_id: "",
@@ -1161,7 +1170,7 @@
     var base = {
       id: newWeeklyReviewId(),
       project_id: "",
-      review_date: now.slice(0, 10),
+      review_date: localIsoDate(new Date(now)),
       attendees: "",
       reviewed_by: "",
       progress_notes: "",
@@ -1245,7 +1254,7 @@
       description: "",
       status: "draft",
       import_date: null, // set by the importer in Gate 2; null for schedules built by hand
-      data_date: now.slice(0, 10),
+      data_date: localIsoDate(new Date(now)),
       // Architecture Upgrade Phase 1 (schema v61): provenance + purpose. See
       // SCHEDULE_PLATFORMS/SCHEDULE_TYPES above for what these mean and why they're
       // separate from `status`. Defaults assume the common case (hand-built, current) —
@@ -2142,7 +2151,7 @@
       communication_rating: 0,
       safety_rating: 0,
       comments: "",
-      review_date: now.slice(0, 10),
+      review_date: localIsoDate(new Date(now)),
       reviewed_by: "",
       created_at: now,
     };
@@ -3519,7 +3528,7 @@
     data.meta.last_exported_at = new Date().toISOString();
     return buildExportJson().then(function (json) {
       var blob = new Blob([json], { type: "application/json" });
-      var stamp = new Date().toISOString().slice(0, 10);
+      var stamp = localIsoDate();
       return window.PCC.nativeFile.save(blob, "project-data-" + stamp + ".json").then(function () {
         persistToLocalStorage();
         notifyListeners();

@@ -16,6 +16,7 @@
  * window.PCC.* directly itself.
  */
 import type { PCCStoreData } from "../types/pcc";
+import { localTodayIso } from "../utils/localDate";
 
 export type Bucket = "overdue" | "today" | "week" | "upcoming" | "waiting";
 
@@ -82,7 +83,7 @@ export function upcomingWindowDays(data: PCCStoreData): number {
 }
 
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localTodayIso();
 }
 function addDaysIso(isoDateStr: string, days: number): string {
   const d = new Date(isoDateStr + "T00:00:00Z");

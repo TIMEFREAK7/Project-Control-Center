@@ -17,6 +17,7 @@
  * page made, so the component never reaches into window.PCC.* itself.
  */
 import type { PCCStoreData, PCCSchedule, PCCDelayRecord, PCCProject } from "../types/pcc";
+import { localTodayIso } from "../utils/localDate";
 
 export interface Item {
   kind: string;
@@ -33,7 +34,7 @@ export var WINDOW_OPTIONS = [7, 14, 30, 60];
 export var DEFAULT_WINDOW_DAYS = 7;
 
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localTodayIso();
 }
 function addDaysIso(isoDateStr: string, days: number): string {
   var d = new Date(isoDateStr + "T00:00:00Z");

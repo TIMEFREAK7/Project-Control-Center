@@ -96,6 +96,15 @@
  */
 (function () {
   "use strict";
+
+  // Local calendar date as YYYY-MM-DD. `new Date().toISOString().slice(0, 10)` is the UTC
+  // date, which in IST (UTC+5:30) still reads "yesterday" until 05:30 local time — the
+  // 2026-09-24 audit found that across ~30 files. Per-file copy, per this repo's
+  // per-module-helpers convention (engines are also unit-tested standalone).
+  function localIsoDate(d) {
+    var dt = d || new Date();
+    return dt.getFullYear() + "-" + String(dt.getMonth() + 1).padStart(2, "0") + "-" + String(dt.getDate()).padStart(2, "0");
+  }
   window.PCC = window.PCC || {};
 
   var HOURS_PER_DAY_FALLBACK = 8; // used only when a Calendar/day_hr_cnt can't be resolved
@@ -587,7 +596,7 @@
       },
     ];
 
-    var today = new Date().toISOString().slice(0, 10);
+    var today = localIsoDate();
     var lines = [
       "ERMHDR\t21.12\t" + today + "\tProject\tpcc\tpcc\tProject Control Center\tUSD\t",
       tableBlock("PROJECT", ["proj_id", "proj_short_name"], [{ proj_id: PROJ_ID, proj_short_name: xerField(schedule.name || "PCC Schedule").slice(0, 100) }]),

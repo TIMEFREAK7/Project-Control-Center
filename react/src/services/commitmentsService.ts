@@ -3,6 +3,7 @@
  * FRESH top-level object reference (see CLAUDE.md's React migration notes).
  */
 import type { PCCStoreData, PCCProject, PCCVendor, PCCPackage, PCCCommitment, PCCActivity } from "../types/pcc";
+import { localTodayIso } from "../utils/localDate";
 
 export var TYPE_LABELS: { [type: string]: string } = {
   purchase_order: "Purchase Order",
@@ -64,7 +65,7 @@ export function remainingFor(committedValue: number | null | undefined, actual: 
 }
 
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localTodayIso();
 }
 function addDaysIso(isoDateStr: string, days: number): string {
   var d = new Date(isoDateStr + "T00:00:00Z");

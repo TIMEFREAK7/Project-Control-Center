@@ -11,6 +11,7 @@
  * the assembled report document itself is this escape hatch).
  */
 import type { PCCStoreData, PCCProject, PCCReportTemplate } from "../types/pcc";
+import { localTodayIso } from "../utils/localDate";
 
 export var SEVERITY_MATRIX: { [probability: string]: { [impact: string]: string } } = {
   high: { low: "medium", medium: "high", high: "high" },
@@ -86,7 +87,7 @@ function renderLogoImg(data: PCCStoreData): HTMLImageElement | null {
 }
 
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localTodayIso();
 }
 
 function esc(s: unknown): string {

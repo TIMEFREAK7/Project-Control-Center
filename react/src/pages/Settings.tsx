@@ -36,6 +36,7 @@ import {
   deleteRecoveryBackup,
 } from "../services/settingsService";
 import { listOllamaModels } from "../services/ollamaService";
+import { localTodayIso } from "../utils/localDate";
 
 var BLANK_IMG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1' height='1'%3E%3C/svg%3E";
 
@@ -147,7 +148,7 @@ export default function SettingsPage() {
     setBackingUp(true);
     createFullBackup()
       .then((result) => {
-        const filename = "PCC-Full-Backup-" + new Date().toISOString().slice(0, 10) + ".zip";
+        const filename = "PCC-Full-Backup-" + localTodayIso() + ".zip";
         return saveFile(result.blob, filename).then(() => {
           let msg = "Full backup downloaded (" + result.fileCount + " file" + (result.fileCount === 1 ? "" : "s") + " included).";
           if (result.skipped > 0) {

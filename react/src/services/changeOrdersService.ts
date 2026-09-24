@@ -3,6 +3,7 @@
  * FRESH top-level object reference (see CLAUDE.md's React migration notes).
  */
 import type { PCCStoreData, PCCProject, PCCChangeOrder, PCCRfi, PCCRisk } from "../types/pcc";
+import { localTodayIso } from "../utils/localDate";
 
 export var STATUS_LABELS: { [status: string]: string } = { pending: "Pending", approved: "Approved", rejected: "Rejected", closed: "Closed" };
 export var WAITING_ON_LABELS: { [party: string]: string } = { vendor: "Vendor", client: "Client", consultant: "Consultant", management: "Management" };
@@ -94,7 +95,7 @@ export function saveChangeOrder(isNew: boolean, coId: string | undefined, values
       if (existing) {
         var wasDecided = existing.status === "pending" && (values.status === "approved" || values.status === "rejected");
         Object.assign(existing, values);
-        if (wasDecided && !existing.date_decided) existing.date_decided = new Date().toISOString().slice(0, 10);
+        if (wasDecided && !existing.date_decided) existing.date_decided = localTodayIso();
         existing.updated_at = new Date().toISOString();
       }
     }
@@ -118,7 +119,7 @@ export function bulkSetStatus(ids: { [id: string]: boolean }, newStatus: string)
       if (ids[item.id]) {
         var wasDecided = item.status === "pending";
         item.status = newStatus;
-        if (wasDecided && !item.date_decided) item.date_decided = new Date().toISOString().slice(0, 10);
+        if (wasDecided && !item.date_decided) item.date_decided = localTodayIso();
         item.updated_at = new Date().toISOString();
       }
     });

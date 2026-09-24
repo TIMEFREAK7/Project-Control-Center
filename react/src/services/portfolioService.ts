@@ -17,6 +17,7 @@ import type {
   ExecutiveCenterSchedulePerformanceSummary,
 } from "../types/pcc";
 import { fuzzyMatch } from "../utils/fuzzyMatch";
+import { localTodayIso } from "../utils/localDate";
 
 export var STATUS_LABELS: { [status: string]: string } = {
   on_track: "On Track",
@@ -114,7 +115,7 @@ export function distinctValues(projects: PCCProject[], key: keyof PCCProject): s
 }
 
 export function todayIsoDate(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localTodayIso();
 }
 
 export function computeRequirementAvailability(data: PCCStoreData, projectId: string, documentTypeId: string): boolean {

@@ -4,6 +4,7 @@
  * notes).
  */
 import type { PCCStoreData, PCCProject, PCCRfi } from "../types/pcc";
+import { localTodayIso } from "../utils/localDate";
 
 export interface FieldConfig {
   key: string;
@@ -33,7 +34,7 @@ export var FIELD_CONFIG: FieldConfig[] = [
 ];
 
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localTodayIso();
 }
 export function isOverdue(r: PCCRfi): boolean {
   return r.status === "open" && !!r.date_required && r.date_required < today();

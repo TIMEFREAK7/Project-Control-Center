@@ -15,9 +15,10 @@
  */
 
 import type { PCCStoreData, PCCProject, PCCDocumentType, PCCProjectDocumentRequirement } from "../types/pcc";
+import { localTodayIso } from "../utils/localDate";
 
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localTodayIso();
 }
 
 // Same Available/Overdue/Required computation as portfolio.js/vendors.js/schedule.js/

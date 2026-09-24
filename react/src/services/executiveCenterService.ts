@@ -34,6 +34,7 @@ import type {
   WeeklyReviewSnapshot,
   PCCWeeklyReview,
 } from "../types/pcc";
+import { localTodayIso } from "../utils/localDate";
 
 export var SEVERITY_MATRIX: { [probability: string]: { [impact: string]: string } } = {
   high: { low: "medium", medium: "high", high: "high" },
@@ -52,7 +53,7 @@ export function getData(): PCCStoreData {
 }
 
 export function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localTodayIso();
 }
 
 export function fmtMoney(amount: number | string | null | undefined, currency: string | undefined): string {

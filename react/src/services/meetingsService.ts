@@ -3,6 +3,7 @@
  * top-level object reference (see CLAUDE.md's React migration notes).
  */
 import type { PCCStoreData, PCCProject, PCCMeeting, PCCMeetingAction, PCCDocument } from "../types/pcc";
+import { localTodayIso } from "../utils/localDate";
 
 export function getData(): PCCStoreData {
   return Object.assign({}, window.PCC.store.get());
@@ -16,7 +17,7 @@ export function projectName(projects: PCCProject[], projectId: string | undefine
 }
 
 export function todayStr(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localTodayIso();
 }
 
 export interface ActivityOption {

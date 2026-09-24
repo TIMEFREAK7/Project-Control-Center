@@ -8,6 +8,7 @@
  * page uses. Purely computed at render time — writes nothing back to the store.
  */
 import type { PCCStoreData, PCCProject } from "../types/pcc";
+import { localTodayIso } from "../utils/localDate";
 
 export interface Item {
   kind: string;
@@ -23,7 +24,7 @@ export var RECENT_LIMIT = 5;
 export var WAITING_ON_LABELS: { [party: string]: string } = { vendor: "Vendor", client: "Client", consultant: "Consultant", management: "Management" };
 
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localTodayIso();
 }
 function addDaysIso(isoDateStr: string, days: number): string {
   var d = new Date(isoDateStr + "T00:00:00Z");

@@ -14,6 +14,7 @@ import type {
   PCCDelayActivityLink,
 } from "../types/pcc";
 import { fuzzyMatch } from "../utils/fuzzyMatch";
+import { localTodayIso } from "../utils/localDate";
 
 export var VENDOR_STATUS_LABELS: { [status: string]: string } = { active: "Active", inactive: "Inactive", preferred: "Preferred Vendor", blacklisted: "Blacklisted" };
 export var CONTRACT_STATUS_LABELS: { [status: string]: string } = { draft: "Draft", active: "Active", completed: "Completed", terminated: "Terminated" };
@@ -100,7 +101,7 @@ export var VENDOR_ADDRESS_FIELD_CONFIG: FieldConfig[] = [
 ];
 
 export function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localTodayIso();
 }
 
 export function formatBytes(bytes: number | undefined): string {

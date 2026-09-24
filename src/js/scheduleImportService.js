@@ -239,16 +239,28 @@
     return mapping;
   }
 
+  /** A spreadsheet/parsed Date → the calendar date it MEANS, in any timezone. SheetJS
+   * (cellDates) builds a date cell as LOCAL midnight — and in Asia/Kolkata its 1899 epoch
+   * math even lands 10 seconds early (23:59:50 the previous day). `toISOString()` then
+   * read every Excel-imported date one day early for anyone east of UTC, including every
+   * "Edit Excel" round trip (2026-09-24 audit, reproduced with TZ=Asia/Kolkata). Rounding
+   * to the nearest local day handles local midnight, the drift, and a UTC-midnight Date
+   * alike. new Date("03/15/2026")-style string parses are local midnight too. */
+  function dateCellToIso(d) {
+    var r = new Date(d.getTime() + 12 * 60 * 60 * 1000);
+    return r.getFullYear() + "-" + String(r.getMonth() + 1).padStart(2, "0") + "-" + String(r.getDate()).padStart(2, "0");
+  }
+
   function parseDate(v) {
     if (v === "" || v == null) return { value: "", valid: true };
     if (v instanceof Date && !isNaN(v.getTime())) {
-      return { value: v.toISOString().slice(0, 10), valid: true };
+      return { value: dateCellToIso(v), valid: true };
     }
     var s = String(v).trim();
     var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
     if (m) return { value: s.slice(0, 10), valid: true };
     var d = new Date(s);
-    if (!isNaN(d.getTime())) return { value: d.toISOString().slice(0, 10), valid: true };
+    if (!isNaN(d.getTime())) return { value: dateCellToIso(d), valid: true };
     return { value: "", valid: false };
   }
 
@@ -516,5 +528,6 @@
     CANONICAL_HEADERS: CANONICAL_HEADERS,
     autoDetectColumnMapping: autoDetectColumnMapping,
     detectAndSkipCircularRelationships: detectAndSkipCircularRelationships,
+    dateCellToIso: dateCellToIso,
   };
 })();

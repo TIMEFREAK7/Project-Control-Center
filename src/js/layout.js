@@ -1,5 +1,14 @@
 (function () {
   "use strict";
+
+  // Local calendar date as YYYY-MM-DD. `new Date().toISOString().slice(0, 10)` is the UTC
+  // date, which in IST (UTC+5:30) still reads "yesterday" until 05:30 local time — the
+  // 2026-09-24 audit found that across ~30 files. Per-file copy, per this repo's
+  // per-module-helpers convention (engines are also unit-tested standalone).
+  function localIsoDate(d) {
+    var dt = d || new Date();
+    return dt.getFullYear() + "-" + String(dt.getMonth() + 1).padStart(2, "0") + "-" + String(dt.getDate()).padStart(2, "0");
+  }
   window.PCC = window.PCC || {};
 
   // Grouped for findability now that there are a dozen+ items. Rendered by
@@ -805,7 +814,7 @@
 
     var data = window.PCC.store.get();
     header.appendChild(cell("COMPANY", data.settings.company_name || "\u2014", { id: "title-block-company" }));
-    header.appendChild(cell("DATE", new Date().toISOString().slice(0, 10)));
+    header.appendChild(cell("DATE", localIsoDate()));
 
     var actions = document.createElement("div");
     actions.className = "title-block__actions";

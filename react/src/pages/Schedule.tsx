@@ -128,6 +128,7 @@ import type {
   ImportFileInfo,
   DelayActivityImpact,
 } from "../types/pcc";
+import { dateCellToIso } from "../utils/localDate";
 
 interface ScheduleFormProps {
   schedule: PCCSchedule;
@@ -2184,7 +2185,7 @@ function ImportPanel({ data, projectId, onDone, onImported }: ImportPanelProps) 
               <React.Fragment key={i}>
                 <div style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>{String(h || "").trim() || "(Column " + (i + 1) + ")"}</div>
                 <div className="text-secondary" style={{ fontSize: "var(--text-sm)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {sampleVal instanceof Date ? sampleVal.toISOString().slice(0, 10) : String(sampleVal)}
+                  {sampleVal instanceof Date ? dateCellToIso(sampleVal) : String(sampleVal)}
                 </div>
                 <select
                   aria-label={"Map column " + (String(h || "").trim() || i + 1)}

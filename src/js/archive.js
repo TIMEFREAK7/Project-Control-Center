@@ -1,5 +1,14 @@
 (function () {
   "use strict";
+
+  // Local calendar date as YYYY-MM-DD. `new Date().toISOString().slice(0, 10)` is the UTC
+  // date, which in IST (UTC+5:30) still reads "yesterday" until 05:30 local time — the
+  // 2026-09-24 audit found that across ~30 files. Per-file copy, per this repo's
+  // per-module-helpers convention (engines are also unit-tested standalone).
+  function localIsoDate(d) {
+    var dt = d || new Date();
+    return dt.getFullYear() + "-" + String(dt.getMonth() + 1).padStart(2, "0") + "-" + String(dt.getDate()).padStart(2, "0");
+  }
   window.PCC = window.PCC || {};
 
   function sanitizeName(name) {
@@ -132,7 +141,7 @@
           window.PCC.notify("No documents with stored files to archive.", "info");
           return;
         }
-        var stamp = new Date().toISOString().slice(0, 10);
+        var stamp = localIsoDate();
         return zip.generateAsync({ type: "blob" }).then(function (blob) {
           triggerDownload(blob, "project-control-center-archive-" + stamp + ".zip");
           var msg =

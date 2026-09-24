@@ -4,6 +4,7 @@
  * notes on this rule).
  */
 import type { PCCStoreData, PCCProject, PCCProjectDocumentRequirement } from "../types/pcc";
+import { localTodayIso } from "../utils/localDate";
 
 export var STATUS_LABELS: { [status: string]: string } = { on_track: "On Track", at_risk: "At Risk", critical: "Critical", complete: "Complete" };
 
@@ -37,7 +38,7 @@ export function dueSoonWindowDays(data: PCCStoreData): number {
 }
 
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localTodayIso();
 }
 function addDaysIso(isoDateStr: string, days: number): string {
   var d = new Date(isoDateStr + "T00:00:00Z");

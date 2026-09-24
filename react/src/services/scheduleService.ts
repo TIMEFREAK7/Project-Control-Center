@@ -30,6 +30,7 @@ import type {
   RecoveryForecastResult,
 } from "../types/pcc";
 import { fuzzyMatch } from "../utils/fuzzyMatch";
+import { localTodayIso } from "../utils/localDate";
 
 export interface ActivityFieldConfig {
   key: string;
@@ -1432,7 +1433,7 @@ export function formatAxisDate(iso: string): string {
 }
 
 export function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localTodayIso();
 }
 
 export function activityMatchesGanttFilter(a: PCCActivity, wbsItems: PCCWbsItem[], filter: GanttFilter, referenceDateIso: string): boolean {
