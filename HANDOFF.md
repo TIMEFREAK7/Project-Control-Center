@@ -7329,3 +7329,36 @@ asked for the one small issue found to be fixed, and for tests on the callers.
   new line removed.
 - **Suite**: 125 files, 2,784 checks, 0 failures. Real Chromium confirms the attach flow. Schema
   still 66. `mirror-app` doesn't load `documents.js`, so no mirror rebuild was needed.
+
+## 2026-09-24: full-project audit, then all findings fixed (3 groups, all merged)
+
+Aditya asked for an extensive hunt for hidden bugs, then asked for everything found to be
+fixed, group 1 first. Full write-up, including what was checked and found CLEAN, is in
+README.md's "Full-project audit + fixes (2026-09-24)". The standing conventions this
+produced are in CLAUDE.md (security rules, local dates, migrate backfill).
+
+- **Group 1, `456bf90`**: Word-preview sanitizer (a real .docx `javascript:` link ran code);
+  Electron `navigationGuard.js` + `main.js` guards; mirror IPC locked to `pcc-mirror.json`;
+  Knowledge Base opens files in the in-app viewer; pending saves flushed on
+  pagehide/background; phone overflow (toolbar project filter, Delay Register rows) fixed.
+- **Group 2, `32891b3`**: "today" = local date everywhere (was UTC, a day behind in IST until
+  05:30); Excel schedule import no longer puts every date one day early east of UTC (also
+  fixes every "Edit Excel" round trip). The Excel bug was found while fixing, not in the
+  original audit.
+- **Group 3, `a6358f2`**: `migrate()` add-only backfill (a file missing `documents`/`risks`
+  crashed 8 pages); unknown `#/route` React teardown error; stale/contradictory docs;
+  `electron:build` now passes `--win`; Windows version 1.7.0 → 1.9.0 (package.json + lock).
+- **Not done, deliberately**: no Content Security Policy (single-file inline-script app;
+  would need `'unsafe-inline'`). Electron guards are unit-tested as pure functions only, with
+  no real Electron process in this container. Installers were not rebuilt (no keystores here),
+  so the security fixes reach the Windows app only on its next build.
+- **Tests**: 129 files, 2,812 checks, 0 failures, **in both UTC and `TZ=Asia/Kolkata`**. New:
+  `test_navigation_guard.js`, `test_audit_fixes_group1_e2e.js`,
+  `test_local_dates_ist_e2e.js`, `test_audit_fixes_group3_e2e.js`, plus a filename-lock check
+  in `test_mirror_file_writer.js`. Every new bug check was confirmed to FAIL on the pre-fix
+  build. Real-Chromium sweep of every route at 1440px and 412px: 0 errors, 0 sideways
+  overflow.
+- **Gotcha for next time**: this container runs in UTC, which hides every local-date bug.
+  Run `TZ=Asia/Kolkata npm test` too for anything date-related.
+- **Repo state**: branch `claude/file-understanding-scope-8ochbn` = `main`, no PR (direct
+  merges per standing instruction). Schema still 66.
