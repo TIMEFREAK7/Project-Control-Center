@@ -6184,6 +6184,11 @@ The Android read side (pull-to-refresh, reading a fixed `Documents/PCC-Mirror/` 
 shipped as part of the main Android app itself — **this was reversed one day later, see "3-App
 Split" below**; the main app has no mirror-reading capability anymore.
 
+**Superseded 2026-09-24 (At a Glance 1.9):** the fixed-path read never worked on Android 11+
+(scoped storage hides another app's non-media files from an app with no storage permission). The
+phone app now asks the user to choose the sync folder once with Android's own folder picker, and
+keeps read-only access to it. See "At a Glance: choose the mirror folder" at the end of this file.
+
 Two real bugs worth remembering from this session, both root-caused with actual repro scripts, not
 assumed: (1) `req.oldVersion` inside an IndexedDB `onupgradeneeded` handler is always `undefined` —
 the real property lives on the `event` argument, not the `request`; (2) an unclosed legacy database
@@ -6591,3 +6596,27 @@ place you're working differ (e.g. a laptop still on India time while working a s
   NY/Tokyo/Dubai/LA/Kiritimati), full suite in UTC and IST, and real Chromium at 1440px and
   412px: 419 zones listed, the choice applies immediately and survives a reload, no sideways
   overflow.
+
+## At a Glance: choose the mirror folder (2026-09-24, mirror app 1.9)
+
+**Problem.** The phone app read `Documents/PCC-Mirror/pcc-mirror.json` directly. On Android 11 and
+later an app without storage permission can't read a non-media file another app (the sync tool)
+put in shared Documents, so the synced file was invisible and the app stayed on "No mirror data
+found yet." The "re-check when the app comes back" listener was also dead: it used a Capacitor
+plugin that was never installed.
+
+**Decision.** A one-time folder picker (Android's Storage Access Framework) instead of "All files
+access": no broad storage permission, only read access to the one folder the user chooses, and
+the grant survives restarts. Rejected: asking for `MANAGE_EXTERNAL_STORAGE` (works, but grants
+the whole phone's storage to a viewer that needs one file).
+
+**What changed.** A small local Capacitor plugin (`MirrorFolderPlugin.java`), the empty state now
+says exactly what's wrong (no folder / folder has no file yet / access revoked / read error) with
+a "Choose mirror folder" button, and the header shows the folder name and the snapshot's time
+(tap it to change folder). Foreground re-checks use `visibilitychange`.
+
+**Verified.** The mirror app typechecks and builds; real Chromium at 412×915 with the plugin mocked
+covers first run, pick, load, header time, incremental re-check and the no-file state. The signed
+APK contains the plugin and the byte-identical web bundle. Not verified: the real picker on a
+device.
+

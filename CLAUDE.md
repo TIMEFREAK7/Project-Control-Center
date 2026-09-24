@@ -448,6 +448,20 @@ way; this section is the standing reference.
     directly to it. Observe the outer, never-recreated `.mirror-app-shell` instead (`subtree:
     true` still catches everything inside, regardless of how many times the outlet itself gets
     swapped out underneath it).
+  - **The phone reads the mirror from a folder the user PICKS (Android folder picker / Storage
+    Access Framework), never a fixed path** — since 2026-09-24, At a Glance 1.9. The old read
+    (Filesystem plugin, fixed `Documents/PCC-Mirror/pcc-mirror.json`) could never see a file a
+    sync tool wrote: on Android 11+ scoped storage an app with no storage permission can't read
+    another app's non-media file in shared Documents, and this app declares only `INTERNET`. Its
+    `App`-plugin "resume" re-check was also dead code (`@capacitor/app` was never installed).
+    Now: a local Capacitor plugin, `packaging/android-mirror/android/app/src/main/java/com/pcc/
+    projectcontrolcenter/mirror/MirrorFolderPlugin.java` (registered by hand in
+    `MainActivity.onCreate()` before `super`; `pickFolder()` / `readMirror({ifNewerThan})`),
+    keeps a persistable READ-only grant and reads only `pcc-mirror.json` through
+    `DocumentsContract` (no androidx.documentfile dependency). Re-checks on `visibilitychange`.
+    `@capacitor/filesystem` was removed. **Never verified on a real device from this sandbox**:
+    the Java compiles into the signed APK and the JS side is verified in Chromium against a
+    mocked plugin, but the actual picker/grant/read needs Aditya's phone.
   - **The Android read side (`mirror-app/src/mirrorRead.ts`) does NOT reuse
     `store.js`'s `importFromJsonString()`** — that function migrates AND writes inline blobs out to
     IndexedDB via `blobStore.putBlob()`, deliberately excluded from this app's bundle. Calling

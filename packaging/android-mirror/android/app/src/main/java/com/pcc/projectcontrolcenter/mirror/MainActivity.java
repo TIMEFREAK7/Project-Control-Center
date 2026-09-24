@@ -8,6 +8,9 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        // Local plugin (not an npm package), so it must be registered by hand, before
+        // super.onCreate() builds the bridge. See MirrorFolderPlugin's header.
+        registerPlugin(MirrorFolderPlugin.class);
         super.onCreate(savedInstanceState);
         // Same edge-to-edge opt-in as the main app's MainActivity -- see its comment.
         // Both Android projects need this independently (packaging/android and

@@ -1,9 +1,8 @@
 /* Mirror file read side -- ported forward from the Android half of the now-deleted
  * src/js/dataMirror.js (readAndroidMirrorFileIfNewer/startAndroidMirrorListeners), which
  * moved here per the 3-app split so the main Android app no longer duplicates this
- * capability. Same fixed path, same Filesystem.stat-then-readFile-if-newer pattern, same
- * "check once on resume, plus once on initial load" behavior -- real, working logic
- * carried over, not redesigned from scratch.
+ * capability. Same read-only-if-newer pattern, checked on load and whenever the app
+ * returns to the foreground. (The file's LOCATION changed since; see below.)
  *
  * One deliberate change from the original: the original called
  * window.PCC.store.importFromJsonString(), which migrates AND writes any inline blobs out
@@ -16,10 +15,33 @@
  * inline in memory instead, which is both simpler and correct for read-only display.
  */
 
-const MIRROR_DIRECTORY = "DOCUMENTS";
-const MIRROR_PATH = "PCC-Mirror/pcc-mirror.json";
+/* Where the file comes from changed on 2026-09-24: it used to be a FIXED path read through
+ * the Filesystem plugin (Documents/PCC-Mirror/pcc-mirror.json). On Android 11+ scoped
+ * storage an app with no storage permission can't read a non-media file ANOTHER app (the
+ * sync tool) wrote there, so that read could never see a synced file. Now the user picks
+ * the sync folder once through Android's own folder picker (Storage Access Framework), via
+ * the local MirrorFolder plugin (packaging/android-mirror/.../MirrorFolderPlugin.java),
+ * which keeps a persistent read-only grant to it. */
+
+export type MirrorStatus = {
+  state: "web" | "checking" | "no-folder" | "no-permission" | "not-found" | "ok" | "error";
+  folderName?: string;
+  mtime?: number;
+  message?: string;
+};
 
 let lastAppliedMirrorMtime: number | null = null;
+let status: MirrorStatus = { state: "checking" };
+let statusListener: ((s: MirrorStatus) => void) | null = null;
+
+function setStatus(next: MirrorStatus): void {
+  status = next;
+  if (statusListener) statusListener(status);
+}
+
+export function getMirrorStatus(): MirrorStatus {
+  return status;
+}
 
 /* The real, UNWRAPPED store.update() -- see shim/writeGuard.ts's own header for why this
  * needs to bypass the guard installed onto window.PCC.store.update (that guard reverts
@@ -50,27 +72,54 @@ export function applyMirrorJson(jsonText: string): void {
   });
 }
 
-export function readMirrorFileIfNewer(): Promise<boolean> {
-  if (!isCapacitorNative()) return Promise.resolve(false);
-  const Filesystem = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem;
-  if (!Filesystem) return Promise.resolve(false);
+function mirrorFolderPlugin() {
+  if (!isCapacitorNative()) return null;
+  return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.MirrorFolder) || null;
+}
 
-  return Filesystem.stat({ path: MIRROR_PATH, directory: MIRROR_DIRECTORY })
-    .then((stat) => {
-      const mtime = stat.mtime;
-      if (lastAppliedMirrorMtime !== null && mtime <= lastAppliedMirrorMtime) {
-        return false; // already loaded this exact version this session
+export function readMirrorFileIfNewer(): Promise<boolean> {
+  const plugin = mirrorFolderPlugin();
+  if (!plugin) {
+    setStatus({ state: "web" });
+    return Promise.resolve(false);
+  }
+  return plugin
+    .readMirror(lastAppliedMirrorMtime !== null ? { ifNewerThan: lastAppliedMirrorMtime } : {})
+    .then((res) => {
+      if (res.status === "unchanged") {
+        setStatus({ state: "ok", folderName: res.folderName, mtime: lastAppliedMirrorMtime || undefined });
+        return false;
       }
-      return Filesystem.readFile({ path: MIRROR_PATH, directory: MIRROR_DIRECTORY, encoding: "utf8" }).then((result) => {
-        applyMirrorJson(result.data);
-        lastAppliedMirrorMtime = mtime;
-        return true;
-      });
+      if (res.status !== "ok") {
+        setStatus({ state: res.status, folderName: res.folderName });
+        return false;
+      }
+      applyMirrorJson(res.data || "");
+      lastAppliedMirrorMtime = res.mtime || Date.now();
+      setStatus({ state: "ok", folderName: res.folderName, mtime: lastAppliedMirrorMtime });
+      return true;
     })
     .catch((err: any) => {
-      if (err && err.message && String(err.message).indexOf("does not exist") === -1) {
-        console.error("[PCC Mirror] read failed:", err);
-      }
+      console.error("[PCC Mirror] read failed:", err);
+      setStatus({ state: "error", folderName: status.folderName, message: (err && err.message) || String(err) });
+      return false;
+    });
+}
+
+/* Opens Android's folder picker. Resolves true if a new mirror file was loaded from the
+ * chosen folder. A cancelled picker leaves the previous folder in place. */
+export function chooseMirrorFolder(): Promise<boolean> {
+  const plugin = mirrorFolderPlugin();
+  if (!plugin) return Promise.resolve(false);
+  return plugin
+    .pickFolder()
+    .then((res) => {
+      if (!res.picked) return false;
+      lastAppliedMirrorMtime = null; // a different folder: load whatever it holds
+      return readMirrorFileIfNewer();
+    })
+    .catch((err: any) => {
+      setStatus({ state: "error", message: (err && err.message) || String(err) });
       return false;
     });
 }
@@ -78,17 +127,17 @@ export function readMirrorFileIfNewer(): Promise<boolean> {
 /* Called once at startup. onApplied fires only when a mirror file was actually found and
  * successfully applied (initial load included) so App.tsx knows to re-render with real
  * data instead of the empty starting store. */
-export function startMirrorListeners(onApplied: () => void): void {
-  readMirrorFileIfNewer().then((applied) => {
-    if (applied) onApplied();
-  });
-  if (!isCapacitorNative()) return;
-  const AppPlugin = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App;
-  if (AppPlugin && AppPlugin.addListener) {
-    AppPlugin.addListener("resume", () => {
-      readMirrorFileIfNewer().then((applied) => {
-        if (applied) onApplied();
-      });
+export function startMirrorListeners(onApplied: () => void, onStatus: (s: MirrorStatus) => void): void {
+  statusListener = onStatus;
+  const check = () =>
+    readMirrorFileIfNewer().then((applied) => {
+      if (applied) onApplied();
     });
-  }
+  check();
+  // Re-check whenever the app comes back to the foreground. visibilitychange instead of
+  // the Capacitor App plugin's "resume": that plugin was never installed in this project,
+  // so the old resume listener silently never ran.
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") check();
+  });
 }

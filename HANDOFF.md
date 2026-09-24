@@ -7423,3 +7423,30 @@ in this file). Everything in the audit fixes + Time zone setting is in these bui
 - **Versions**: Windows `packaging/package.json` 1.9.0 → 1.10.0 (in step with main Android
   1.10); main Android versionCode 10 → 11; mirror 8 → 9 / "1.7" → "1.8". Keystores were copied
   into the gitignored app dirs for the build and deleted afterwards.
+
+## 2026-09-24: At a Glance 1.9 (code 10) — choose the mirror folder
+
+- **Why**: writing the setup guides turned up that the phone app could never read a synced
+  mirror file. It read the fixed path `Documents/PCC-Mirror/pcc-mirror.json` via the Filesystem
+  plugin with only the `INTERNET` permission, and Android 11+ scoped storage hides another app's
+  (Syncthing's) non-media files from it. Earlier device testing covered layout, write guard and
+  icons, never a synced file loading. Also found: the "resume" re-check used `@capacitor/app`,
+  which was never installed, so it never ran.
+- **Fix**: `MirrorFolderPlugin.java` (local Capacitor plugin, registered in `MainActivity`):
+  `pickFolder()` opens Android's folder picker and keeps a persistable read-only grant;
+  `readMirror({ifNewerThan})` finds `pcc-mirror.json` in that folder via `DocumentsContract`.
+  `mirrorRead.ts` uses it and re-checks on `visibilitychange`. `App.tsx` shows a specific empty
+  state per status with a "Choose mirror folder" button, and the header shows folder + snapshot
+  time (tap to change). `@capacitor/filesystem` removed.
+- **Verified**: mirror-app `tsc` + build; real Chromium 412×915 with a mocked plugin (first run →
+  pick → data loads, header time, incremental re-check, no-file message, no picker outside
+  Android, no horizontal scroll); full `tests/` suite; signed APK checks (apksigner v2, zipalign,
+  signer SHA-256 `f9ebe3fc…` same as 1.8 so it updates in place, embedded `index.html`
+  byte-identical to `mirror-app/index.html`, plugin class in the dex, still `INTERNET` only).
+  **Not verified**: the real picker/grant/read on a phone.
+- **Artifact**: `PCC-AtAGlance-1.9.apk`, SHA-256
+  `2ab8dc946fe6f77b5821d0f2184c31896c8792f7961ed0a0ad593910376c6f2d`. Main app and Windows
+  unchanged (no rebuild, no end-user zip: nothing in `src/` changed).
+- **Setup on the phone**: Syncthing receives into e.g. `Documents/PCC-Mirror`; in At a Glance tap
+  "Choose mirror folder" and pick THAT subfolder (Android refuses the storage root and Download
+  root in the picker).

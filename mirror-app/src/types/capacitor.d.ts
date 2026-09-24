@@ -4,8 +4,8 @@
  * side and src/js/pullToRefresh.js used -- window.Capacitor.Plugins.<Name>, never an
  * npm-imported @capacitor/* package, so this app needs no new npm dependency for it
  * either. Deliberately loose (any-typed plugin calls): Capacitor's own generated types
- * aren't available without installing its packages, and this app only ever calls two
- * methods (Filesystem.stat/readFile, App.addListener) on two plugins.
+ * aren't available without installing its packages, and this app only ever calls the one
+ * local MirrorFolder plugin (packaging/android-mirror/.../MirrorFolderPlugin.java).
  */
 export {};
 
@@ -14,12 +14,14 @@ declare global {
     Capacitor?: {
       isNativePlatform?: () => boolean;
       Plugins?: {
-        Filesystem?: {
-          stat(options: { path: string; directory: string }): Promise<{ mtime: number }>;
-          readFile(options: { path: string; directory: string; encoding: string }): Promise<{ data: string }>;
-        };
-        App?: {
-          addListener(eventName: string, cb: () => void): void;
+        MirrorFolder?: {
+          pickFolder(): Promise<{ picked: boolean; folderName?: string }>;
+          readMirror(options: { ifNewerThan?: number }): Promise<{
+            status: "no-folder" | "no-permission" | "not-found" | "unchanged" | "ok";
+            folderName?: string;
+            mtime?: number;
+            data?: string;
+          }>;
         };
       };
     };

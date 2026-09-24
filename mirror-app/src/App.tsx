@@ -11,7 +11,8 @@ import MyWorkPage from "../../react/src/pages/MyWork.tsx";
 import ActionCentrePage from "../../react/src/pages/ActionCentre.tsx";
 import PortfolioPage from "../../react/src/pages/Portfolio.tsx";
 import { registerTabHost, type TabName } from "./router";
-import { startMirrorListeners } from "./mirrorRead";
+import { startMirrorListeners, chooseMirrorFolder, getMirrorStatus, type MirrorStatus } from "./mirrorRead";
+import { formatDateTime } from "../../react/src/utils/localDate";
 import { installPullToRefresh } from "./pullToRefresh";
 import { installWriteButtonHider } from "./shim/hideWriteButtons";
 
@@ -35,10 +36,32 @@ function renderActiveTab(tab: TabName): React.ReactElement {
   }
 }
 
+function emptyStateText(st: MirrorStatus): string {
+  switch (st.state) {
+    case "no-folder":
+      return "Choose the folder your sync tool (e.g. Syncthing) copies pcc-mirror.json into from the Windows app. You only need to do this once.";
+    case "no-permission":
+      return "This app no longer has access to the mirror folder. Choose it again.";
+    case "not-found":
+      return (
+        "No pcc-mirror.json in “" +
+        (st.folderName || "the chosen folder") +
+        "” yet. Check that the Data Mirror is on in the Windows app and your sync tool has finished, then pull down to refresh."
+      );
+    case "error":
+      return "Couldn't read the mirror file: " + (st.message || "unknown error") + ". Pull down to try again.";
+    case "checking":
+      return "Loading mirror data…";
+    default:
+      return "No mirror data found yet. Enable the Data Mirror in the Windows app's Settings and sync its folder to this phone.";
+  }
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabName>("dashboard");
   const [refreshTick, setRefreshTick] = useState(0);
   const [hasMirrorData, setHasMirrorData] = useState(false);
+  const [mirrorStatus, setMirrorStatus] = useState<MirrorStatus>(getMirrorStatus());
 
   useEffect(() => {
     registerTabHost(
@@ -49,10 +72,13 @@ export default function App() {
   }, [activeTab]);
 
   useEffect(() => {
-    startMirrorListeners(() => {
-      setHasMirrorData(true);
-      setRefreshTick((n: number) => n + 1);
-    });
+    startMirrorListeners(
+      () => {
+        setHasMirrorData(true);
+        setRefreshTick((n: number) => n + 1);
+      },
+      (st) => setMirrorStatus(Object.assign({}, st))
+    );
     installPullToRefresh(() => {
       setHasMirrorData(true);
       setRefreshTick((n: number) => n + 1);
@@ -63,10 +89,29 @@ export default function App() {
     installWriteButtonHider();
   }, []);
 
+  function handleChooseFolder() {
+    chooseMirrorFolder().then((applied) => {
+      if (applied) {
+        setHasMirrorData(true);
+        setRefreshTick((n: number) => n + 1);
+      }
+    });
+  }
+
+  const canPick = mirrorStatus.state !== "web";
+
   return (
     <div className="mirror-app-shell">
       <header className="mirror-app-tabbar no-print">
-        <div className="mirror-app-tabbar__title">At a Glance</div>
+        <div className="mirror-app-tabbar__titlerow">
+          <div className="mirror-app-tabbar__title">At a Glance</div>
+          {canPick && mirrorStatus.state !== "no-folder" ? (
+            <button type="button" className="mirror-app-source" onClick={handleChooseFolder} title="Change mirror folder">
+              {mirrorStatus.folderName || "Mirror folder"}
+              {mirrorStatus.state === "ok" && mirrorStatus.mtime ? " · " + formatDateTime(new Date(mirrorStatus.mtime).toISOString()) : ""}
+            </button>
+          ) : null}
+        </div>
         <nav className="mirror-app-tabbar__nav">
           {TABS.map((t) => (
             <button
@@ -89,9 +134,13 @@ export default function App() {
         {!hasMirrorData ? (
           <div className="panel" style={{ marginBottom: 16 }}>
             <p className="text-secondary" style={{ margin: 0 }}>
-              No mirror data found yet. Enable the Data Mirror in the Windows app's Settings, point a sync tool at the
-              same folder this device reads from, then pull down to refresh.
+              {emptyStateText(mirrorStatus)}
             </p>
+            {canPick ? (
+              <button type="button" className="btn btn--primary" style={{ marginTop: 12 }} onClick={handleChooseFolder}>
+                {mirrorStatus.state === "no-folder" ? "Choose mirror folder" : "Choose a different folder"}
+              </button>
+            ) : null}
           </div>
         ) : null}
         {renderActiveTab(activeTab)}
