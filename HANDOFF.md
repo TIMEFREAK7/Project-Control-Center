@@ -3908,7 +3908,14 @@ that back-and-forth pattern held for all 14 gates through to the last one.
   "Document Control Compliance" `<h3>`, returns its `parentElement`) instead of searching the
   whole page.
 
-### PCC Evolution Roadmap (Gates 29-33 = roadmap's own Gates 1-5) — 5 of ~27 gates done, Tiers A + B + C complete, Tier D underway
+### PCC Evolution Roadmap (Gates 29-33 = roadmap's own Gates 1-5) — historical snapshot, SUPERSEDED (all Tiers A-F later completed)
+
+> **SUPERSEDED — historical snapshot from 2026-08-19.** Tiers D, E and F of the PCC Evolution
+> Roadmap were all completed later (Tier F closed by Gate 26, Integrated Project Controls). The
+> current status is in "Where things stand — Tiers A-F complete" above: no named-tier scope is
+> open. Kept for the build history only; do not read the "in progress"/"not started" lines below
+> as current.
+
 
 Aditya handed over a large roadmap (Tiers A-F: Daily Planner Value, Control Integration, Project
 Performance, Management, Portfolio, then Tier F's advanced planning/controls gates — Resource
@@ -4126,7 +4133,7 @@ inspected against the real code this session and all four of its areas are done:
 Management (the `physical_progress` bug fixed), Vendor Performance Centre, Delay & Recovery
 Management, and Decision Register.
 
-### Tier D (Management) — in progress
+### Tier D (Management) — COMPLETE (this heading originally read "in progress"; see the superseded note above)
 
 Unlike Tiers B and C, **the original roadmap document was never saved as a file anywhere in this
 repo** — Tier D's three named gates came directly from Aditya, mid-session, when asked: **Gate
@@ -4196,7 +4203,7 @@ is" section below.
   Management Attention, and both Reports views) plus a 22-route smoke test; full suite re-run
   clean with zero regressions in the 39 pre-existing files. Merge commit `fef89f6`.
 
-**Next roadmap gate: not yet scoped.** Tiers A, B, and C are complete; **Tier D (Management) is
+**(SUPERSEDED: Tiers E and F were completed later, see "Where things stand".) Next roadmap gate: not yet scoped.** Tiers A, B, and C are complete; **Tier D (Management) is
 now fully done** — all three named gates are built or already-satisfied, and the follow-on
 reporting-wiring gap is closed for the two registers where it was actually fixable. Ask Aditya for
 Tier E (Portfolio)'s named gate breakdown the same way Tier D's came (the original roadmap
@@ -4218,7 +4225,7 @@ breakdown from Aditya directly, the same way Tier D's came, rather than guessing
   `actionCentre.js`) are both hardcoded, not user-configurable — noted as a possible follow-up.
 - Rate × usage from Resource Management feeding Cost Tracking/EVM (deferred at Gate 11).
 - Portfolio-level executive dashboard filtering by client/country/sector/PM/date range.
-- Every other gate in the PCC Evolution Roadmap beyond Gates 29-33 — ~22 gates, none started.
+- (SUPERSEDED: Tiers E and F were completed later.) Every other gate in the PCC Evolution Roadmap beyond Gates 29-33 — ~22 gates, none started.
   Tiers A and B are both complete; Tier C (Project Performance) is next but not yet inspected. See
   the roadmap section above for detail.
 
