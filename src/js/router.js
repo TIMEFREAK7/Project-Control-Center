@@ -20,8 +20,11 @@
     var outlet = document.getElementById("page-outlet");
     if (!outlet) return;
 
+    // No early `outlet.innerHTML = ""` here: that wiped a still-mounted React page's DOM
+    // before reactBridge.unmount() below, so React's own teardown threw "The node to be
+    // removed is not a child of this node" on any unknown #/route (2026-09-24 audit). The
+    // single wipe after unmount() covers this case too.
     if (!renderFn) {
-      outlet.innerHTML = "";
       renderFn = routes["notfound"];
     }
 

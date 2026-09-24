@@ -83,9 +83,10 @@ placeholder used as the only label; `role="button"` on a `<div>` instead of a re
 
 ## Motion
 
-See `MOTION_SYSTEM.md`. One live finding as of this audit: **no `prefers-reduced-motion` rule
-exists anywhere in `src/`** — grep-confirmed. Any new animation work should add the guard from
-`MOTION_SYSTEM.md` rather than adding one more unconditional transition on top of the gap.
+See `MOTION_SYSTEM.md`. The original audit's gap (no `prefers-reduced-motion` rule anywhere
+in `src/`) has since been closed: `styles.css` carries a blanket
+`@media (prefers-reduced-motion: reduce)` rule. New animation work should stay covered by it
+(or add its own guard) rather than introduce an unconditional transition that bypasses it.
 
 ## Reference material worth pulling in for a deeper critique pass
 

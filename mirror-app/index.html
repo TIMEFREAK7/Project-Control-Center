@@ -6272,6 +6272,27 @@ a:focus-visible {
       loaded.schema_version = 66;
     }
 
+    // Final safety net, after every versioned step: any top-level collection or settings/meta
+    // key the file simply doesn't have gets its fresh-install default. The versioned steps
+    // above only backfill what each schema bump INTRODUCED, so a file that was hand-edited,
+    // produced by another tool, or saved partially could arrive without e.g. `documents` or
+    // `risks` at all — importing one "succeeded" and then crashed 8 pages with
+    // "Cannot read properties of undefined (reading 'filter')" (2026-09-24 audit). Only ever
+    // ADDS what's missing (undefined/null), never overwrites a value that's there, so it's a
+    // no-op on every normal export and idempotent.
+    var defaults = emptyData();
+    Object.keys(defaults).forEach(function (k) {
+      if (k === "schema_version") return;
+      var def = defaults[k];
+      if (loaded[k] === undefined || loaded[k] === null) {
+        loaded[k] = def;
+      } else if (def && typeof def === "object" && !Array.isArray(def) && typeof loaded[k] === "object" && !Array.isArray(loaded[k])) {
+        Object.keys(def).forEach(function (sk) {
+          if (loaded[k][sk] === undefined) loaded[k][sk] = def[sk];
+        });
+      }
+    });
+
     return loaded;
   }
 

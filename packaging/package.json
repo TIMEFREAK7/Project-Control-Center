@@ -1,14 +1,14 @@
 {
   "name": "project-control-center",
   "private": true,
-  "version": "1.7.0",
+  "version": "1.9.0",
   "description": "Offline-first project and portfolio management, packaged as a native desktop app.",
   "author": "Aditya Abhyankar",
   "main": "electron/main.js",
   "desktopName": "project-control-center.desktop",
   "scripts": {
     "electron:dev": "node scripts/copy-app.js && electron .",
-    "electron:build": "node scripts/copy-app.js && electron-builder"
+    "electron:build": "node scripts/copy-app.js && electron-builder --win"
   },
   "devDependencies": {
     "electron": "^43.4.1",

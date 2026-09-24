@@ -170,9 +170,13 @@ it documents *why* things are shaped the way they are, not just what exists.
   `localStorage` (Phase 12, after hitting the ~5-10MB browser storage quota with photos); every
   other module stays synchronous against `localStorage`. Don't add new things to `blobStore.js`
   unless they're binary blobs — see its own header comment.
-- **Schedule baselines are a separate IndexedDB database** (`scheduleBaselineStore.js`,
-  `pcc_schedule_baselines_v1`) — not inside `blobStore.js`'s DB, for the same reason: keeping
-  `blobStore.js` scoped to binary blobs only.
+- **One IndexedDB database, `pcc_data_v1` (`src/js/sharedIndexedDb.js`), with three object
+  stores:** `blobs` + `content` (via `blobStore.js`) and `snapshots` (schedule baselines, via
+  `scheduleBaselineStore.js`). These used to be two separate databases (`pcc_blobs_v1`,
+  `pcc_schedule_baselines_v1`), consolidated in the PCC Architecture Upgrade's Phase 3; the old
+  names survive only as a one-time migration source in `sharedIndexedDb.js`. Both modules'
+  public APIs are unchanged, and `blobStore.js` still takes only binary blobs: baselines never
+  go through it.
 - Each register module (Risk/Issue/Opportunity, RFI/TQ, Change Orders) follows the same "one
   shape distinguished by a `type` field" pattern rather than near-duplicate modules — follow this
   pattern for any new register-style feature instead of copy-pasting a whole new module.
@@ -296,6 +300,29 @@ it documents *why* things are shaped the way they are, not just what exists.
   `visibilitychange→hidden`** (`flushPendingSave`, also exported). Before this, an edit in
   the last 250ms before closing/reloading was silently lost. Its listeners are guarded,
   because unit tests evaluate `store.js` against a stub `window` with no event API.
+- **Dates: "today" is the LOCAL date, never `new Date().toISOString().slice(0, 10)`.** That's
+  the UTC date, and in IST (UTC+5:30, where this app is used) it still reads "yesterday" until
+  05:30. The 2026-09-24 audit found it in ~30 files: title-block date, record default dates,
+  overdue buckets, the CPM default data date, export stamps. Use `localIsoDate()` (a per-file
+  helper in each plain-JS file, since the engines are unit-tested standalone) or
+  `localTodayIso()`/`localIsoDate()` from `react/src/utils/localDate.ts`. **UTC arithmetic on
+  stored `YYYY-MM-DD` strings stays correct** (`new Date(iso + "T00:00:00Z")` +
+  `setUTCDate`/day numbers): it's timezone-neutral. Only "what day is it now" and "which day
+  does this `Date` object mean" need the local form.
+  - **A `Date` coming out of a spreadsheet goes through `dateCellToIso()`**
+    (`scheduleImportService.js`; same rule in `localDate.ts`). SheetJS builds date cells at
+    local midnight, which in Asia/Kolkata even lands 10 seconds early, so `toISOString()` read
+    every Excel-imported date, and every "Edit Excel" round trip, one day early.
+  - **This suite runs in UTC by default, where both bugs are invisible.** Any date-sensitive
+    test should pin itself to IST like `tests/test_local_dates_ist_e2e.js` does (`process.env.TZ
+    = "Asia/Kolkata"` before any `Date` exists, plus a frozen clock inside the 00:00-05:30
+    window). Running the whole suite with `TZ=Asia/Kolkata npm test` is also worth doing.
+- **`migrate()` ends with a backfill-only safety net**: any top-level collection, or
+  `settings`/`meta` key, that's `undefined`/`null` in the loaded file gets its `emptyData()`
+  default. It never overwrites and is idempotent. The versioned steps only backfill what each
+  bump introduced, so a hand-edited or partial file missing `documents`/`risks` used to crash 8
+  pages after a "successful" import. New schema steps should still backfill their own fields;
+  this net is only for whole missing keys.
 - **Bumping `SCHEMA_VERSION` (`store.js`) needs a matching migration step AND updated test
   fixtures.** Multiple existing tests hardcode the expected final `schema_version` after migrating
   an old dataset (search `assert.strictEqual(data.schema_version,` across `tests/*.js`) — bumping
@@ -559,12 +586,13 @@ section's own adaptive icon gotcha below — it bit both apps' first release, no
   libgd3:amd64=2.3.3-9ubuntu5 libgd3:i386=2.3.3-9ubuntu5 wine wine64 wine32:i386`. If `~/.wine`
   was already created by a failed amd64-only attempt, `rm -rf ~/.wine` first so a fresh
   WOW64-capable prefix gets created.
-- **Build with the platform flag explicit**: `cd packaging && node scripts/copy-app.js && npx
-  electron-builder --win`. The bare `npm run electron:build` script has no `--win` flag and
-  electron-builder defaults to the HOST platform without one — on a Linux sandbox this silently
-  produces a Linux AppImage instead of a Windows installer, with no error. (Worth fixing the npm
-  script itself to always pass `--win`; flagged, not done, since it's outside whatever task
-  prompted the build.)
+- **Build with `cd packaging && npm run electron:build`** — the script is `node
+  scripts/copy-app.js && electron-builder --win`. The `--win` matters: electron-builder
+  defaults to the HOST platform without it, which on a Linux sandbox silently produced a Linux
+  AppImage instead of a Windows installer, with no error. It was added to the script itself
+  on 2026-09-24, which also ended the old contradiction between this bullet (which used to say
+  to run `npx electron-builder --win` by hand) and the "never call electron-builder directly"
+  rule below.
 - No code-signing certificate — deliberate, standing decision (personal use only); the installer
   shows an "Unknown Publisher" SmartScreen warning, which is expected and accepted.
 - **Verify before sending**: extract `app.asar` (`npx asar extract release/win-unpacked/resources/app.asar <dir>`)

@@ -6511,3 +6511,56 @@ attached from another project's meeting saved but was hidden. `files.createFromM
 switches the list too. New `test_documents_callers_e2e.js` covers Project Workspace → Documents
 and Meeting → Attach Document with a cross-project, newest-document decoy (confirmed to fail
 without the fix). Suite: 125 files, 2,784 checks, 0 failures.
+
+## Full-project audit + fixes (2026-09-24)
+
+Aditya asked for an extensive hunt for hidden bugs across the whole project. Every finding
+below was reproduced (jsdom, real Chromium, or a timezone-pinned run) before being fixed, and
+every fix has a regression check confirmed to FAIL on the pre-fix build.
+
+**What was checked and found clean**: all 1,010 cross-module `window.PCC.<module>.<method>`
+calls resolve (main app and mirror app); build order, routes, pages and test registration are
+consistent; every status/label map matches the store; export → import is lossless across all 43
+record types and `migrate()` is idempotent; 29 routes × 2 contexts with hostile data (HTML/script
+in names, very long text, blank and bad values) render with no crash, no injected markup and no
+"NaN"/"undefined"; both report types escape correctly; the CPM engine matched an independent
+reference implementation on 2,000 random networks (all four link types, negative lags,
+milestones).
+
+**Fixed, group 1 (security, data loss, phone layout)**
+- Word previews ran code: a real .docx with a `javascript:` link executed in the app when
+  clicked. Previews are now parsed inertly and sanitized (`fileViewer.sanitizePreviewHtml`).
+  In the Windows app, `main.js` now keeps the window on the app (no `window.open`, no navigation
+  away; `http(s)`/`mailto` go to the OS), and the mirror IPC writes only `pcc-mirror.json`, so
+  injected script can't drop an executable anywhere on disk.
+- Knowledge Base "open file" used `window.open(blob:)`, which has no "new tab" in the
+  Android/Electron WebViews. It now uses the in-app viewer.
+- An edit made in the last 250ms before closing/reloading was lost. Pending saves are now
+  written on `pagehide`/`beforeunload`/background.
+- Phones: a long project name made the toolbar's project filter 522px wide, scrolling 18 pages
+  sideways at 412px. Delay Register rows also overflowed. Both fixed.
+
+**Fixed, group 2 (dates)**
+- "Today" was the UTC date in ~30 files, so in IST the app read yesterday's date until 05:30
+  (title bar, default dates, overdue buckets, CPM data date, export stamps).
+- Excel schedule imports put every date one day early anywhere east of UTC (SheetJS local
+  midnight + `toISOString()`), including every "Edit Excel" round trip. Found while fixing the
+  first date bug; it wasn't in the original audit list.
+
+**Fixed, group 3 (robustness, docs, config)**
+- A file missing whole collections (e.g. no `documents`) imported "successfully" then crashed 8
+  pages; `migrate()` now backfills missing keys (add-only).
+- Unknown `#/routes` made React throw during teardown; the router's early wipe was removed.
+- Stale/contradictory docs corrected (IndexedDB layout, installer build instructions,
+  reduced-motion claim). `electron:build` now passes `--win`. The Windows app version was
+  aligned to 1.9.0.
+
+**Not done**: no Content Security Policy. The app is one file of inline scripts, so a CSP
+would have to allow inline script, which removes most of its value. The sanitizer plus the
+Electron navigation guard close the path that was actually reproduced. The Electron guard was
+tested as pure functions, not in a running Electron process.
+
+**Verified**: suite passes in both UTC and IST (see HANDOFF.md for counts). New tests:
+`test_navigation_guard.js`, `test_audit_fixes_group1_e2e.js`, `test_local_dates_ist_e2e.js`,
+`test_audit_fixes_group3_e2e.js`, plus a mirror-filename check. Real-Chromium sweep of every route
+at 1440px and 412px: no errors, no sideways overflow.
