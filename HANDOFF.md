@@ -7387,3 +7387,39 @@ Built anyway as a default-off override for when the device and the work location
 - **Gotcha**: ICU (Node + Chromium) reports India as `Asia/Calcutta`, not `Asia/Kolkata`. Same
   zone; the Settings "Automatic — this device (…)" label maps a few such old names to current
   ones for display only (`settingsService.ts`'s `DISPLAY_ZONE_NAMES`).
+
+## 2026-09-24: release builds — Windows 1.10.0, Android 1.10 (code 11), At a Glance 1.8 (code 9)
+
+Built with the keystore backups Aditya supplied (verified before use: main cert SHA-256
+`3b:48:02:e2:…:9c:e9` matches its README; mirror `f9:eb:e3:fc:…:a8:0c` matches the value recorded
+in this file). Everything in the audit fixes + Time zone setting is in these builds.
+
+| Artifact | SHA-256 |
+|---|---|
+| `PCC-Setup-1.10.0.exe` (106 MB, sent as 5 × `.partNN`) | `f4e1612f9c88f3e858d986a797f8b1b292250a76f5605930e2300cb35c2237c7` |
+| `PCC-Android-1.10.apk` (`com.pcc.projectcontrolcenter`, versionCode 11) | `8d4d5db8fbd10826f476b61bc476a472973d1a54dc0e313dc617c77cd76d14aa` |
+| `PCC-AtAGlance-1.8.apk` (`…mirror`, versionCode 9) | `486f88916a082e5dcf8ce6341feb00c60e1226a879c8eeb4f27a1855e676b7b4` |
+
+- **Verified**: the EXE's embedded `electron/index.html` and both APKs' `assets/public/index.html`
+  are byte-identical to the repo builds. Both APKs pass `apksigner verify` (v2), with the
+  expected distinct signer certs, and `zipalign -c`. `aapt` confirms package/version. Both
+  launcher foreground icons are the real logos. The EXE split reassembles to the identical
+  hash.
+- **New: the security guards were confirmed in REAL Electron** (see CLAUDE.md for how). Told to
+  navigate to a website, the window stayed on `index.html`. `window.open` (web and blob) returned
+  null, with one window total. `writeMirrorFile("/tmp", "startup.bat", …)` was refused and
+  nothing was written.
+- **Sandbox setup this time**: Android SDK bootstrapped to `/home/user/android-sdk` (JDK 21 was
+  already present). Wine installed with the documented `libgd3` pin (the ondrej/php PPA was
+  present). **Maven Central 429'd every request and retries didn't help.** Fixed with this
+  sandbox-only init script at `~/.gradle/init.d/maven-central-mirror.gradle`:
+  ```groovy
+  def MIRROR = "https://maven-central.storage-download.googleapis.com/maven2/"
+  def redirect = { repos -> repos.configureEach { r ->
+    if (r instanceof MavenArtifactRepository && r.url.toString().startsWith("https://repo.maven.apache.org")) r.url = MIRROR } }
+  beforeSettings { s -> redirect(s.pluginManagement.repositories); redirect(s.dependencyResolutionManagement.repositories) }
+  allprojects { p -> redirect(p.buildscript.repositories); redirect(p.repositories) }
+  ```
+- **Versions**: Windows `packaging/package.json` 1.9.0 → 1.10.0 (in step with main Android
+  1.10); main Android versionCode 10 → 11; mirror 8 → 9 / "1.7" → "1.8". Keystores were copied
+  into the gitignored app dirs for the build and deleted afterwards.

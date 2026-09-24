@@ -612,6 +612,13 @@ section's own adaptive icon gotcha below — it bit both apps' first release, no
   shows an "Unknown Publisher" SmartScreen warning, which is expected and accepted.
 - **Verify before sending**: extract `app.asar` (`npx asar extract release/win-unpacked/resources/app.asar <dir>`)
   and `diff` its `electron/index.html` against the repo root's fresh build — must be byte-identical.
+- **The real Electron app CAN be driven in this container** (first done 2026-09-24), not just its
+  pure helpers: download the Linux Electron build matching `packaging/node_modules/electron`'s
+  version straight from GitHub releases (`electron-v<ver>-linux-x64.zip` into
+  `node_modules/electron/dist/`, plus `path.txt` = `electron`). The package's own `install.js`
+  failed behind the sandbox proxy. Then launch `packaging/electron/main.js` with Playwright's
+  `_electron.launch()` under `xvfb-run -a`. That's how the navigation guard, `window.open`
+  denial and mirror-filename lock were confirmed end to end.
 
 **Requirements — Android (.apk, built via Capacitor + Gradle):**
 - JDK 21 (`JAVA_HOME`), and an Android SDK with `platform-tools`, `platforms;android-36`,
@@ -630,10 +637,15 @@ section's own adaptive icon gotcha below — it bit both apps' first release, no
   building — see the dedicated bullet below, this is a real, previously-shipped bug.
 - `cd packaging/android && npm install` (first time only), then `npm run android:build:release`
   (runs `copy-app.js` + `cap sync android` + `gradlew assembleRelease`).
-- **Maven Central can return HTTP 429 (Too Many Requests) on a cold Gradle cache** — this has been
-  transient and self-resolving every time it's happened (each retry reuses already-cached
-  artifacts and has fewer failures than the last). Just retry; add a short `sleep` and
-  `--max-workers=1` if it recurs. Not a sign the SDK/toolchain setup is broken.
+- **Maven Central can return HTTP 429 (Too Many Requests) on a cold Gradle cache.** Usually
+  transient (retry with a short `sleep` and `--max-workers=1`), **but on 2026-09-24 it wasn't**:
+  three retries failed on the identical 7 requests, and `curl` confirmed every Maven Central
+  request from the container returned 429. Fix that worked first time: a sandbox-only Gradle
+  init script, `~/.gradle/init.d/maven-central-mirror.gradle` (never in the repo), that
+  rewrites every `https://repo.maven.apache.org` repository (settings, buildscript and project
+  levels) to Google's official mirror `https://maven-central.storage-download.googleapis.com/maven2/`.
+  The full script is in HANDOFF.md's 2026-09-24 build section. Check with `curl -s -o /dev/null
+  -w '%{http_code}'` against both hosts before assuming it's transient.
 - **A `gradlew ... | tee build.log` pipeline reports `tee`'s exit code, not gradle's** — a failed
   build can still show exit code 0 to a caller checking `$?` afterward. Grep the log for `BUILD
   SUCCESSFUL`/`BUILD FAILED`, or check `${PIPESTATUS[0]}` right after the pipeline, don't trust a
