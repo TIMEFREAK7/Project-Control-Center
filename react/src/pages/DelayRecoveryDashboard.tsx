@@ -213,9 +213,13 @@ function DelayRegisterRow({
         padding: "8px 0",
         borderBottom: "1px solid var(--divider)",
         fontSize: "var(--text-sm)",
+        // Wraps the badge/button group below the text on a phone: it's ~365px wide on its
+        // own and scrolled the page sideways at 412px (2026-09-24 audit). On desktop the
+        // 240px text basis + badges fit on one line, so nothing changes there.
+        flexWrap: "wrap",
       }}
     >
-      <div>
+      <div style={{ flex: "1 1 240px", minWidth: 0 }}>
         <strong>{r.description}</strong>
         <p className="text-secondary" style={{ fontSize: 12, margin: "4px 0 0" }}>
           {activityLine} — {project ? project.name || "(unnamed project)" : "(deleted project)"}
@@ -231,7 +235,7 @@ function DelayRegisterRow({
         </p>
         <DelayRegisterComments r={r} refresh={refresh} />
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
         <span className={"status-badge status-badge--" + (r.is_excusable ? "complete" : "at_risk")} style={{ fontSize: "var(--text-xs)" }}>
           {r.is_excusable ? "Excusable" : "Non-Excusable"}
         </span>

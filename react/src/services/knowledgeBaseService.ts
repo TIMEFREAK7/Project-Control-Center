@@ -84,11 +84,10 @@ export function openArticleFile(article: PCCKnowledgeBaseArticle): void {
       var bytes = new Uint8Array(binary.length);
       for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
       var blob = new Blob([bytes], { type: mime });
-      var url = URL.createObjectURL(blob);
-      window.open(url, "_blank");
-      window.setTimeout(function () {
-        URL.revokeObjectURL(url);
-      }, 30000);
+      // The in-app viewer, like Documents/Daily Log/Vendors — not window.open(blob:): a
+      // bare WebView (Android, Electron) has no "new tab" to open, and the Windows app
+      // deliberately refuses non-web popups (packaging/electron/navigationGuard.js).
+      window.PCC.fileViewer.open({ filename: article.filename || article.title || "file", mimeType: mime, blob: blob });
     })
     .catch(function (e: Error) {
       window.PCC.notify("Could not open this file: " + e.message, "error");

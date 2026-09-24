@@ -1,7 +1,8 @@
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, shell } = require("electron");
 const path = require("node:path");
 const { computeRelocatedPath, migrateIfNeeded } = require("./relocateStorage");
 const { writeMirrorFile } = require("./mirrorFileWriter");
+const { isExternalUrl, isSameDocument } = require("./navigationGuard");
 const { ollamaGenerate, ollamaListModels } = require("./ollamaClient");
 
 // One-way hourly data mirror (Phase 4): the renderer is contextIsolated with no direct
@@ -88,6 +89,19 @@ function createWindow() {
   // index.html here is a build-time copy of the repo root's self-contained bundle —
   // see ../scripts/copy-app.js. Never hand-edit it; it's overwritten on every build.
   win.loadFile(path.join(__dirname, "index.html"));
+
+  // Keep this window on the app itself (see navigationGuard.js for why): web/mail links
+  // open in the system browser/mail client, anything else is refused outright, and no
+  // link can ever open a second window carrying the preload bridge.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (isExternalUrl(url)) shell.openExternal(url);
+    return { action: "deny" };
+  });
+  win.webContents.on("will-navigate", (event, url) => {
+    if (isSameDocument(url, win.webContents.getURL())) return;
+    event.preventDefault();
+    if (isExternalUrl(url)) shell.openExternal(url);
+  });
 
   // One-way hourly data mirror (Phase 4): give the renderer one chance to write a final
   // mirror snapshot before the window actually closes. Hooked on the window's own

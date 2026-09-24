@@ -3328,7 +3328,36 @@
   function scheduleSave() {
     notifyListeners();
     if (saveTimer) window.clearTimeout(saveTimer);
-    saveTimer = window.setTimeout(persistToLocalStorage, 250);
+    saveTimer = window.setTimeout(function () {
+      saveTimer = null;
+      persistToLocalStorage();
+    }, 250);
+  }
+
+  /** Writes a still-pending debounced save immediately. Without this, an edit made in the
+   * last 250ms before the page closed, reloaded, or the app was backgrounded (and then
+   * killed by Android) was silently lost — reproduced in real Chromium during the
+   * 2026-09-24 audit. `pagehide` covers close/reload/navigation (including bfcache, where
+   * `beforeunload` may not fire); `visibilitychange` → hidden covers a mobile app being
+   * sent to the background, which is often the last event before the OS kills it. */
+  function flushPendingSave() {
+    if (!saveTimer) return;
+    window.clearTimeout(saveTimer);
+    saveTimer = null;
+    persistToLocalStorage();
+  }
+
+  // Guarded: several unit tests evaluate store.js against a minimal stub `window` with no
+  // event API (e.g. tests/test_store_schema_v54_migration.js) — there's nothing to flush
+  // on close there, so skipping the hooks is correct, not a workaround.
+  if (typeof window.addEventListener === "function") {
+    window.addEventListener("pagehide", flushPendingSave);
+    window.addEventListener("beforeunload", flushPendingSave);
+  }
+  if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState === "hidden") flushPendingSave();
+    });
   }
 
   function load() {
@@ -3665,6 +3694,7 @@
     // to MOVE blobs out of the JSON into IndexedDB, the opposite of what a stateless
     // read-only viewer wants — it just needs the migrated object with blobs still inline).
     migrate: migrate,
+    flushPendingSave: flushPendingSave,
     onChange: onChange,
     onPersisted: onPersisted,
     getLastUsedName: getLastUsedName,

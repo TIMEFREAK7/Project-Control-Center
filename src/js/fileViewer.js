@@ -169,6 +169,57 @@
       });
   }
 
+  /* Word-document HTML (mammoth's output) comes straight from a user-supplied file, so it
+   * is untrusted: a real .docx can carry a `javascript:` hyperlink that ran code in the app
+   * when clicked (reproduced in the 2026-09-24 audit), and in the Windows app that code
+   * could reach the Electron bridge. Parsed in an INERT document first (DOMParser runs no
+   * scripts and loads no resources — assigning to a live element's innerHTML would already
+   * fire e.g. an <img onerror> before any cleanup could run), then reduced to what a
+   * preview needs: no active elements, no on* attributes, only web/mail/in-page links,
+   * only embedded (data:) images. */
+  var PREVIEW_DROP_TAGS = ["script", "iframe", "frame", "object", "embed", "link", "meta", "style", "base", "form", "input", "button", "textarea", "select", "svg", "math", "template"];
+  var PREVIEW_LINK_PROTOCOLS = ["http:", "https:", "mailto:"];
+
+  function isSafePreviewHref(href) {
+    var h = String(href || "").trim();
+    if (h.charAt(0) === "#") return true;
+    try {
+      return PREVIEW_LINK_PROTOCOLS.indexOf(new URL(h).protocol) !== -1;
+    } catch (e) {
+      return false; // relative or unparseable — nothing sensible to open from a preview
+    }
+  }
+
+  function sanitizePreviewHtml(html) {
+    var parsed = new DOMParser().parseFromString(String(html || ""), "text/html");
+    PREVIEW_DROP_TAGS.forEach(function (tag) {
+      Array.prototype.slice.call(parsed.body.getElementsByTagName(tag)).forEach(function (el) {
+        el.remove();
+      });
+    });
+    Array.prototype.forEach.call(parsed.body.querySelectorAll("*"), function (el) {
+      Array.prototype.slice.call(el.attributes).forEach(function (attr) {
+        var name = attr.name.toLowerCase();
+        if (name.indexOf("on") === 0 || name === "style" || name === "srcset" || name === "formaction") el.removeAttribute(attr.name);
+      });
+      if (el.tagName === "A") {
+        if (el.hasAttribute("href") && !isSafePreviewHref(el.getAttribute("href"))) el.removeAttribute("href");
+        if (el.hasAttribute("href") && el.getAttribute("href").charAt(0) !== "#") {
+          el.setAttribute("target", "_blank");
+          el.setAttribute("rel", "noopener noreferrer");
+        }
+      } else if (el.hasAttribute("href")) {
+        el.removeAttribute("href");
+      }
+      if (el.hasAttribute("src") && !/^data:image\//i.test(el.getAttribute("src"))) el.removeAttribute("src");
+    });
+    var fragment = document.createDocumentFragment();
+    Array.prototype.slice.call(parsed.body.childNodes).forEach(function (node) {
+      fragment.appendChild(document.importNode(node, true));
+    });
+    return fragment;
+  }
+
   function renderDocx(body, blob) {
     blob
       .arrayBuffer()
@@ -179,7 +230,14 @@
         body.innerHTML = "";
         var content = document.createElement("div");
         content.className = "file-viewer-docx";
-        content.innerHTML = result.value || "<p class=\"text-secondary\">(empty document)</p>";
+        if (result.value) {
+          content.appendChild(sanitizePreviewHtml(result.value));
+        } else {
+          var empty = document.createElement("p");
+          empty.className = "text-secondary";
+          empty.textContent = "(empty document)";
+          content.appendChild(empty);
+        }
         body.appendChild(content);
       })
       .catch(function (e) {
@@ -263,5 +321,10 @@
     }
   }
 
-  window.PCC.fileViewer = { open: open, close: closeViewer };
+  window.PCC.fileViewer = {
+    open: open,
+    close: closeViewer,
+    // Exposed for tests (tests/test_file_viewer_security_e2e.js), not for other modules.
+    sanitizePreviewHtml: sanitizePreviewHtml,
+  };
 })();

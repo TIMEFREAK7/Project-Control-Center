@@ -1227,6 +1227,15 @@ a:focus-visible {
   min-width: 160px;
 }
 
+/* A <select> sizes itself to its LONGEST option, so one long project name (the "Filter by
+   project" dropdown lists every project) made this 522px wide on a 412px phone and scrolled
+   18 pages sideways (2026-09-24 audit, real Chromium). Capping it at the row's width lets
+   the browser truncate the visible label instead; the open list still shows full names. */
+.toolbar select {
+  max-width: 100%;
+  min-width: 0;
+}
+
 .toolbar__spacer {
   flex: 1 1 auto;
 }

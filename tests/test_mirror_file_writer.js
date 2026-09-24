@@ -60,5 +60,13 @@ check("rejects a missing/empty filename", () => {
   assert.throws(() => writeMirrorFile(dir, undefined, "x"), /[Ii]nvalid.*filename/);
 });
 
+check("rejects every filename other than pcc-mirror.json, so injected script can't drop an executable (2026-09-24 audit)", () => {
+  const dir = freshTempDir();
+  ["evil.bat", "pcc-mirror.json.bat", "PCC-MIRROR.JSON", "startup.lnk", "pcc-mirror.js"].forEach((name) => {
+    assert.throws(() => writeMirrorFile(dir, name, "x"), /[Ii]nvalid.*filename/, name);
+    assert.ok(!fs.existsSync(path.join(dir, name)), name + " must not have been written");
+  });
+});
+
 console.log("\n" + passed + " passed, " + failed + " failed");
 process.exit(failed > 0 ? 1 : 0);

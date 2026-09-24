@@ -274,6 +274,28 @@ it documents *why* things are shaped the way they are, not just what exists.
   0px and scrolled the page sideways by 12px (caught in real Chromium, not jsdom). New
   shell-level actions go in the nav drawer at phone width (`.icon-btn--hide-mobile` on the
   title-block copy), like the palette's own entry point.
+- **Security rules from the 2026-09-24 audit (a real exploit path was found and fixed):**
+  - **Treat content from user-supplied files as untrusted HTML.** A real .docx with a
+    `javascript:` hyperlink ran code in the app when clicked in the Word preview. Anything
+    derived from a file's contents goes through `fileViewer.sanitizePreviewHtml()` (parses in
+    an inert `DOMParser` document, then drops active elements, `on*`/`style` attributes,
+    non-`http(s)`/`mailto`/`#` links and non-`data:` images). Never assign such HTML to
+    `innerHTML` directly: that fires `<img onerror>` before any later cleanup can run.
+  - **Electron: the window never leaves the app.** `packaging/electron/navigationGuard.js` +
+    `main.js` deny every `window.open` and every navigation away from `index.html`
+    (`#hash` routing is in-page and unaffected); `http(s)`/`mailto` links go to the OS via
+    `shell.openExternal`. So **never open files with `window.open(blob:)`**: it's refused in
+    Electron and has no "new tab" in the Android WebView. Use `window.PCC.fileViewer.open()`
+    (Knowledge Base was the last caller that didn't).
+  - **The mirror IPC writes exactly `pcc-mirror.json` and nothing else**
+    (`mirrorFileWriter.js`'s `ALLOWED_FILENAME`). The folder is renderer-supplied free text,
+    so the filename lock is what stops injected script from dropping an executable (e.g. in
+    the Windows Startup folder). Adding a second mirror file means extending that allowlist
+    deliberately.
+- **`store.js` writes a pending debounced save on `pagehide`/`beforeunload`/
+  `visibilitychange→hidden`** (`flushPendingSave`, also exported). Before this, an edit in
+  the last 250ms before closing/reloading was silently lost. Its listeners are guarded,
+  because unit tests evaluate `store.js` against a stub `window` with no event API.
 - **Bumping `SCHEMA_VERSION` (`store.js`) needs a matching migration step AND updated test
   fixtures.** Multiple existing tests hardcode the expected final `schema_version` after migrating
   an old dataset (search `assert.strictEqual(data.schema_version,` across `tests/*.js`) — bumping
