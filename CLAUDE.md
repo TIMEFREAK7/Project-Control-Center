@@ -305,7 +305,18 @@ it documents *why* things are shaped the way they are, not just what exists.
   05:30. The 2026-09-24 audit found it in ~30 files: title-block date, record default dates,
   overdue buckets, the CPM default data date, export stamps. Use `localIsoDate()` (a per-file
   helper in each plain-JS file, since the engines are unit-tested standalone) or
-  `localTodayIso()`/`localIsoDate()` from `react/src/utils/localDate.ts`. **UTC arithmetic on
+  `localTodayIso()`/`localIsoDate()` from `react/src/utils/localDate.ts`.
+  - **"Local" means the user's chosen zone (Settings → Time zone, `settings.time_zone`, schema
+    v67; `""` = Automatic = this device).** The one implementation is `window.PCC.dates` at the
+    top of `store.js` (store.js is the module every app loads, mirror-app included, and it owns
+    `settings`). Every per-file `localIsoDate()` and `localDate.ts` DELEGATE to it and only fall
+    back to the device clock when it's absent. **Displaying a date or timestamp goes through
+    `formatDate()`/`formatDateTime()`/`formatTime()`** (`window.PCC.dates` or `localDate.ts`),
+    never a bare `toLocale*String()`. That's what makes displayed times follow the setting, and
+    `formatDate("YYYY-MM-DD")` shows the calendar date unshifted in every zone. The old
+    `new Date("2026-09-24").toLocaleDateString()` parsed it as UTC midnight and showed the 23rd
+    anywhere west of UTC. An invalid zone stored in a file (e.g. from a device that knows a
+    zone this one doesn't) falls back to Automatic, never throws. **UTC arithmetic on
   stored `YYYY-MM-DD` strings stays correct** (`new Date(iso + "T00:00:00Z")` +
   `setUTCDate`/day numbers): it's timezone-neutral. Only "what day is it now" and "which day
   does this `Date` object mean" need the local form.
@@ -313,6 +324,9 @@ it documents *why* things are shaped the way they are, not just what exists.
     (`scheduleImportService.js`; same rule in `localDate.ts`). SheetJS builds date cells at
     local midnight, which in Asia/Kolkata even lands 10 seconds early, so `toISOString()` read
     every Excel-imported date, and every "Edit Excel" round trip, one day early.
+    **`dateCellToIso()` is deliberately DEVICE-local and ignores the Time zone setting**:
+    SheetJS builds the cell in the device's zone whatever the setting says, so reading it in
+    the chosen zone would shift it (`test_time_zone_setting_e2e.js` pins this).
   - **This suite runs in UTC by default, where both bugs are invisible.** Any date-sensitive
     test should pin itself to IST like `tests/test_local_dates_ist_e2e.js` does (`process.env.TZ
     = "Asia/Kolkata"` before any `Date` exists, plus a frozen clock inside the 00:00-05:30
@@ -328,8 +342,9 @@ it documents *why* things are shaped the way they are, not just what exists.
   an old dataset (search `assert.strictEqual(data.schema_version,` across `tests/*.js`) — bumping
   the constant without updating those breaks otherwise-unrelated tests in confusing ways (last
   time, ~36 assertions across the suite, not just the couple of files this note used to name).
-  Current version is **66** (`settings.ollama_enabled`/`ollama_host`/`ollama_model` for the
-  Ollama AI integration — see "Ollama AI integration" above) — see
+  Current version is **67** (`settings.time_zone` for Settings → Time zone, added 2026-09-24;
+  v66 was `settings.ollama_enabled`/`ollama_host`/`ollama_model` for the Ollama AI integration —
+  see "Ollama AI integration" above) — see
   `tests/test_store_schema_v54_migration.js` for the migration test pattern to copy for the next
   bump. `store.js` also exports `migrate: migrate` on `window.PCC.store` (purely additive, zero
   behavior change to the main app) specifically so `mirror-app/` can reuse the real migration

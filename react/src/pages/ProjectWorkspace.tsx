@@ -36,6 +36,7 @@ import {
 } from "../services/projectWorkspaceService";
 import type { NavGroup, ProjectStats, AttentionItem, DatedItem } from "../services/projectWorkspaceService";
 import type { PCCProject, PCCStoreData } from "../types/pcc";
+import { formatDate } from "../utils/localDate";
 
 function VitalChip({ label, value, colorVar }: { label: string; value: string; colorVar?: string | null }) {
   return (
@@ -178,7 +179,7 @@ function ListPanel({ title, items, dateMono }: { title: string; items: DatedItem
               {dateMono ? (
                 <span className="mono text-secondary">{i.date}</span>
               ) : (
-                <span className="text-secondary">{new Date(i.date).toLocaleDateString()}</span>
+                <span className="text-secondary">{formatDate(i.date)}</span>
               )}
               {" — " + i.text}
             </div>

@@ -69,7 +69,7 @@ async function check(label, fn) {
       if (Array.isArray(fresh[k])) assert.ok(Array.isArray(m[k]), "missing collection: " + k);
     });
     Object.keys(fresh.settings).forEach((k) => assert.ok(k in m.settings, "missing setting: " + k));
-    assert.strictEqual(m.schema_version, 66);
+    assert.strictEqual(m.schema_version, 67);
   });
 
   await check("…but never overwrites a value that's already there", () => {

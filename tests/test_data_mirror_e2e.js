@@ -128,7 +128,7 @@ function enableMirror(win, folderPath) {
     assert.strictEqual(writtenArgs.folderPath, "C:\\Users\\test\\PCC-Sync");
     assert.strictEqual(writtenArgs.filename, "pcc-mirror.json");
     const parsed = JSON.parse(writtenArgs.content);
-    assert.strictEqual(parsed.schema_version, 66);
+    assert.strictEqual(parsed.schema_version, 67);
     assert.ok(parsed.projects.some((p) => p.name === "Mirror Test Project"));
   });
 

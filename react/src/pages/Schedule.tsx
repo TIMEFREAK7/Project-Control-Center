@@ -128,7 +128,7 @@ import type {
   ImportFileInfo,
   DelayActivityImpact,
 } from "../types/pcc";
-import { dateCellToIso } from "../utils/localDate";
+import { dateCellToIso, formatDate, formatDateTime } from "../utils/localDate";
 
 interface ScheduleFormProps {
   schedule: PCCSchedule;
@@ -2243,7 +2243,7 @@ function ImportPanel({ data, projectId, onDone, onImported }: ImportPanelProps) 
           <p style={{ fontWeight: 600, fontSize: "var(--text-sm)" }}>This file looks like it may have been imported before</p>
           {duplicateMatches.map((m, i) => (
             <p key={i} style={{ fontSize: "var(--text-sm)", marginTop: "var(--space-2)" }}>
-              <strong>{m.record.name}</strong> (Rev {m.record.revision_number}) — imported {m.record.import_date ? new Date(m.record.import_date).toLocaleDateString() : "unknown date"}
+              <strong>{m.record.name}</strong> (Rev {m.record.revision_number}) — imported {m.record.import_date ? formatDate(m.record.import_date) : "unknown date"}
               <br />
               <span className="text-secondary">{m.reason}</span>
             </p>
@@ -3673,7 +3673,7 @@ function DelayTimeline({ delayRecord }: DelayTimelineProps) {
       </summary>
       <div style={{ marginTop: 4 }}>
         {history.map((entry, i) => {
-          const when = entry.changed_at ? new Date(entry.changed_at).toLocaleDateString() : "—";
+          const when = entry.changed_at ? formatDate(entry.changed_at) : "—";
           return (
             <div key={i} className="text-secondary" style={{ fontSize: "var(--text-xs)", marginTop: 2 }}>
               {when + " — " + (DELAY_STATUS_LABELS[entry.status] || entry.status) + (entry.note ? ": " + entry.note : "")}
@@ -3705,7 +3705,7 @@ function DelayCommentThread({ delayRecord, refresh }: { delayRecord: PCCDelayRec
         {comments.map((c) => (
           <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginTop: 4 }}>
             <div style={{ fontSize: "var(--text-xs)" }}>
-              <span className="text-secondary">{new Date(c.created_at).toLocaleString()}</span> — {c.text}
+              <span className="text-secondary">{formatDateTime(c.created_at)}</span> — {c.text}
             </div>
             <button
               type="button"
@@ -4453,7 +4453,7 @@ function BaselineRow({ b, scheduleId, refresh }: BaselineRowProps) {
               {b.is_official ? <span className="status-badge status-badge--complete">Official</span> : null}
               <br />
               <span className="text-secondary" style={{ fontSize: 12 }}>
-                Captured {new Date(b.captured_at || "").toLocaleString()} · {b.activity_count} activities · from Rev {b.schedule_revision_number}
+                Captured {formatDateTime(b.captured_at)} · {b.activity_count} activities · from Rev {b.schedule_revision_number}
                 {b.baseline_project_finish ? " · project finish at capture " + b.baseline_project_finish : ""}
               </span>
             </React.Fragment>

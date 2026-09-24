@@ -23,6 +23,33 @@ export function updateSettings(mutator: (settings: PCCSettings) => void): void {
   });
 }
 
+/** Time zone choices for Settings → Time zone (IANA names; the full list where the
+ * browser can enumerate them, else a short common list). */
+export function listTimeZones(): string[] {
+  return window.PCC.dates ? window.PCC.dates.listTimeZones() : [];
+}
+
+// ICU (Chromium, Node) still reports a few zones under their pre-rename names; for the
+// "Automatic — this device (…)" LABEL only, show the name people recognise today.
+var DISPLAY_ZONE_NAMES: { [tz: string]: string } = {
+  "Asia/Calcutta": "Asia/Kolkata",
+  "Asia/Saigon": "Asia/Ho_Chi_Minh",
+  "Asia/Katmandu": "Asia/Kathmandu",
+  "Asia/Rangoon": "Asia/Yangon",
+  "Europe/Kiev": "Europe/Kyiv",
+};
+
+/** This device's own zone — what "Automatic" means — for display. */
+export function deviceTimeZone(): string {
+  var tz = window.PCC.dates ? window.PCC.dates.deviceTimeZone() : "";
+  return DISPLAY_ZONE_NAMES[tz] || tz;
+}
+
+/** The time right now in the zone currently in effect, for the Settings preview line. */
+export function nowInEffectiveZone(): string {
+  return window.PCC.dates ? window.PCC.dates.formatDateTime(new Date()) : new Date().toLocaleString();
+}
+
 export function refreshTitleBlock(): void {
   window.PCC.layout.refreshTitleBlock();
 }

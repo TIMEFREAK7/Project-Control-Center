@@ -45,6 +45,7 @@ import type {
   DiagnosticAlert,
   NamedRef,
 } from "../types/pcc";
+import { formatDate } from "../utils/localDate";
 
 // ===== Small shared pieces =====
 
@@ -660,7 +661,7 @@ function RecentActivityPanel({ ctx }: { ctx: PopulatedProjectContext }) {
       ) : (
         sortedItems.map((i, idx) => (
           <div key={idx} style={{ fontSize: "var(--text-sm)", marginBottom: "var(--space-2)" }}>
-            <span className="text-secondary">{new Date(i.date as string).toLocaleDateString()}</span> — {i.text}
+            <span className="text-secondary">{formatDate(i.date as string)}</span> — {i.text}
           </div>
         ))
       )}

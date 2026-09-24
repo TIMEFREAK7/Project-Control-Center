@@ -102,6 +102,10 @@
   // 2026-09-24 audit found that across ~30 files. Per-file copy, per this repo's
   // per-module-helpers convention (engines are also unit-tested standalone).
   function localIsoDate(d) {
+    // The user's chosen time zone (Settings → Time zone) lives in store.js's
+    // window.PCC.dates; fall back to the device clock when that isn't loaded (this file is
+    // also unit-tested standalone).
+    if (window.PCC && window.PCC.dates) return window.PCC.dates.localIsoDate(d);
     var dt = d || new Date();
     return dt.getFullYear() + "-" + String(dt.getMonth() + 1).padStart(2, "0") + "-" + String(dt.getDate()).padStart(2, "0");
   }

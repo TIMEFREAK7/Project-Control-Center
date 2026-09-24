@@ -6,6 +6,10 @@
   // 2026-09-24 audit found that across ~30 files. Per-file copy, per this repo's
   // per-module-helpers convention (engines are also unit-tested standalone).
   function localIsoDate(d) {
+    // The user's chosen time zone (Settings → Time zone) lives in store.js's
+    // window.PCC.dates; fall back to the device clock when that isn't loaded (this file is
+    // also unit-tested standalone).
+    if (window.PCC && window.PCC.dates) return window.PCC.dates.localIsoDate(d);
     var dt = d || new Date();
     return dt.getFullYear() + "-" + String(dt.getMonth() + 1).padStart(2, "0") + "-" + String(dt.getDate()).padStart(2, "0");
   }
@@ -326,6 +330,7 @@
   }
 
   function setActiveNav(routeName) {
+    refreshTitleBlockDate();
     var links = document.querySelectorAll(".sidebar__link");
     links.forEach(function (link) {
       link.classList.toggle("active", link.getAttribute("data-route") === routeName);
@@ -814,7 +819,7 @@
 
     var data = window.PCC.store.get();
     header.appendChild(cell("COMPANY", data.settings.company_name || "\u2014", { id: "title-block-company" }));
-    header.appendChild(cell("DATE", localIsoDate()));
+    header.appendChild(cell("DATE", localIsoDate(), { id: "title-block-date" }));
 
     var actions = document.createElement("div");
     actions.className = "title-block__actions";
@@ -1212,11 +1217,19 @@
 
     window.PCC.store.onPersisted(function (data, ok) {
       var status = document.getElementById("footer-save-status");
-      if (status) status.textContent = ok ? "SAVED \u00b7 " + new Date().toLocaleTimeString() : "NOT SAVED \u2014 see notification";
+      if (status) status.textContent = ok ? "SAVED \u00b7 " + (window.PCC.dates ? window.PCC.dates.formatTime(new Date()) : new Date().toLocaleTimeString()) : "NOT SAVED \u2014 see notification";
     });
   }
 
+  // Keeps the title-block DATE current: after a Settings time-zone change, and past midnight
+  // in a long-open session (called on every route change via setActiveNav too).
+  function refreshTitleBlockDate() {
+    var dateEl = document.getElementById("title-block-date");
+    if (dateEl) dateEl.textContent = localIsoDate();
+  }
+
   function refreshTitleBlock() {
+    refreshTitleBlockDate();
     var companyEl = document.getElementById("title-block-company");
     if (companyEl) companyEl.textContent = window.PCC.store.get().settings.company_name || "\u2014";
     populateContextSelects();

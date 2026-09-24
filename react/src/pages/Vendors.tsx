@@ -94,6 +94,7 @@ import type {
   PCCRisk,
   PCCActivity,
 } from "../types/pcc";
+import { formatDate, formatDateTime } from "../utils/localDate";
 
 function statusBadgeClass(status: string | undefined): string {
   if (status === "preferred") return "status-badge status-badge--on_track";
@@ -449,13 +450,13 @@ function Dashboard({ data }: { data: PCCStoreData }) {
     .slice()
     .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""))
     .slice(0, 5)
-    .map((v) => v.vendor_name + " (" + new Date(v.created_at || "").toLocaleDateString() + ")");
+    .map((v) => v.vendor_name + " (" + formatDate(v.created_at) + ")");
 
   const recentlyUpdated = data.vendors
     .filter((v) => v.updated_at !== v.created_at)
     .sort((a, b) => (b.updated_at || "").localeCompare(a.updated_at || ""))
     .slice(0, 5)
-    .map((v) => v.vendor_name + " (" + new Date(v.updated_at || "").toLocaleDateString() + ")");
+    .map((v) => v.vendor_name + " (" + formatDate(v.updated_at) + ")");
 
   return (
     <>
@@ -1548,7 +1549,7 @@ function NotesTab({ vendor, data, onChanged }: { vendor: PCCVendor; data: PCCSto
               <div>
                 <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{n.note_text}</p>
                 <p className="text-secondary" style={{ fontSize: 11, margin: "6px 0 0" }}>
-                  {new Date(n.created_at || "").toLocaleString()}
+                  {formatDateTime(n.created_at)}
                 </p>
               </div>
               <button

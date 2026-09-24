@@ -43,6 +43,7 @@ import {
   BulkImportResult,
 } from "../services/documentsService";
 import type { PCCStoreData, PCCDocument, PCCDocumentExtraction, PCCProject } from "../types/pcc";
+import { formatDate } from "../utils/localDate";
 
 interface ActivityOption {
   id: string;
@@ -170,7 +171,7 @@ function DuplicateWarning({ matches, data, onAcknowledge, onCancel }: { matches:
             <div>
               <strong>{m.record.filename}</strong>
               <br />
-              {projectName(data, m.record.project_id)} · {new Date(m.record.uploaded_at || "").toLocaleDateString()} · {CATEGORY_LABELS[m.record.category || ""] || m.record.category}
+              {projectName(data, m.record.project_id)} · {formatDate(m.record.uploaded_at)} · {CATEGORY_LABELS[m.record.category || ""] || m.record.category}
               <br />
               <span className="text-secondary">{m.reason}</span>
             </div>
@@ -1073,7 +1074,7 @@ function DocumentPreviewPanel({
       <div className="detail-grid">
         {item("Project", projectName(data, doc.project_id))}
         {item("Size", formatBytes(doc.file_size))}
-        {item("Uploaded", new Date(doc.uploaded_at || "").toLocaleDateString())}
+        {item("Uploaded", formatDate(doc.uploaded_at))}
         {item("Revision", doc.revision_number)}
         {linkedDocType ? item("Type", linkedDocType.name) : null}
         {doc.discipline ? item("Discipline", doc.discipline) : null}
@@ -1195,7 +1196,7 @@ function DocumentPreviewPanel({
                     Rev {rev.revision_number} — {rev.filename}
                   </div>
                   <div className="attention-item__meta">
-                    {(STATUS_LABELS[rev.status || ""] || rev.status) + " · " + new Date(rev.uploaded_at || "").toLocaleDateString()}
+                    {(STATUS_LABELS[rev.status || ""] || rev.status) + " · " + formatDate(rev.uploaded_at)}
                   </div>
                 </div>
               </div>

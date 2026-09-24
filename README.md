@@ -6564,3 +6564,30 @@ tested as pure functions, not in a running Electron process.
 `test_navigation_guard.js`, `test_audit_fixes_group1_e2e.js`, `test_local_dates_ist_e2e.js`,
 `test_audit_fixes_group3_e2e.js`, plus a mirror-filename check. Real-Chromium sweep of every route
 at 1440px and 412px: no errors, no sideways overflow.
+
+## Settings → Time zone (2026-09-24)
+
+Asked for so the app can follow a move to another country for work. **Automatic (the default)
+already does that on its own**: it follows the device's clock, so when a laptop or phone
+switches zone, the app switches with it. The setting exists for when the device clock and the
+place you're working differ (e.g. a laptop still on India time while working a site abroad).
+
+- **What it controls**: what "today" is (overdue / due-today buckets, default dates on new
+  records, the title-bar date, the CPM default data date, export stamps) and how saved
+  timestamps are displayed ("Uploaded", "Captured", comment times, "Last autosaved", the footer's
+  "SAVED · time").
+- **What it deliberately doesn't**: stored dates are calendar dates (`YYYY-MM-DD`) and never
+  change when the zone changes. Excel import keeps reading date cells in the device's zone,
+  because that's the zone the spreadsheet library builds them in.
+- **Found while building it**: date-only values were displayed via
+  `new Date("2026-09-24").toLocaleDateString()`, which parses as UTC midnight. Anywhere west of
+  UTC (the Americas) every such date would have shown one day early, invisibly in India and
+  exactly when moving abroad. All date/time displays now go through one formatter that shows
+  date-only values as-is.
+- **Schema v67** (`settings.time_zone`, `""` = Automatic). Existing data migrates to Automatic,
+  i.e. identical behavior until a zone is picked. The mirror app ("At a Glance") follows the
+  zone chosen on Windows, since settings travel with the mirrored snapshot.
+- **Verified**: new `test_time_zone_setting_e2e.js` (device in IST, clock frozen at 01:00, zones
+  NY/Tokyo/Dubai/LA/Kiritimati), full suite in UTC and IST, and real Chromium at 1440px and
+  412px: 419 zones listed, the choice applies immediately and survives a reload, no sideways
+  overflow.

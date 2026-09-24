@@ -7362,3 +7362,28 @@ produced are in CLAUDE.md (security rules, local dates, migrate backfill).
   Run `TZ=Asia/Kolkata npm test` too for anything date-related.
 - **Repo state**: branch `claude/file-understanding-scope-8ochbn` = `main`, no PR (direct
   merges per standing instruction). Schema still 66.
+
+## 2026-09-24: Settings → Time zone (schema v67)
+
+Aditya asked for a timezone selector for when moving countries for work. Pushed back first:
+Automatic (the device clock) already follows a move as soon as the device's own zone changes.
+Built anyway as a default-off override for when the device and the work location differ.
+
+- **`settings.time_zone`** (`""` = Automatic, else an IANA zone). **Schema 66 → 67**; all 41
+  `schema_version, 66` test assertions bumped. One implementation: `window.PCC.dates` at the
+  top of `src/js/store.js` (`localIsoDate`, `formatDate`, `formatDateTime`, `formatTime`,
+  `listTimeZones`, …). Every per-file `localIsoDate()` and `react/src/utils/localDate.ts`
+  delegate to it (device fallback when absent). Settings has a new "Time zone" panel with a
+  preview line; the title-bar date refreshes on change and on every navigation.
+- **All date/time displays** (~20: Uploaded, Captured, comment times, Last autosaved, footer
+  SAVED time…) now go through the formatters. This also fixed a latent bug: date-only values
+  were displayed a day early anywhere west of UTC (UTC-midnight parse).
+- **Deliberately excluded**: `dateCellToIso()` (Excel date cells) stays device-local, since
+  SheetJS builds them in the device's zone. A test pins this.
+- **Mirror app** follows the zone chosen on Windows (settings ride along in the snapshot).
+- **Tests**: new `test_time_zone_setting_e2e.js` (13 checks). Suite: 130 files, 2,825 checks,
+  0 failures in both UTC and `TZ=Asia/Kolkata`. Real Chromium at 1440/412px: 419 zones, applies
+  immediately, survives reload, no overflow.
+- **Gotcha**: ICU (Node + Chromium) reports India as `Asia/Calcutta`, not `Asia/Kolkata`. Same
+  zone; the Settings "Automatic — this device (…)" label maps a few such old names to current
+  ones for display only (`settingsService.ts`'s `DISPLAY_ZONE_NAMES`).

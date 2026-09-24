@@ -522,6 +522,7 @@ export interface PCCSettings {
   ollama_enabled?: boolean;
   ollama_host?: string;
   ollama_model?: string;
+  time_zone?: string;
 }
 
 export interface PCCRelationship {
@@ -1615,6 +1616,18 @@ declare global {
       loadingIndicator: {
         show(message: string): void;
         hide(): void;
+      };
+      // src/js/store.js — time zone + local dates (Settings → Time zone).
+      dates?: {
+        localIsoDate(d?: Date): string;
+        formatDate(value: string | Date | null | undefined): string;
+        formatDateTime(value: string | Date | null | undefined): string;
+        formatTime(value?: string | Date): string;
+        chosenTimeZone(): string;
+        deviceTimeZone(): string;
+        effectiveTimeZone(): string;
+        isValidTimeZone(tz: string): boolean;
+        listTimeZones(): string[];
       };
       // src/js/modalA11y.js — optional because mirror-app/ doesn't load it (none of its
       // four reused pages open a modal); useModalA11y() no-ops when it's absent.

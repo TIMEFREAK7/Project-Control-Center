@@ -79,11 +79,11 @@ async function freshWindow() {
 }
 
 (async () => {
-  await check("app boots on the bundled index.html without throwing, schema_version is 66, and Ollama settings default to off", async () => {
+  await check("app boots on the bundled index.html without throwing, schema_version is 67, and Ollama settings default to off", async () => {
     const win = await freshWindow();
     assert.strictEqual(win.__thrownErrors.length, 0, "window.onerror captured: " + win.__thrownErrors.join(" | "));
     const data = win.PCC.store.get();
-    assert.strictEqual(data.schema_version, 66);
+    assert.strictEqual(data.schema_version, 67);
     assert.strictEqual(data.settings.ollama_enabled, false);
     assert.strictEqual(data.settings.ollama_host, "http://localhost:11434");
     assert.strictEqual(data.settings.ollama_model, "");

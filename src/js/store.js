@@ -6,19 +6,139 @@
 (function () {
   "use strict";
 
-  // Local calendar date as YYYY-MM-DD. `new Date().toISOString().slice(0, 10)` is the UTC
-  // date, which in IST (UTC+5:30) still reads "yesterday" until 05:30 local time — the
-  // 2026-09-24 audit found that across ~30 files. Per-file copy, per this repo's
-  // per-module-helpers convention (engines are also unit-tested standalone).
+  // ---- Time zone + local dates (window.PCC.dates) ----------------------------------
+  // `settings.time_zone`: "" = Automatic (follow this device's own clock), otherwise an IANA
+  // zone like "Asia/Dubai" — for when the device clock and the place you're working differ
+  // (e.g. a laptop still on India time on a site abroad). It decides what "today" is
+  // (overdue buckets, default dates, the title-bar date, the CPM default data date) and how
+  // saved timestamps are displayed. Lives here, not in its own file, because store.js is the
+  // one module every app loads (including mirror-app/) and it owns `settings`. Every other
+  // module's local-date helper delegates to this when present and falls back to the device
+  // clock when it isn't (engines are unit-tested standalone). See CLAUDE.md.
+  //
+  // NOT used for spreadsheet Date cells: SheetJS builds those in the DEVICE's zone, so
+  // scheduleImportService.js's dateCellToIso() must keep reading them device-local.
+
+  function pad2(n) {
+    return String(n).padStart(2, "0");
+  }
+
+  function deviceTimeZone() {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function isValidTimeZone(tz) {
+    if (!tz || typeof tz !== "string") return false;
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: tz });
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /** The chosen zone, or "" for Automatic (also "" if a stored zone isn't valid on this
+   * device — never throws, never guesses). */
+  function chosenTimeZone() {
+    var tz = data && data.settings ? data.settings.time_zone : "";
+    return isValidTimeZone(tz) ? tz : "";
+  }
+
+  /** Local calendar date (YYYY-MM-DD) of `d` (default: now) in the chosen zone. */
   function localIsoDate(d) {
     var dt = d || new Date();
-    return dt.getFullYear() + "-" + String(dt.getMonth() + 1).padStart(2, "0") + "-" + String(dt.getDate()).padStart(2, "0");
+    var tz = chosenTimeZone();
+    if (!tz) return dt.getFullYear() + "-" + pad2(dt.getMonth() + 1) + "-" + pad2(dt.getDate());
+    var parts = {};
+    new Intl.DateTimeFormat("en-US", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" })
+      .formatToParts(dt)
+      .forEach(function (p) {
+        parts[p.type] = p.value;
+      });
+    return parts.year + "-" + parts.month + "-" + parts.day;
   }
+
+  var DATE_ONLY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+  function zoneOptions(extra) {
+    var tz = chosenTimeZone();
+    var opts = extra || {};
+    if (tz) opts.timeZone = tz;
+    return opts;
+  }
+
+  /** Display a date. A date-only "YYYY-MM-DD" value is a calendar date, not an instant, so
+   * it's shown as-is in the user's locale format — never shifted by any zone. (The old
+   * `new Date("2026-09-24").toLocaleDateString()` parsed it as UTC midnight, so anywhere west
+   * of UTC it displayed as the 23rd.) Timestamps are shown in the chosen zone. Invalid or
+   * empty input → "" rather than "Invalid Date". */
+  function formatDate(value) {
+    if (value === null || value === undefined || value === "") return "";
+    var m = typeof value === "string" ? DATE_ONLY_RE.exec(value) : null;
+    if (m) return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).toLocaleDateString(undefined, { timeZone: "UTC" });
+    var dt = value instanceof Date ? value : new Date(value);
+    if (isNaN(dt.getTime())) return "";
+    return dt.toLocaleDateString(undefined, zoneOptions());
+  }
+
+  function formatDateTime(value) {
+    if (value === null || value === undefined || value === "") return "";
+    var dt = value instanceof Date ? value : new Date(value);
+    if (isNaN(dt.getTime())) return "";
+    return dt.toLocaleString(undefined, zoneOptions());
+  }
+
+  function formatTime(value) {
+    var dt = value === undefined ? new Date() : value instanceof Date ? value : new Date(value);
+    if (isNaN(dt.getTime())) return "";
+    return dt.toLocaleTimeString(undefined, zoneOptions());
+  }
+
+  // Short list used only if this browser can't enumerate zones itself
+  // (Intl.supportedValuesOf needs Chromium 99+ / Android System WebView 99+).
+  var FALLBACK_TIME_ZONES = [
+    "Asia/Kolkata", "Asia/Dubai", "Asia/Riyadh", "Asia/Qatar", "Asia/Kuwait", "Asia/Muscat", "Asia/Bahrain",
+    "Asia/Singapore", "Asia/Kuala_Lumpur", "Asia/Jakarta", "Asia/Bangkok", "Asia/Hong_Kong", "Asia/Shanghai",
+    "Asia/Tokyo", "Asia/Seoul", "Asia/Karachi", "Asia/Dhaka", "Asia/Colombo", "Asia/Kathmandu",
+    "Europe/London", "Europe/Paris", "Europe/Berlin", "Europe/Amsterdam", "Europe/Madrid", "Europe/Rome", "Europe/Istanbul", "Europe/Moscow",
+    "Africa/Cairo", "Africa/Lagos", "Africa/Nairobi", "Africa/Johannesburg",
+    "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles", "America/Toronto", "America/Sao_Paulo", "America/Mexico_City",
+    "Australia/Perth", "Australia/Sydney", "Pacific/Auckland", "UTC",
+  ];
+
+  function listTimeZones() {
+    try {
+      if (typeof Intl.supportedValuesOf === "function") return Intl.supportedValuesOf("timeZone");
+    } catch (e) {
+      /* fall through */
+    }
+    return FALLBACK_TIME_ZONES.filter(isValidTimeZone);
+  }
+
+  window.PCC = window.PCC || {};
+  window.PCC.dates = {
+    localIsoDate: localIsoDate,
+    formatDate: formatDate,
+    formatDateTime: formatDateTime,
+    formatTime: formatTime,
+    chosenTimeZone: chosenTimeZone,
+    deviceTimeZone: deviceTimeZone,
+    /** The zone actually in effect: the chosen one, else this device's. */
+    effectiveTimeZone: function () {
+      return chosenTimeZone() || deviceTimeZone();
+    },
+    isValidTimeZone: isValidTimeZone,
+    listTimeZones: listTimeZones,
+  };
 
   window.PCC = window.PCC || {};
 
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
-  var SCHEMA_VERSION = 66;
+  var SCHEMA_VERSION = 67;
 
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
@@ -33,6 +153,9 @@
       },
       settings: {
         theme: "dark",
+        // Schema v67: "" = Automatic (this device's clock); otherwise an IANA zone. See
+        // window.PCC.dates at the top of this file.
+        time_zone: "",
         // UI/UX Overhaul, Gate 2 (Global Navigation): whether the desktop/laptop/tablet
         // sidebar is showing its icon-rail collapsed state. Manual toggle only, no
         // per-tier auto-collapse — same value applies at every width down to mobile,
@@ -3277,6 +3400,14 @@
         if (loaded.settings.ollama_model === undefined) loaded.settings.ollama_model = "";
       }
       loaded.schema_version = 66;
+    }
+
+    if (loaded.schema_version < 67) {
+      // Time zone setting: every existing install starts on Automatic, which is exactly how
+      // it already behaved (the device's own clock), so nothing changes until the user picks
+      // a zone in Settings.
+      if (loaded.settings && loaded.settings.time_zone === undefined) loaded.settings.time_zone = "";
+      loaded.schema_version = 67;
     }
 
     // Final safety net, after every versioned step: any top-level collection or settings/meta

@@ -30,7 +30,7 @@ import type {
   RecoveryForecastResult,
 } from "../types/pcc";
 import { fuzzyMatch } from "../utils/fuzzyMatch";
-import { localTodayIso } from "../utils/localDate";
+import { formatDate, localTodayIso } from "../utils/localDate";
 
 export interface ActivityFieldConfig {
   key: string;
@@ -381,7 +381,7 @@ export function captureBaseline(schedule: PCCSchedule): Promise<PCCScheduleBasel
   var baselineRecord = window.PCC.store.newScheduleBaseline({
     schedule_id: schedule.id,
     project_id: schedule.project_id,
-    name: schedule.name + " — " + new Date().toLocaleDateString(),
+    name: schedule.name + " — " + formatDate(new Date()),
     schedule_revision_number: schedule.revision_number,
     wbs_count: wbsItems.length,
     activity_count: activities.length,

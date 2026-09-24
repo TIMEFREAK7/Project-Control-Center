@@ -8,7 +8,7 @@
  * page uses. Purely computed at render time — writes nothing back to the store.
  */
 import type { PCCStoreData, PCCProject } from "../types/pcc";
-import { localTodayIso } from "../utils/localDate";
+import { formatDate, localTodayIso } from "../utils/localDate";
 
 export interface Item {
   kind: string;
@@ -32,7 +32,7 @@ function addDaysIso(isoDateStr: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 export function fmtDate(d: string | undefined): string {
-  return d ? new Date(d).toLocaleDateString() : "";
+  return formatDate(d);
 }
 
 function navigateToMeeting(id: string): () => void {

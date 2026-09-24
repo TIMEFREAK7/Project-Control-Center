@@ -36,6 +36,7 @@ import {
   deleteDelayComment,
 } from "../services/delayRecoveryDashboardService";
 import type { PCCActivity, PCCProject, PCCRecoveryAction, PCCDelayRecord, PCCStoreData } from "../types/pcc";
+import { formatDateTime } from "../utils/localDate";
 
 function KpiCard({ label, value, colorVar }: { label: string; value: number | string; colorVar?: string | null }) {
   return (
@@ -154,7 +155,7 @@ function DelayRegisterComments({ r, refresh }: { r: PCCDelayRecord; refresh: () 
         {comments.map((c) => (
           <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginTop: 4 }}>
             <div style={{ fontSize: 12 }}>
-              <span className="text-secondary">{new Date(c.created_at).toLocaleString()}</span> — {c.text}
+              <span className="text-secondary">{formatDateTime(c.created_at)}</span> — {c.text}
             </div>
             <button
               type="button"

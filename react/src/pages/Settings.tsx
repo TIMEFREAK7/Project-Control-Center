@@ -34,9 +34,12 @@ import {
   listRecoveryBackups,
   downloadRecoveryBackup,
   deleteRecoveryBackup,
+  listTimeZones,
+  deviceTimeZone,
+  nowInEffectiveZone,
 } from "../services/settingsService";
 import { listOllamaModels } from "../services/ollamaService";
-import { localTodayIso } from "../utils/localDate";
+import { formatDateTime, localTodayIso } from "../utils/localDate";
 
 var BLANK_IMG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1' height='1'%3E%3C/svg%3E";
 
@@ -67,6 +70,18 @@ export default function SettingsPage() {
 
   function refresh() {
     setData(getData());
+  }
+
+  const [timeZones] = useState<string[]>(() => listTimeZones());
+
+  function handleTimeZoneChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const value = e.target.value;
+    updateSettings((s) => {
+      s.time_zone = value;
+    });
+    // The title-bar DATE is shell chrome outside this page, so it needs its own nudge.
+    refreshTitleBlock();
+    refresh();
   }
 
   function handleCompanyNameInput(e: React.ChangeEvent<HTMLInputElement>) {
@@ -303,6 +318,32 @@ export default function SettingsPage() {
       </div>
 
       <div className="panel" style={{ maxWidth: 480 }}>
+        <h3 style={{ marginBottom: 6 }}>Time zone</h3>
+        <p className="text-secondary" style={{ fontSize: "var(--text-sm)", marginBottom: 14 }}>
+          Decides what &ldquo;today&rdquo; is (overdue and due-today items, default dates on new records, the date in the title bar) and how
+          saved times are shown. <strong>Automatic</strong> follows this device&rsquo;s own clock, so it already switches when you change
+          the device&rsquo;s time zone. Pick a zone only if the device and the place you&rsquo;re working differ.
+        </p>
+        <div className="field">
+          <label htmlFor="settingsfield-time_zone">Time zone</label>
+          <select id="settingsfield-time_zone" value={settings.time_zone || ""} onChange={handleTimeZoneChange}>
+            <option value="">{"Automatic — this device" + (deviceTimeZone() ? " (" + deviceTimeZone() + ")" : "")}</option>
+            {settings.time_zone && timeZones.indexOf(settings.time_zone) === -1 ? (
+              <option value={settings.time_zone}>{settings.time_zone}</option>
+            ) : null}
+            {timeZones.map((tz) => (
+              <option key={tz} value={tz}>
+                {tz.replace(/_/g, " ")}
+              </option>
+            ))}
+          </select>
+        </div>
+        <p className="text-secondary" style={{ fontSize: "var(--text-sm)", marginTop: "var(--space-2)", marginBottom: 0 }}>
+          Today: <span className="mono">{localTodayIso()}</span> · Now: {nowInEffectiveZone()}
+        </p>
+      </div>
+
+      <div className="panel" style={{ maxWidth: 480 }}>
         <h3 style={{ marginBottom: 6 }}>Reminder &amp; Lookahead Windows</h3>
 
         <div className="field" style={{ maxWidth: 260 }}>
@@ -484,10 +525,10 @@ export default function SettingsPage() {
         </div>
 
         <p className="text-secondary mono" style={{ fontSize: "var(--text-sm)", marginTop: "var(--space-3)" }}>
-          Last autosaved: {data.meta.last_saved_at ? new Date(data.meta.last_saved_at).toLocaleString() : "never yet"}
+          Last autosaved: {data.meta.last_saved_at ? formatDateTime(data.meta.last_saved_at) : "never yet"}
         </p>
         <p className="text-secondary mono" style={{ fontSize: "var(--text-sm)", marginTop: 2 }}>
-          Last exported: {data.meta.last_exported_at ? new Date(data.meta.last_exported_at).toLocaleString() : "never yet"}
+          Last exported: {data.meta.last_exported_at ? formatDateTime(data.meta.last_exported_at) : "never yet"}
         </p>
 
         <div className="field" style={{ marginTop: "var(--space-3)", maxWidth: 220 }}>
