@@ -7457,3 +7457,13 @@ in this file). Everything in the audit fixes + Time zone setting is in these bui
 - **Setup on the phone**: Syncthing receives into e.g. `Documents/PCC-Mirror`; in At a Glance tap
   "Choose mirror folder" and pick THAT subfolder (Android refuses the storage root and Download
   root in the picker).
+
+## 2026-09-25: deferred items compiled into `DEFERRED_ROADMAP.md`
+
+Every "deferred / not done / skipped" note in README.md and HANDOFF.md was checked against the
+code (`edcedbd`) and bundled into one saved master prompt: Phase 0 (device verification, cheaper
+schema bumps, recorded close-outs), Phase 1 (commitments in EAC, vendor↔cost link), Phase 2
+(document category reconciliation), Phase 3 (AI capabilities, incl. the Tier 3 AI items that were
+skipped only because no local model existed then), Phase 4 (schedule interoperability), Phase 5
+(decision-required items). Saved in the repo because the earlier roadmaps were only ever pasted in
+chat. Nothing built yet; every gate's Status is `open`/`conditional`/`blocked`.

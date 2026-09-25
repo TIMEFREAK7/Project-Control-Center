@@ -4,6 +4,9 @@ Solo-developer, offline-first project/portfolio management app for one person. S
 for the full phase-by-phase build history and feature rationale — read it before making changes,
 it documents *why* things are shaped the way they are, not just what exists.
 
+**Next work lives in `DEFERRED_ROADMAP.md`** (every deferred item, verified 2026-09-25, as phased
+gates with a test gate each). Start there when asked "what's next"; update each gate's Status line when it closes.
+
 ## Architecture
 
 - **Source of truth is `src/`** — `src/js/*.js`, `src/js/pages/*.js`, `src/css/styles.css`,
