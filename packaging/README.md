@@ -50,11 +50,18 @@ sha256sum "release/Project Control Center Setup 1.0.0.exe"     # record this bef
 Verify the split is exact by reassembling locally and re-checksumming before sending anything —
 `cat *.part* > /tmp/check.exe && sha256sum /tmp/check.exe` should match the line above exactly.
 Send every `.part` file, plus the expected SHA-256 and this reassembly command for Aditya's side
-(Windows Command Prompt, since the `.exe` is the recurring case here):
+(the `.exe` is the recurring case here). **Always give it wrapped in `cmd /c`**, so it works whether
+Aditya pastes it into Command Prompt or PowerShell. Windows Terminal opens PowerShell by default,
+where `copy` means `Copy-Item`, which has no `/b` and rejects the `+`-joined list ("A positional
+parameter cannot be found that accepts argument…"). That happened on 2026-09-27 with the 1.10.0
+installer:
 
 ```
-copy /b "Setup.exe.part00"+"Setup.exe.part01"+"Setup.exe.part02"+... "Project Control Center Setup 1.0.0.exe"
+cmd /c copy /b "Setup.exe.part00"+"Setup.exe.part01"+"Setup.exe.part02"+... "Project Control Center Setup 1.0.0.exe"
 ```
+
+Verify on Windows with `certutil -hashfile "Project Control Center Setup 1.0.0.exe" SHA256`
+(works in both shells), or `Get-FileHash` in PowerShell.
 
 (adjust the `+`-joined part list to however many parts this particular build actually split into —
 `part00`, `part01`, ... in order). On macOS/Linux, `cat Setup.exe.part* > "Project Control Center Setup 1.0.0.exe"`

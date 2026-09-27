@@ -761,8 +761,9 @@ convention below and verify the reassembled file's checksum matches before sendi
   LFS by default** — LFS's free tier is only 1GB storage + 1GB bandwidth/month, too small to spend
   on routine, repeated builds. Standing method, don't ask first: `split -b 25M -d -a 2 "<file>"
   "<file>.part"` (produces `.part00`, `.part01`, ...), verify the reassembled file's SHA-256 matches
-  the original *before* sending, send every part, and give Aditya both the exact Windows Command
-  Prompt reassembly command (`copy /b part00+part01+...+partNN "output.exe"`) and the expected
+  the original *before* sending, send every part, and give Aditya both the exact reassembly command, **wrapped in `cmd /c`**
+  (`cmd /c copy /b part00+part01+...+partNN "output.exe"`; bare `copy /b` fails in PowerShell,
+  which Windows Terminal opens by default, and it did on 2026-09-27), and the expected
   SHA-256 to verify against after reassembling. See `packaging/README.md`'s "Distributing a build"
   section for the full worked example. Git LFS stays the documented fallback for the rare case this
   doesn't fit (e.g. the file needs to live in git history directly), not the routine path.
