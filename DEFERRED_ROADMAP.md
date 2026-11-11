@@ -721,3 +721,7 @@ the original was 0.1 → 0.2 → 0.3 → 1.1 → ….)
 > `open` in the recommended order. Follow "How to work through this": inspect the code first,
 > propose that gate's exact scope, and wait for my confirmation before writing code. Then build,
 > pass every item of the test gate, ship per CLAUDE.md, update the gate's Status line, and STOP.
+>
+> If this file was handed to you directly and the repo's `DEFERRED_ROADMAP.md` differs, the
+> handed copy is the newer one (it adds Phases 0.5, 6 and 7): commit it over the repo's copy
+> before anything else.
