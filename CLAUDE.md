@@ -4,7 +4,7 @@ Solo-developer, offline-first project/portfolio management app for one person. S
 for the full phase-by-phase build history and feature rationale — read it before making changes,
 it documents *why* things are shaped the way they are, not just what exists.
 
-**Next work lives in `DEFERRED_ROADMAP.md`** (every deferred item, verified 2026-09-25, as phased
+**Next work lives in `DEFERRED_ROADMAP.md`** (every deferred item, verified 2026-09-25, plus the 2026-11-11 audit's hardening, foundation and visual-refresh phases, as phased
 gates with a test gate each). Start there when asked "what's next"; update each gate's Status line when it closes.
 
 ## Architecture

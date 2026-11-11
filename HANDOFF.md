@@ -5,6 +5,21 @@ Paste this into a new chat to resume work with full context. This file lives in 
 path — see the standing instructions in `CLAUDE.md` about keeping it current and about handing
 it (and a zip) to Aditya directly after every major upgrade, not just committing quietly.
 
+## 2026-11-11 — Whole-project audit (no code changed)
+
+Audit at `e29740e`: 130/130 test files green, `tsc` clean, both committed builds identical to
+fresh builds, 29 pages clean in Chromium at 1366×768 and 412×915. Findings were turned into
+three new phases in `DEFERRED_ROADMAP.md`, which is where the detail lives:
+
+- **Phase 0.5, Hardening (do first):** PDF parser script evaluation (H.1), newer-version data
+  accepted silently (H.2), ~5.2M-character `localStorage` ceiling with no early warning (H.3),
+  SheetJS 0.18.5 (H.4).
+- **Phase 6, Foundation:** CI, storage ceiling, doc sizes, Commitments currency, cold start.
+- **Phase 7, Visual refresh:** direction, banned patterns and gates 7.0–7.7.
+
+Schema is still 67. Nothing was built, so no zip and no installers. The branch
+`claude/fervent-gates-lvy9qw` carries these two doc changes only and is not merged to `main`.
+
 ## What this project is
 
 Solo-developer, offline-first project/portfolio management app, built as a single
