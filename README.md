@@ -6749,4 +6749,21 @@ that answers the one given here.
   supported.
 - **The engineering master prompt's Phases 8–9:** no longer available (confirmed 2026-11-26),
   so nothing is planned from them.
+- **GitHub CI (automatic checks on GitHub):** not used. The app is offline and Aditya chose
+  not to run anything on GitHub. A local check on this PC refuses a push whose built app is out
+  of date instead (Gate 6.1 below).
+
+## Gate 6.1: local check before every push (2026-11-26, development only)
+
+**Problem.** The built `index.html` is committed, and forgetting to rebuild it after a code
+change has shipped stale builds before. Only a manual check caught it.
+
+**Decision.** A git hook on this PC (`.githooks/pre-push`) runs before every push: it refuses
+if source changes aren't committed, rebuilds the app, and refuses if the committed
+`index.html` doesn't match. For the At a Glance app, which can't be rebuilt on the SSD, it only
+warns. Rejected: GitHub Actions (runs on GitHub; not wanted). Nothing about the app itself
+changes.
+
+**Verified.** Four cases on a throwaway branch with dry-run pushes (nothing sent): clean push
+allowed; stale build refused; uncommitted source refused; mirror warning shown.
 

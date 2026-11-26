@@ -453,7 +453,13 @@ make it safer to keep changing.
 - **Cost:** the suite takes about 5 minutes per zone. Confirm with Aditya that GitHub Actions
   minutes are acceptable for this repo before enabling.
 - **Docs:** CLAUDE.md's "solo repo with no CI" lines change to "merge when the check is green".
-- **Status:** open.
+- **Status:** closed 2026-11-26, replaced. Aditya chose not to use GitHub at all. Built
+  instead: `.githooks/pre-push`, a local check (enable with `git config core.hooksPath
+  .githooks`) that refuses a push with uncommitted source changes or a stale `index.html`
+  (it rebuilds and compares, ignoring line endings), and warns, without blocking, when a file
+  the mirror app uses changed after `mirror-app/index.html` (that app can't be rebuilt on the
+  exFAT SSD). Tested: clean push allowed, stale build refused, dirty tree refused, mirror
+  warning shown. The test suite still runs locally before each merge, not on push.
 
 **Gate 6.2 — Lift the storage ceiling (conditional on Gate H.3's reading).**
 - **Decide first, from Aditya's real meter reading:** below about 50% with slow growth, close
