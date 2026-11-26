@@ -133,10 +133,10 @@ future session re-opens them by accident:
   - what produces `.sml` and `.plf` files;
   - to paste the engineering master prompt's Phases 8–9 (never saved), then add them to this
     file.
-- **Status:** partly closed 2026-11-26. The six closed decisions are recorded in README.md
-  ("Closed decisions") and HANDOFF.md. Both questions were asked on 2026-11-26 and are still
-  waiting on Aditya; close this gate when they're answered (Gate 4.4 stays blocked until the
-  `.sml`/`.plf` answer).
+- **Status:** closed 2026-11-26. The six closed decisions are recorded in README.md
+  ("Closed decisions") and HANDOFF.md. Aditya's answers: no `.sml`/`.plf` files are in use
+  (only MSP, Excel, Word and photos), so Gate 4.4 is closed; the master prompt's Phases 8–9
+  are no longer available. Both recorded as closed decisions too.
 
 ---
 
@@ -418,7 +418,7 @@ and features behind parsers that read untrusted files.
 **Gate 4.4 — `.sml` / `.plf` import.**
 - Blocked until Gate 0.3 identifies the producing software. Then inspect feasibility before
   scoping.
-- **Status:** blocked.
+- **Status:** closed 2026-11-26 (Gate 0.3): no `.sml`/`.plf` files are in use.
 
 ---
 
@@ -429,7 +429,7 @@ and features behind parsers that read untrusted files.
   actual cost would double-count in EVM.
 - **Mobile Gantt simplification.** Only after a concrete pain point on a real phone.
 - **Foldable / expanded-window QA.** Only if a foldable is in real use.
-- **Master-prompt Phases 8–9.** Only after Aditya supplies their text (Gate 0.3).
+- ~~**Master-prompt Phases 8–9.**~~ Closed 2026-11-26: the text is no longer available.
 
 ---
 

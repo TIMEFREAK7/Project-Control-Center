@@ -16,9 +16,9 @@ Full reasons in README.md's "Closed decisions" section.
 - Separate Spreadsheet Review: already inside Document Review (AI).
 - AI on Android: would expose Ollama on the LAN with no authentication.
 
-**Still open from Gate 0.3 (asked 2026-11-26, awaiting Aditya):** what software produces
-`.sml` and `.plf` files (Gate 4.4 stays blocked until then), and the engineering master
-prompt's Phases 8–9 text (never saved; to be added to DEFERRED_ROADMAP.md when supplied).
+- `.sml` / `.plf` import: not needed; no such files in use (Aditya, 2026-11-26). Files in use
+  are MSP, Excel, Word and photos. Gate 4.4 closed.
+- Master prompt Phases 8–9: no longer available (Aditya, 2026-11-26). Nothing planned from them.
 
 ## 2026-11-26 — Gate H.4: SheetJS 0.18.5 → 0.20.3
 

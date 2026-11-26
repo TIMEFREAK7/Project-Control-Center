@@ -6744,4 +6744,9 @@ that answers the one given here.
 - **AI on Android:** Ollama would have to listen on the local network with no
   authentication for a phone to reach it, so any device on that network could use it. AI
   stays Windows-only, through the Electron main process.
+- **`.sml` / `.plf` import:** not needed. Aditya confirmed (2026-11-26) that no such files are
+  in use; the files that matter are Microsoft Project, Excel, Word and photos, all already
+  supported.
+- **The engineering master prompt's Phases 8–9:** no longer available (confirmed 2026-11-26),
+  so nothing is planned from them.
 
