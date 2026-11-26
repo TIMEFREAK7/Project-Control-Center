@@ -6739,3 +6739,33 @@ individual screens follows in the Phase 7 page passes.
 previous build). Three existing tests updated to the new wording. Real Chromium at desktop and
 phone sizes: no "$", per-currency totals, no horizontal scroll.
 
+## Gate 6.3: docs split (2026-11-26, docs only)
+
+**Problem.** CLAUDE.md (loaded into every session) had grown to 75 KB, HANDOFF.md to 626 KB, and
+README.md (which ships in the zip) to 537 KB of build history.
+
+**Decision.** Rules stay in CLAUDE.md as one line each (11 KB); the stories behind them, the old
+build history and the old handoff sessions move unedited into `docs/` (byte-verified). README
+becomes a short user guide. Nothing deleted. A line-by-line checklist
+(`docs/RULES_CHECKLIST.md`) maps every old rule to its new home.
+
+## Gate 7.0: visual baseline and direction (2026-11-26, nothing shipped)
+
+**Problem.** Phase 7's visual refresh needed a decision on real screens before any styling: the
+current look reads as generic (cards everywhere, cards in cards, mono figures, uppercase labels,
+pills on every row, a glowing active nav item).
+
+**What was done.** A reusable screenshot harness, `tests/visual/shots.js` (fixed seed with three
+projects in different health states, CPM-calculated schedules, frozen IST clock; 8 screens ×
+2 themes × 2 sizes), captured the baseline. A critique against Impeccable's audit rubric scored
+it and listed findings (worst: contrast failures on Portfolio and Documents; cards in cards; two
+tab designs). Two throwaway variants (A: Inter, slate, blue; B: IBM Plex Sans, stone, teal),
+planned against the generic-design tells and checked with axe (zero contrast failures), were
+shown side by side with the current look on Dashboard, Schedule and Risk Register.
+
+**Decision (Aditya).** Variant A: Inter everywhere, slate neutrals, blue accent for selection,
+focus and links only; an ink primary button; the module colour shrunk to a hairline; Kubai
+duotone sidebar icons (MIT). Exact values: `.claude/docs/DESIGN_SYSTEM.md` "Phase 7 target".
+Rejected: Variant B (heavier type, +69 KB of fonts in all three apps, and its teal accent would
+have forced the info status off teal).
+

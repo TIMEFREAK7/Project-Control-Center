@@ -662,7 +662,16 @@ of each gate. Tests prove nothing broke; they cannot prove it looks right.
 - **Output:** the decisions written into `.claude/docs/DESIGN_SYSTEM.md` as exact token
   values, and the `pcc-ui` skill's typography lines updated to match. The override stylesheet
   is deleted.
-- **Status:** open.
+- **Status:** closed 2026-11-26. Aditya chose: **Variant A** (Inter everywhere, slate neutrals,
+  blue accent `#2563eb` / `#60a5fa`), **ink primary button**, module tint **shrunk to a
+  hairline**, and **Kubai duotone sidebar icons** (MIT; an addition to this gate's choices, at
+  his request). Exact tokens and the route→icon map: `.claude/docs/DESIGN_SYSTEM.md` "Phase 7
+  target". `tests/visual/shots.js` (32 baseline shots, fixed seed, frozen IST clock, optional
+  `--css`/`--icons`/`--axe`) is committed; screenshots, sheets and the critique stay in
+  `scratch/pcc-7.0/`. Baseline axe color-contrast failures to fix in 7.2/7.5: Portfolio (5 light,
+  3 dark) and Documents (2). Design skills used: ui-ux-pro-max (Data-Dense Dashboard style),
+  design-critique with Impeccable's audit rubric (`repos/impeccable`), frontend-design's
+  generic-tell review, WCAG 2.2 skill (`repos/claude-wcag-skill`), pcc-visual-qa.
 
 **Gate 7.1 — Make the type scale changeable (no visual change).**
 - **Build:** replace inline `fontSize` (425 occurrences) and any inline colour or radius in

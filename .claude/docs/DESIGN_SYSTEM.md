@@ -121,3 +121,67 @@ check (`VISUAL_QA.md`) verifies it, doesn't assume it.
 `.sidebar__link`'s colour (Gate 3). Any new nav destination needs a new icon built the same way,
 checked against neighbours for silhouette collisions at actual render size (Gate 3 caught and
 fixed a real Meetings/Resources lookalike this way — don't skip the zoomed-comparison check).
+
+## Phase 7 target (decided at Gate 7.0, 2026-11-26 — NOT shipped yet)
+
+Everything above describes `styles.css` as it ships today. This section is what Aditya chose
+from the Gate 7.0 comparison sheets (Variant A). Gate 7.2 puts the tokens into `styles.css`
+(token NAMES stay; only values change), Gate 7.3 the shell and icons, Gate 7.4 the components.
+Once a value ships, move it up into the sections above and delete it here.
+
+**Typeface: Inter for everything.** Titles, body and figures in one family; weight and size do
+the work. Figures use `font-variant-numeric: tabular-nums`, weight 600. `--font-display` becomes
+Inter (Space Grotesk's two files, ~26 KB, are removed in 7.2). `--font-mono` (IBM Plex Mono)
+stays only for identifiers: activity IDs, document numbers, codes (`.mono`), never KPI figures
+or labels.
+
+**Colour tokens:**
+
+| Token | Light | Dark |
+|---|---|---|
+| `--bg-default` (page = content surface) | `#ffffff` | `#0b0f14` |
+| `--bg-paper` | `#ffffff` | `#0b0f14` |
+| `--bg-paper-raised` (menus, raised rows) | `#f8fafc` | `#111821` |
+| `--text-primary` | `#0f172a` | `#e2e8f0` |
+| `--text-secondary` | `#475569` | `#94a3b8` |
+| `--divider` (hairlines) | `#e2e8f0` | `#1e293b` |
+| `--hover-bg` | `#f1f5f9` | `#131b26` |
+| `--signal-amber` (the accent: selection, focus, links only) | `#2563eb` | `#60a5fa` |
+| `--signal-amber-dark` | `#1d4ed8` | `#3b82f6` |
+| new `--ink` / `--on-ink` (primary button) | `#0f172a` / `#ffffff` | `#e2e8f0` / `#0b0f14` |
+
+Status tokens (`--status-on-track/at-risk/warning/critical/info`) keep their names and hues; 7.2
+re-measures each on the new surfaces and adjusts lightness only where contrast needs it. Contrast
+target 4.5:1, measured with axe (the 7.0 preview of these values had zero color-contrast
+failures on Dashboard, Schedule Activities and Risk Register, both themes, both sizes).
+
+**Primary button: ink** (`--ink` fill, `--on-ink` text). The accent never fills a button.
+
+**Geometry:** `--radius-sm: 6px` (controls), `--radius-md: 8px` and `--radius-lg: 8px` (cards).
+No shadow at rest; shadows only on things that float (menus, dialogs, toasts, drawer).
+
+**Structure:** page and content share one surface; sections split by space + a hairline; a
+bordered card only for a discrete object (a project, a risk, a dialog). KPIs as one stat strip
+with hairline dividers (two columns on phones). Status in lists = small dot + text, the neutral
+state (`--info`, complete) uncoloured; pills stay for record headers and cards. Sentence-case
+labels; uppercase tracking only on table column headers. One tab design (underline).
+
+**Module tint: hairline.** No wash on `.title-block`; a 2 px bottom border mixing
+`--module-accent` 55% into `--divider`. OVERVIEW stays neutral.
+
+**Title block:** kept and refined as the one distinctive element: crisp hairline cells between
+Sheet / Company / Client / Project / Date.
+
+**Icons: Kubai duotone** (`kubai-icons`, `icons-duotone/`, MIT; keep its copyright notice in the
+source that embeds them). Static only, no hover motion. Body and accent both `currentColor`
+(body at 0.3 opacity): `--text-secondary` at rest, `--signal-amber` on the active item. Exported
+with the pack's `styles/duotone/export.mjs` (`--size 18`). Route → icon:
+dashboard `grid` · myWork `list-checks` · actionCentre `bell` · projectLookahead `calendar` ·
+portfolio `briefcase` · organizations `building-office` · projectWorkspace `layers` ·
+executiveCenter `chart-bar` · vendors `truck` · vendorPerformanceCentre `chart-line` ·
+documents `folder` · documentTypes `file-text` · documentControlDashboard `clipboard` ·
+dailylog `notebook` · risks `triangle-alert` · meetings `messages-square` · rfis `circle-help` ·
+changeOrders `file-diff` · decisionRegister `flag` · lessonsLearned `bookmark` ·
+knowledgeBase `book-open` · schedule `chart-gantt` · delayRecoveryDashboard `alarm-clock` ·
+cost `wallet` · commitments `receipt` · resources `users` · reports `file-chart` · settings `settings`.
+Weak fits to redraw with the pack's duotone rules in 7.3: rfis, changeOrders, projectLookahead.
