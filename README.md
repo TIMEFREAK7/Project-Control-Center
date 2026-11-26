@@ -6620,3 +6620,21 @@ covers first run, pick, load, header time, incremental re-check and the no-file 
 APK contains the plugin and the byte-identical web bundle. Not verified: the real picker on a
 device.
 
+## Gate 0.2: cheaper schema bumps (2026-11-26, tests only)
+
+**Problem.** 43 assertions in 7 test files hardcoded `schema_version` 67, so every schema bump
+broke tests that had nothing to do with the migration.
+
+**Decision.** Boot checks compare against the real current version, read from `store.js` by
+`tests/schemaVersion.js`. Rejected: loosening them to `>= 67`, which can't catch a migration
+that stops one step short. The migration test keeps exact numbers on purpose, now behind one
+`FINAL_SCHEMA_VERSION` constant instead of 36 literals. No change to `src/` or `index.html`.
+
+**Verified.** A realistic trial bump (constant 68 plus an empty v68 step in `migrate()`) broke
+all 7 files before the change and only the migration test after it; then reverted. (The trial
+needs the step: `migrate()` sets the version inside each step, not from the constant.)
+
+**Also fixed.** `test_time_zone_setting_e2e.js` expected the US date format (`9/24/2026`), so it
+failed on any machine with another locale. It now checks the date against the device's own
+locale, which is what the app displays; a reintroduced one-day shift still fails it.
+

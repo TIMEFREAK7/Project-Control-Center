@@ -9,6 +9,7 @@
 const fs = require("fs");
 const path = require("path");
 const assert = require("assert");
+const SCHEMA_VERSION = require("./schemaVersion");
 const { JSDOM } = require("jsdom");
 const FDBFactory = require("fake-indexeddb/lib/FDBFactory");
 
@@ -69,7 +70,7 @@ async function check(label, fn) {
       if (Array.isArray(fresh[k])) assert.ok(Array.isArray(m[k]), "missing collection: " + k);
     });
     Object.keys(fresh.settings).forEach((k) => assert.ok(k in m.settings, "missing setting: " + k));
-    assert.strictEqual(m.schema_version, 67);
+    assert.strictEqual(m.schema_version, SCHEMA_VERSION);
   });
 
   await check("…but never overwrites a value that's already there", () => {

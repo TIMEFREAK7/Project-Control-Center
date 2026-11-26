@@ -47,8 +47,8 @@ You are working on Project Control Center. Read `CLAUDE.md`, then the relevant `
   reports stay printable HTML.
 - **Schema bumps:**
   - Each bump needs a migration step and a `tests/test_store_schema_v<N>_migration.js`.
-  - Each bump updates the tests that hardcode the version: 43 `schema_version, 67` assertions
-    across 7 files today. Gate 0.2 exists to shrink that.
+  - Each bump updates `FINAL_SCHEMA_VERSION` in `test_store_schema_v54_migration.js`, the one
+    place the exact number lives since Gate 0.2. Other tests use `tests/schemaVersion.js`.
   - `migrate()`'s backfill safety net is for whole missing keys only; new fields still need
     their own step.
 - **Dates** follow `window.PCC.dates`, the local zone, never `toISOString().slice(0,10)`.
@@ -115,7 +115,10 @@ You are working on Project Control Center. Read `CLAUDE.md`, then the relevant `
   HANDOFF.md's own lesson recommends.
 - **Test gate:** the full suite is green, and a trial bump of `SCHEMA_VERSION` to 68 (reverted
   afterwards) breaks only migration tests.
-- **Status:** open.
+- **Status:** closed 2026-11-26. `tests/schemaVersion.js` reads `SCHEMA_VERSION` from
+  `store.js`; the 7 boot checks in 6 files use it, and the migration test's 36 assertions use
+  one `FINAL_SCHEMA_VERSION` constant. A realistic trial bump (constant 68 plus an empty v68
+  step) now breaks only `test_store_schema_v54_migration.js`; before, it broke all 7 files.
 
 **Gate 0.3 — Record decisions (docs only).** Record these in README.md and HANDOFF.md so no
 future session re-opens them by accident:
