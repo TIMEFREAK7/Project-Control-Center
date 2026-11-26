@@ -140,8 +140,9 @@ function findButtonByText(dom, text) {
     win.PCC.router.go("executiveCenter");
     win.PCC.router.render();
     var text = outlet().textContent;
-    assert.ok(text.indexOf("1 recovery action(s) overdue.") !== -1, "got: " + text.slice(0, 800));
-    assert.ok(text.indexOf("1 decision(s) pending in the Decision Register.") !== -1);
+    // Real plurals since Gate 6.4 (was "1 recovery action(s)", "1 decision(s)").
+    assert.ok(text.indexOf("1 recovery action overdue.") !== -1, "got: " + text.slice(0, 800));
+    assert.ok(text.indexOf("1 decision pending in the Decision Register.") !== -1);
   });
 
   await check("Dashboard's Management Attention panel surfaces both alerts portfolio-wide", () => {

@@ -35,6 +35,7 @@ import type {
   PCCWeeklyReview,
 } from "../types/pcc";
 import { localTodayIso } from "../utils/localDate";
+import { plural } from "../utils/plural";
 
 export var SEVERITY_MATRIX: { [probability: string]: { [impact: string]: string } } = {
   high: { low: "medium", medium: "high", high: "high" },
@@ -686,7 +687,9 @@ export function autoStatusText(ctx: ProjectContext): string {
         (ctx.forecastFinish
           ? " Forecast finish is " +
             ctx.forecastFinish +
-            (ctx.forecastVarianceDays ? " (" + (ctx.forecastVarianceDays > 0 ? "+" : "") + ctx.forecastVarianceDays + " day(s) vs plan)" : ", on plan") +
+            (ctx.forecastVarianceDays
+              ? " (" + (ctx.forecastVarianceDays > 0 ? "+" : "-") + plural(Math.abs(ctx.forecastVarianceDays), "day") + " vs plan)"
+              : ", on plan") +
             "."
           : "")
     );
@@ -742,11 +745,11 @@ export function autoChallengesText(ctx: ProjectContext): string {
   var highRisks = ctx.highRisks || [];
   var openIssues = ctx.openIssues || [];
   var overdueRecoveryActions = ctx.overdueRecoveryActions || [];
-  if (delayedActivities.length) lines.push(delayedActivities.length + " activity(ies) currently delayed.");
+  if (delayedActivities.length) lines.push(plural(delayedActivities.length, "activity", "activities") + " currently delayed.");
   if (highRisks.length)
     lines.push(
-      highRisks.length +
-        " open high-severity risk(s): " +
+      plural(highRisks.length, "open high-severity risk") +
+        ": " +
         highRisks
           .map(function (r) {
             return r.title;
@@ -754,8 +757,8 @@ export function autoChallengesText(ctx: ProjectContext): string {
           .join(", ") +
         "."
     );
-  if (openIssues.length) lines.push(openIssues.length + " open issue(s).");
-  if (overdueRecoveryActions.length) lines.push(overdueRecoveryActions.length + " recovery action(s) overdue.");
+  if (openIssues.length) lines.push(plural(openIssues.length, "open issue") + ".");
+  if (overdueRecoveryActions.length) lines.push(plural(overdueRecoveryActions.length, "recovery action") + " overdue.");
   if (lines.length === 0) return "No significant delays, high risks, or open issues at this time.";
   return lines.join(" ");
 }
@@ -766,10 +769,10 @@ export function autoAttentionText(ctx: ProjectContext): string {
   var overdueRfis = ctx.overdueRfis || [];
   var highRisks = ctx.highRisks || [];
   var pendingDecisions = ctx.pendingDecisions || [];
-  if (pendingChangeOrders.length) lines.push(pendingChangeOrders.length + " Change Order(s) awaiting a decision.");
+  if (pendingChangeOrders.length) lines.push(plural(pendingChangeOrders.length, "Change Order") + " awaiting a decision.");
   if (overdueRfis.length) lines.push(overdueRfis.length + " overdue RFI/TQ requiring response.");
-  if (highRisks.length) lines.push(highRisks.length + " high-severity risk(s) needing a mitigation decision.");
-  if (pendingDecisions.length) lines.push(pendingDecisions.length + " decision(s) pending in the Decision Register.");
+  if (highRisks.length) lines.push(plural(highRisks.length, "high-severity risk") + " needing a mitigation decision.");
+  if (pendingDecisions.length) lines.push(plural(pendingDecisions.length, "decision") + " pending in the Decision Register.");
   if (lines.length === 0) return "Nothing currently requires management decision or approval.";
   return lines.join(" ");
 }
@@ -791,8 +794,8 @@ export function autoUpcomingText(ctx: ProjectContext): string {
         "."
     );
   }
-  if (criticalActivities.length) lines.push(criticalActivities.length + " critical-path activity(ies) to watch.");
-  if (upcomingMeetings.length) lines.push(upcomingMeetings.length + " meeting(s) scheduled.");
+  if (criticalActivities.length) lines.push(plural(criticalActivities.length, "critical-path activity", "critical-path activities") + " to watch.");
+  if (upcomingMeetings.length) lines.push(plural(upcomingMeetings.length, "meeting") + " scheduled.");
   if (lines.length === 0) return "No upcoming milestones, meetings, or critical activities on record.";
   return lines.join(" ");
 }

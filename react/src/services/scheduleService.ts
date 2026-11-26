@@ -32,6 +32,7 @@ import type {
 import { fuzzyMatch } from "../utils/fuzzyMatch";
 import { formatDate, localTodayIso } from "../utils/localDate";
 import { storageFitError } from "./storageService";
+import { plural } from "../utils/plural";
 
 export interface ActivityFieldConfig {
   key: string;
@@ -504,23 +505,26 @@ export function runCalculation(scheduleId: string): void {
 
   if (result.cyclicActivityIds.length > 0) {
     window.PCC.notify(
-      "Calculated with " + result.cyclicActivityIds.length + " activity(ies) skipped due to a circular dependency — check Relationships.",
+      "Calculated with " + plural(result.cyclicActivityIds.length, "activity", "activities") + " skipped due to a circular dependency — check Relationships.",
       "error"
     );
   } else {
     var varianceMsg =
       result.forecastVarianceDays != null
         ? result.forecastVarianceDays > 0
-          ? ", forecast " + result.forecastVarianceDays + " day(s) behind plan"
+          ? ", forecast " + plural(result.forecastVarianceDays, "day") + " behind plan"
           : result.forecastVarianceDays < 0
-          ? ", forecast " + Math.abs(result.forecastVarianceDays) + " day(s) ahead of plan"
+          ? ", forecast " + plural(Math.abs(result.forecastVarianceDays), "day") + " ahead of plan"
           : ", forecast on plan"
         : "";
-    var insufficientMsg = insufficientCount > 0 ? " (" + insufficientCount + " activity(ies) have insufficient data to forecast reliably)" : "";
-    var oosMsg = result.outOfSequenceActivityIds.length > 0 ? " " + result.outOfSequenceActivityIds.length + " activity(ies) out of sequence." : "";
+    var insufficientMsg =
+      insufficientCount > 0
+        ? " (" + plural(insufficientCount, "activity", "activities") + (insufficientCount === 1 ? " has" : " have") + " insufficient data to forecast reliably)"
+        : "";
+    var oosMsg = result.outOfSequenceActivityIds.length > 0 ? " " + plural(result.outOfSequenceActivityIds.length, "activity", "activities") + " out of sequence." : "";
     window.PCC.notify(
       "Calculated — project finish " + result.projectFinish + varianceMsg + ", " +
-        result.criticalActivityIds.length + " critical activity(ies)." + insufficientMsg + oosMsg,
+        plural(result.criticalActivityIds.length, "critical activity", "critical activities") + "." + insufficientMsg + oosMsg,
       insufficientCount > 0 ? "error" : "success"
     );
   }
@@ -1177,7 +1181,7 @@ export function commitImport(projectId: string, parsed: ParsedScheduleImport, sc
 
       window.PCC.notify(
         "Imported " + records.activities.length + " activities as a new schedule (Rev " + nextRevision + ")." +
-          (supersededCount > 0 ? " " + supersededCount + " prior active revision(s) marked Superseded." : "") +
+          (supersededCount > 0 ? " " + plural(supersededCount, "prior active revision") + " marked Superseded." : "") +
           (sourceType === "excel" ? " The original Excel file is attached — use “Edit Excel” to update it in place." : " The original " + sourceFileLabel + " file is attached for reference."),
         "success"
       );
@@ -1554,7 +1558,7 @@ export function commitGanttDrag(activity: PCCActivity, mode: string, origStart: 
     act.duration = window.PCC.scheduleGanttLayout.diffDays(result.start, result.finish);
     act.updated_at = new Date().toISOString();
   });
-  window.PCC.notify((mode === "move" ? "Moved “" : "Resized “") + activity.name + "” by " + Math.abs(dayDelta) + " day(s) — recalculating…", "success");
+  window.PCC.notify((mode === "move" ? "Moved “" : "Resized “") + activity.name + "” by " + plural(Math.abs(dayDelta), "day") + " — recalculating…", "success");
   runCalculation(scheduleId);
 }
 
@@ -2061,8 +2065,8 @@ export function runAutoDelayDetection(scheduleId: string): Promise<{ created: nu
                 "Auto-detected: " +
                 (activity.name || "This activity") +
                 " is forecast to finish " +
-                m.finish_variance_days +
-                " day(s) after its baseline (" +
+                plural(m.finish_variance_days, "day") +
+                " after its baseline (" +
                 m.baseline.finish +
                 " → " +
                 m.current.finish +

@@ -5,6 +5,22 @@ Paste this into a new chat to resume work with full context. This file lives in 
 path — see the standing instructions in `CLAUDE.md` about keeping it current and about handing
 it (and a zip) to Aditya directly after every major upgrade, not just committing quietly.
 
+## 2026-11-26 — Gate 6.4: Commitments currency + real plurals
+
+- `commitmentsService.ts`: `formatMoney(value, currency?)` (Cost's format, no more "$"),
+  `projectCurrency()`, `formatMoneyTotals()` (one figure per currency, sorted). Commitments
+  rows, the form's Actual note and the KPI strip use them.
+- New `react/src/utils/plural.ts` → `plural(n, one, many?)`, applied to every "word(s)" string
+  in `react/src/services/` (executiveCenter, schedule, reports). Auto-generated delay records
+  now say "N days after its baseline" (only new records; old ones keep their text).
+- Tests: new `test_commitments_currency_e2e.js` (now 136 files); updated
+  `test_commitment_management_e2e.js` (project gets `currency: "USD"`, expects "USD 50,000"),
+  `test_recovery_decision_reporting_e2e.js`, `test_reports_document_control_e2e.js`.
+- Mirror app rebuilt: byte-identical, so these services don't reach it. The pre-push check
+  will still print its mirror warning for this change; that's expected.
+- **Not done, noted in the roadmap:** 39 "word(s)" strings in `pages/` (Phase 7), the
+  schedule performance engine's "day(s)", and Change Orders showing no currency.
+
 ## 2026-11-26 — Gate 6.1: local pre-push check (replaces GitHub CI)
 
 - Aditya chose no GitHub CI. New `.githooks/pre-push` (LF-only via `.gitattributes`). Enable

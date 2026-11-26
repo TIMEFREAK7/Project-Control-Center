@@ -513,7 +513,14 @@ make it safer to keep changing.
   totals, never one mixed sum.
 - Generated text such as "10 activity(ies)" (6 places in `react/src/services/`): real plurals.
 - **Tests:** e2e with two projects in different currencies; control run.
-- **Status:** open.
+- **Status:** closed 2026-11-26. Commitments rows use the project's currency (Cost's format;
+  plain number when none is set) and KPI totals are per currency ("INR … · USD …"). The plural
+  count was really ~20 in `react/src/services/` (not 6) plus 39 in `pages/`; Aditya chose
+  services only, via `react/src/utils/plural.ts`. **Left for the Phase 7 page passes:** the 39
+  "word(s)" strings in `react/src/pages/`, and `schedulePerformanceEngine.js`'s "day(s)".
+  Also found, not fixed: Change Orders' own `formatMoney` shows no currency at all.
+  `test_commitments_currency_e2e.js` fails on the old build; three existing tests updated to
+  the new wording/currency.
 
 **Gate 6.5 — Cold-start time (conditional).**
 - **Measured:** first content at 0.75 s unthrottled, 3.1 s at 4× CPU throttle, 4.7 s at 6×,

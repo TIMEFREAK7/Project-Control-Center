@@ -133,7 +133,8 @@ async function check(label, fn) {
   await check("the section header shows the correct portfolio-wide %, total, and overdue count, excluding the archived project's requirement", () => {
     var text = docControlSection().textContent;
     // 3 active requirements (1 available, 1 overdue, 1 required) => 1/3 = 33%.
-    assert.ok(text.indexOf("Document Control Compliance — 33% available across portfolio (3 requirement(s), 1 overdue)") !== -1, "got: " + text.match(/Document Control Compliance[^\n]*/));
+    // Real plural since Gate 6.4 (was "3 requirement(s)").
+    assert.ok(text.indexOf("Document Control Compliance — 33% available across portfolio (3 requirements, 1 overdue)") !== -1, "got: " + text.match(/Document Control Compliance[^\n]*/));
   });
 
   await check("the per-project table lists both active projects worst-first, and never the archived one", () => {
