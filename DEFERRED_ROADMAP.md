@@ -241,7 +241,12 @@ and features behind parsers that read untrusted files.
   device's zone (`test_time_zone_setting_e2e.js` and `test_local_dates_ist_e2e.js` pin this).
 - **Tests:** the whole suite in UTC and `TZ=Asia/Kolkata`; a real .xlsx schedule import, an
   "Edit Excel" round trip and a spreadsheet preview in Chromium.
-- **Status:** open.
+- **Status:** closed 2026-11-26. Advisories confirmed on SheetJS's own pages (fixed in 0.19.3
+  and 0.20.2). Vendored 0.20.3 from cdn.sheetjs.com (current release, Apache-2.0, reachable
+  from here; +69 KB in the main app, none in the mirror). No code change needed; date tests
+  green in both zones. ExcelJS is 4.4.0 with open advisories and no fixed release, kept by
+  decision because the app only writes its own data with it (see CLAUDE.md). Found, not fixed
+  (same on 0.18.5): the spreadsheet preview shows date cells as Excel serial numbers.
 
 ---
 
