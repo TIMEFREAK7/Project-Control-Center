@@ -3,7 +3,7 @@
 // never runs this; it's how I (re)generate the single-file deliverable during development.
 const fs = require("fs");
 const path = require("path");
-const { execFileSync } = require("child_process");
+const { execSync } = require("child_process");
 
 const SRC = path.join(__dirname, "src");
 const OUT_FILE = path.join(__dirname, "index.html");
@@ -28,8 +28,10 @@ function buildReactBundle() {
   // pass, the same "catch it before it ships" discipline this build already applies to
   // the test suite. Only .ts/.tsx files are checked (tsconfig.json: allowJs/checkJs both
   // false) — an unconverted .jsx page is untouched by this step either way.
-  execFileSync("npm", ["run", "typecheck"], { cwd: REACT_DIR, stdio: "inherit" });
-  execFileSync("npm", ["run", "build"], { cwd: REACT_DIR, stdio: "inherit" });
+  // execSync (through the shell), not execFileSync("npm"): on Windows npm is npm.cmd, which
+  // execFileSync can't launch (spawnSync npm ENOENT).
+  execSync("npm run typecheck", { cwd: REACT_DIR, stdio: "inherit" });
+  execSync("npm run build", { cwd: REACT_DIR, stdio: "inherit" });
 }
 
 const JS_ORDER = [
