@@ -1,0 +1,37 @@
+#!/bin/sh
+# Local pre-push check (Gate 6.1, 2026-11-26; replaces GitHub CI by Aditya's choice). Runs on
+# this PC only, before every push. Refuses to push a stale index.html: the "committed build is
+# stale" mistake has shipped before. Turn on once per clone: git config core.hooksPath .githooks
+# Checks HEAD, i.e. the branch you're on (shortcut: pushing another branch isn't checked).
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+# --ignore-cr-at-eol: a Windows build writes LF where the checkout has CRLF; that isn't a change.
+if ! git diff --quiet --ignore-cr-at-eol HEAD -- src react/src build.js; then
+  echo "pre-push: uncommitted changes in src/, react/src/ or build.js. Commit them, then push again." >&2
+  exit 1
+fi
+
+echo "pre-push: rebuilding index.html to check it is current (about a minute)..." >&2
+if ! node build.js >/dev/null 2>&1; then
+  echo "pre-push: node build.js failed. Run it yourself to see why." >&2
+  exit 1
+fi
+if git diff --quiet --ignore-cr-at-eol HEAD -- index.html src/js/vendor/react-bundle.js; then
+  git checkout -q -- index.html src/js/vendor/react-bundle.js # undo line-ending-only rewrites
+else
+  echo "pre-push: index.html was out of date. It has now been rebuilt: commit index.html and" >&2
+  echo "          src/js/vendor/react-bundle.js, then push again." >&2
+  exit 1
+fi
+
+# The At a Glance mirror app can't be rebuilt on this exFAT drive (it needs symlinks), so only
+# warn when a file it uses changed in a later commit than mirror-app/index.html did.
+last_input=$(git rev-list -1 HEAD -- src/js/store.js src/js/projectContext.js src/js/notifications.js src/css \
+  react/src/pages/Dashboard.tsx react/src/pages/MyWork.tsx react/src/pages/ActionCentre.tsx react/src/pages/Portfolio.tsx \
+  react/src/services react/src/utils react/src/types mirror-app/src mirror-app/build.js)
+last_build=$(git rev-list -1 HEAD -- mirror-app/index.html)
+if [ -n "$last_input" ] && [ -n "$last_build" ] && ! git merge-base --is-ancestor "$last_input" "$last_build"; then
+  echo "pre-push: WARNING: a file the At a Glance app uses changed after mirror-app/index.html was" >&2
+  echo "          last built. Rebuild it (HANDOFF.md: the C: drive method) if that change affects it." >&2
+fi
+exit 0
