@@ -15,8 +15,8 @@ Read `.claude/docs/DESIGN_SYSTEM.md`, `UX_RULES.md`, `MOTION_SYSTEM.md`, `UI_ARC
 `VISUAL_QA.md` first — this file is the entry point and the accessibility/critique-rubric
 reference; those files hold the actual token values, component list, and architecture.
 
-**Before any UI change**: check `HANDOFF.md`'s "Next phase" section for what's already been
-decided or already shipped. This app has run multiple full UI/UX redesign programs already (UI
+**Before any UI change**: check `DEFERRED_ROADMAP.md` (Phase 7) and `HANDOFF.md`'s "Current
+state" for what's already been decided or already shipped. This app has run multiple full UI/UX redesign programs already (UI
 Modernization, an 8-gate UI/UX Overhaul, and the 12-gate "PCC Redesign" — Visual Language
 Foundation, Component Restyling, Icon System, Navigation Architecture all done as of 2026-08-22).
 Don't propose "modernize the UI" as if starting from zero; check what gate this actually is.

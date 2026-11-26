@@ -1,7 +1,7 @@
 # PCC Design System
 
 Reference for the tokens and components that actually exist in `src/css/styles.css` today
-(post the 12-gate "PCC Redesign" — see `README.md`'s "PCC Redesign" section and Gates 1-4). This
+(post the 12-gate "PCC Redesign" — see `docs/BUILD_HISTORY.md`'s "PCC Redesign" section and Gates 1-4). This
 file describes the shipped system; it does not propose a new one. If a value here disagrees with
 `styles.css`, `styles.css` is right and this file is stale — fix the file, don't silently follow it.
 
