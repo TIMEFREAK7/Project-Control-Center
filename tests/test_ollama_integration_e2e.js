@@ -19,6 +19,7 @@
 const fs = require("fs");
 const path = require("path");
 const assert = require("assert");
+const SCHEMA_VERSION = require("./schemaVersion");
 const { JSDOM } = require("jsdom");
 const FDBFactory = require("fake-indexeddb/lib/FDBFactory");
 
@@ -83,7 +84,7 @@ async function freshWindow() {
     const win = await freshWindow();
     assert.strictEqual(win.__thrownErrors.length, 0, "window.onerror captured: " + win.__thrownErrors.join(" | "));
     const data = win.PCC.store.get();
-    assert.strictEqual(data.schema_version, 67);
+    assert.strictEqual(data.schema_version, SCHEMA_VERSION);
     assert.strictEqual(data.settings.ollama_enabled, false);
     assert.strictEqual(data.settings.ollama_host, "http://localhost:11434");
     assert.strictEqual(data.settings.ollama_model, "");

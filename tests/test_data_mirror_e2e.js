@@ -18,6 +18,7 @@
 const fs = require("fs");
 const path = require("path");
 const assert = require("assert");
+const SCHEMA_VERSION = require("./schemaVersion");
 const { JSDOM } = require("jsdom");
 const FDBFactory = require("fake-indexeddb/lib/FDBFactory");
 
@@ -128,7 +129,7 @@ function enableMirror(win, folderPath) {
     assert.strictEqual(writtenArgs.folderPath, "C:\\Users\\test\\PCC-Sync");
     assert.strictEqual(writtenArgs.filename, "pcc-mirror.json");
     const parsed = JSON.parse(writtenArgs.content);
-    assert.strictEqual(parsed.schema_version, 67);
+    assert.strictEqual(parsed.schema_version, SCHEMA_VERSION);
     assert.ok(parsed.projects.some((p) => p.name === "Mirror Test Project"));
   });
 

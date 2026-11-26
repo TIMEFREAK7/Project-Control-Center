@@ -340,11 +340,13 @@ gates with a test gate each). Start there when asked "what's next"; update each 
   bump introduced, so a hand-edited or partial file missing `documents`/`risks` used to crash 8
   pages after a "successful" import. New schema steps should still backfill their own fields;
   this net is only for whole missing keys.
-- **Bumping `SCHEMA_VERSION` (`store.js`) needs a matching migration step AND updated test
-  fixtures.** Multiple existing tests hardcode the expected final `schema_version` after migrating
-  an old dataset (search `assert.strictEqual(data.schema_version,` across `tests/*.js`) — bumping
-  the constant without updating those breaks otherwise-unrelated tests in confusing ways (last
-  time, ~36 assertions across the suite, not just the couple of files this note used to name).
+- **Bumping `SCHEMA_VERSION` (`store.js`) needs a matching migration step AND the migration
+  test updated.** `migrate()` sets `schema_version` inside each step, not from the constant, so
+  a bump with no step leaves migrated data on the old number. Since Gate 0.2 (2026-11-26) only
+  `tests/test_store_schema_v54_migration.js` holds the exact number: bump its
+  `FINAL_SCHEMA_VERSION` and add the new step's checks. Every other test compares against
+  `require("./schemaVersion")`, which reads the constant from `src/js/store.js`. A new
+  boot-check assertion uses that helper, never a literal.
   Current version is **67** (`settings.time_zone` for Settings → Time zone, added 2026-09-24;
   v66 was `settings.ollama_enabled`/`ollama_host`/`ollama_model` for the Ollama AI integration —
   see "Ollama AI integration" above) — see

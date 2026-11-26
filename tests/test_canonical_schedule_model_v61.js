@@ -7,6 +7,7 @@
 const fs = require("fs");
 const path = require("path");
 const assert = require("assert");
+const SCHEMA_VERSION = require("./schemaVersion");
 
 let passed = 0;
 let failed = 0;
@@ -119,7 +120,7 @@ check("a v60 dataset migrates to v61: source_platform/source_format inferred cor
   const s = loadStoreWith(JSON.stringify(v60));
   const data = s.get();
 
-  assert.strictEqual(data.schema_version, 67);
+  assert.strictEqual(data.schema_version, SCHEMA_VERSION);
 
   // Excel-sourced schedule: inferred from source_file_name, extension lowercased.
   const sch1 = data.schedules.find((x) => x.id === "sch_1");

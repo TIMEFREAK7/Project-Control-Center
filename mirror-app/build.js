@@ -8,7 +8,7 @@
 // `node build.js` from this folder, same as the main repo root and react/.
 const fs = require("fs");
 const path = require("path");
-const { execFileSync } = require("child_process");
+const { execSync } = require("child_process");
 
 const ROOT = path.join(__dirname, "..");
 const SRC = path.join(__dirname, "src");
@@ -56,8 +56,9 @@ function ensureToolingPresent() {
 }
 
 function typecheckAndBundleReact() {
-  execFileSync("npm", ["run", "typecheck"], { cwd: __dirname, stdio: "inherit" });
-  execFileSync("npm", ["run", "build:bundle"], { cwd: __dirname, stdio: "inherit" });
+  // execSync (through the shell): on Windows npm is npm.cmd, which execFileSync can't launch.
+  execSync("npm run typecheck", { cwd: __dirname, stdio: "inherit" });
+  execSync("npm run build:bundle", { cwd: __dirname, stdio: "inherit" });
 }
 
 // Same font-embedding approach as the main app's build.js, reusing the exact same real

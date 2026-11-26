@@ -8,6 +8,7 @@
 const fs = require("fs");
 const path = require("path");
 const assert = require("assert");
+const SCHEMA_VERSION = require("./schemaVersion");
 
 let passed = 0;
 let failed = 0;
@@ -114,7 +115,7 @@ check("migrating a v57 dataset with distinct company/client text per project cre
   const pcc = loadStoreAndContextWith(JSON.stringify(fixture));
   const data = pcc.store.get();
 
-  assert.strictEqual(data.schema_version, 67);
+  assert.strictEqual(data.schema_version, SCHEMA_VERSION);
   assert.strictEqual(data.companies.length, 1, "one distinct company text (FABS) -> one Company record");
   assert.strictEqual(data.companies[0].name, "FABS");
   assert.strictEqual(data.clients.length, 2, "two distinct client texts under FABS -> two Client records");

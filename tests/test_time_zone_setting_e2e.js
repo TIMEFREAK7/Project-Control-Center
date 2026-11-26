@@ -11,6 +11,7 @@ process.env.TZ = "Asia/Kolkata"; // the device's zone — set before any Date ex
 const fs = require("fs");
 const path = require("path");
 const assert = require("assert");
+const SCHEMA_VERSION = require("./schemaVersion");
 const { JSDOM } = require("jsdom");
 const FDBFactory = require("fake-indexeddb/lib/FDBFactory");
 
@@ -87,8 +88,8 @@ function setReactSelectValue(win, el, value) {
     return doc.getElementById("title-block-date").textContent;
   }
 
-  await check("a fresh install is schema v67 with time_zone '' (Automatic)", () => {
-    assert.strictEqual(S.get().schema_version, 67);
+  await check("a fresh install is on the current schema with time_zone '' (Automatic)", () => {
+    assert.strictEqual(S.get().schema_version, SCHEMA_VERSION);
     assert.strictEqual(S.get().settings.time_zone, "");
     assert.strictEqual(D.chosenTimeZone(), "");
     // ICU still reports India under its older canonical name on many builds (Node, Chromium).
@@ -98,7 +99,7 @@ function setReactSelectValue(win, el, value) {
 
   await check("migrating a v66 file adds time_zone '' and leaves a stored choice alone", () => {
     const m = S.migrate({ schema_version: 66, projects: [], settings: { theme: "dark" } });
-    assert.strictEqual(m.schema_version, 67);
+    assert.strictEqual(m.schema_version, SCHEMA_VERSION);
     assert.strictEqual(m.settings.time_zone, "");
     const kept = S.migrate({ schema_version: 67, projects: [], settings: { time_zone: "Asia/Dubai" } });
     assert.strictEqual(kept.settings.time_zone, "Asia/Dubai");
@@ -161,9 +162,13 @@ function setReactSelectValue(win, el, value) {
   });
 
   await check("a date-only value is displayed as that calendar date in EVERY zone (never shifted a day)", () => {
+    // formatDate() uses the device's locale, so build the expected 24 September in that same
+    // locale (it was a hardcoded "9/24/2026", which only passed on en-US machines).
+    const expected = new win.Intl.DateTimeFormat(undefined, { timeZone: "UTC" }).format(Date.UTC(2026, 8, 24));
+    assert.ok(/24/.test(expected), "expected contains the 24th: " + expected);
     ["", "America/Los_Angeles", "Pacific/Kiritimati", "Asia/Kolkata"].forEach((tz) => {
       setZone(tz);
-      assert.strictEqual(D.formatDate("2026-09-24"), "9/24/2026", "zone " + (tz || "Automatic"));
+      assert.strictEqual(D.formatDate("2026-09-24"), expected, "zone " + (tz || "Automatic"));
     });
   });
 

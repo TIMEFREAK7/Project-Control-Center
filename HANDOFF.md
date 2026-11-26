@@ -5,6 +5,35 @@ Paste this into a new chat to resume work with full context. This file lives in 
 path — see the standing instructions in `CLAUDE.md` about keeping it current and about handing
 it (and a zip) to Aditya directly after every major upgrade, not just committing quietly.
 
+## 2026-11-26 — Gate 0.2: cheaper schema bumps (tests only)
+
+- `tests/schemaVersion.js` reads `SCHEMA_VERSION` from `src/js/store.js`. The 7 boot-check
+  assertions in 6 files compare against it. `test_store_schema_v54_migration.js` keeps exact
+  numbers behind one `FINAL_SCHEMA_VERSION` constant (was 36 literals). **Next bump: change that
+  one constant and add the step's checks; nothing else in `tests/` should need touching.**
+- Control: a realistic trial bump (constant 68 + empty v68 step) failed all 7 files before,
+  only the migration test after. Reverted. A trial bump needs the step, because `migrate()`
+  sets the version per step.
+- No `src/` change, `index.html` unchanged, schema still 67. Gate 0.1 (phone check) stays open.
+- **Windows dev machine notes (new this session, not repo changes):**
+  - Fixed at Aditya's request: `build.js` and `mirror-app/build.js` called
+    `execFileSync("npm", …)`, which can't launch `npm.cmd` on Windows (`spawnSync npm
+    ENOENT`). Both now use `execSync("npm run …")` through the shell, which also works on
+    Linux. `node build.js` verified on Windows: output identical to the committed build.
+  - `node mirror-app/build.js` still can't run from this SSD: `ensureReactSymlinks()` needs
+    symlinks and the drive is exFAT. Not fixed: copying instead would put a second React copy
+    in the bundle (see CLAUDE.md's mirror-app section). The mirror app is Android-only.
+  - Fresh builds on Windows differ from the committed ones only by CRLF (`core.autocrlf=true`).
+  - Fixed in this gate at Aditya's request: `test_time_zone_setting_e2e.js`'s "date-only value
+    … in EVERY zone" check hardcoded `"9/24/2026"`, so it failed on any non-en-US machine (this
+    PC is en-IE: `24/9/2026`). It now builds the expected 24 September in the device's own
+    locale. Control: re-introducing a day shift in `formatDate` still fails it.
+  - Windows installer builds natively here, no wine: `cd packaging && npm ci`, then
+    `node node_modules/electron/install.js` (npm 11 skips Electron's install script), then
+    `npm run electron:build`. Caches live on the SSD via `ELECTRON_CACHE` /
+    `ELECTRON_BUILDER_CACHE` in `env.cmd`. Trial build of 1.10.0 verified (embedded
+    `index.html` byte-identical, app launches).
+
 ## 2026-11-11 — Whole-project audit (no code changed)
 
 Audit at `e29740e`: 130/130 test files green, `tsc` clean, both committed builds identical to
