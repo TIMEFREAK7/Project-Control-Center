@@ -507,7 +507,14 @@ make it safer to keep changing.
 - **Check:** every file path and command named in the new `CLAUDE.md` exists and runs; every
   rule in the old `CLAUDE.md` is still findable in the new one or in `docs/GOTCHAS.md` (do
   this as a line-by-line pass, not by memory).
-- **Status:** open.
+- **Status:** closed 2026-11-26. CLAUDE.md 75 KB → 11.3 KB (rules, commands, closed decisions).
+  Moved unedited and byte-verified: the old CLAUDE.md → `docs/GOTCHAS.md`, README's history →
+  `docs/BUILD_HISTORY.md` (README now 4 KB, a user guide with backup and the three apps),
+  HANDOFF before 2026-11-11 → `docs/HANDOFF_ARCHIVE.md` (HANDOFF now ~22 KB). Line-by-line
+  mapping in `docs/RULES_CHECKLIST.md`; all 40 paths named in CLAUDE.md exist. Stale references
+  in `.claude/docs`, the `pcc-ui` skill and this file repointed; code comments that say "see
+  CLAUDE.md's React migration notes" still resolve (the rule is in CLAUDE.md, the story in
+  GOTCHAS.md under the same name).
 
 **Gate 6.4 — Small correctness fixes (no schema change).**
 - Commitments shows "$" for every project: `formatMoney` in

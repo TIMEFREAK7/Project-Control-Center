@@ -7,7 +7,7 @@ it (and a zip) to Aditya directly after every major upgrade, not just committing
 
 ## Current state (2026-11-26)
 
-- `main` has every gate through 6.3. Schema **67**. 137 test files (`cd tests && npm test`),
+- `main` has every gate through 6.3. Schema **67**. 136 test files (`cd tests && npm test`),
   green in UTC and IST. Windows installer builds natively on this PC (1.10.0 last built).
 - Next in `DEFERRED_ROADMAP.md`: Phase 7 (visual refresh) starts with Gate 7.0, which ships
   nothing and needs Aditya to choose between two variants. Features track: 1.1.
