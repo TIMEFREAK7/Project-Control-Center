@@ -130,7 +130,8 @@
     blob
       .arrayBuffer()
       .then(function (buffer) {
-        return window.pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
+        // isEvalSupported: false closes CVE-2024-4367 (font code run via new Function) in pdf.js 3.x.
+        return window.pdfjsLib.getDocument({ data: new Uint8Array(buffer), isEvalSupported: false }).promise;
       })
       .then(function (pdf) {
         body.innerHTML = "";

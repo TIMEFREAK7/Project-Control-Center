@@ -165,7 +165,10 @@ and features behind parsers that read untrusted files.
   - the existing PDF tests (`test_pdf_layout_aware_extraction_e2e.js`,
     `test_file_viewer_gate2_e2e.js`) still pass, and a real PDF still previews and extracts
     text in Chromium.
-- **Status:** open.
+- **Status:** closed 2026-11-26. Both call sites pass `isEvalSupported: false`; no third call
+  existed. `test_pdf_eval_disabled_e2e.js` fails on the old build and passes now. A real PDF
+  previews and extracts text in Chromium at 1440×900 and 412×915. Upgrading to pdf.js 4.x is
+  recorded as a closed decision.
 
 **Gate H.2 — Refuse data saved by a newer app version (no schema change).**
 - **Gap:** `migrate()` has no upper bound. Measured: a file with `schema_version: 999` imported
