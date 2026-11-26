@@ -1,7 +1,7 @@
 # PCC UI Architecture
 
 Where things live and how navigation/rendering actually works, as of 2026-09-04 (full React +
-strict-mode TypeScript migration complete — see `HANDOFF.md`'s "TypeScript conversion — COMPLETE"
+strict-mode TypeScript migration complete — see `docs/HANDOFF_ARCHIVE.md`'s "TypeScript conversion — COMPLETE"
 section). This is a map for UI work, not a proposal — see CLAUDE.md's own "Architecture" section
 for the authoritative, longer version; this file is the UI-specific subset kept close to
 `.claude/skills/pcc-ui/`.

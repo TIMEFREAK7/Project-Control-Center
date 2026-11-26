@@ -1,0 +1,886 @@
+# PCC gotchas and full rule stories
+
+> Moved here UNEDITED from `CLAUDE.md` on 2026-11-26 (Gate 6.3). This is the whole previous CLAUDE.md: every bug story behind the one-line rules in the new CLAUDE.md. Line numbers and section names match the old file.
+
+# Project Control Center
+
+Solo-developer, offline-first project/portfolio management app for one person. See `README.md`
+for the full phase-by-phase build history and feature rationale — read it before making changes,
+it documents *why* things are shaped the way they are, not just what exists.
+
+**Next work lives in `DEFERRED_ROADMAP.md`** (every deferred item, verified 2026-09-25, plus the 2026-11-11 audit's hardening, foundation and visual-refresh phases, as phased
+gates with a test gate each). Start there when asked "what's next"; update each gate's Status line when it closes.
+
+## Architecture
+
+- **Source of truth is `src/`** — `src/js/*.js`, `src/js/pages/*.js`, `src/css/styles.css`,
+  `src/js/vendor/*.js`, fonts. **`index.html` at the repo root is a generated build artifact.**
+  Never hand-edit `index.html` — edit `src/`, then rebuild.
+- **Build:** `node build.js` bundles everything in `src/` (in the exact order defined by
+  `JS_ORDER` in `build.js`) into the single self-contained `index.html`. Run this after every
+  change to `src/`. New files must be added to `JS_ORDER` or they silently won't ship. This now
+  also runs the `react/` build first (see below) — `node build.js` stays the one command.
+- **Vanilla JS by default, hash-based routing** (`src/js/router.js`), plain DOM manipulation per
+  page module — still true for every page not yet migrated to React. This was originally an
+  absolute "no framework, no npm deps" rule; the Post-Phase-5 Engineering Evolution's React
+  migration (started with the Storage Management page) revises it specifically for the
+  **frontend UI layer**, while preserving the actual goal that rule protected: a single
+  dependency-free `index.html` that opens via `file://`/`content://` with zero install for the end
+  user. See "React migration" below for how that's kept true.
+- **React migration (progressive, one page at a time — Post-Phase-5 Engineering Evolution).**
+  React source lives in `react/src/` (its own `package.json`, `node_modules` — dev/build-time
+  only, `cd react && npm install` once). `react/src/index.js` bundles React + ReactDOM directly in
+  via esbuild (`react/package.json`'s `build` script) into `js/vendor/react-bundle.js`, an IIFE
+  with no CDN and no runtime npm dependency — `node build.js` runs this automatically before
+  bundling `src/` (fails with a clear message if `react/node_modules` is missing). The output
+  gets inlined into `index.html` exactly like every other vendor library, so the shipped
+  Electron/Capacitor build (or a raw `index.html` opened via `file://`) never needs Node, npm, or
+  the `react/` directory present — only development/packaging does.
+  - **Migrating a page**: write the component in `react/src/pages/*.jsx` (React.createElement via
+    JSX + esbuild's classic transform — no separate JSX runtime config needed, just
+    `import React from "react"` in each file that uses JSX), a thin service module in
+    `react/src/services/*.js` that wraps the existing `window.PCC.*` engine/store globals (§9 of
+    the master prompt: **React must not own core calculations** — the service calls the real,
+    unchanged domain engine, never reimplements it), then register the component in
+    `react/src/index.js` onto `window.PCC.reactPages.<routeName>`. The page's existing
+    `src/js/pages/<name>.js` module becomes a ~10-line stub:
+    `window.PCC.pages.<name> = function(outlet) { window.PCC.reactBridge.mount(window.PCC.reactPages.<name>, {}, outlet); };`
+    — the router's route-registration contract (`window.PCC.pages.<name>`) is completely
+    unchanged, so every unmigrated page needs zero changes.
+  - **`src/js/reactBridge.js`** is the only file that knows both "React" and "the router" exist:
+    `mount(Component, props, container)` / `unmount()`. `router.js` calls `reactBridge.unmount()`
+    once, right before its existing `outlet.innerHTML = ""` wipe, so a page's React effects get
+    real cleanup instead of being silently abandoned on navigation — that's the only change made
+    to `router.js` itself.
+  - **`js/vendor/react-bundle.js` MUST load before `js/vendor/jszip.min.js` in `JS_ORDER`** — a
+    real, confirmed bug (not hypothetical): jszip.min.js leaks a global `setImmediate` polyfill
+    onto `window`, and React's scheduler package locks onto whatever scheduling primitive exists
+    the moment it first evaluates. If jszip loads first, scheduler picks up its broken
+    `setImmediate` and every future `createRoot().render()` silently never commits — no thrown
+    error, just a permanently blank page. Loading React first avoids this. Reproduced and fixed
+    during the Storage Management pilot; if `JS_ORDER` is ever reordered, keep this constraint.
+  - **A service function that returns `window.PCC.store.get()`'s result directly must return a
+    FRESH reference, or a React refresh-after-mutation is a silent no-op.** `store.get()` returns
+    the SAME mutable module-level object on every call (`store.js`: single object, mutated in
+    place, never replaced) — so a `useState(() => getX())` + `setX(getX())` "refresh" pattern
+    calls `setState` with a reference `Object.is`-equal to the current state, and React silently
+    bails on re-rendering. Real bug, hit and fixed during the Document Types migration: its
+    service's `getData()` returned `window.PCC.store.get()` directly, so deactivating a record
+    updated the store correctly but the list never re-filtered until an unrelated state change
+    (e.g. a checkbox toggle) forced a render for some other reason. Fixed by having the service
+    return `Object.assign({}, window.PCC.store.get())` — a fresh top-level wrapper each call, so
+    `Object.is` sees a genuine change; nested arrays/objects stay the same references (fine,
+    since a render always reads their current, already-mutated contents). Storage Management
+    avoided this by accident, not by design — its snapshot function already built a brand-new
+    `{data, records, summary}` wrapper object every call. **Any new service's "read the current
+    snapshot for a refresh" function needs this same fresh-wrapper treatment**, not just ones that
+    happen to compute a derived object already.
+  - **Testing a React-controlled form/checkbox from outside React needs the right simulation, not
+    a raw DOM property assignment** — real, confirmed-in-Chromium behavior, not a jsdom quirk:
+    - Text/select inputs: `el.value = x` alone does NOT make a controlled input's `onChange`
+      fire — React patches the native value-property setter to track "last known value," and a
+      raw assignment updates that tracker too, so React sees no real change on the next event.
+      Bypass React's patched setter via the native prototype descriptor first, then dispatch the
+      event: `Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,
+      "value").set.call(el, x); el.dispatchEvent(new Event("input", {bubbles:true}))` (use
+      `HTMLSelectElement.prototype` + a `"change"` event for a `<select>`). See
+      `tests/test_document_types_e2e.js`'s `setReactInputValue`/`setReactSelectValue` helpers.
+    - Checkboxes: don't set `.checked` manually at all, even with the descriptor-bypass trick —
+      it did NOT reliably reach a controlled checkbox's `onChange` in testing (confirmed by direct
+      comparison). Use `el.click()` instead — the same real interaction a user actually performs,
+      firing the browser's native toggle + event sequence React listens to.
+  - **A one-shot "pending prop" channel for cross-page navigation (a stub-file module
+    variable read once via a `useState` lazy initializer, e.g. `createFromMeeting()` on
+    Lessons Learned) must be set INSIDE the initial state itself, never inside a
+    `useEffect`.** `flushSync` (above) only forces the very first `root.render()`
+    synchronous — an effect still runs in React's later, separate passive-effects phase,
+    even on first mount. Real bug hit and fixed on Lessons Learned: opening the prefilled
+    form via `useEffect(() => { if (initialPrefill) setEditingId("new") }, [])` left a real
+    caller (`meetings.js`'s "+ Add Lesson Learned" button) seeing the plain list for a tick
+    before the form appeared — fixed by initializing `editingId` directly:
+    `useState(() => (initialPrefill ? "new" : null))`.
+  - **`router.js`'s `suppressNextHashRender` is a single boolean, not a queue — two
+    `go()` calls fired back-to-back (no tick between them) can leave the second
+    navigation's hashchange event unsuppressed, triggering an extra, unwanted `render()`.**
+    For a React page reading a one-shot "pending prop" (see above), that extra render can
+    arrive AFTER the prop was already consumed and cleared by the first (correct) render,
+    silently discarding it. Real, reproducible edge case — confirmed by direct comparison,
+    fixed by isolating it — but not one a real user's own click-then-click can trigger (real
+    interaction always has wall-clock time between two clicks, letting the first
+    navigation's hashchange settle first); only back-to-back *programmatic* `go()` calls
+    with no await between them hit it, which in practice means test code, not `router.js`
+    itself. Fixed in the test (`tests/test_lessons_learned_e2e.js`: an `await flush()`
+    between the two navigations), not in the shared router — don't "fix" this in
+    `router.js` without a real user-facing repro; the master prompt's own regression
+    caution applies double to a file every page depends on.
+  - **The same single-flag race also leaks ACROSS separate `check()` blocks in a test
+    file, not just between two `go()` calls inside one block — a jsdom-confirmed detail
+    that makes this bite in a non-obvious place.** Confirmed directly: `window.location.hash
+    = x` in jsdom dispatches `hashchange` as a real macrotask (one full `setTimeout(…, 0)`
+    tick later), never synchronously — so a `go()` call left un-flushed at the END of one
+    `check()` block queues a hashchange that is still pending when the NEXT block starts.
+    If that next block does its own `go()` (setting `suppressNextHashRender = true` again)
+    and then `await flush()`s, the STALE hashchange from the previous block fires first,
+    reads the flag as `true`, and resets it — leaving the flag `false` by the time the
+    current block's own (later-queued) hashchange fires, which then runs an unwanted extra
+    `render()` and wipes that block's one-shot pending prop. Real bug, hit and fixed in
+    `tests/test_activity_linking_e2e.js`: a `viewRow.click(); window.PCC.router.render();`
+    at the tail of one `check()` (vanilla `schedule` route, so the redundant manual
+    `render()` call looked harmless) with no trailing `await flush()` silently broke a
+    LATER, unrelated check's `rfis.expandRfi()` pending-prop two blocks later. Fix is the
+    same either way: `await flush()` after every `go()` a check performs, even ones to a
+    still-vanilla route and even at the very end of a check block — don't reason "this
+    route doesn't need it" per-block; reason about the queue the whole file shares.
+  - **A React page's `useState` resets to defaults on every remount — unlike the old vanilla
+    page's persistent module-level `uiState`.** `reactBridge.js`'s `mount()` creates a brand new
+    root (and therefore a brand new component instance) on every `router.render()` call for that
+    route, including navigating away and back. A test (or a real user) that expects a filter/search
+    term/checkbox to still be set after leaving and returning to a React-migrated page will find it
+    reset — this is a real, accepted UX behavior difference for a migrated page, not a bug to
+    "fix," and tests must not assume otherwise (re-set any needed UI state after a fresh
+    `router.go()` back to the page, don't assume it survived from an earlier check).
+  - **React 18's `createRoot().render()` is asynchronous by default; `reactBridge.js` forces
+    only the INITIAL one synchronous.** Confirmed real behavior (not a jsdom quirk) that a React-migrated route's
+    content would otherwise NOT be in the DOM the instant `router.render()` returns, unlike every
+    vanilla page's raw synchronous DOM writes — which would have meant hunting down and patching
+    every existing test that reads a migrated page's DOM content right after navigating to it
+    (there is no single dedicated test file per page; coverage for most pages is scattered across
+    many files' shared route-smoke arrays). Fixed once, at the source, instead:
+    `react/src/index.js` also exposes `react-dom`'s `flushSync` on `window.PCC.ReactDOM`, and
+    `reactBridge.js`'s `mount()` wraps every initial `root.render()` call in it — so a React page's
+    content is synchronously present the moment `mount()`/`router.render()` returns, exactly like
+    a vanilla page. **No existing or future test needs to know or care that a given route is
+    React-backed.** Confirmed against `tests/test_storage_management_e2e.js` with zero
+    React-specific accommodations needed in the test itself.
+  - **This `flushSync` fix covers ONLY the very first render after navigation — a state update
+    from an event handler on an already-mounted page (a button click, a checkbox toggle, typing)
+    still commits asynchronously.** Real React 18 behavior, confirmed identically in real
+    Chromium (not a jsdom gap): unlike the initial mount, wrapping every component's every
+    `onClick`/`onChange` in `flushSync` would be impractical and fights React's own automatic
+    batching, so this is NOT "fixed at the source" the way the initial mount was. Any test
+    interaction with an already-mounted React page — clicking a button that opens a form, saving
+    it, toggling a checkbox, typing into a filter — needs `await flush()` afterward before reading
+    the resulting DOM, the same way this suite already awaits genuinely-async operations
+    (IndexedDB, promise chains). See `tests/test_document_types_e2e.js` for the pattern across a
+    full add/edit/deactivate/reactivate/delete flow.
+- **Data layer:** `src/js/store.js` — single JS object, autosaved to `localStorage`, with a
+  `schema_version` + `migrate()` chain so old exported JSON files upgrade cleanly. Bumping the
+  schema is a real decision (new fields need defaults + a migration step), not a rename.
+- **Three separate apps ship from this one repo — Windows (Electron), the main Android app, and a
+  standalone read-only "At a Glance" Android app.** All three run the exact same `src/` domain
+  logic; only the shell around it differs. See "One-way data mirror + the 'At a Glance' mirror
+  app" below for the full architecture, the write-guard pattern, and every real bug hit building
+  it — read it before touching `src/js/dataMirror.js`, `mirror-app/`, or
+  `packaging/android-mirror/`.
+- **Blobs (photo/document file bytes) live in IndexedDB**, not `localStorage` —
+  `src/js/blobStore.js`. This split is deliberate and scoped: *only* binary blobs moved off
+  `localStorage` (Phase 12, after hitting the ~5-10MB browser storage quota with photos); every
+  other module stays synchronous against `localStorage`. Don't add new things to `blobStore.js`
+  unless they're binary blobs — see its own header comment.
+- **One IndexedDB database, `pcc_data_v1` (`src/js/sharedIndexedDb.js`), with three object
+  stores:** `blobs` + `content` (via `blobStore.js`) and `snapshots` (schedule baselines, via
+  `scheduleBaselineStore.js`). These used to be two separate databases (`pcc_blobs_v1`,
+  `pcc_schedule_baselines_v1`), consolidated in the PCC Architecture Upgrade's Phase 3; the old
+  names survive only as a one-time migration source in `sharedIndexedDb.js`. Both modules'
+  public APIs are unchanged, and `blobStore.js` still takes only binary blobs: baselines never
+  go through it.
+- Each register module (Risk/Issue/Opportunity, RFI/TQ, Change Orders) follows the same "one
+  shape distinguished by a `type` field" pattern rather than near-duplicate modules — follow this
+  pattern for any new register-style feature instead of copy-pasting a whole new module.
+- **`src/js/delayImpactEngine.js` is a read-only layer over `scheduleCpmEngine.js`'s persisted
+  output, never a second calculation engine.** It reads `total_float`/`early_finish`/etc. straight
+  off `data.activities` — the exact fields `calculateSchedule()` already wrote there the last time
+  "Calculate Schedule" ran — and only re-invokes the real CPM engine (read-only, via
+  `computeProjectFinishImpact()`) for a single delay's own project-finish impact, never in a
+  portfolio-wide loop (that function's own header comment warns against exactly this — see it
+  before calling it from a new list/dashboard). See the file's own header comment for the full
+  reasoning before adding anything to it.
+- **There is no separate "Delay Registry" store collection.** The Schedule page's Activity Detail
+  Panel (per-activity Delay Records section) and the Delay & Recovery Dashboard's own "Delay
+  Records (worst first)" register are both just different VIEWS over the same `data.delay_records`
+  array — the dashboard is a portfolio-wide rollup, not its own register. Anything that needs to
+  show/edit the same delay data in both places (see Bidirectional Delay Comments below) just reads
+  and writes that one shared array — no sync mechanism needed or wanted.
+- **`react/src/services/delayRecoveryDashboardService.ts` never imports from
+  `scheduleService.ts`, on purpose** — it independently duplicates the label maps
+  (`DELAY_STATUS_LABELS`, `DELAY_CATEGORY_LABELS`, etc.) and even some logic
+  (`addDelayComment`/`deleteDelayComment`) that also exist in `scheduleService.ts`. This is a
+  real, deliberate per-module-duplication convention (see the file's own header comment), not
+  accidental drift — but it's a real trap for future changes: **adding a new delay-record status
+  or label to one service's copy and forgetting the other silently breaks only the
+  dashboard's own rendering** (exactly what happened when `resolved` was added to
+  `scheduleService.ts`'s `DELAY_STATUS_LABELS` for Auto Baseline Delay Detection but initially
+  missed in `delayRecoveryDashboardService.ts`'s copy — caught and fixed in the very next gate).
+  When touching any `delay_records`-related constant or status value, grep both files.
+- **`delay_records` gained two fields this session, both defaulting safely and read
+  defensively everywhere** (`store.js`'s `newDelayRecord()`): `auto_generated` (boolean, set only
+  by `scheduleService.ts`'s `runAutoDelayDetection()` — see below) and `comments` (an array of
+  `{id, text, created_at}`, the Bidirectional Delay Comments thread — no per-comment author field,
+  since this app has no multi-user/auth concept anywhere else either). Both are backfilled by the
+  schema v64 migration for any pre-existing record, but every read of `comments` should still
+  guard with `|| []` (matches how `status_history` is already read) since a hand-constructed test
+  fixture or an old in-memory reference from before a migration ran won't have it.
+- **`runAutoDelayDetection(scheduleId)` (`scheduleService.ts`) auto-creates/auto-resolves Delay
+  Records by comparing a schedule's current activities against its project's OFFICIAL baseline**
+  (the same one `toggleOfficialBaseline()` marks, and the one Executive Center's Schedule Variance
+  already measures against — reused rather than inventing a second "which baseline counts"
+  concept). It's pure date comparison via the existing `scheduleBaselineEngine.compareBaselineToCurrent()`
+  — no CPM engine call, so unlike `delayImpactEngine.js`'s `computeProjectFinishImpact()` it's safe
+  to run over every activity in a schedule. Wired into `runCalculation()`, `saveActivity()`,
+  `commitInlineActivityEdit()`, `bulkShiftActivities()`, and `toggleOfficialBaseline()` itself. It
+  ONLY ever touches `auto_generated:true` records (creating one when an activity's finish slips
+  past baseline with no existing open auto record for it; flipping an existing one's status to
+  `"resolved"` — never deleting — when the activity comes back within baseline) — a manually
+  created Delay Record for the same activity is never touched, matching this file's own
+  "never helpfully rewrite a user's own record" convention (see Change Orders/`contract_value`
+  below). `"resolved"` is a real `DELAY_RECORD_STATUSES` value distinct from `"recovered"`
+  (a planner's Recovery Actions worked) and `"closed"` (manually closed) — it specifically means
+  "the schedule itself came back within baseline on its own."
+- **Density convention for secondary/destructive actions: tuck them behind a small "⋯" icon-button
+  + `.card-menu__dropdown`, keep only the ONE primary action visible.** Established at Gate 6
+  (Risk Register: Edit/Delete moved off the card into "⋯", confirmed via AskUserQuestion) and
+  reused since for Portfolio project cards (Edit/Pin/Archive) and the Schedule page's own toolbar
+  ("Columns", and now "Delete Schedule…" under a new "Schedule actions" menu). When a feature
+  request reads like "there's no way to do X," check whether X is already implemented behind one
+  of these menus before assuming it's a genuine gap — this exact confusion is why Company/Client/
+  Project archive turned out to need zero new code (Company/Client already surface Archive
+  directly in Organizations.tsx; Project's Archive is deliberately one click deeper, in Portfolio's
+  own "⋯" menu).
+- **Every `.modal-overlay` dialog goes through `src/js/modalA11y.js` — never hand-roll its
+  Escape/focus handling.** `window.PCC.modalA11y.attach(overlayEl, {onClose, initialFocus?,
+  fallbackFocus?, label?})` returns a `detach()`; it sets `role="dialog"`/`aria-modal`/
+  `aria-labelledby` (from `.modal__title`), moves focus in, traps Tab, closes the TOPMOST modal
+  on Escape (capture phase + `stopPropagation`, so one Escape = one layer and never also reaches
+  the nav drawer's handler), and returns focus to the opener. React pages use
+  `react/src/utils/useModalA11y.ts` (`const ref = useModalA11y(open, onClose, fallbackFocus?)`
+  → `ref` on the `.modal-overlay` div). **Pass `fallbackFocus` when the opener is a "⋯"
+  dropdown item** — the item unmounts as the modal opens, so there's nothing to return focus to
+  (Schedule's AI summary passes the "Schedule actions" toggle). `modalA11y.isOpen()` is what
+  `keyboardShortcuts.js` and the palette check to stay inert while any dialog is up. Optional on
+  `window.PCC` typings because `mirror-app/` doesn't load it.
+- **Command palette (`src/js/commandPalette.js`, Ctrl/Cmd+K, title-block search icon, and the
+  nav drawer's "Search pages and records…" row at phone width) owns no navigation logic.** Pages
+  come from `layout.js`'s `navItems()` (the sidebar's own `NAV_GROUPS`, so they can't drift).
+  Records jump via each page module's existing public hand-off — `filterByProject(projectId)`
+  THEN `expand<X>(id)`, then `router.go(route)`. The `filterByProject` call is load-bearing, not
+  decoration: most registers default to "open only" + the current project context, so expand
+  alone lands on a list that hides a closed or other-project record. Adding a new register?
+  Add one `RECORD_TYPES` entry (usually a one-line `registerType(...)`) and a case to
+  `tests/test_command_palette_e2e.js`'s `CASES`, which checks plain navigation hides the record
+  and palette navigation shows it. **Gotcha: Documents' public API is `window.PCC.files`, NOT
+  `window.PCC.documents`.** `scheduleService.ts`'s Linked Records "Document" row used to call a
+  nonexistent `window.PCC.documents.expandDocument`, so it never selected the document. That was
+  fixed 2026-09-23 (it now calls `files.filterByProject` + `files.expandDocument`), and the fake
+  `documents?` typing was removed so the wrong name no longer typechecks. **Documents
+  auto-selects the newest upload when nothing is selected**, so a jump that silently fails still
+  "works" whenever the target is the newest document. Any test of a Documents jump needs a
+  NEWER decoy document in a DIFFERENT project than the current context. The list's project
+  filter also defaults to the context, so a same-project decoy isn't enough (see
+  `test_activity_linking_e2e.js` and `test_documents_callers_e2e.js`, which cover every link
+  into Documents: Schedule, command palette, Project Workspace, and Meetings' "+ Attach
+  Document". Its `createFromMeeting()` sets the list filter to the meeting's project as well as
+  presetting the upload form, since 2026-09-24).
+- **Header space at phone width is exhausted.** At 412px the title-block page title already had
+  only ~36px (14px at 390px) before the palette gate; one more 44px title-block icon took it to
+  0px and scrolled the page sideways by 12px (caught in real Chromium, not jsdom). New
+  shell-level actions go in the nav drawer at phone width (`.icon-btn--hide-mobile` on the
+  title-block copy), like the palette's own entry point.
+- **Security rules from the 2026-09-24 audit (a real exploit path was found and fixed):**
+  - **Treat content from user-supplied files as untrusted HTML.** A real .docx with a
+    `javascript:` hyperlink ran code in the app when clicked in the Word preview. Anything
+    derived from a file's contents goes through `fileViewer.sanitizePreviewHtml()` (parses in
+    an inert `DOMParser` document, then drops active elements, `on*`/`style` attributes,
+    non-`http(s)`/`mailto`/`#` links and non-`data:` images). Never assign such HTML to
+    `innerHTML` directly: that fires `<img onerror>` before any later cleanup can run.
+  - **Electron: the window never leaves the app.** `packaging/electron/navigationGuard.js` +
+    `main.js` deny every `window.open` and every navigation away from `index.html`
+    (`#hash` routing is in-page and unaffected); `http(s)`/`mailto` links go to the OS via
+    `shell.openExternal`. So **never open files with `window.open(blob:)`**: it's refused in
+    Electron and has no "new tab" in the Android WebView. Use `window.PCC.fileViewer.open()`
+    (Knowledge Base was the last caller that didn't).
+  - **Every `pdfjsLib.getDocument()` call passes `isEvalSupported: false`** (Gate H.1,
+    2026-11-26). The bundled pdf.js 3.11.174 is covered by CVE-2024-4367: with eval on, a
+    crafted PDF font runs script, and pdf.js runs on the main thread here, so that script would
+    reach `window.PCC` and `window.PCC_ELECTRON`. Two call sites today (`fileViewer.js`,
+    `documentsService.ts`); a new one needs the flag, and `test_pdf_eval_disabled_e2e.js`
+    covers both. Upgrading to pdf.js 4.x (ES-module only) is a closed decision unless this
+    flag stops being enough.
+  - **SheetJS comes from `cdn.sheetjs.com`, never npm** (Gate H.4, 2026-11-26). npm's `xlsx`
+    stops at 0.18.5, which has CVE-2023-30533 and CVE-2024-22363. The vendored
+    `xlsx.core.min.js` is 0.20.3 (SHA-256 `197255B0…6D9BFD27`, Apache-2.0);
+    `test_sheetjs_version_e2e.js` fails if it ever drops below 0.20.2. To update: download
+    `https://cdn.sheetjs.com/xlsx-<ver>/package/dist/xlsx.core.min.js`, then run the suite in
+    UTC and IST (the date tests pin `dateCellToIso()`'s device-zone rule). **ExcelJS stays
+    4.4.0 by decision:** it has open advisories "through 4.4.0" but this app only WRITES a new
+    workbook from its own grid data in the browser (Edit Excel); it never parses a user's file
+    and never uses the Node-only streaming writer. Re-check if it ever reads files.
+  - **The mirror IPC writes exactly `pcc-mirror.json` and nothing else**
+    (`mirrorFileWriter.js`'s `ALLOWED_FILENAME`). The folder is renderer-supplied free text,
+    so the filename lock is what stops injected script from dropping an executable (e.g. in
+    the Windows Startup folder). Adding a second mirror file means extending that allowlist
+    deliberately.
+- **`store.js` writes a pending debounced save on `pagehide`/`beforeunload`/
+  `visibilitychange→hidden`** (`flushPendingSave`, also exported). Before this, an edit in
+  the last 250ms before closing/reloading was silently lost. Its listeners are guarded,
+  because unit tests evaluate `store.js` against a stub `window` with no event API.
+- **Dates: "today" is the LOCAL date, never `new Date().toISOString().slice(0, 10)`.** That's
+  the UTC date, and in IST (UTC+5:30, where this app is used) it still reads "yesterday" until
+  05:30. The 2026-09-24 audit found it in ~30 files: title-block date, record default dates,
+  overdue buckets, the CPM default data date, export stamps. Use `localIsoDate()` (a per-file
+  helper in each plain-JS file, since the engines are unit-tested standalone) or
+  `localTodayIso()`/`localIsoDate()` from `react/src/utils/localDate.ts`.
+  - **"Local" means the user's chosen zone (Settings → Time zone, `settings.time_zone`, schema
+    v67; `""` = Automatic = this device).** The one implementation is `window.PCC.dates` at the
+    top of `store.js` (store.js is the module every app loads, mirror-app included, and it owns
+    `settings`). Every per-file `localIsoDate()` and `localDate.ts` DELEGATE to it and only fall
+    back to the device clock when it's absent. **Displaying a date or timestamp goes through
+    `formatDate()`/`formatDateTime()`/`formatTime()`** (`window.PCC.dates` or `localDate.ts`),
+    never a bare `toLocale*String()`. That's what makes displayed times follow the setting, and
+    `formatDate("YYYY-MM-DD")` shows the calendar date unshifted in every zone. The old
+    `new Date("2026-09-24").toLocaleDateString()` parsed it as UTC midnight and showed the 23rd
+    anywhere west of UTC. An invalid zone stored in a file (e.g. from a device that knows a
+    zone this one doesn't) falls back to Automatic, never throws. **UTC arithmetic on
+  stored `YYYY-MM-DD` strings stays correct** (`new Date(iso + "T00:00:00Z")` +
+  `setUTCDate`/day numbers): it's timezone-neutral. Only "what day is it now" and "which day
+  does this `Date` object mean" need the local form.
+  - **A `Date` coming out of a spreadsheet goes through `dateCellToIso()`**
+    (`scheduleImportService.js`; same rule in `localDate.ts`). SheetJS builds date cells at
+    local midnight, which in Asia/Kolkata even lands 10 seconds early, so `toISOString()` read
+    every Excel-imported date, and every "Edit Excel" round trip, one day early.
+    **`dateCellToIso()` is deliberately DEVICE-local and ignores the Time zone setting**:
+    SheetJS builds the cell in the device's zone whatever the setting says, so reading it in
+    the chosen zone would shift it (`test_time_zone_setting_e2e.js` pins this).
+  - **This suite runs in UTC by default, where both bugs are invisible.** Any date-sensitive
+    test should pin itself to IST like `tests/test_local_dates_ist_e2e.js` does (`process.env.TZ
+    = "Asia/Kolkata"` before any `Date` exists, plus a frozen clock inside the 00:00-05:30
+    window). Running the whole suite with `TZ=Asia/Kolkata npm test` is also worth doing.
+- **Data from a NEWER build is refused, never migrated or saved over** (Gate H.2,
+  2026-11-26). `migrate()` throws `NEWER_VERSION_MESSAGE` when `schema_version >
+  SCHEMA_VERSION`, so both imports and the mirror app's read reject it with the store
+  untouched. `load()` checks before migrating: it sets `blockedByNewerVersion`, after which
+  `persistToLocalStorage()` writes nothing, and `layout.js` shows an undismissable dialog whose
+  one action (`exportNewerVersionData()`) saves the raw stored value unchanged. The mirror app
+  shows the message above the data it already had (`"newer"` status). Any new import path must
+  go through `migrate()`; any new write to `pcc_local_data_v1` must go through
+  `persistToLocalStorage()`. Covered by `test_newer_version_guard_e2e.js`.
+- **Everything except file bytes shares ONE `localStorage` value with a hard ceiling**
+  (Gate H.3, 2026-11-26). `storageAnalyticsEngine.js` owns the numbers:
+  `LOCAL_STORAGE_LIMIT_CHARS` (5,242,880, Chromium's 5 MiB in UTF-16 code units, across every
+  key), `measureAppData()`, `checkStorageFit()`, `storageFullMessage()`. Any new path that ADDS
+  a lot to the store must pre-flight with `storageFitError(addedChars)`
+  (`react/src/services/storageService.ts`) and reject BEFORE writing the file to IndexedDB or
+  calling `update()`; imports are checked inside `store.js`'s `writeInlineBlobsAndCommit()`.
+  `store.getLastSavedSize()` is the length the last save wrote (the 80% toast uses it, so
+  nothing is serialized twice); `store.getOtherStorageChars()` counts recovery backups and any
+  other key, which share the quota. `notify(message, severity, {label, onClick})` can carry
+  one button. Edit Excel round trips are not pre-flighted (they replace records in place).
+- **`migrate()` ends with a backfill-only safety net**: any top-level collection, or
+  `settings`/`meta` key, that's `undefined`/`null` in the loaded file gets its `emptyData()`
+  default. It never overwrites and is idempotent. The versioned steps only backfill what each
+  bump introduced, so a hand-edited or partial file missing `documents`/`risks` used to crash 8
+  pages after a "successful" import. New schema steps should still backfill their own fields;
+  this net is only for whole missing keys.
+- **Bumping `SCHEMA_VERSION` (`store.js`) needs a matching migration step AND the migration
+  test updated.** `migrate()` sets `schema_version` inside each step, not from the constant, so
+  a bump with no step leaves migrated data on the old number. Since Gate 0.2 (2026-11-26) only
+  `tests/test_store_schema_v54_migration.js` holds the exact number: bump its
+  `FINAL_SCHEMA_VERSION` and add the new step's checks. Every other test compares against
+  `require("./schemaVersion")`, which reads the constant from `src/js/store.js`. A new
+  boot-check assertion uses that helper, never a literal.
+  Current version is **67** (`settings.time_zone` for Settings → Time zone, added 2026-09-24;
+  v66 was `settings.ollama_enabled`/`ollama_host`/`ollama_model` for the Ollama AI integration —
+  see "Ollama AI integration" above) — see
+  `tests/test_store_schema_v54_migration.js` for the migration test pattern to copy for the next
+  bump. `store.js` also exports `migrate: migrate` on `window.PCC.store` (purely additive, zero
+  behavior change to the main app) specifically so `mirror-app/` can reuse the real migration
+  chain without reimplementing it — see the mirror app section above.
+
+## One-way data mirror + the "At a Glance" mirror app
+
+Three apps ship from this one repo, all running the same unmodified `src/` domain logic:
+**Windows** (Electron, full editing), **the main Android app** (`com.pcc.projectcontrolcenter`,
+full editing), and **"PCC At a Glance"** (`com.pcc.projectcontrolcenter.mirror`, a genuinely
+separate, minimal, strictly READ-ONLY Android app — `mirror-app/` + `packaging/android-mirror/`).
+Deliberately three codebases sharing real components, not one app with a "restricted mode" flag —
+see `HANDOFF.md`'s 2026-09-09/10 sessions for the full build history and every bug hit along the
+way; this section is the standing reference.
+
+- **The mirror itself is one-way, Windows → Android, read-only, nothing more.** `src/js/
+  dataMirror.js` (Windows/Electron only) writes a full `buildExportJson()` snapshot to a
+  user-configured folder roughly hourly plus once on quit, via `packaging/electron/preload.js`'s
+  IPC bridge (`window.PCC_ELECTRON.writeMirrorFile`) — silent, no dialog. Gated behind
+  `settings.sync_mirror_enabled` (off by default; schema v65 fields, `sync_mirror_folder_path`
+  too). There is no write-back path anywhere, and there never has been — a prior "attach a
+  recording from phone" idea was explicitly scrapped for this simpler, safer scope. The Android
+  READ side used to live in the main app too, but was deliberately moved OUT entirely (see below)
+  — `dataMirror.js` today only ever runs the Windows write side.
+- **`mirror-app/` is a genuinely separate build, not a restricted relaunch of `index.html`.** Own
+  `package.json`/`tsconfig.json`/`build.js`/esbuild pipeline, `node mirror-app/build.js` produces
+  `mirror-app/index.html` — a single self-contained file at roughly **11% of the main app's
+  size**, since it excludes every editing-only vendor library and engine (xlsx, mammoth, pdf.js,
+  jszip, sql.js, the CPM/import engines). It reuses the REAL, unmodified `Dashboard.tsx`/
+  `MyWork.tsx`/`ActionCentre.tsx`/`Portfolio.tsx` and their real services from `react/src`
+  (imported by relative path, e.g. `mirror-app/src/App.tsx` imports
+  `../../react/src/pages/Dashboard.tsx` directly) — never forked, per the standing "React must not
+  own core calculations" rule extended to "the mirror app must not own a second copy of the UI
+  either." It also reuses the real `src/js/store.js`, `src/js/projectContext.js`, and
+  `src/js/notifications.js` verbatim, loaded as plain `<script>` tags before the React bundle
+  (`mirror-app/build.js` reads them straight from `src/js/`, same "one shared source of truth"
+  approach as everything else in this repo).
+  - **Reuses the SAME React/ReactDOM install `react/node_modules` already has — via symlinks, not
+    a second npm install.** `mirror-app/build.js`'s `ensureReactSymlinks()` creates
+    `mirror-app/node_modules/{react,react-dom,@types}` → `react/node_modules/{react,react-dom,
+    @types}` automatically on every build if missing, so a fresh clone's first `cd mirror-app &&
+    npm install && node build.js` just works. **Do not use esbuild `--alias`/tsconfig `paths`
+    remapping for this instead** — tried first, and it silently broke React's own JSX type
+    declarations (`JSX.IntrinsicElements` missing, the special-cased `key` prop treated as a real
+    one) because `paths` substitution bypasses the normal node_modules "fall back to `@types/<pkg>`"
+    resolution bare-specifier imports get for free. Plain symlinks behave exactly like a real local
+    install for both `tsc` and `esbuild`, with none of those edge cases, and guarantee exactly one
+    copy of React ends up in the bundle (two would break hooks/context).
+  - **`mirror-app/src/shim/pcc.ts` is the map of what's real vs. stubbed** for every other
+    `window.PCC.*` module the reused pages/services touch (meetings/rfis/portfolio/schedule/
+    changeOrders/vendors/risks/decisionRegister/documentTypes/files/archive/cost/
+    resourceLevelingEngine/executiveCenter). Almost all of it is "click an item → jump to and
+    pre-expand it on its own full editing page," which doesn't exist in a 4-tab read-only app —
+    stubbed to safe no-ops (never throws, never does anything). `router.ts` (a real, minimal
+    4-tab implementation, not a stub) and `shim/contextSwitcher.ts` (the Company/Client/Project
+    switcher, ported line-for-line from `layout.js`'s cascading-select logic) are the two
+    genuinely-real reimplementations, because they actually change what's displayed.
+  - **The write guard (`shim/writeGuard.ts`) is the single most important piece — read it in full
+    before touching any reused page's write path.** The reused components have full working
+    create/edit UI built in (they're the same code that powers real editing elsewhere), so without
+    this, "+ Add Project" and similar genuinely persist. `installWriteGuard()` wraps
+    `window.PCC.store.update()`: takes a **deep clone** (`JSON.parse(JSON.stringify(...))`) of
+    every non-`settings` top-level key BEFORE the real mutator runs, then restores from that clone
+    afterward — letting Company/Client/Project switching and pinned-projects (both `data.settings`-
+    only, via the real, reused `projectContext.js`) through untouched, while any content mutation
+    (`data.projects.push(...)` etc.) is silently undone before it's ever rendered.
+    **A shallow "preserve the reference" version of this guard is NOT a fix — it's a no-op that
+    looks like one.** First shipped as `preserved[k] = data[k]` (a reference, not a copy); since
+    real mutations in this codebase are almost always in-place (`d.projects.push(created)`, the
+    convention throughout `store.js`), pushing onto the array mutated the SAME array the "preserved"
+    reference already pointed at, so "restoring" `data[k] = preserved[k]` restored the object to
+    itself, new content and all. Shipped, reported by the user as still broken on a real device,
+    root-caused by re-testing with the EXACT real mutation pattern directly
+    (`window.PCC.store.update((d) => d.projects.push(...))`) instead of trusting a broader UI-click
+    test that happened to pass for unrelated reasons. **Any future guard/snapshot logic in this
+    codebase must deep-clone, never shallow-preserve a reference**, given how pervasively this
+    codebase mutates in place.
+  - **Silently reverting a write isn't enough on its own — the reused form still closes as if it
+    saved** (`Portfolio.tsx`'s `onSaved()` runs unconditionally after `saveProject()`), so
+    `writeGuard.ts` also compares each non-settings key's JSON before/after and fires a real toast
+    ("This is a read-only view — changes here aren't saved.") the instant it detects and reverts an
+    attempt — silent for genuine settings-only changes. `window.PCC.notify` is the REAL
+    `src/js/notifications.js` here (reused, not stubbed) specifically so this toast can exist.
+    **`window.PCC.notify` also drops every "success"-severity message globally** — the reused
+    `saveProject()` calls `notify("Project added.", "success")` unconditionally right after
+    `update()` returns, regardless of whether the guard reverted it, which without this produces two
+    contradictory stacked toasts. Correct in a strictly read-only app: a "success" toast is
+    definitionally reporting a create/update/delete that can never actually happen here.
+  - **Explicit user follow-up after the guard+toast fix: "I don't want the button itself" —
+    genuinely blocked-and-explained still wasn't enough; the create/edit UI shouldn't be reachable
+    at all.** `shim/hideWriteButtons.ts` hides `"+ Add Project"` and, within a project card's
+    `.card-menu__item` dropdown, `"Edit"`/`"Archive"`/`"Unarchive"` — matched by their known exact
+    button text, the only way to suppress specific elements of a reused, unmodified component
+    without forking it. `"Pin"`/`"Unpin"` in the same dropdown is deliberately left working: it only
+    ever touches `data.settings.pinned_project_ids`, a genuine, harmless, per-device preference the
+    write guard already lets through.
+    **A `MutationObserver` attached to `#mirror-app-outlet` directly will stop working after the
+    first mirror refresh.** `App.tsx`'s outlet carries `key={refreshTick}` (a deliberate
+    force-full-remount-on-every-refresh design, not an accident), so React destroys and recreates
+    that exact DOM node every time the mirror data reloads — orphaning any observer attached
+    directly to it. Observe the outer, never-recreated `.mirror-app-shell` instead (`subtree:
+    true` still catches everything inside, regardless of how many times the outlet itself gets
+    swapped out underneath it).
+  - **The phone reads the mirror from a folder the user PICKS (Android folder picker / Storage
+    Access Framework), never a fixed path** — since 2026-09-24, At a Glance 1.9. The old read
+    (Filesystem plugin, fixed `Documents/PCC-Mirror/pcc-mirror.json`) could never see a file a
+    sync tool wrote: on Android 11+ scoped storage an app with no storage permission can't read
+    another app's non-media file in shared Documents, and this app declares only `INTERNET`. Its
+    `App`-plugin "resume" re-check was also dead code (`@capacitor/app` was never installed).
+    Now: a local Capacitor plugin, `packaging/android-mirror/android/app/src/main/java/com/pcc/
+    projectcontrolcenter/mirror/MirrorFolderPlugin.java` (registered by hand in
+    `MainActivity.onCreate()` before `super`; `pickFolder()` / `readMirror({ifNewerThan})`),
+    keeps a persistable READ-only grant and reads only `pcc-mirror.json` through
+    `DocumentsContract` (no androidx.documentfile dependency). Re-checks on `visibilitychange`.
+    `@capacitor/filesystem` was removed. **Never verified on a real device from this sandbox**:
+    the Java compiles into the signed APK and the JS side is verified in Chromium against a
+    mocked plugin, but the actual picker/grant/read needs Aditya's phone.
+  - **The Android read side (`mirror-app/src/mirrorRead.ts`) does NOT reuse
+    `store.js`'s `importFromJsonString()`** — that function migrates AND writes inline blobs out to
+    IndexedDB via `blobStore.putBlob()`, deliberately excluded from this app's bundle. Calling
+    `window.PCC.store.migrate()` directly (exposed on the real `store.js` for exactly this — see
+    its own export comment) and committing via the real `update()` keeps blobs inline in memory
+    instead, which is both simpler and correct for a stateless read-only viewer: `doc.file_data`
+    stays populated, ready to render, no IndexedDB round-trip needed.
+  - **Every reused page needs the real `main.page` wrapper class around it, or it renders
+    completely unpadded.** The main app's pages are only ever styled correctly inside
+    `.main-column > main.page#page-outlet` — `main.page` supplies the padding (`var(--space-5)`/
+    `var(--space-4)` on narrow viewports) every page's own filter-row/KPI-grid layout math
+    assumes it has. `mirror-app`'s own outlet needs the real `page` class (`<main className="page"
+    id="mirror-app-outlet">` in `App.tsx`), not a bespoke wrapper — confirmed by a real device
+    screenshot showing edge-to-edge unpadded content, fixed to pixel-parity with the main app's
+    own real mobile rendering of the same page.
+- **`packaging/android-mirror/` is a second, independent Capacitor project**, bootstrapped via
+  `npx cap add android` (not hand-copied from `packaging/android/` — that auto-generates the
+  correct `com.pcc.projectcontrolcenter.mirror` package directory structure rather than risking a
+  manual rename). Distinct `applicationId` from the main app so both install side by side on one
+  device. **Its own dedicated, separate release keystore**
+  (`packaging/android-mirror/android/app/pcc-mirror-release.jks` + `keystore.properties`, gitignored,
+  never committed) — explicit user instruction, not an oversight: the two apps stay independently
+  signable/updatable rather than tied to one shared signing identity. `scripts/copy-app.js` copies
+  from `mirror-app/index.html`, never the repo root's.
+  - **The adaptive icon gotcha below applies to BOTH Android projects equally** — this bit both
+    apps, not just the mirror one.
+
+**Adaptive icon gotcha — real bug, hit on BOTH Android apps, worth knowing before ever touching
+`copy-app.js` or regenerating launcher icons.** `@capacitor/assets`' "Custom Mode" needs
+`assets/icon-only.png` + `assets/icon-foreground.png` + `assets/icon-background.png` all three —
+`icon-only.png` ALONE only feeds the LEGACY `mipmap/ic_launcher.png`, never the Android 8+ (API
+26+) adaptive icon layers (`mipmap-anydpi-v26/ic_launcher.xml` → `mipmap/ic_launcher_foreground.png`
++ `ic_launcher_background`), which is what every real device actually renders on the home screen/
+app drawer. Both `packaging/android/scripts/copy-app.js` and `packaging/android-mirror/scripts/
+copy-app.js` originally supplied only `icon-only.png` — both apps shipped Capacitor's own stock
+placeholder icon on real devices for their first releases, confirmed by the user, neither app's
+actual custom icon ever took effect. Fixed by also copying the real logo to `icon-foreground.png`
+and a flat-color match to `icon-background.png` (`packaging/icons/pcc-icon-background.png` /
+`pcc-mirror-icon-background.png`) before `npx @capacitor/assets generate --android`. **Verify by
+opening the regenerated `android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_foreground.png`
+directly** — if it's a real logo, the fix worked; if it's Capacitor's own abstract blue mark, it
+didn't.
+
+## Ollama AI integration (Electron/Windows only, pilot capability)
+
+Added per Aditya's request for AI features (fuzzy search everywhere + Ollama-backed
+summarization/report/document review). Scoped down deliberately, following the same
+"progressive, one capability at a time" playbook as the React migration: shared plumbing
+built once, then exactly ONE working feature (Schedule summarization) wired through it, with
+report generation and PDF/Excel review explicitly deferred to future gates rather than built
+speculatively.
+
+- **Electron-only, by architecture, not by omission.** The actual HTTP call to a local Ollama
+  server (`http://localhost:11434` by default) runs in the Electron **main process**, via IPC
+  (`packaging/electron/ollamaClient.js` — pure, testable with plain Node + mocked `fetch`;
+  registered as `pcc-ollama-generate`/`pcc-ollama-list-models` in `main.js`, exposed through
+  `preload.js`'s `contextBridge` as `window.PCC_ELECTRON.ollamaGenerate`/`ollamaListModels`) —
+  never a direct `fetch()` from the renderer. Reason: a `file://`-opened renderer sends
+  `Origin: null`, and rather than gamble on a given Ollama version's CORS defaults (or ask the
+  user to set `OLLAMA_ORIGINS` just to make a feature work), IPC sidesteps browser CORS
+  entirely. Same "only in the main process" pattern `writeMirrorFile` already established for
+  the data mirror. Real, accepted consequence: Ollama features do not exist on Android or in a
+  plain browser-opened `index.html` — `src/js/ollamaService.js`'s `isAvailable()` (checks for
+  `window.PCC_ELECTRON.ollamaGenerate`/`ollamaListModels`) is what enforces this, the same
+  "no-op elsewhere" posture as `dataMirror.js`'s `isElectronMirrorAvailable()`.
+- **Off by default, three new settings fields** (schema v66): `settings.ollama_enabled`
+  (boolean), `settings.ollama_host` (default `"http://localhost:11434"`), `settings.ollama_model`
+  (default `""`, deliberately left blank — there's no universally "right" model to assume
+  someone has pulled). Same "never silently call out anywhere" posture as the data mirror's
+  `sync_mirror_enabled`.
+- **`src/js/ollamaService.js`** is the single gate everything else goes through: `isAvailable()`,
+  `settings()`, `listModels()`, `ask(prompt)` — the last two reject with a clear message
+  ("Ollama integration is only available in the Windows desktop app." / "...is turned off in
+  Settings." / "No Ollama model is configured...") rather than throwing an opaque error, since a
+  calling UI needs something displayable. This file has **no opinion on what any capability
+  asks** — it only ever forwards a prompt string and returns Ollama's response text, so it stays
+  reusable for whatever capability comes after the pilot instead of hardcoding one.
+- **`react/src/services/ollamaService.ts`** is the thin React-side wrapper (master prompt §9:
+  React must not own core calculations) PLUS the one pure, fully-testable piece that belongs
+  here: `buildScheduleSummaryPrompt(data, scheduleId)`. It reads `total_float`/`early_finish`/
+  etc. straight off `data.activities` — the exact fields `scheduleCpmEngine.js`'s
+  `calculateSchedule()` already wrote there — and classifies criticality via the real, shared
+  `window.PCC.delayImpactEngine.classifyCriticality()`, **never** re-invoking the CPM engine or
+  inventing a second criticality rule. Same "read-only layer over persisted output" convention
+  `delayImpactEngine.js` itself documents in its own header comment. Any FUTURE Ollama capability
+  (report drafting, PDF/Excel review) should follow this same shape: a pure prompt-builder
+  function here, reading only already-computed/already-extracted data, never a second
+  calculation or a second text-extraction pass — PDF/Excel review specifically should reuse the
+  text `pdf.js`/`exceljs` already extract into `extraction.text` (see Document Types' own
+  extraction pipeline), never re-parse the binary itself.
+- **Pilot capability: "Summarize Schedule (AI)"** — a new item in the Schedule page's existing
+  "Schedule actions" ⋯ menu (`ScheduleBar` in `react/src/pages/Schedule.tsx`), gated behind
+  `isOllamaAvailable()` so it's simply absent outside Electron rather than shown-and-broken.
+  Opens a `.modal`/`.modal-overlay` (reusing the existing component, not inventing a new dialog
+  pattern — `src/js/keyboardShortcuts.js`'s help overlay uses the same two classes) showing a
+  loading state, then the model's response, or a clear error message on failure.
+- **Settings UI**: a new "AI Assistant (Ollama)" panel, gated behind `window.PCC_ELECTRON`
+  exactly like the existing "Data Mirror" panel right above it (same file, same pattern) — host
+  address, model name (with a `<datalist>` populated by "Test Connection", which calls
+  `listModels()` against `/api/tags` and reports success/failure via the existing toast system,
+  never a alert()).
+- **Testing**: `packaging/electron/ollamaClient.js` is tested directly with plain Node + a
+  mocked `global.fetch` (`tests/test_ollama_client.js`) — no real Electron process, no real
+  Ollama server, matching `mirrorFileWriter.js`'s own testing precedent. Everything above that
+  (`window.PCC.ollama`, the Settings panel, the Schedule pilot) is tested end-to-end against the
+  real bundled `index.html` via jsdom with `window.PCC_ELECTRON` stubbed
+  (`tests/test_ollama_integration_e2e.js`) — same "stub window.PCC_ELECTRON after/before load"
+  approach `test_data_mirror_e2e.js` already established. A stubbed `ollamaGenerate` captures the
+  actual prompt text sent to it so tests can assert the prompt contains real seeded data (e.g. a
+  specific critical activity's name), proving `buildScheduleSummaryPrompt` isn't just returning a
+  canned string — not just that the UI shows *some* response.
+
+## Commands
+
+```
+cd react && npm install  # first time only
+node build.js          # rebuild index.html from src/ (also runs the react/ build) — run after every src/ or react/src change
+cd tests && npm install  # first time only
+cd tests && npm test    # run the full jsdom/fake-indexeddb suite (must pass before shipping)
+node --check src/js/whatever.js   # quick syntax check on a single file
+
+git config core.hooksPath .githooks   # once per clone: turns on the local pre-push check
+                                       # (refuses a push whose index.html is stale; warns when
+                                       # mirror-app/index.html may be stale). No GitHub CI.
+
+cd mirror-app && npm install  # first time only
+node mirror-app/build.js   # rebuild mirror-app/index.html — run after any src/js/{store,projectContext,notifications}.js
+                            # change, any react/src/{pages/{Dashboard,MyWork,ActionCentre,Portfolio},services/*}.ts(x)
+                            # change, or any mirror-app/src change. NOT run by the repo-root node build.js — separate app.
+```
+
+## Building release installers (Windows EXE / Android APK / mirror-app APK)
+
+Full detail/troubleshooting lives in `packaging/README.md` and `HANDOFF.md`'s dated build-session
+write-ups (search `Windows EXE + Android APK` there) — this is the fast-reference version. Always
+`node build.js` at the repo root first so both installers embed the current `index.html`.
+
+**There are now TWO Android projects, each needing its own `versionCode`/`versionName` bump and
+its own keystore before every release build — easy to bump only one and forget the other.**
+`packaging/android/` (the main app) and `packaging/android-mirror/` (the "At a Glance" mirror app,
+`node mirror-app/build.js` first so it embeds the current `mirror-app/index.html`) are entirely
+independent Capacitor projects with independent `build.gradle`s, independent keystores
+(`pcc-release.jks` vs. `pcc-mirror-release.jks`), and independent version histories — see "One-way
+data mirror + the 'At a Glance' mirror app" above for the full architecture. **Also see this
+section's own adaptive icon gotcha below — it bit both apps' first release, not just one.**
+
+**Requirements — Windows (.exe, built via Electron + electron-builder, cross-built from Linux):**
+- `cd packaging && npm install` (first time only).
+- **Wine, both architectures** — `wine64` alone is NOT enough; NSIS's installer stub is a 32-bit
+  PE binary and needs `wine32:i386` (WOW64) too. If this sandbox also has a PHP PPA (e.g.
+  `ondrej/php`) enabled, installing `wine32:i386` can silently uninstall the `wine`/`wine64`
+  (amd64) packages as collateral — a `libgd3` version mismatch between the PPA's amd64 build and
+  the plain Ubuntu archive's i386 build. Fix: pin both architectures to the same version before
+  installing wine: `apt-get install -y --allow-downgrades --no-install-recommends
+  libgd3:amd64=2.3.3-9ubuntu5 libgd3:i386=2.3.3-9ubuntu5 wine wine64 wine32:i386`. If `~/.wine`
+  was already created by a failed amd64-only attempt, `rm -rf ~/.wine` first so a fresh
+  WOW64-capable prefix gets created.
+- **Build with `cd packaging && npm run electron:build`** — the script is `node
+  scripts/copy-app.js && electron-builder --win`. The `--win` matters: electron-builder
+  defaults to the HOST platform without it, which on a Linux sandbox silently produced a Linux
+  AppImage instead of a Windows installer, with no error. It was added to the script itself
+  on 2026-09-24, which also ended the old contradiction between this bullet (which used to say
+  to run `npx electron-builder --win` by hand) and the "never call electron-builder directly"
+  rule below.
+- No code-signing certificate — deliberate, standing decision (personal use only); the installer
+  shows an "Unknown Publisher" SmartScreen warning, which is expected and accepted.
+- **Verify before sending**: extract `app.asar` (`npx asar extract release/win-unpacked/resources/app.asar <dir>`)
+  and `diff` its `electron/index.html` against the repo root's fresh build — must be byte-identical.
+- **The real Electron app CAN be driven in this container** (first done 2026-09-24), not just its
+  pure helpers: download the Linux Electron build matching `packaging/node_modules/electron`'s
+  version straight from GitHub releases (`electron-v<ver>-linux-x64.zip` into
+  `node_modules/electron/dist/`, plus `path.txt` = `electron`). The package's own `install.js`
+  failed behind the sandbox proxy. Then launch `packaging/electron/main.js` with Playwright's
+  `_electron.launch()` under `xvfb-run -a`. That's how the navigation guard, `window.open`
+  denial and mirror-filename lock were confirmed end to end.
+
+**Requirements — Android (.apk, built via Capacitor + Gradle):**
+- JDK 21 (`JAVA_HOME`), and an Android SDK with `platform-tools`, `platforms;android-36`,
+  `build-tools;36.0.0` under `ANDROID_HOME`/`packaging/android/android/local.properties`
+  (`sdk.dir=...`). Bootstrap from scratch via `cmdline-tools` from
+  `https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip` +
+  `sdkmanager --sdk_root=<dir> --licenses` + `sdkmanager --sdk_root=<dir> "platform-tools"
+  "platforms;android-36" "build-tools;36.0.0"` if not already present.
+- **A real signing keystore** at `packaging/android/android/app/pcc-release.jks` +
+  `keystore.properties` (both gitignored, never committed — see the Android release-signing
+  bullet further below). Without it, `assembleRelease` silently falls back to an UNSIGNED APK
+  that fails to install on-device ("package appears to be invalid"), not just a warning. This
+  keystore lives only on Aditya's machine/password manager between sessions — a fresh container
+  has none and needs it re-supplied before a real release build.
+- **Bump `versionCode`/`versionName`** in `packaging/android/android/app/build.gradle` before
+  building — see the dedicated bullet below, this is a real, previously-shipped bug.
+- `cd packaging/android && npm install` (first time only), then `npm run android:build:release`
+  (runs `copy-app.js` + `cap sync android` + `gradlew assembleRelease`).
+- **Maven Central can return HTTP 429 (Too Many Requests) on a cold Gradle cache.** Usually
+  transient (retry with a short `sleep` and `--max-workers=1`), **but on 2026-09-24 it wasn't**:
+  three retries failed on the identical 7 requests, and `curl` confirmed every Maven Central
+  request from the container returned 429. Fix that worked first time: a sandbox-only Gradle
+  init script, `~/.gradle/init.d/maven-central-mirror.gradle` (never in the repo), that
+  rewrites every `https://repo.maven.apache.org` repository (settings, buildscript and project
+  levels) to Google's official mirror `https://maven-central.storage-download.googleapis.com/maven2/`.
+  The full script is in HANDOFF.md's 2026-09-24 build section. Check with `curl -s -o /dev/null
+  -w '%{http_code}'` against both hosts before assuming it's transient.
+- **A `gradlew ... | tee build.log` pipeline reports `tee`'s exit code, not gradle's** — a failed
+  build can still show exit code 0 to a caller checking `$?` afterward. Grep the log for `BUILD
+  SUCCESSFUL`/`BUILD FAILED`, or check `${PIPESTATUS[0]}` right after the pipeline, don't trust a
+  bare exit-code check.
+- **Verify before sending**: `apksigner verify --verbose <apk>` (confirms it's actually signed,
+  not just built) and `apksigner verify --print-certs <apk>` (confirms the signer cert's SHA-256
+  matches the keystore backup's own documented fingerprint — never assume, actually diff the
+  hex), plus `zipalign -c -v 4 <apk>`.
+- **The mirror app (`packaging/android-mirror/`) needs everything above done a SECOND time,
+  independently** — same JDK/SDK (shared, nothing extra to install), but its own keystore
+  (`packaging/android-mirror/android/app/pcc-mirror-release.jks` + `keystore.properties`, own
+  password, never the main app's), its own `versionCode`/`versionName` in its own `build.gradle`,
+  `cd packaging/android-mirror && npm install` (first time) then `npm run
+  android:build:release` — and `node mirror-app/build.js` first (not the repo-root `node
+  build.js`) so it embeds the current `mirror-app/index.html`. Verify identically (`apksigner
+  verify`, `zipalign -c`), and confirm the two APKs' signer cert SHA-256 digests are genuinely
+  different from each other — that and the distinct `applicationId` are what let both install on
+  one device at once.
+
+**Delivery, both platforms**: `sha256sum` the final artifact; if it exceeds the ~30MB
+file-transfer limit (the Windows `.exe` always does, ~100-106MB), split per the standing
+convention below and verify the reassembled file's checksum matches before sending.
+
+## Testing conventions (match the project's existing discipline)
+
+- Every phase/"Gate" in the README was shipped with a fresh test suite run before delivery —
+  match that: after any change, rebuild and run `cd tests && npm test`, and don't report a change
+  as done without both passing.
+- Tests eval the real `src/js/*.js` files directly (not reimplementations) and, for end-to-end
+  checks, load the actual bundled `index.html` via jsdom — see `tests/test_schedule_baseline_e2e.js`
+  for the pattern. Keep new tests consistent with that: test the real shipped code, not a mock of it.
+- jsdom doesn't implement IndexedDB — tests that touch `blobStore.js` or `scheduleBaselineStore.js`
+  use `fake-indexeddb`. jsdom also doesn't implement `FileReader.readAsDataURL` — stub it directly
+  where needed (see existing photo-upload tests).
+- **This environment has real Chromium available** (`/opt/pw-browsers/chromium-1194/chrome-linux/chrome`,
+  launch with `--no-sandbox`) via the globally-installed `playwright` package
+  (`/opt/node22/lib/node_modules/playwright`). Use it to actually open the built `index.html` and
+  click through a flow when you want stronger confidence than jsdom — jsdom can't catch real
+  rendering/CSS/Chrome-specific issues (e.g. the `data:` URI navigation-block bug the README
+  documents was exactly that kind of gap). This is the one thing genuinely un-verifiable from the
+  README's own test suite; use it, don't skip it.
+- **`mirror-app/` has no jsdom suite of its own in `tests/`, on purpose** — it's real, reused
+  `src/js/*.js`/`react/src/pages/*.tsx` that's already covered there; adding a parallel suite would
+  just re-test the same code. `cd tests && npm test` after any `mirror-app/`-adjacent change still
+  matters (confirms the change didn't regress the main app), but the mirror app's OWN behavior —
+  the write guard, the button hider, the layout — is only ever verified via real Chromium at a
+  real mobile viewport (412×915) with `window.Capacitor` mocked at the JS boundary, checked
+  directly (e.g. `window.PCC.store.get().projects` after an attempted write, `offsetParent !==
+  null` for hidden-button checks), never just eyeballing a screenshot. Every real bug in the write
+  guard/button hider (see the mirror app section above) was caught exactly this way, not by jsdom.
+
+## Working conventions specific to this project
+
+- **Project assignment is mandatory** on every register (Documents, Daily Log, Risk Register,
+  RFI/TQ, Change Orders) — never add an "Unassigned" option back in; this was explicitly reverted
+  once already.
+- **Change Orders never write back to `contract_value`** — that reconciliation is a deliberate,
+  separate manual act. Don't "helpfully" wire that up.
+- **Reports are printable HTML (`window.print()`), not generated PDFs** — a deliberate choice to
+  avoid bundling a PDF library into the single-file deliverable.
+- Don't casually reach for the File System Access API to write files directly — it's
+  desktop-Chrome/Edge-only, needs `https://`, and this app is explicitly built to also work on
+  Android/iOS opened via `file://`/`content://`. Export/import-as-JSON is the deliberate answer to
+  "why isn't this automatic," not an oversight.
+- The author values scope discipline: each phase's README entry states what was decided and why
+  *before* building it. When adding a feature, keep it scoped to what was asked — this project has
+  explicitly rejected doing more than asked in several places (e.g. Change Management staying "a
+  log only," `blobStore.js` staying blobs-only).
+
+## PR / shipping conventions (Aditya, standing instruction)
+
+- **There is no GitHub CI, by decision (Gate 6.1, 2026-11-26).** The safety net is the local
+  `.githooks/pre-push` check (see Commands) plus running the full suite here before every merge.
+- **If a PR has no comments, merge it — don't ask first.** This is a solo repo with no CI and no
+  other reviewers; a clean PR (tests pass, no review comments) is ready by definition. Still stop
+  and ask before merging if there *are* comments to address, or if something is genuinely
+  ambiguous about the change itself.
+- **Always merge the working branch into `main` after completing a gate/phase — don't ask first,
+  don't wait to be told each time.** Rebuild, run the full suite, merge (direct merge is fine,
+  same "solo repo, no CI, no reviewers" reasoning as above — a PR isn't required), push `main`,
+  then restart the working branch from the new `main` before starting the next gate. This is a
+  standing instruction, not a one-off — apply it to every gate/phase from here on without being
+  asked again.
+- **After every gate/phase/tier, compile everything and hand over a zip file Aditya can send to a
+  laptop or to other people and they can use directly** — not just push to `main`. Rebuild
+  (`node build.js`), run the full suite, then assemble a clean end-user package: `index.html`,
+  `README.md`, `manifest.json`, `icons/` (favicon/PWA icon PNGs — added Gate 12, "App Icon &
+  Branding"; regenerate with `node generate-icons.js` if `src/icons/favicon.svg` ever changes), and
+  empty `data/`/`files/` placeholder folders (with their own `README.txt`) — **not** `src/`,
+  `build.js`, `generate-icons.js`, `tests/`, `.claude/`, `CLAUDE.md`, or `HANDOFF.md`, which are
+  dev-only and just add confusion for someone who isn't going to edit the code. The whole point is
+  that the recipient needs zero setup — extract and double-click `index.html`, nothing to install,
+  no dependency on this repo or Claude Code being present. Verify the zip actually works before sending it: extract it
+  fresh (not the dev working copy) and open `index.html` in real Chromium — see the Testing
+  conventions section above for why that matters here specifically.
+- **Any single file being handed to Aditya that exceeds the ~30MB file-transfer limit (the Windows
+  `.exe` installer is the recurring case, ~100-105MB) gets split, not skipped or routed through Git
+  LFS by default** — LFS's free tier is only 1GB storage + 1GB bandwidth/month, too small to spend
+  on routine, repeated builds. Standing method, don't ask first: `split -b 25M -d -a 2 "<file>"
+  "<file>.part"` (produces `.part00`, `.part01`, ...), verify the reassembled file's SHA-256 matches
+  the original *before* sending, send every part, and give Aditya both the exact reassembly command, **wrapped in `cmd /c`**
+  (`cmd /c copy /b part00+part01+...+partNN "output.exe"`; bare `copy /b` fails in PowerShell,
+  which Windows Terminal opens by default, and it did on 2026-09-27), and the expected
+  SHA-256 to verify against after reassembling. See `packaging/README.md`'s "Distributing a build"
+  section for the full worked example. Git LFS stays the documented fallback for the rare case this
+  doesn't fit (e.g. the file needs to live in git history directly), not the routine path.
+- **ALWAYS bump the Android `versionCode` (and `versionName`) before every `assembleRelease` build,
+  with no exceptions** — discovered as a real bug 2026-08-24: `versionCode` sat hardcoded at `1` since
+  the very first release build across 5 full audit phases of changes, so every "new" APK Aditya was
+  handed looked identical to Android's package manager, which refuses to install an update in place
+  unless the new APK's `versionCode` is strictly greater than the currently-installed one — Aditya had
+  to uninstall the old APK before every single install. Fixed in
+  `packaging/android/android/app/build.gradle`: bump `versionCode` by at least 1 (e.g. 2 → 3) and give
+  `versionName` a matching human-readable bump (e.g. "1.1" → "1.2") every time an APK is (re)built for
+  delivery — check the current values in that file first, don't assume a starting point. Also bump
+  `packaging/package.json`'s `"version"` field to match before an `electron:build` — Windows/NSIS
+  isn't as strict about this as Android, but keeping both packages' version numbers in sync and moving
+  forward is still correct practice, not optional.
+- **An Android APK MUST be signed before delivering it — an unsigned APK cannot be installed at
+  all, unlike an unsigned Windows EXE (which just triggers an OS warning the user can click
+  through).** Discovered as a real bug 2026-08-27: `packaging/android/android/app/build.gradle`
+  silently falls back to an unsigned build when no `app/keystore.properties` exists (a real
+  keystore is a secret and never committed to git, so a fresh sandbox container starts with none)
+  — the resulting `app-release-unsigned.apk` fails on-device with "App not installed as package
+  appears to be invalid," not a warning. If no keystore exists when a release build is needed,
+  generate one (`keytool -genkeypair -keystore app/pcc-release.jks -alias pcc-release -keyalg RSA
+  -keysize 2048 -validity 10950 -dname "CN=Project Control Center, ..."`), write a matching
+  `app/keystore.properties` (`storeFile`/`storePassword`/`keyAlias`/`keyPassword`), confirm both
+  are actually excluded by `.gitignore` (add `android/app/keystore.properties` and
+  `android/app/*.jks` there if they aren't — the build.gradle comment claims they're gitignored,
+  but nothing enforced that until this fix), then rebuild. Verify with `apksigner verify
+  --verbose` and `zipalign -c -v 4` before sending. **Tell the user explicitly** that a
+  newly-generated keystore is a NEW signing identity — if they have any earlier build of the app
+  installed, Android will refuse to install over it ("conflicts with an existing package") until
+  they uninstall the old one first; this is a one-time reset, not a recurring issue, as long as
+  future builds keep reusing the same keystore file.
+- **Always build the Windows/macOS/Linux installer via `npm run electron:build`, never `npx
+  electron-builder` directly** — real mistake made 2026-08-24: calling `electron-builder` directly
+  skips `scripts/copy-app.js`, the step that copies the repo root's freshly-built `index.html` into
+  `packaging/electron/` before packaging, so the resulting installer silently embeds whatever stale
+  copy happened to already be sitting in `packaging/electron/index.html` from the previous packaging
+  round — the build still "succeeds" with no error or warning. Caught only by the existing
+  verification step (extract `app.asar`, diff the embedded `electron/index.html` against the repo
+  root's current `index.html`, byte-for-byte) — always do that verification before sending an EXE to
+  Aditya, it's the only thing that actually catches this. If you must invoke `electron-builder`
+  directly for some reason, run `node scripts/copy-app.js` yourself immediately before it.
+- If the branch backing an already-merged PR is reused for the next piece of work, restart it from
+  the latest `main` first (`git fetch origin main && git reset --hard origin/main`, or rebase if
+  there's already unmerged work sitting on the branch) rather than stacking new commits on old
+  history — GitHub doesn't move a branch ref forward on merge, so the local/remote branch will
+  otherwise silently drift behind `main`. **Commit before running any `git reset --hard`** — it
+  discards uncommitted changes in tracked files with no warning.
+- **Building the Windows installer on a Linux sandbox needs `wine` + `wine32:i386` + a clean
+  `~/.wine` prefix — discovered 2026-08-27 provisioning a fresh container.** Three distinct
+  failures in sequence: (1) `wine process failed ENOENT` — no `wine` installed at all, fixed with
+  `apt-get install -y --no-install-recommends wine`; (2) a WOW64 `ntdll.dll` load failure during
+  electron-builder's own post-build self-check (it runs the freshly-built installer under wine to
+  verify it) — the installed `wine` was 64-bit-only and NSIS installers are 32-bit, fixed with
+  `dpkg --add-architecture i386 && apt-get update && apt-get install -y wine32:i386` (install
+  `libgd3:i386` first if this reports an unmet dependency via `libgphoto2`); (3) `wine:
+  '/root/.wine' is a 64-bit installation, it cannot be used with a 32-bit wineserver` — the first
+  failed attempt had already created a 64-bit-only prefix, fixed with `rm -rf /root/.wine` before
+  the next build so a fresh WOW64-capable prefix gets created. This is sandbox setup, not a
+  repo-committed fix — a genuinely fresh container needs all three steps redone before its first
+  Windows build. See `HANDOFF.md`'s 2026-08-27 section for the full write-up.
+- **After every major upgrade (a gate, a significant follow-up change), update `HANDOFF.md` at the
+  repo root AND hand Aditya the complete updated file directly** (not just leave it committed silently
+  — send it the same way the zip gets sent) with current session context — what shipped, current
+  schema version, test file/check count, exact repo/branch state (ahead-of-main commit list, whether
+  a PR exists, whether it's merged), and any new conventions/gotchas discovered that a fresh session
+  would otherwise have to re-derive from git log and source. Kept at a fixed, discoverable repo path
+  deliberately — a session can't act on a handoff file it doesn't know exists, so it can't live only
+  in an upload/paste that has to be re-supplied each time. If the user separately maintains their own
+  pasted-in handoff copy outside the repo, update that too when asked, but `HANDOFF.md` is the one
+  that persists on its own.

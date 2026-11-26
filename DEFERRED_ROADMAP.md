@@ -18,8 +18,9 @@ apply to all three.
 
 ## How to work through this (read before any gate)
 
-You are working on Project Control Center. Read `CLAUDE.md`, then the relevant `README.md` /
-`HANDOFF.md` sections, before touching code. Then, for every gate:
+You are working on Project Control Center. Read `CLAUDE.md`, then the relevant
+`docs/BUILD_HISTORY.md` / `HANDOFF.md` sections (and `docs/GOTCHAS.md` for any rule's full
+story), before touching code. Then, for every gate:
 
 1. **Inspect first.** Confirm against the real code that the gap still exists. Backlog notes in
    this repo have been stale before. If it's already done, say so and close the gate.
@@ -87,8 +88,9 @@ You are working on Project Control Center. Read `CLAUDE.md`, then the relevant `
    - screenshots sent to Aditya at meaningful states (empty, populated, error);
    - `pcc-visual-qa` skill for UI gates.
 6. **Adversarial re-read of the diff** before merging.
-7. **Docs updated:** CLAUDE.md (new conventions and gotchas), README.md (a gate write-up saying
-   what was decided and why), HANDOFF.md, and this file's Status line.
+7. **Docs updated:** CLAUDE.md (a new rule as one line; its story in `docs/GOTCHAS.md`),
+   `docs/BUILD_HISTORY.md` (a gate write-up saying what was decided and why; README.md is the
+   short user guide since Gate 6.3), HANDOFF.md, and this file's Status line.
 8. **Installers are built only when Aditya asks.** Then bump `versionCode`/`versionName` for each
    Android app you build, and `packaging/package.json`'s version. Verify signatures, alignment,
    the byte-identical embedded `index.html`, and the SHA-256.
@@ -136,7 +138,8 @@ future session re-opens them by accident:
 - **Status:** closed 2026-11-26. The six closed decisions are recorded in README.md
   ("Closed decisions") and HANDOFF.md. Aditya's answers: no `.sml`/`.plf` files are in use
   (only MSP, Excel, Word and photos), so Gate 4.4 is closed; the master prompt's Phases 8–9
-  are no longer available. Both recorded as closed decisions too.
+  are no longer available. Both recorded as closed decisions too. (Since Gate 6.3 the list
+  lives in CLAUDE.md's "Closed decisions"; the original write-up is in docs/BUILD_HISTORY.md.)
 
 ---
 
@@ -324,7 +327,8 @@ and features behind parsers that read untrusted files.
 **Gate 3.0 — Reopen decision (docs only).**
 - AI Document Processing and AI Project Assistant are recorded as skipped because they needed a
   cloud or bundled model. Local Ollama now removes that blocker.
-- Ask Aditya to confirm reopening them, then record the decision in README.md and HANDOFF.md.
+- Ask Aditya to confirm reopening them, then record the decision in CLAUDE.md's "Closed
+  decisions" (remove the line if reopened), docs/BUILD_HISTORY.md and HANDOFF.md.
 - **Status:** open.
 
 **Gate 3.1 — Meeting minutes → proposed action items.**
@@ -503,7 +507,14 @@ make it safer to keep changing.
 - **Check:** every file path and command named in the new `CLAUDE.md` exists and runs; every
   rule in the old `CLAUDE.md` is still findable in the new one or in `docs/GOTCHAS.md` (do
   this as a line-by-line pass, not by memory).
-- **Status:** open.
+- **Status:** closed 2026-11-26. CLAUDE.md 75 KB → 11.3 KB (rules, commands, closed decisions).
+  Moved unedited and byte-verified: the old CLAUDE.md → `docs/GOTCHAS.md`, README's history →
+  `docs/BUILD_HISTORY.md` (README now 4 KB, a user guide with backup and the three apps),
+  HANDOFF before 2026-11-11 → `docs/HANDOFF_ARCHIVE.md` (HANDOFF now ~22 KB). Line-by-line
+  mapping in `docs/RULES_CHECKLIST.md`; all 40 paths named in CLAUDE.md exist. Stale references
+  in `.claude/docs`, the `pcc-ui` skill and this file repointed; code comments that say "see
+  CLAUDE.md's React migration notes" still resolve (the rule is in CLAUDE.md, the story in
+  GOTCHAS.md under the same name).
 
 **Gate 6.4 — Small correctness fixes (no schema change).**
 - Commitments shows "$" for every project: `formatMoney` in
