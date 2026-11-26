@@ -1074,6 +1074,47 @@
    * seen or dismissed \u2014 this is just the loudest, most-likely-to-be-seen surface for
    * it. A persistent list of every such recovery snapshot also lives in Settings, so
    * dismissing this or missing it entirely doesn't lose the recovery path. */
+  /** Gate H.2: this build found data saved by a NEWER build (see store.js load()). Nothing
+   * is migrated or saved, so the dialog can't be dismissed; its one action exports the
+   * stored data unchanged for the newer app. */
+  function showNewerVersionBlock() {
+    var overlay = document.createElement("div");
+    overlay.id = "newer-version-overlay";
+    overlay.className = "modal-overlay";
+    var modal = document.createElement("div");
+    modal.className = "modal";
+    modal.style.width = "min(440px, 92vw)";
+    var header = document.createElement("div");
+    header.className = "modal__header";
+    var title = document.createElement("div");
+    title.className = "modal__title";
+    title.textContent = "Saved by a newer version";
+    header.appendChild(title);
+    var body = document.createElement("div");
+    body.className = "modal__body";
+    var msg = document.createElement("p");
+    msg.style.margin = "0";
+    msg.textContent =
+      "The data in this app was saved by a newer version of Project Control Center. Update this app to open it. Nothing has been changed, and nothing will be saved until you do.";
+    body.appendChild(msg);
+    var footer = document.createElement("div");
+    footer.className = "modal__footer";
+    var exportBtn = document.createElement("button");
+    exportBtn.className = "btn btn--primary";
+    exportBtn.textContent = "Export this data";
+    exportBtn.onclick = function () {
+      window.PCC.store.exportNewerVersionData();
+    };
+    footer.appendChild(exportBtn);
+    modal.appendChild(header);
+    modal.appendChild(body);
+    modal.appendChild(footer);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    // onClose does nothing on purpose: Escape must not dismiss this.
+    window.PCC.modalA11y.attach(overlay, { onClose: function () {}, initialFocus: exportBtn });
+  }
+
   function buildCorruptionRecoveryBanner() {
     var rec = window.PCC.store.getCorruptionRecovery ? window.PCC.store.getCorruptionRecovery() : null;
     var banner = document.createElement("div");
@@ -1197,6 +1238,7 @@
 
     document.getElementById("root").innerHTML = "";
     document.getElementById("root").appendChild(shell);
+    if (window.PCC.store.isBlockedByNewerVersion && window.PCC.store.isBlockedByNewerVersion()) showNewerVersionBlock();
 
     refreshBackupNudge();
     window.setInterval(refreshBackupNudge, 60 * 60 * 1000);

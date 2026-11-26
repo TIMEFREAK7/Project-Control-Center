@@ -5,6 +5,27 @@ Paste this into a new chat to resume work with full context. This file lives in 
 path — see the standing instructions in `CLAUDE.md` about keeping it current and about handing
 it (and a zip) to Aditya directly after every major upgrade, not just committing quietly.
 
+## 2026-11-26 — Gate H.2: data from a newer version is refused
+
+- `store.js`: `NEWER_VERSION_MESSAGE` + `isFromNewerVersion()`; `migrate()` throws for
+  `schema_version > SCHEMA_VERSION`; `load()` sets `blockedByNewerVersion` instead of
+  migrating, and `persistToLocalStorage()` then writes nothing; `exportNewerVersionData()`
+  saves the raw stored value. `layout.js`: undismissable `#newer-version-overlay` with one
+  "Export this data" button. Mirror app: `"newer"` status, message panel shown above the data
+  it already had. Typings in `pcc.d.ts`.
+- New `tests/test_newer_version_guard_e2e.js` (now 132 files): 3/10 on the old build, 10/10
+  now. Chromium checks for both apps passed (screenshots in `scratch/pcc-h2/`).
+- **Building the mirror app from this exFAT SSD:** copy `src/`, `react/`, `mirror-app/` (with
+  their `node_modules`) to a temp folder on C:, create the three links as junctions
+  (`mklink /J mirror-app\node_modules\{react,react-dom,@types}` →
+  `react\node_modules\...`), run `node mirror-app/build.js` there, copy
+  `mirror-app/index.html` back, then `rmdir` the junctions BEFORE deleting the temp folder (a
+  recursive delete through a junction can follow it). `build.js` itself is unchanged.
+- The mirror message reuses the import wording ("…then import again") as the roadmap asked,
+  though At a Glance has no import; reword later if it reads oddly on the phone.
+- Schema still 67. No installers built. At a Glance APK not rebuilt (needs versionCode bump
+  and its keystore when Aditya asks).
+
 ## 2026-11-26 — Gate H.1: PDF parser no longer evaluates script
 
 - `src/js/fileViewer.js` and `react/src/services/documentsService.ts` pass

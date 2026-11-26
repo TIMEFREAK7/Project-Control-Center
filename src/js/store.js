@@ -140,6 +140,16 @@
   var LOCAL_STORAGE_KEY = "pcc_local_data_v1";
   var SCHEMA_VERSION = 67;
 
+  // Gate H.2: data from a NEWER build (higher schema_version) is refused everywhere, never
+  // migrated or saved over. Three apps ship on separate schedules, so an older build will
+  // eventually meet newer data; migrate() would otherwise keep it and the next save would
+  // rewrite it in this build's older shape.
+  var NEWER_VERSION_MESSAGE =
+    "This file was saved by a newer version of Project Control Center. Update this app, then import again.";
+  function isFromNewerVersion(d) {
+    return !!d && Number(d.schema_version) > SCHEMA_VERSION;
+  }
+
   var PROJECT_STATUSES = ["on_track", "at_risk", "critical", "complete"];
 
   function emptyData() {
@@ -2509,6 +2519,9 @@
 
   /** Bring older exported/stored data up to the current schema in place. */
   function migrate(loaded) {
+    // Every entry point (both imports, the mirror app's read) goes through here, so the
+    // newer-version refusal can't be missed. load() checks first, so it never reaches this.
+    if (isFromNewerVersion(loaded)) throw new Error(NEWER_VERSION_MESSAGE);
     if (!loaded.schema_version) loaded.schema_version = 1;
 
     if (loaded.schema_version < 2) {
@@ -3439,6 +3452,9 @@
   var persistListeners = [];
   var saveTimer = null;
   var corruptionRecovery = null; // { key, timestamp } set once, only if load() hits unparseable JSON
+  // Set by load() when localStorage holds data from a newer build. While true nothing is
+  // ever written to LOCAL_STORAGE_KEY, so the newer data can't be overwritten.
+  var blockedByNewerVersion = false;
 
   var CORRUPTED_BACKUP_PREFIX = "pcc_corrupted_backup_";
 
@@ -3469,6 +3485,10 @@
   }
 
   function persistToLocalStorage() {
+    if (blockedByNewerVersion) {
+      notifyPersistListeners(false);
+      return;
+    }
     var ok = true;
     try {
       window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
@@ -3530,7 +3550,15 @@
     }
     if (raw) {
       try {
-        data = migrate(JSON.parse(raw));
+        var parsed = JSON.parse(raw);
+        if (isFromNewerVersion(parsed)) {
+          // Don't migrate, don't save: layout.js shows a blocking dialog whose only action
+          // exports `raw` untouched (exportNewerVersionData) for the newer app.
+          blockedByNewerVersion = true;
+          data = emptyData();
+          return;
+        }
+        data = migrate(parsed);
         return;
       } catch (e) {
         console.error("Stored data was corrupted, starting fresh.", e);
@@ -3690,6 +3718,26 @@
 
   function getCorruptionRecovery() {
     return corruptionRecovery;
+  }
+
+  function isBlockedByNewerVersion() {
+    return blockedByNewerVersion;
+  }
+
+  /** Saves the newer build's saved data exactly as stored, as a .json the newer app can
+   * import. Read straight from localStorage, never from `data` (which is empty here). */
+  function exportNewerVersionData() {
+    var raw = null;
+    try {
+      raw = window.localStorage.getItem(LOCAL_STORAGE_KEY);
+    } catch (e) {
+      raw = null;
+    }
+    if (!raw) return Promise.resolve(false);
+    var blob = new Blob([raw], { type: "application/json" });
+    return window.PCC.nativeFile.save(blob, "project-data-newer-version-" + localIsoDate() + ".json").then(function () {
+      return true;
+    });
   }
 
   /** Lists any preserved corrupted-backup snapshots left in localStorage, newest first.
@@ -3864,6 +3912,10 @@
     buildExportJson: buildExportJson,
     migrateLegacyInlineBlobsToIndexedDb: migrateLegacyInlineBlobsToIndexedDb,
     getCorruptionRecovery: getCorruptionRecovery,
+    isFromNewerVersion: isFromNewerVersion,
+    NEWER_VERSION_MESSAGE: NEWER_VERSION_MESSAGE,
+    isBlockedByNewerVersion: isBlockedByNewerVersion,
+    exportNewerVersionData: exportNewerVersionData,
     listRecoveryBackups: listRecoveryBackups,
     downloadRecoveryBackup: downloadRecoveryBackup,
     deleteRecoveryBackup: deleteRecoveryBackup,

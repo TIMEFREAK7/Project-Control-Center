@@ -6654,3 +6654,26 @@ unless this flag turns out not to be enough.
 against the previous build. The existing PDF tests pass, and in real Chromium a real PDF still
 renders in the viewer and its text is still extracted, at desktop and phone sizes.
 
+## Gate H.2: data from a newer version is refused (2026-11-26)
+
+**Problem.** The Windows app, the Android app and At a Glance update on separate schedules, so
+an older copy will eventually meet data saved by a newer one. Nothing stopped it: a file from
+the future imported "successfully", and an older build opening newer saved data would have
+rewritten it in its own older shape on the next autosave.
+
+**Decision.** One check, inside the migration step every entry point already uses:
+- **Importing** (JSON or SQLite backup): refused with "This file was saved by a newer version
+  of Project Control Center. Update this app, then import again." Nothing changes.
+- **Opening the app over newer saved data:** nothing is migrated or saved. A dialog that
+  can't be dismissed says so, and its one button, "Export this data", saves the stored data
+  unchanged as a file the newer app can import.
+- **At a Glance:** shows the same message and keeps showing the data it already had.
+
+Rejected: reading newer files "best effort", which could silently drop fields the older app
+doesn't know about.
+
+**Verified.** New `test_newer_version_guard_e2e.js` (fails on the previous build). In real
+Chromium: the blocking dialog survives Escape and the stored data stays byte-identical; an
+import through the real Import button is refused with the store unchanged; At a Glance (folder
+plugin mocked) keeps its old data under the message.
+
