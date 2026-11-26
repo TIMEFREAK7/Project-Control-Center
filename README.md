@@ -6701,3 +6701,22 @@ readings) and any automatic clean-up.
 the previous build). In real Chromium at desktop and phone sizes: the panel, the single
 warning and its button, and a real oversized import refused with the stored data unchanged.
 
+## Gate H.4: spreadsheet parser updated (2026-11-26)
+
+**Problem.** The bundled spreadsheet reader (SheetJS 0.18.5, the last version published to
+npm) has two published security problems when reading crafted files: prototype pollution
+(fixed in 0.19.3) and a pattern that can hang on crafted input (fixed in 0.20.2). The app uses
+it on files people supply: the spreadsheet preview, document text extraction and Excel
+schedule import.
+
+**Decision.** Replace it with 0.20.3, the current release from SheetJS's own download site
+(same Apache-2.0 licence). Nothing else changed: the app calls it exactly as before, and Excel
+dates still read as the same calendar day in the device's time zone. The Excel writer used by
+"Edit Excel" (ExcelJS 4.4.0) has open advisories of its own but no fixed release; it is kept,
+because the app only uses it to write a new file from its own data, never to read a file.
+
+**Verified.** New `test_sheetjs_version_e2e.js` (fails on the old version). The full suite in
+UTC and India time. In a real browser set to India time, at desktop and phone sizes: an Excel
+schedule import with exact dates, an "Edit Excel" round trip that moves no dates, and a
+spreadsheet preview.
+

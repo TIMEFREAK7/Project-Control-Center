@@ -301,6 +301,15 @@ gates with a test gate each). Start there when asked "what's next"; update each 
     `documentsService.ts`); a new one needs the flag, and `test_pdf_eval_disabled_e2e.js`
     covers both. Upgrading to pdf.js 4.x (ES-module only) is a closed decision unless this
     flag stops being enough.
+  - **SheetJS comes from `cdn.sheetjs.com`, never npm** (Gate H.4, 2026-11-26). npm's `xlsx`
+    stops at 0.18.5, which has CVE-2023-30533 and CVE-2024-22363. The vendored
+    `xlsx.core.min.js` is 0.20.3 (SHA-256 `197255B0…6D9BFD27`, Apache-2.0);
+    `test_sheetjs_version_e2e.js` fails if it ever drops below 0.20.2. To update: download
+    `https://cdn.sheetjs.com/xlsx-<ver>/package/dist/xlsx.core.min.js`, then run the suite in
+    UTC and IST (the date tests pin `dateCellToIso()`'s device-zone rule). **ExcelJS stays
+    4.4.0 by decision:** it has open advisories "through 4.4.0" but this app only WRITES a new
+    workbook from its own grid data in the browser (Edit Excel); it never parses a user's file
+    and never uses the Node-only streaming writer. Re-check if it ever reads files.
   - **The mirror IPC writes exactly `pcc-mirror.json` and nothing else**
     (`mirrorFileWriter.js`'s `ALLOWED_FILENAME`). The folder is renderer-supplied free text,
     so the filename lock is what stops injected script from dropping an executable (e.g. in

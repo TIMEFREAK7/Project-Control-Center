@@ -5,6 +5,25 @@ Paste this into a new chat to resume work with full context. This file lives in 
 path — see the standing instructions in `CLAUDE.md` about keeping it current and about handing
 it (and a zip) to Aditya directly after every major upgrade, not just committing quietly.
 
+## 2026-11-26 — Gate H.4: SheetJS 0.18.5 → 0.20.3
+
+- `src/js/vendor/xlsx.core.min.js` replaced with 0.20.3 from
+  `cdn.sheetjs.com/xlsx-0.20.3/package/dist/` (507,212 bytes, SHA-256
+  `197255B0C278588117E45C14C1B25398562864CD9FFA9752C4B4D29F6D9BFD27`, Apache-2.0, no network
+  calls in it). No code change. `index.html` 6,283.8 → 6,352.5 KB. Mirror app unaffected.
+- New `tests/test_sheetjs_version_e2e.js` (now 135 files): version ≥ 0.20.2 (fails on 0.18.5)
+  plus a read check that passes on both.
+- Date behaviour: 0.18.5 returned local midnight minus 1 ms in IST, 0.20.3 returns exact local
+  midnight; `dateCellToIso()` gives the same day for both. Both pinned date tests green.
+- Chromium (Asia/Kolkata, both sizes): `.xlsx` import exact, Edit Excel round trip moves no
+  dates and the regenerated file reads back the 24th, preview renders. Test file was written
+  with the OLD SheetJS so the file isn't made by the library under test.
+- ExcelJS 4.4.0 kept by decision (write-only use); recorded in CLAUDE.md.
+- **Found, not fixed (pre-existing, identical on 0.18.5):** the spreadsheet preview
+  (`fileViewer.js renderExcel`) shows date cells as Excel serial numbers (e.g. 46289.00011).
+  Offered as a separate fix.
+- Phase 0.5 (H.1–H.4) is complete. Next in order: 0.3 → 6.1 → 6.4 → 6.3.
+
 ## 2026-11-26 — Gate H.3: storage meter and pre-flight size check
 
 - `storageAnalyticsEngine.js`: `LOCAL_STORAGE_LIMIT_CHARS` (5,242,880), `measureAppData`,
