@@ -82,7 +82,7 @@ function ContextSwitcherPanel() {
   }, []);
   return (
     <div className="panel no-print" style={{ marginBottom: 16 }}>
-      <div className="text-secondary" style={{ fontSize: 11, letterSpacing: "0.4px", marginBottom: 8 }}>
+      <div className="text-secondary" style={{ fontSize: "var(--text-xs)", letterSpacing: "0.4px", marginBottom: 8 }}>
         CURRENT CONTEXT
       </div>
       <div ref={containerRef} />
@@ -165,7 +165,7 @@ function ManagementAttentionPanel({ groups }: { groups: AttentionGroup[] }) {
         groups.map((g) => (
           <div key={g.project.id} style={{ marginBottom: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-              <span style={{ fontWeight: 600, fontSize: 13 }}>{g.project.name || "(unnamed project)"}</span>
+              <span style={{ fontWeight: 600, fontSize: "var(--text-13)" }}>{g.project.name || "(unnamed project)"}</span>
               <button className="btn btn--ghost" onClick={() => viewProjectInExecutiveCenter(g.project.id)}>
                 View Project
               </button>
@@ -217,14 +217,14 @@ function RemindersPanel({ reminders, data }: { reminders: Reminder[]; data: PCCS
             const vendor = r.vendor_id ? vendorsById[r.vendor_id] : null;
             const badgeInfo = REQUIREMENT_STATUS_BADGE[x.status];
             return (
-              <div key={r.id || i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13, gap: 8 }}>
+              <div key={r.id || i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "var(--text-13)", gap: 8 }}>
                 <span>
                   {(t.name || "(unnamed type)") + (t.code ? " (" + t.code + ")" : "")} —{" "}
                   {project ? project.name || "(unnamed project)" : "(deleted project)"} — due {r.planned_submission_date}
                   {vendor ? " — " + (vendor.vendor_name || "(unnamed vendor)") : ""}
                 </span>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                  <span className={"status-badge status-badge--" + badgeInfo.className} style={{ fontSize: 11 }}>
+                  <span className={"status-badge status-badge--" + badgeInfo.className} style={{ fontSize: "var(--text-xs)" }}>
                     {badgeInfo.label}
                   </span>
                   {project ? (
@@ -440,7 +440,7 @@ export default function DashboardPage() {
             <h3 style={{ marginBottom: 10 }}>Recent projects</h3>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {recentProjects.map((p) => (
-                <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 14 }}>
+                <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "var(--text-base)" }}>
                   <span>{p.name || "(unnamed project)"}</span>
                   <span className={"status-badge status-badge--" + p.status}>{STATUS_LABELS[p.status || ""] || p.status}</span>
                 </div>

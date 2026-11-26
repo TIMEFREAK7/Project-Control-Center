@@ -227,7 +227,7 @@ function ChangeOrderForm({
           ) : null}
         </div>
 
-        {showError ? <p style={{ color: "var(--status-critical)", fontSize: 13 }}>Title, Description, and Project are required.</p> : null}
+        {showError ? <p style={{ color: "var(--status-critical)", fontSize: "var(--text-13)" }}>Title, Description, and Project are required.</p> : null}
 
         <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
           <button type="submit" className="btn btn--primary" disabled={activeProjects.length === 0}>
@@ -332,7 +332,7 @@ function ChangeOrderDetails({
           APPROVAL / DECISION HISTORY ({co.revisions.length})
         </p>
         {co.revisions.length === 0 ? (
-          <p className="text-secondary" style={{ fontSize: 13, margin: "0 0 8px" }}>
+          <p className="text-secondary" style={{ fontSize: "var(--text-13)", margin: "0 0 8px" }}>
             No notes logged yet.
           </p>
         ) : (
@@ -340,7 +340,7 @@ function ChangeOrderDetails({
             .slice()
             .reverse()
             .map((rev, i) => (
-              <div key={i} style={{ fontSize: 13, marginBottom: 6 }}>
+              <div key={i} style={{ fontSize: "var(--text-13)", marginBottom: 6 }}>
                 <span className="mono" style={{ color: "var(--text-secondary)" }}>
                   {rev.date}
                 </span>
@@ -556,7 +556,7 @@ export default function ChangeOrdersPage({
   return (
     <>
       <h2 style={{ marginBottom: 16 }}>Change Management</h2>
-      <p className="text-secondary" style={{ fontSize: 12, marginTop: -10, marginBottom: 14 }}>
+      <p className="text-secondary" style={{ fontSize: "var(--text-12)", marginTop: -10, marginBottom: 14 }}>
         Cost and schedule impact are tracked for reference only — they don't change a project's contract value in Portfolio automatically.
       </p>
 

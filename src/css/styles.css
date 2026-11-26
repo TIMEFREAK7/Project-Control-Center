@@ -94,6 +94,12 @@
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 16px;
+  --radius-xs: 4px; /* Gate 7.1: two small tags used a literal 4 */
+  /* Gate 7.1: pages referenced these with hard-coded dark fallbacks, so the dark grey shows in
+     light mode too. Defined at exactly that value to change nothing; Gate 7.2 gives them real
+     per-theme values. */
+  --surface-2: #2a2a2a;
+  --border-default: #444;
   --sidebar-width: 236px;
 
   --space-1: 4px;
@@ -115,6 +121,17 @@
   --text-lg: 18px;
   --text-xl: 22px;
   --text-2xl: 28px;
+  /* Gate 7.1 interim sizes: today's off-scale values, tokenised at their exact sizes so this
+     gate changes nothing visually. Gate 7.2 folds them into the scale above by value only. */
+  --text-9: 9px;
+  --text-10: 10px;
+  --text-10-5: 10.5px;
+  --text-12: 12px;
+  --text-13: 13px;
+  --text-13-5: 13.5px;
+  --text-17: 17px;
+  --text-20: 20px;
+  --text-24: 24px;
 
   --transition-fast: 120ms ease;
   --transition-base: 180ms ease;
@@ -568,7 +585,7 @@ html[data-nav-group="system"] .title-block { --module-accent: var(--module-accen
 .title-block__label {
   display: block;
   font-family: var(--font-body);
-  font-size: 10px;
+  font-size: var(--text-10);
   letter-spacing: 0.4px;
   color: var(--text-secondary);
 }
@@ -576,7 +593,7 @@ html[data-nav-group="system"] .title-block { --module-accent: var(--module-accen
 .title-block__value {
   font-family: var(--font-body);
   font-weight: 600;
-  font-size: 13.5px;
+  font-size: var(--text-13-5);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -609,7 +626,7 @@ html[data-nav-group="system"] .title-block { --module-accent: var(--module-accen
 .title-block__project-select {
   font-family: var(--font-body);
   font-weight: 600;
-  font-size: 13.5px;
+  font-size: var(--text-13-5);
   color: var(--text-primary);
   background-color: transparent;
   border: 1px solid transparent;
@@ -850,7 +867,7 @@ footer.app-footer {
 
 .data-table td {
   padding: var(--space-2) 10px;
-  font-size: 13px;
+  font-size: var(--text-13);
   border-bottom: 1px solid var(--divider);
 }
 
@@ -911,14 +928,14 @@ footer.app-footer {
   color: var(--text-primary);
 }
 .data-table__sort-arrow {
-  font-size: 9px;
+  font-size: var(--text-9);
   opacity: 0.7;
 }
 
 .btn {
   font-family: var(--font-body);
   font-weight: 600;
-  font-size: 13.5px;
+  font-size: var(--text-13-5);
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
   padding: 9px var(--space-4);
@@ -1015,7 +1032,7 @@ a:focus-visible {
    with .btn--primary/.btn--ghost (e.g. class="btn btn--ghost btn--sm"). */
 .btn--sm {
   padding: 5px 11px;
-  font-size: 12px;
+  font-size: var(--text-12);
 }
 
 .btn--danger {
@@ -1036,7 +1053,7 @@ a:focus-visible {
 }
 
 .field label {
-  font-size: 12px;
+  font-size: var(--text-12);
   color: var(--text-secondary);
 }
 
@@ -1139,7 +1156,7 @@ a:focus-visible {
   padding: var(--space-3) 14px;
   border-radius: var(--radius-sm);
   font-family: var(--font-body);
-  font-size: 13px;
+  font-size: var(--text-13);
   color: #12141a;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
   animation: toast-in var(--transition-base);
@@ -1219,7 +1236,7 @@ a:focus-visible {
   background-color: var(--bg-default);
   color: var(--text-primary);
   font-family: var(--font-body);
-  font-size: 13px;
+  font-size: var(--text-13);
 }
 
 .toolbar input[type="text"] {
@@ -1256,7 +1273,7 @@ a:focus-visible {
   position: relative;
   font-family: var(--font-body);
   font-weight: 600;
-  font-size: 13.5px;
+  font-size: var(--text-13-5);
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
@@ -1382,12 +1399,12 @@ a:focus-visible {
 
 .doc-register-item__name {
   font-weight: 600;
-  font-size: 13.5px;
+  font-size: var(--text-13-5);
   word-break: break-word;
 }
 
 .doc-register-item__meta {
-  font-size: 12px;
+  font-size: var(--text-12);
   color: var(--text-secondary);
   margin-top: 2px;
 }
@@ -1494,7 +1511,7 @@ a:focus-visible {
 }
 
 .project-card__meta {
-  font-size: 12px;
+  font-size: var(--text-12);
   color: var(--text-secondary);
   margin-top: 2px;
   line-height: 1.5;
@@ -1535,7 +1552,7 @@ a:focus-visible {
 }
 
 .card-stat__label {
-  font-size: 10.5px;
+  font-size: var(--text-10-5);
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.4px;
@@ -1543,7 +1560,7 @@ a:focus-visible {
 
 .card-stat__value {
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: var(--text-13);
   font-weight: 600;
 }
 
@@ -1615,7 +1632,7 @@ a:focus-visible {
   background: transparent;
   color: var(--text-primary);
   text-align: left;
-  font-size: 13px;
+  font-size: var(--text-13);
   padding: 7px 10px;
   border-radius: var(--radius-sm);
   cursor: pointer;
@@ -1635,7 +1652,7 @@ a:focus-visible {
   gap: var(--space-2);
   padding: 7px 10px;
   border-radius: var(--radius-sm);
-  font-size: 13px;
+  font-size: var(--text-13);
   cursor: pointer;
 }
 
@@ -1711,7 +1728,7 @@ a:focus-visible {
   gap: 4px;
   font-family: var(--font-body);
   font-weight: 600;
-  font-size: 10.5px;
+  font-size: var(--text-10-5);
   padding: 3px 9px;
   border-radius: var(--radius-lg);
   text-transform: uppercase;
@@ -1871,14 +1888,14 @@ a:focus-visible {
 .detail-item__label {
   display: block;
   color: var(--text-secondary);
-  font-size: 10.5px;
+  font-size: var(--text-10-5);
   letter-spacing: 0.6px;
   text-transform: uppercase;
   margin-bottom: 3px;
 }
 
 .detail-item__value {
-  font-size: 13.5px;
+  font-size: var(--text-13-5);
 }
 
 @media (max-width: 780px) {
@@ -1899,7 +1916,7 @@ a:focus-visible {
   color: var(--text-secondary);
   border-style: dashed;
   box-shadow: none;
-  font-size: 13.5px;
+  font-size: var(--text-13-5);
   line-height: 1.6;
 }
 
@@ -1943,7 +1960,7 @@ a:focus-visible {
 .heatmap-col-label,
 .heatmap-row-label {
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: var(--text-10-5);
   color: var(--text-secondary);
   display: flex;
   align-items: center;
@@ -1964,7 +1981,7 @@ a:focus-visible {
   align-items: center;
   justify-content: center;
   font-family: var(--font-mono);
-  font-size: 20px;
+  font-size: var(--text-20);
   font-weight: 600;
   cursor: pointer;
   border: 1px solid var(--divider);
@@ -2622,7 +2639,7 @@ a:focus-visible {
   .icon-btn {
     width: 44px;
     height: 44px;
-    font-size: 17px;
+    font-size: var(--text-17);
   }
 
   .icon-btn svg {
@@ -2748,7 +2765,7 @@ a:focus-visible {
   }
 
   h2 {
-    font-size: 20px;
+    font-size: var(--text-20);
   }
 }
 
@@ -2844,7 +2861,7 @@ a:focus-visible {
   .report-doc td {
     border: 1px solid #999;
     padding: 4px 6px;
-    font-size: 11px;
+    font-size: var(--text-xs);
     text-align: left;
   }
 
@@ -2860,7 +2877,7 @@ a:focus-visible {
 }
 
 .report-doc {
-  font-size: 13px;
+  font-size: var(--text-13);
 }
 
 .report-doc__section {
@@ -2877,7 +2894,7 @@ a:focus-visible {
 
 .report-doc th {
   text-align: left;
-  font-size: 11px;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.03em;
   color: var(--text-secondary);
@@ -2888,5 +2905,5 @@ a:focus-visible {
 .report-doc td {
   padding: 4px 6px;
   border-bottom: 1px solid var(--divider);
-  font-size: 12px;
+  font-size: var(--text-12);
 }

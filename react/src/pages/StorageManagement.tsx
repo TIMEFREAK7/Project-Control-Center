@@ -28,7 +28,7 @@ function KpiCard({ label, value, sub }: { label: string; value: string; sub?: st
       <div className="kpi-card__label">{label}</div>
       <div className="kpi-card__value">{value}</div>
       {sub ? (
-        <div className="text-secondary" style={{ fontSize: 12, marginTop: 4 }}>
+        <div className="text-secondary" style={{ fontSize: "var(--text-12)", marginTop: 4 }}>
           {sub}
         </div>
       ) : null}
@@ -57,7 +57,7 @@ function BreakdownPanel<T extends { count: number; bytes: number }>({
           {rows.map((row, i) => (
             <div key={i} className="detail-card" style={{ display: "flex", justifyContent: "space-between", marginBottom: "var(--space-2)" }}>
               <span>{labelFor(row)}</span>
-              <span className="text-secondary" style={{ fontSize: 13 }}>
+              <span className="text-secondary" style={{ fontSize: "var(--text-13)" }}>
                 {row.count} file{row.count === 1 ? "" : "s"} · {formatBytes(row.bytes)}
               </span>
             </div>
@@ -76,7 +76,7 @@ function AppDataPanel() {
   const row = (label: React.ReactNode, chars: number, key: string) => (
     <div key={key} className="detail-card" style={{ display: "flex", justifyContent: "space-between", marginBottom: "var(--space-2)" }}>
       <span>{label}</span>
-      <span className="text-secondary" style={{ fontSize: 13 }}>
+      <span className="text-secondary" style={{ fontSize: "var(--text-13)" }}>
         {chars.toLocaleString()} characters
       </span>
     </div>
@@ -158,7 +158,7 @@ export default function StorageManagementPage() {
       </h2>
 
       <div className="panel focus-mode-hide" style={{ marginBottom: "var(--space-4)" }}>
-        <p className="text-secondary" style={{ margin: 0, fontSize: 13 }}>
+        <p className="text-secondary" style={{ margin: 0, fontSize: "var(--text-13)" }}>
           How much space PCC is using across every document, photo, vendor file, knowledge base attachment, and schedule
           import — plus a Scan Storage tool that finds files with no matching record, or records with no matching file.
           Scanning never deletes anything automatically; you decide what to do with each finding.
@@ -188,7 +188,7 @@ export default function StorageManagementPage() {
               <div key={r.id} className="detail-card" style={{ marginBottom: "var(--space-2)" }}>
                 <strong>{r.filename}</strong>
                 <br />
-                <span className="text-secondary" style={{ fontSize: 12 }}>
+                <span className="text-secondary" style={{ fontSize: "var(--text-12)" }}>
                   {r.sourceLabel} · {projectName(data, r.projectId)} · {formatBytes(r.fileSize)}
                 </span>
               </div>
@@ -224,7 +224,7 @@ export default function StorageManagementPage() {
                     className="detail-card"
                     style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--space-2)" }}
                   >
-                    <span className="mono" style={{ fontSize: 12 }}>
+                    <span className="mono" style={{ fontSize: "var(--text-12)" }}>
                       {o.id} · ~{formatBytes(o.size)}
                     </span>
                     <button className="btn btn--ghost" onClick={() => handleDeleteOrphan(o.id)}>
@@ -253,7 +253,7 @@ export default function StorageManagementPage() {
                     <div key={r.id} className="detail-card" style={{ marginBottom: "var(--space-2)" }}>
                       <strong>{r.filename}</strong>
                       <br />
-                      <span className="text-secondary" style={{ fontSize: 12 }}>
+                      <span className="text-secondary" style={{ fontSize: "var(--text-12)" }}>
                         {r.sourceLabel} · {projectName(data, r.projectId)}
                       </span>
                     </div>

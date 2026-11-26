@@ -58,7 +58,7 @@ function Header({ project, data }: { project: PCCProject; data: PCCStoreData }) 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
         <div>
           <h2 style={{ marginBottom: 4 }}>{project.name || "(unnamed project)"}</h2>
-          <div className="text-secondary" style={{ fontSize: 13 }}>
+          <div className="text-secondary" style={{ fontSize: "var(--text-13)" }}>
             {[project.client, project.company, project.country].filter(Boolean).join(" · ")}
           </div>
         </div>
@@ -108,7 +108,7 @@ function Nav({ projectId }: { projectId: string }) {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 16 }}>
           {NAV_GROUPS.map((group) => (
             <div key={group.label}>
-              <p className="text-secondary" style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.04em", margin: "0 0 6px" }}>
+              <p className="text-secondary" style={{ fontSize: "var(--text-xs)", fontWeight: 600, letterSpacing: "0.04em", margin: "0 0 6px" }}>
                 {group.label}
               </p>
               {group.items.map((item) => (
@@ -145,7 +145,7 @@ function AttentionPanel({ items, projectId }: { items: AttentionItem[]; projectI
     <div className="panel" style={{ marginTop: 16 }}>
       <h3 style={{ marginBottom: 10 }}>Management Attention ({items.length})</h3>
       {items.length === 0 ? (
-        <p className="text-secondary" style={{ fontSize: 13, margin: 0 }}>
+        <p className="text-secondary" style={{ fontSize: "var(--text-13)", margin: 0 }}>
           Nothing outstanding.
         </p>
       ) : (
@@ -169,13 +169,13 @@ function ListPanel({ title, items, dateMono }: { title: string; items: DatedItem
     <div className="panel" style={{ flex: "1 1 320px", minWidth: 280 }}>
       <h4 style={{ marginBottom: 10 }}>{title}</h4>
       {items.length === 0 ? (
-        <p className="text-secondary" style={{ fontSize: 13 }}>
+        <p className="text-secondary" style={{ fontSize: "var(--text-13)" }}>
           Nothing to show.
         </p>
       ) : (
         <div>
           {items.map((i, idx) => (
-            <div key={idx} style={{ fontSize: 12, marginBottom: 6 }}>
+            <div key={idx} style={{ fontSize: "var(--text-12)", marginBottom: 6 }}>
               {dateMono ? (
                 <span className="mono text-secondary">{i.date}</span>
               ) : (

@@ -7,7 +7,8 @@
 //   cd tests/visual && npm install            (once; playwright-core only, no browser download)
 //   node shots.js --out <dir> [--screens dashboard,schedule-activities] [--themes light,dark]
 //                 [--sizes desktop,phone] [--css <override.css>] [--icons <map.json>]
-//                 [--fonts <dir>] [--axe <axe.min.js>]
+//                 [--fonts <dir>] [--axe <axe.min.js>] [--index <other index.html>]
+// --screens also takes any route name (e.g. vendors,cost) beyond the eight named screens.
 //
 // --css injects a stylesheet after load ({{FONTS}} in it becomes the --fonts dir as a file URL).
 // --icons is {"navRouteKey": "<svg …>"} and replaces those sidebar icons. Both exist so a
@@ -20,7 +21,7 @@ const { pathToFileURL } = require("url");
 const { chromium } = require("playwright-core");
 
 const REPO = path.resolve(__dirname, "..", "..");
-const INDEX_URL = pathToFileURL(path.join(REPO, "index.html")).href;
+let INDEX_URL = pathToFileURL(path.join(REPO, "index.html")).href; // --index <file> overrides
 const NOW = "2026-11-20T10:00:00+05:30";
 
 const SCREENS = {
@@ -40,6 +41,7 @@ function args() {
   const argv = process.argv.slice(2);
   for (let i = 0; i < argv.length; i += 2) a[argv[i].replace(/^--/, "")] = argv[i + 1];
   if (!a.out) throw new Error("--out <dir> is required");
+  if (a.index) INDEX_URL = pathToFileURL(path.resolve(a.index)).href; // e.g. an older build, for before/after
   const list = (v, all) => (v ? v.split(",") : Object.keys(all));
   return {
     out: path.resolve(a.out),
@@ -169,7 +171,7 @@ async function main() {
     await tp.close();
     for (const size of opt.sizes) {
       for (const name of opt.screens) {
-        const sc = SCREENS[name];
+        const sc = SCREENS[name] || { route: name }; // any other route name works as a screen
         const page = await context.newPage();
         page.on("pageerror", (e) => errors.push(`${name}/${theme}/${size}: ${e.message}`));
         page.on("console", (m) => m.type() === "error" && errors.push(`${name}/${theme}/${size}: ${m.text()}`));

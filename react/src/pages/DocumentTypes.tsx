@@ -109,7 +109,7 @@ function DocumentTypeForm({
         </div>
 
         {showError ? (
-          <p style={{ color: "var(--status-critical)", fontSize: 13 }}>Name is required.</p>
+          <p style={{ color: "var(--status-critical)", fontSize: "var(--text-13)" }}>Name is required.</p>
         ) : null}
 
         <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
@@ -154,13 +154,13 @@ function DocumentTypeRow({
         {t.code ? (
           <>
             {" "}
-            <span className="text-secondary mono" style={{ fontSize: 12 }}>
+            <span className="text-secondary mono" style={{ fontSize: "var(--text-12)" }}>
               ({t.code})
             </span>
           </>
         ) : null}
         <br />
-        <span className="text-secondary" style={{ fontSize: 12 }}>
+        <span className="text-secondary" style={{ fontSize: "var(--text-12)" }}>
           {t.category ? t.category + " · " : ""}
           {CRITICALITY_LABELS[t.default_criticality || ""] || t.default_criticality}
           {t.active ? "" : " · INACTIVE"}
@@ -168,7 +168,7 @@ function DocumentTypeRow({
         {t.description ? (
           <>
             <br />
-            <span className="text-secondary" style={{ fontSize: 12 }}>
+            <span className="text-secondary" style={{ fontSize: "var(--text-12)" }}>
               {t.description}
             </span>
           </>
@@ -258,7 +258,7 @@ export default function DocumentTypesPage() {
       <h2 style={{ marginBottom: 8 }}>Document Types</h2>
 
       <div className="panel" style={{ marginBottom: 16 }}>
-        <p className="text-secondary" style={{ margin: 0, fontSize: 13 }}>
+        <p className="text-secondary" style={{ margin: 0, fontSize: "var(--text-13)" }}>
           The master repository of document types that may be required across your projects (BOQ, Method Statement,
           ITP, ...). This list is portfolio-wide and configurable — add, edit, or deactivate types here. Deciding
           which types apply to a specific project comes in a later gate; this page only manages the repository
@@ -293,7 +293,7 @@ export default function DocumentTypesPage() {
           ))}
         </select>
 
-        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, whiteSpace: "nowrap" }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "var(--text-13)", whiteSpace: "nowrap" }}>
           <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
           Show inactive
         </label>

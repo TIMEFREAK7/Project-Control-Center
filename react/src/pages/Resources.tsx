@@ -232,7 +232,7 @@ function RegisterTab({ data, editingId, onEdit, onAdd, onCancelEdit, onSaved, on
                 <div>
                   <strong>{r.name}</strong>
                   <br />
-                  <span className="text-secondary" style={{ fontSize: 12 }}>
+                  <span className="text-secondary" style={{ fontSize: "var(--text-12)" }}>
                     {TYPE_LABELS[r.type || ""]}
                     {r.unit ? " · " + r.unit : ""}
                     {r.max_availability != null ? " · Max " + r.max_availability + "/day" : " · max availability not set"}
@@ -550,7 +550,7 @@ function AssignmentsTab({
                 <div>
                   <strong>{resourceName(data.resources, a.resource_id)}</strong> — {qtyText}
                   <br />
-                  <span className="text-secondary" style={{ fontSize: 12 }}>
+                  <span className="text-secondary" style={{ fontSize: "var(--text-12)" }}>
                     {activityLabel(data.activities, a.activity_id)}
                     {activity ? " · " + projectName(data.projects, activity.project_id) : ""}
                     {extraParts.length ? " · " + extraParts.join(" · ") : ""}
@@ -745,7 +745,7 @@ function UnavailabilityTab({ data, editingId, onEdit, onAdd, onCancelEdit, onSav
               <div>
                 <strong>{resourceName(data.resources, u.resource_id)}</strong> — {u.quantity} unavailable
                 <br />
-                <span className="text-secondary" style={{ fontSize: 12 }}>
+                <span className="text-secondary" style={{ fontSize: "var(--text-12)" }}>
                   {u.start_date} to {u.end_date}
                   {u.reason ? " · " + u.reason : ""}
                 </span>
@@ -944,7 +944,7 @@ function SuggestedLeveling({ resource, data, onApplied }: SuggestedLevelingProps
                   <div>
                     <strong>{p.activityName}</strong>
                     <br />
-                    <span className="text-secondary" style={{ fontSize: 12 }}>
+                    <span className="text-secondary" style={{ fontSize: "var(--text-12)" }}>
                       {p.originalStart} → {p.originalFinish} becomes {p.proposedStart} → {p.proposedFinish} (+{p.shiftedByDays}d)
                     </span>
                   </div>
@@ -1117,7 +1117,7 @@ function LevelingTab({ data, levelingResourceId, onSelectResource, onChanged }: 
               <div key={i} className="detail-card" style={{ marginBottom: "var(--space-2)" }}>
                 <strong>{day.date}</strong> — {day.allocated} needed vs {day.available} available (+{day.overBy})
                 <br />
-                <span className="text-secondary" style={{ fontSize: 12 }}>
+                <span className="text-secondary" style={{ fontSize: "var(--text-12)" }}>
                   {day.contributors.map((c) => c.activityName + " (" + projectName(data.projects, c.projectId) + ", " + c.quantity + ")").join(", ")}
                 </span>
               </div>

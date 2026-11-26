@@ -78,7 +78,7 @@ export default function VendorPerformanceCentrePage() {
           <div className="panel" style={{ marginTop: "16px" }}>
             <h3 style={{ marginBottom: "8px" }}>Vendor Performance (worst first)</h3>
             {reviewed.length === 0 ? (
-              <p className="text-secondary" style={{ fontSize: "13px" }}>
+              <p className="text-secondary" style={{ fontSize: "var(--text-13)" }}>
                 No performance reviews yet across the portfolio.
               </p>
             ) : (
@@ -93,7 +93,7 @@ export default function VendorPerformanceCentrePage() {
           <div className="panel" style={{ marginTop: "16px" }}>
             <h3 style={{ marginBottom: "8px" }}>Not Yet Reviewed ({unreviewed.length})</h3>
             {unreviewed.length === 0 ? (
-              <p className="text-secondary" style={{ fontSize: "13px" }}>
+              <p className="text-secondary" style={{ fontSize: "var(--text-13)" }}>
                 Every vendor has at least one performance review.
               </p>
             ) : (

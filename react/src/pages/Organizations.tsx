@@ -76,7 +76,7 @@ function CompanyForm({
           <label htmlFor="cofield-notes">Notes</label>
           <textarea id="cofield-notes" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
-        {showError ? <p style={{ color: "var(--status-critical)", fontSize: 13 }}>Name is required.</p> : null}
+        {showError ? <p style={{ color: "var(--status-critical)", fontSize: "var(--text-13)" }}>Name is required.</p> : null}
         <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
           <button type="submit" className="btn btn--primary">
             {isNew ? "Add Company" : "Save Changes"}
@@ -122,7 +122,7 @@ function ClientForm({
   return (
     <div className="panel" style={{ marginBottom: 16, marginTop: 12 }}>
       <h3 style={{ marginBottom: 8 }}>{isNew ? "Add Client" : "Edit Client"}</h3>
-      <p className="text-secondary" style={{ fontSize: 13, marginBottom: 16 }}>
+      <p className="text-secondary" style={{ fontSize: "var(--text-13)", marginBottom: 16 }}>
         Company: {company.name || "(unnamed company)"}
       </p>
       <form onSubmit={handleSubmit}>
@@ -136,7 +136,7 @@ function ClientForm({
           <label htmlFor="clfield-notes">Notes</label>
           <textarea id="clfield-notes" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
-        {showError ? <p style={{ color: "var(--status-critical)", fontSize: 13 }}>Name is required.</p> : null}
+        {showError ? <p style={{ color: "var(--status-critical)", fontSize: "var(--text-13)" }}>Name is required.</p> : null}
         <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
           <button type="submit" className="btn btn--primary">
             {isNew ? "Add Client" : "Save Changes"}
@@ -159,7 +159,7 @@ function ProjectRow({ p, onOpen }: { p: PCCProject; onOpen: () => void }) {
       <div>
         <strong>{p.name || "(unnamed project)"}</strong>
         {p.archived ? (
-          <span className="text-secondary" style={{ fontSize: 12 }}>
+          <span className="text-secondary" style={{ fontSize: "var(--text-12)" }}>
             {" "}
             (archived)
           </span>
@@ -201,12 +201,12 @@ function ClientCard({
         <div>
           <strong>{client.name || "(unnamed client)"}</strong>
           {client.archived ? (
-            <span className="text-secondary" style={{ fontSize: 12 }}>
+            <span className="text-secondary" style={{ fontSize: "var(--text-12)" }}>
               {" "}
               (archived)
             </span>
           ) : null}
-          <span className="text-secondary" style={{ fontSize: 12 }}>
+          <span className="text-secondary" style={{ fontSize: "var(--text-12)" }}>
             {" "}
             &middot; {activeProjectCount} active project{activeProjectCount === 1 ? "" : "s"}
             {projects.length !== activeProjectCount ? ", " + (projects.length - activeProjectCount) + " archived" : ""}
@@ -283,7 +283,7 @@ function CompanyCard({
           <button type="button" className="btn btn--ghost" style={{ fontWeight: 600, fontSize: "var(--text-md)" }} onClick={onToggleExpand}>
             {(expanded ? "▾ " : "▸ ") + (company.name || "(unnamed company)")}
           </button>
-          <span className="text-secondary" style={{ fontSize: 12, marginLeft: 8 }}>
+          <span className="text-secondary" style={{ fontSize: "var(--text-12)", marginLeft: 8 }}>
             {activeClientCount} active client{activeClientCount === 1 ? "" : "s"}
             {clients.length !== activeClientCount ? ", " + (clients.length - activeClientCount) + " archived" : ""}
             {company.archived ? " · ARCHIVED" : ""}
@@ -316,7 +316,7 @@ function CompanyCard({
       {expanded ? (
         <div style={{ marginTop: 12 }}>
           {visibleClients.length === 0 ? (
-            <p className="text-secondary" style={{ fontSize: 13 }}>
+            <p className="text-secondary" style={{ fontSize: "var(--text-13)" }}>
               No clients yet under this company. Click &#8220;+ Add Client&#8221; to add the first one.
             </p>
           ) : (
@@ -344,7 +344,7 @@ function UnassignedSection({ data }: { data: PCCStoreData }) {
   return (
     <div className="panel" style={{ marginBottom: 16 }}>
       <h3 style={{ marginBottom: 8 }}>Projects Without a Company Assigned ({unassigned.length})</h3>
-      <p className="text-secondary" style={{ fontSize: 13, marginBottom: 12 }}>
+      <p className="text-secondary" style={{ fontSize: "var(--text-13)", marginBottom: 12 }}>
         Assign these to a Company/Client from Portfolio's Edit Project form whenever convenient — nothing requires it.
       </p>
       {unassigned.map((p) => (
@@ -411,7 +411,7 @@ export default function OrganizationsPage() {
       <h2 style={{ marginBottom: 8 }}>Companies &amp; Clients</h2>
 
       <div className="panel" style={{ marginBottom: 16 }}>
-        <p className="text-secondary" style={{ margin: 0, fontSize: 13 }}>
+        <p className="text-secondary" style={{ margin: 0, fontSize: "var(--text-13)" }}>
           The Company → Client → Project hierarchy that powers the global context selector (Dashboard and the shell
           header). Companies and Clients are independent, permanent records — archiving one keeps its full history
           (clients, projects, documents, everything) intact and searchable, it just drops out of active pickers. A
@@ -435,7 +435,7 @@ export default function OrganizationsPage() {
 
       <div className="toolbar">
         <input type="text" placeholder="Search companies or clients…" value={search} onChange={(e) => setSearch(e.target.value)} />
-        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, whiteSpace: "nowrap" }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "var(--text-13)", whiteSpace: "nowrap" }}>
           <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
           Show archived
         </label>

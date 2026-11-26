@@ -56,7 +56,7 @@ function LogoPreview({ filename }: { filename: string | undefined }) {
       cancelled = true;
     };
   }, [filename]);
-  return <img src={src} style={{ height: 36, maxWidth: 120, objectFit: "contain", background: "var(--surface-2, #2a2a2a)", borderRadius: "var(--radius-sm)" }} />;
+  return <img src={src} style={{ height: 36, maxWidth: 120, objectFit: "contain", background: "var(--surface-2)", borderRadius: "var(--radius-sm)" }} />;
 }
 
 export default function SettingsPage() {
@@ -376,7 +376,7 @@ export default function SettingsPage() {
 
       <div className="panel" style={{ maxWidth: 480 }}>
         <h3 style={{ marginBottom: 6 }}>Document Nomenclature</h3>
-        <p className="text-secondary" style={{ marginTop: 0, fontSize: 13 }}>
+        <p className="text-secondary" style={{ marginTop: 0, fontSize: "var(--text-13)" }}>
           When uploading a document, its filename is checked against this pattern and a non-blocking warning is shown on a
           mismatch — uploads are never rejected. Use the literal tokens PROJECT, DISCIPLINE, DOCUMENTTYPE, NUMBER, and REV;
           any other characters (like "-") pass through as your own separators. Example: <span className="mono">ABC-ELE-RFI-001-REV02</span>.
@@ -404,7 +404,7 @@ export default function SettingsPage() {
       {window.PCC_ELECTRON ? (
         <div className="panel" style={{ maxWidth: 480 }}>
           <h3 style={{ marginBottom: 6 }}>Data Mirror</h3>
-          <p className="text-secondary" style={{ marginTop: 0, fontSize: 13 }}>
+          <p className="text-secondary" style={{ marginTop: 0, fontSize: "var(--text-13)" }}>
             One-way, read-only: this app writes a full data snapshot to the folder below roughly once an hour (plus once
             when you close the app). A separate, lightweight "At a Glance" app on Android reads this folder — see its own
             setup for pointing a sync tool (e.g. Syncthing) at it; this app doesn't move the file there itself, and nothing
@@ -433,7 +433,7 @@ export default function SettingsPage() {
       {window.PCC_ELECTRON ? (
         <div className="panel" style={{ maxWidth: 480 }}>
           <h3 style={{ marginBottom: 6 }}>AI Assistant (Ollama)</h3>
-          <p className="text-secondary" style={{ marginTop: 0, fontSize: 13 }}>
+          <p className="text-secondary" style={{ marginTop: 0, fontSize: "var(--text-13)" }}>
             Uses a locally-installed <a href="https://ollama.com" target="_blank" rel="noreferrer">Ollama</a> server on this
             PC — nothing is sent anywhere else. Install Ollama, pull a model (e.g. <span className="mono">ollama pull llama3</span>),
             then enter its name below. Off by default; only available in this Windows app, not on Android.
@@ -486,7 +486,7 @@ export default function SettingsPage() {
 
       <div className="panel" style={{ maxWidth: 480 }}>
         <h3 style={{ marginBottom: 6 }}>Data</h3>
-        <p className="text-secondary" style={{ marginTop: 0, fontSize: 13 }}>
+        <p className="text-secondary" style={{ marginTop: 0, fontSize: "var(--text-13)" }}>
           Everything is autosaved to this browser as you work. Before switching machines, export your data — it produces
           one file you carry with the app folder. "Export Document Archive" separately downloads a .zip with a real folder
           per project, containing the actual attached files — useful for browsing your documents outside the app, or as a
@@ -549,7 +549,7 @@ export default function SettingsPage() {
       {recoveryKeys.length > 0 ? (
         <div className="panel" style={{ maxWidth: 480, borderColor: "var(--status-critical)" }}>
           <h3 style={{ marginBottom: 6, color: "var(--status-critical)" }}>Data Recovery</h3>
-          <p className="text-secondary" style={{ marginTop: 0, fontSize: 13 }}>
+          <p className="text-secondary" style={{ marginTop: 0, fontSize: "var(--text-13)" }}>
             This browser's saved data couldn't be read at least once, and the unreadable copy was kept below instead of
             being silently discarded. Each one is the raw text from that moment — download and inspect it if you think real
             project data is in there.
@@ -574,7 +574,7 @@ export default function SettingsPage() {
 
       <div className="panel" style={{ maxWidth: 480 }}>
         <h3 style={{ marginBottom: 6 }}>Documents storage</h3>
-        <p className="text-secondary" style={{ margin: 0, fontSize: 13 }}>
+        <p className="text-secondary" style={{ margin: 0, fontSize: "var(--text-13)" }}>
           Uploaded documents are referenced from the <span className="mono">/files</span> folder next to this app, not
           stored inside the data file. When you copy the app to a pen drive or cloud folder, copy{" "}
           <span className="mono">/files</span> along with it.
