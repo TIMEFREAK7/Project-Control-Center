@@ -18,7 +18,7 @@
  * (tests/test_storage_management_e2e.js) unchanged, only the implementation moved.
  */
 import React, { useState } from "react";
-import { formatBytes, projectName, getStorageSnapshot, scanStorage, deleteOrphanBlob } from "../services/storageService";
+import { formatBytes, projectName, getStorageSnapshot, scanStorage, deleteOrphanBlob, getAppDataUsage } from "../services/storageService";
 import type { StorageSnapshot, ScanResult } from "../services/storageService";
 import type { StorageBreakdownEntry, StorageProjectEntry } from "../types/pcc";
 
@@ -64,6 +64,47 @@ function BreakdownPanel<T extends { count: number; bytes: number }>({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Gate H.3: everything except file bytes is saved as ONE browser-storage value with a hard
+ * limit. Files (above) live in IndexedDB and don't count toward it. */
+function AppDataPanel() {
+  const { measure, otherChars, fit } = getAppDataUsage();
+  const top = measure.collections.filter((c) => c.chars > 2).slice(0, 10);
+  const row = (label: React.ReactNode, chars: number, key: string) => (
+    <div key={key} className="detail-card" style={{ display: "flex", justifyContent: "space-between", marginBottom: "var(--space-2)" }}>
+      <span>{label}</span>
+      <span className="text-secondary" style={{ fontSize: 13 }}>
+        {chars.toLocaleString()} characters
+      </span>
+    </div>
+  );
+  return (
+    <div className="panel" style={{ marginTop: "var(--space-4)" }}>
+      <h3 style={{ marginBottom: "var(--space-3)" }}>App data</h3>
+      <meter
+        min={0}
+        max={100}
+        low={80}
+        high={95}
+        optimum={0}
+        value={Math.min(fit.percent, 100)}
+        aria-label="App data storage used"
+        style={{ width: "100%", height: 12 }}
+      />
+      <p style={{ margin: "var(--space-2) 0 var(--space-3)" }}>
+        <strong>{fit.percent}% used</strong>
+        <span className="text-secondary">
+          {" "}
+          · {fit.projectedChars.toLocaleString()} of {fit.limitChars.toLocaleString()} characters
+        </span>
+      </p>
+      <div className="project-list">
+        {top.map((c) => row(<span className="mono">{c.key}</span>, c.chars, c.key))}
+        {row("Other saved items (recovery backups)", otherChars, "__other__")}
+      </div>
     </div>
   );
 }
@@ -129,6 +170,8 @@ export default function StorageManagementPage() {
         <KpiCard label="In Trash" value={formatBytes(summary.trashedBytes)} sub={`${summary.trashedCount} file${summary.trashedCount === 1 ? "" : "s"}`} />
         <KpiCard label="Possible Duplicates" value={formatBytes(summary.duplicateBytes)} sub={`${summary.duplicateCount} file${summary.duplicateCount === 1 ? "" : "s"}`} />
       </div>
+
+      <AppDataPanel />
 
       <BreakdownPanel heading="By Type" rows={bySourceRows} labelFor={(row) => row.label} />
       <BreakdownPanel

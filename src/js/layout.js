@@ -1260,7 +1260,29 @@
     window.PCC.store.onPersisted(function (data, ok) {
       var status = document.getElementById("footer-save-status");
       if (status) status.textContent = ok ? "SAVED \u00b7 " + (window.PCC.dates ? window.PCC.dates.formatTime(new Date()) : new Date().toLocaleTimeString()) : "NOT SAVED \u2014 see notification";
+      if (ok) warnIfStorageNearlyFull();
     });
+  }
+
+  // Gate H.3: one warning per session once everything stored passes 80% of the browser's
+  // limit. Uses the size of the string the save just wrote, so nothing is serialized twice.
+  var storageWarningShown = false;
+  function warnIfStorageNearlyFull() {
+    var engine = window.PCC.storageAnalyticsEngine;
+    if (storageWarningShown || !engine || !window.PCC.store.getLastSavedSize) return;
+    var fit = engine.checkStorageFit(window.PCC.store.getLastSavedSize(), window.PCC.store.getOtherStorageChars());
+    if (fit.percent < 80) return;
+    storageWarningShown = true;
+    window.PCC.notify(
+      "App data is using " + Math.round(fit.percent) + "% of this device's storage limit. Saves fail once it is full.",
+      "warning",
+      {
+        label: "Open Storage Management",
+        onClick: function () {
+          window.PCC.router.go("storageManagement");
+        },
+      }
+    );
   }
 
   // Keeps the title-block DATE current: after a Settings time-zone change, and past midnight

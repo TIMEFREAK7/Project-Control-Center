@@ -15,6 +15,7 @@
  */
 import type { PCCStoreData, PCCDocument, PCCDocumentExtraction } from "../types/pcc";
 import { fuzzyMatch } from "../utils/fuzzyMatch";
+import { storageFitError } from "./storageService";
 
 export var CATEGORY_LABELS: { [category: string]: string } = {
   contract: "Contract",
@@ -534,6 +535,11 @@ export function saveDocument(data: PCCStoreData, form: DocumentFormState, pendin
     remarks: form.remarks || "",
   });
 
+  // Gate H.3: the extracted text (up to 50,000 characters) is stored in localStorage with the
+  // record; refuse before the file goes to IndexedDB if it won't fit.
+  var tooBig = storageFitError(JSON.stringify(doc).length);
+  if (tooBig) return Promise.reject(tooBig);
+
   return window.PCC.blobStore.putBlob(doc.id, pendingFile.fileData).then(function () {
     window.PCC.store.update(function (d) {
       d.documents.push(doc);
@@ -654,6 +660,7 @@ export function commitBulkImport(
   var errors = 0;
   var total = toImport.length;
   var done = 0;
+  var storageRefusalShown = false;
 
   return toImport
     .reduce(function (chain: Promise<void>, entry) {
@@ -680,6 +687,18 @@ export function commitBulkImport(
           document_type_id: documentTypeId || "",
           discipline: discipline || "",
         });
+
+        // Gate H.3: skip (as an error, with the reason shown once) a file whose record would
+        // not fit, before its bytes go to IndexedDB.
+        var tooBig = storageFitError(JSON.stringify(doc).length);
+        if (tooBig) {
+          errors++;
+          if (!storageRefusalShown) {
+            storageRefusalShown = true;
+            window.PCC.notify(tooBig.message, "error");
+          }
+          return;
+        }
 
         return window.PCC.blobStore
           .putBlob(doc.id, entry.dataUri as string)

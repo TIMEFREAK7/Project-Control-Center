@@ -6677,3 +6677,27 @@ Chromium: the blocking dialog survives Escape and the stored data stays byte-ide
 import through the real Import button is refused with the store unchanged; At a Glance (folder
 plugin mocked) keeps its old data under the message.
 
+## Gate H.3: storage meter and size check before big changes (2026-11-26)
+
+**Problem.** Apart from file contents (which live in IndexedDB), all of the app's data is
+saved as one browser-storage value with a hard limit of about 5.2 million characters. A big
+schedule import or a document's extracted text could push it over: the change was accepted on
+screen, then the save failed ("NOT SAVED"). Nothing warned beforehand, and Storage Management
+only measured files.
+
+**Decision.**
+- Storage Management has an **App data** panel: a meter, the percentage used, and which parts
+  of the data take the most space (plus other saved items such as recovery backups, which use
+  the same allowance).
+- Once per session, passing **80%** shows a warning with an "Open Storage Management" button.
+- **Before** a JSON import, SQLite backup restore, schedule import or document save, the app
+  checks whether the result would fit. If not, it refuses and says why, and nothing is saved
+  or stored, not even the file.
+
+Rejected for now: moving the data somewhere roomier (that is Gate 6.2, and depends on real
+readings) and any automatic clean-up.
+
+**Verified.** New `test_storage_meter_engine.js` and `test_storage_meter_e2e.js` (both fail on
+the previous build). In real Chromium at desktop and phone sizes: the panel, the single
+warning and its button, and a real oversized import refused with the stored data unchanged.
+

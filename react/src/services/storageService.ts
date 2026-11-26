@@ -12,7 +12,31 @@
  * First TypeScript conversion (strict mode) in the react/ tree — see ../types/pcc.d.ts
  * for the window.PCC.* boundary this file's types are declared against.
  */
-import type { PCCStoreData, FileRecord, StorageSummary } from "../types/pcc";
+import type { PCCStoreData, FileRecord, StorageSummary, AppDataMeasure, StorageFit } from "../types/pcc";
+
+/** Gate H.3: the "App data" meter. Measures the live store (not the last save) so the panel
+ * matches what the next save will write; other keys share the same quota. */
+export interface AppDataUsage {
+  measure: AppDataMeasure;
+  otherChars: number;
+  fit: StorageFit;
+}
+
+export function getAppDataUsage(): AppDataUsage {
+  const engine = window.PCC.storageAnalyticsEngine;
+  const measure = engine.measureAppData(window.PCC.store.get());
+  const otherChars = window.PCC.store.getOtherStorageChars();
+  return { measure, otherChars, fit: engine.checkStorageFit(measure.totalChars, otherChars) };
+}
+
+/** Gate H.3 pre-flight for a bulk add: an Error to reject with when `addedChars` more would
+ * not fit in localStorage, else null. Callers check this BEFORE writing anything. */
+export function storageFitError(addedChars: number): Error | null {
+  const engine = window.PCC.storageAnalyticsEngine;
+  const current = JSON.stringify(window.PCC.store.get()).length + window.PCC.store.getOtherStorageChars();
+  const fit = engine.checkStorageFit(current, addedChars);
+  return fit.fits ? null : new Error(engine.storageFullMessage(fit));
+}
 
 export function formatBytes(bytes: number): string {
   if (!bytes) return "0 KB";
