@@ -350,6 +350,17 @@ gates with a test gate each). Start there when asked "what's next"; update each 
   shows the message above the data it already had (`"newer"` status). Any new import path must
   go through `migrate()`; any new write to `pcc_local_data_v1` must go through
   `persistToLocalStorage()`. Covered by `test_newer_version_guard_e2e.js`.
+- **Everything except file bytes shares ONE `localStorage` value with a hard ceiling**
+  (Gate H.3, 2026-11-26). `storageAnalyticsEngine.js` owns the numbers:
+  `LOCAL_STORAGE_LIMIT_CHARS` (5,242,880, Chromium's 5 MiB in UTF-16 code units, across every
+  key), `measureAppData()`, `checkStorageFit()`, `storageFullMessage()`. Any new path that ADDS
+  a lot to the store must pre-flight with `storageFitError(addedChars)`
+  (`react/src/services/storageService.ts`) and reject BEFORE writing the file to IndexedDB or
+  calling `update()`; imports are checked inside `store.js`'s `writeInlineBlobsAndCommit()`.
+  `store.getLastSavedSize()` is the length the last save wrote (the 80% toast uses it, so
+  nothing is serialized twice); `store.getOtherStorageChars()` counts recovery backups and any
+  other key, which share the quota. `notify(message, severity, {label, onClick})` can carry
+  one button. Edit Excel round trips are not pre-flighted (they replace records in place).
 - **`migrate()` ends with a backfill-only safety net**: any top-level collection, or
   `settings`/`meta` key, that's `undefined`/`null` in the loaded file gets its `emptyData()`
   default. It never overwrites and is idempotent. The versioned steps only backfill what each

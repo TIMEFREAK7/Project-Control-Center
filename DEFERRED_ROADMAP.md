@@ -220,7 +220,12 @@ and features behind parsers that read untrusted files.
 - **Tests:** engine unit tests (empty, typical, over the limit); e2e for the panel, the 80%
   toast firing once, and a refused over-size import leaving the store unchanged; control run.
 - **Hand-off:** ask Aditya for the meter reading on his real data. Gate 6.2 depends on it.
-- **Status:** open.
+- **Status:** closed 2026-11-26, except the hand-off (Aditya's real meter reading is still
+  needed for Gate 6.2). Limit 5,242,880 characters across every `localStorage` key. Pre-flight
+  also covers SQLite backup restore and bulk document import. `test_storage_meter_engine.js`
+  and `test_storage_meter_e2e.js` fail on the old build and pass now. Chromium at both sizes:
+  panel, one 80% toast whose button opens Storage Management, a real oversized import refused
+  with the store unchanged.
 
 **Gate H.4 — Update the spreadsheet parser (no schema change).**
 - **Gap:** `src/js/vendor/xlsx.core.min.js` is SheetJS 0.18.5, the last version on npm. It has

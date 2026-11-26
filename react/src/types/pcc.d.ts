@@ -978,6 +978,18 @@ export interface StorageProjectEntry {
   bytes: number;
 }
 
+export interface AppDataMeasure {
+  totalChars: number;
+  collections: { key: string; chars: number }[];
+}
+
+export interface StorageFit {
+  projectedChars: number;
+  limitChars: number;
+  percent: number;
+  fits: boolean;
+}
+
 export interface StorageSummary {
   totalBytes: number;
   totalCount: number;
@@ -1509,6 +1521,9 @@ declare global {
         // Gate H.2: data saved by a newer build is refused (migrate() throws this message).
         isFromNewerVersion?(d: unknown): boolean;
         NEWER_VERSION_MESSAGE?: string;
+        // Gate H.3: sizes for the storage meter and pre-flight checks.
+        getLastSavedSize(): number;
+        getOtherStorageChars(): number;
         newLessonLearned(prefill: Partial<PCCLessonLearned>): PCCLessonLearned;
         rememberLastUsedName(key: string, value: string | undefined): void;
         getLastUsedName(key: string): string;
@@ -1672,8 +1687,13 @@ declare global {
         collectFileRecords(data: PCCStoreData): FileRecord[];
         summarizeStorage(records: FileRecord[]): StorageSummary;
         findOrphans(records: FileRecord[], blobIds: string[]): OrphanResult;
+        // Gate H.3: app-data size and the pre-flight fit check.
+        LOCAL_STORAGE_LIMIT_CHARS: number;
+        measureAppData(data: PCCStoreData): AppDataMeasure;
+        checkStorageFit(currentChars: number, addedChars: number): StorageFit;
+        storageFullMessage(fit: StorageFit): string;
       };
-      notify(message: string, kind?: string): void;
+      notify(message: string, kind?: string, action?: { label: string; onClick: () => void }): void;
       projectContext: {
         get(): string;
         set(projectId: string): void;

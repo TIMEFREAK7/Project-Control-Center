@@ -5,6 +5,23 @@ Paste this into a new chat to resume work with full context. This file lives in 
 path — see the standing instructions in `CLAUDE.md` about keeping it current and about handing
 it (and a zip) to Aditya directly after every major upgrade, not just committing quietly.
 
+## 2026-11-26 — Gate H.3: storage meter and pre-flight size check
+
+- `storageAnalyticsEngine.js`: `LOCAL_STORAGE_LIMIT_CHARS` (5,242,880), `measureAppData`,
+  `checkStorageFit`, `storageFullMessage`. `store.js`: `getLastSavedSize`,
+  `getOtherStorageChars`, import pre-flight in `writeInlineBlobsAndCommit` (before any blob
+  write). `storageService.ts`: `getAppDataUsage`, `storageFitError`, used by `commitImport`
+  (schedule), `saveDocument`, `commitBulkImport`. Storage Management: "App data" panel
+  (`<meter>` + top 10 collections + other keys). `layout.js`: one 80% warning per session.
+  `notifications.js`: optional `{label, onClick}` button (inherits the toast's text colour).
+- New tests (now 134 files): `test_storage_meter_engine.js` (7) and
+  `test_storage_meter_e2e.js` (8; it uses a filler `localStorage` key to use up space).
+  Both fail on the old build. Chromium checks in `scratch/pcc-h3/`.
+- **Open hand-off: Aditya's real meter reading** (Storage Management → App data, the
+  percentage and the top three rows). Gate 6.2 is decided from it.
+- Mirror app rebuilt (store.js, notifications.js changed) via the C: junction method.
+- Schema still 67. No installers built.
+
 ## 2026-11-26 — Gate H.2: data from a newer version is refused
 
 - `store.js`: `NEWER_VERSION_MESSAGE` + `isFromNewerVersion()`; `migrate()` throws for

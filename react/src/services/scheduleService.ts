@@ -31,6 +31,7 @@ import type {
 } from "../types/pcc";
 import { fuzzyMatch } from "../utils/fuzzyMatch";
 import { formatDate, localTodayIso } from "../utils/localDate";
+import { storageFitError } from "./storageService";
 
 export interface ActivityFieldConfig {
   key: string;
@@ -1150,6 +1151,10 @@ export function commitImport(projectId: string, parsed: ParsedScheduleImport, sc
       a.calendar_id = newCalendarId;
     });
   }
+
+  // Gate H.3: refuse before the file goes to IndexedDB or anything is committed.
+  var tooBig = storageFitError(JSON.stringify([newSchedule, records.wbsItems, records.activities, records.relationships, newCalendar]).length);
+  if (tooBig) return Promise.reject(tooBig);
 
   return window.PCC.blobStore
     .putBlob(newSchedule.id, importFile.fileData)

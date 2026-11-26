@@ -3455,6 +3455,27 @@
   // Set by load() when localStorage holds data from a newer build. While true nothing is
   // ever written to LOCAL_STORAGE_KEY, so the newer data can't be overwritten.
   var blockedByNewerVersion = false;
+  var lastSavedChars = 0; // Gate H.3: length of the last string written, for the 80% warning
+
+  function getLastSavedSize() {
+    return lastSavedChars;
+  }
+
+  /** Characters used by every OTHER localStorage key (recovery backups etc.) plus the main
+   * key's own name: they share the browser's quota with the app data. */
+  function getOtherStorageChars() {
+    var total = LOCAL_STORAGE_KEY.length;
+    try {
+      for (var i = 0; i < window.localStorage.length; i++) {
+        var k = window.localStorage.key(i);
+        if (k === null || k === LOCAL_STORAGE_KEY) continue;
+        total += k.length + (window.localStorage.getItem(k) || "").length;
+      }
+    } catch (e) {
+      // Storage unreadable: count nothing extra rather than block the user.
+    }
+    return total;
+  }
 
   var CORRUPTED_BACKUP_PREFIX = "pcc_corrupted_backup_";
 
@@ -3491,7 +3512,9 @@
     }
     var ok = true;
     try {
-      window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
+      var json = JSON.stringify(data);
+      window.localStorage.setItem(LOCAL_STORAGE_KEY, json);
+      lastSavedChars = json.length;
       data.meta.last_saved_at = new Date().toISOString();
     } catch (e) {
       ok = false;
@@ -3788,6 +3811,27 @@
     var refs = collectBlobRefs(migrated).filter(function (r) {
       return !!r.get();
     });
+
+    // Gate H.3 pre-flight: measure what would be saved (file bytes go to IndexedDB, so they
+    // don't count) and refuse BEFORE any blob is written or anything is committed. The
+    // engine isn't in the mirror app's bundle, which never imports, so it's optional here.
+    var engine = window.PCC.storageAnalyticsEngine;
+    if (engine) {
+      var inline = refs.map(function (r) {
+        return r.get();
+      });
+      refs.forEach(function (r) {
+        r.set(null);
+      });
+      var fit = engine.checkStorageFit(getOtherStorageChars(), JSON.stringify(migrated).length);
+      refs.forEach(function (r, i) {
+        r.set(inline[i]);
+      });
+      if (!fit.fits) {
+        callback(new Error(engine.storageFullMessage(fit)));
+        return;
+      }
+    }
     var writes = refs.map(function (r) {
       var val = r.get();
       return window.PCC.blobStore.putBlob(r.id, val).then(function () {
@@ -3915,6 +3959,8 @@
     isFromNewerVersion: isFromNewerVersion,
     NEWER_VERSION_MESSAGE: NEWER_VERSION_MESSAGE,
     isBlockedByNewerVersion: isBlockedByNewerVersion,
+    getLastSavedSize: getLastSavedSize,
+    getOtherStorageChars: getOtherStorageChars,
     exportNewerVersionData: exportNewerVersionData,
     listRecoveryBackups: listRecoveryBackups,
     downloadRecoveryBackup: downloadRecoveryBackup,

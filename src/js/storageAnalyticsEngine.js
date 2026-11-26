@@ -187,9 +187,49 @@
     return { orphanBlobIds: orphanBlobIds, missingBlobRecords: missingBlobRecords };
   }
 
+  // Gate H.3: everything except file bytes lives in ONE localStorage value. Chromium (the
+  // engine behind all three apps) allows 5 MiB per site, counted in UTF-16 code units, i.e.
+  // this many characters across every key. Matches the ~5.2M wall measured on 2026-11-11.
+  var LOCAL_STORAGE_LIMIT_CHARS = 5242880;
+
+  /** Serialized size of the app data, total and per top-level key, largest first. */
+  function measureAppData(data) {
+    var collections = Object.keys(data || {}).map(function (key) {
+      var json = JSON.stringify(data[key]);
+      return { key: key, chars: json === undefined ? 0 : json.length };
+    });
+    collections.sort(function (a, b) {
+      return b.chars - a.chars;
+    });
+    return { totalChars: JSON.stringify(data || {}).length, collections: collections };
+  }
+
+  /** Would adding `addedChars` to `currentChars` (everything stored now) still fit? */
+  function checkStorageFit(currentChars, addedChars) {
+    var projected = currentChars + addedChars;
+    return {
+      projectedChars: projected,
+      limitChars: LOCAL_STORAGE_LIMIT_CHARS,
+      percent: Math.round((projected / LOCAL_STORAGE_LIMIT_CHARS) * 1000) / 10,
+      fits: projected <= LOCAL_STORAGE_LIMIT_CHARS,
+    };
+  }
+
+  function storageFullMessage(fit) {
+    return (
+      "Not enough storage: this would bring app data to " +
+      Math.round(fit.percent) +
+      "% of this device's limit, so nothing was saved. See Storage Management for what is using the space."
+    );
+  }
+
   window.PCC.storageAnalyticsEngine = {
     collectFileRecords: collectFileRecords,
     summarizeStorage: summarizeStorage,
     findOrphans: findOrphans,
+    LOCAL_STORAGE_LIMIT_CHARS: LOCAL_STORAGE_LIMIT_CHARS,
+    measureAppData: measureAppData,
+    checkStorageFit: checkStorageFit,
+    storageFullMessage: storageFullMessage,
   };
 })();
