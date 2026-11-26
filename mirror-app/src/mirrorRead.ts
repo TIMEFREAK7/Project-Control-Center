@@ -24,7 +24,7 @@
  * which keeps a persistent read-only grant to it. */
 
 export type MirrorStatus = {
-  state: "web" | "checking" | "no-folder" | "no-permission" | "not-found" | "ok" | "error";
+  state: "web" | "checking" | "no-folder" | "no-permission" | "not-found" | "ok" | "error" | "newer";
   folderName?: string;
   mtime?: number;
   message?: string;
@@ -100,8 +100,15 @@ export function readMirrorFileIfNewer(): Promise<boolean> {
       return true;
     })
     .catch((err: any) => {
+      const message = (err && err.message) || String(err);
+      // Gate H.2: migrate() refused a file from a newer Windows build. Nothing was applied,
+      // so the previously loaded data stays on screen under this message.
+      if (message === window.PCC.store.NEWER_VERSION_MESSAGE) {
+        setStatus({ state: "newer", folderName: status.folderName, message });
+        return false;
+      }
       console.error("[PCC Mirror] read failed:", err);
-      setStatus({ state: "error", folderName: status.folderName, message: (err && err.message) || String(err) });
+      setStatus({ state: "error", folderName: status.folderName, message });
       return false;
     });
 }

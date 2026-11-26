@@ -1506,6 +1506,9 @@ declare global {
         listRecoveryBackups?(): string[];
         downloadRecoveryBackup(key: string): void;
         deleteRecoveryBackup(key: string): void;
+        // Gate H.2: data saved by a newer build is refused (migrate() throws this message).
+        isFromNewerVersion?(d: unknown): boolean;
+        NEWER_VERSION_MESSAGE?: string;
         newLessonLearned(prefill: Partial<PCCLessonLearned>): PCCLessonLearned;
         rememberLastUsedName(key: string, value: string | undefined): void;
         getLastUsedName(key: string): string;

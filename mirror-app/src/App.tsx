@@ -50,6 +50,8 @@ function emptyStateText(st: MirrorStatus): string {
       );
     case "error":
       return "Couldn't read the mirror file: " + (st.message || "unknown error") + ". Pull down to try again.";
+    case "newer":
+      return st.message || "";
     case "checking":
       return "Loading mirror data…";
     default:
@@ -131,12 +133,13 @@ export default function App() {
           Without it every reused page rendered edge-to-edge unpadded -- a real bug caught
           on a real device, see mirror-app.css's own header for the full explanation. */}
       <main className="page" id="mirror-app-outlet" key={refreshTick}>
-        {!hasMirrorData ? (
+        {/* "newer" shows even over loaded data: the old data stays on screen below it. */}
+        {!hasMirrorData || mirrorStatus.state === "newer" ? (
           <div className="panel" style={{ marginBottom: 16 }}>
             <p className="text-secondary" style={{ margin: 0 }}>
               {emptyStateText(mirrorStatus)}
             </p>
-            {canPick ? (
+            {canPick && mirrorStatus.state !== "newer" ? (
               <button type="button" className="btn btn--primary" style={{ marginTop: 12 }} onClick={handleChooseFolder}>
                 {mirrorStatus.state === "no-folder" ? "Choose mirror folder" : "Choose a different folder"}
               </button>

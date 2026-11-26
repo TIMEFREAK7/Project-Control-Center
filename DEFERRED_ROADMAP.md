@@ -192,7 +192,12 @@ and features behind parsers that read untrusted files.
   - control run on the old build;
   - mirror app in Chromium at 412×915 with the mocked plugin returning a future file.
 - **Blast radius:** `store.js` is shared, so rebuild and re-check the mirror app.
-- **Status:** open.
+- **Status:** closed 2026-11-26. The check lives in `migrate()` (every entry point uses it);
+  `load()` blocks saves and shows an undismissable "Export this data" dialog; the mirror app
+  keeps its old data under the message. `test_newer_version_guard_e2e.js` fails 7 of 10 on the
+  old build and passes now. Chromium at 1440×900 and 412×915 (main app) and 412×915 (mirror,
+  mocked plugin): no console errors. The mirror app was built from a temporary copy on the
+  PC's C: drive, because its symlinks can't exist on the exFAT SSD.
 
 **Gate H.3 — Storage meter and pre-flight size check (no schema change).**
 - **Gap:** everything except file bytes lives in ONE `localStorage` value

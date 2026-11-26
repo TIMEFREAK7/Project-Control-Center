@@ -341,6 +341,15 @@ gates with a test gate each). Start there when asked "what's next"; update each 
     test should pin itself to IST like `tests/test_local_dates_ist_e2e.js` does (`process.env.TZ
     = "Asia/Kolkata"` before any `Date` exists, plus a frozen clock inside the 00:00-05:30
     window). Running the whole suite with `TZ=Asia/Kolkata npm test` is also worth doing.
+- **Data from a NEWER build is refused, never migrated or saved over** (Gate H.2,
+  2026-11-26). `migrate()` throws `NEWER_VERSION_MESSAGE` when `schema_version >
+  SCHEMA_VERSION`, so both imports and the mirror app's read reject it with the store
+  untouched. `load()` checks before migrating: it sets `blockedByNewerVersion`, after which
+  `persistToLocalStorage()` writes nothing, and `layout.js` shows an undismissable dialog whose
+  one action (`exportNewerVersionData()`) saves the raw stored value unchanged. The mirror app
+  shows the message above the data it already had (`"newer"` status). Any new import path must
+  go through `migrate()`; any new write to `pcc_local_data_v1` must go through
+  `persistToLocalStorage()`. Covered by `test_newer_version_guard_e2e.js`.
 - **`migrate()` ends with a backfill-only safety net**: any top-level collection, or
   `settings`/`meta` key, that's `undefined`/`null` in the loaded file gets its `emptyData()`
   default. It never overwrites and is idempotent. The versioned steps only backfill what each
