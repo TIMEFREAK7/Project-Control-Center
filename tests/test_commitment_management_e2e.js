@@ -83,7 +83,9 @@ function setReactSelectValue(win, select, value) {
   let projectId, vendorId, budgetItemId, activityId, scheduleId;
   await check("seed a project, vendor, budget item, and activity via the store", () => {
     win.PCC.store.update(function (d) {
-      var project = win.PCC.store.newProject({ name: "Riverside Tower", status: "on_track" });
+      // currency: since Gate 6.4 Commitments shows the project's own currency (it used to
+      // hardcode "$"), so the money assertions below expect "USD 50,000".
+      var project = win.PCC.store.newProject({ name: "Riverside Tower", status: "on_track", currency: "USD" });
       d.projects.push(project);
       projectId = project.id;
 
@@ -164,10 +166,10 @@ function setReactSelectValue(win, select, value) {
   await check("the Commitments list shows Committed/Approved/Actual(0)/Remaining=Committed before any cost is logged", () => {
     var text = outlet().textContent;
     assert.ok(text.indexOf("PO-1001") !== -1);
-    assert.ok(text.indexOf("Committed $50,000") !== -1);
-    assert.ok(text.indexOf("Approved $48,000") !== -1);
-    assert.ok(text.indexOf("Actual $0") !== -1, "no cost logged yet — actual must be 0, not blank");
-    assert.ok(text.indexOf("Remaining $50,000") !== -1, "remaining = committed - 0 actual");
+    assert.ok(text.indexOf("Committed USD 50,000") !== -1);
+    assert.ok(text.indexOf("Approved USD 48,000") !== -1);
+    assert.ok(text.indexOf("Actual USD 0") !== -1, "no cost logged yet — actual must be 0, not blank");
+    assert.ok(text.indexOf("Remaining USD 50,000") !== -1, "remaining = committed - 0 actual");
   });
 
   await check("logging an Actual Cost in Cost Tracking against this commitment updates its computed Actual Value", async () => {
@@ -205,8 +207,8 @@ function setReactSelectValue(win, select, value) {
     win.PCC.router.render();
     await flush();
     var text = outlet().textContent;
-    assert.ok(text.indexOf("Actual $15,000") !== -1, "commitment's Actual Value must reflect the newly-logged cost");
-    assert.ok(text.indexOf("Remaining $35,000") !== -1, "50000 committed - 15000 actual = 35000 remaining");
+    assert.ok(text.indexOf("Actual USD 15,000") !== -1, "commitment's Actual Value must reflect the newly-logged cost");
+    assert.ok(text.indexOf("Remaining USD 35,000") !== -1, "50000 committed - 15000 actual = 35000 remaining");
   });
 
   await check("a second Actual Cost against the same commitment accumulates into the sum", async () => {
@@ -234,8 +236,8 @@ function setReactSelectValue(win, select, value) {
     win.PCC.router.render();
     await flush();
     var text = outlet().textContent;
-    assert.ok(text.indexOf("Actual $25,000") !== -1, "15000 + 10000 = 25000");
-    assert.ok(text.indexOf("Remaining $25,000") !== -1);
+    assert.ok(text.indexOf("Actual USD 25,000") !== -1, "15000 + 10000 = 25000");
+    assert.ok(text.indexOf("Remaining USD 25,000") !== -1);
   });
 
   await check("the KPI strip totals Committed/Approved/Actual/Remaining across the filtered set", () => {
@@ -244,10 +246,10 @@ function setReactSelectValue(win, select, value) {
       var card = kpiCards.find((c) => c.textContent.indexOf(label) !== -1);
       return card ? card.querySelector(".kpi-card__value").textContent : undefined;
     }
-    assert.strictEqual(kpiValue("TOTAL COMMITTED"), "$50,000");
-    assert.strictEqual(kpiValue("TOTAL APPROVED"), "$48,000");
-    assert.strictEqual(kpiValue("TOTAL ACTUAL"), "$25,000");
-    assert.strictEqual(kpiValue("TOTAL REMAINING"), "$25,000");
+    assert.strictEqual(kpiValue("TOTAL COMMITTED"), "USD 50,000");
+    assert.strictEqual(kpiValue("TOTAL APPROVED"), "USD 48,000");
+    assert.strictEqual(kpiValue("TOTAL ACTUAL"), "USD 25,000");
+    assert.strictEqual(kpiValue("TOTAL REMAINING"), "USD 25,000");
   });
 
   await check("Executive Center shows a COMMITMENTS KPI section with the same totals", async () => {

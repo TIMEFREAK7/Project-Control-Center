@@ -6767,3 +6767,19 @@ changes.
 **Verified.** Four cases on a throwaway branch with dry-run pushes (nothing sent): clean push
 allowed; stale build refused; uncommitted source refused; mirror warning shown.
 
+## Gate 6.4: Commitments currency and real plurals (2026-11-26)
+
+**Problem.** Commitments showed "$" for every project, whatever its currency, and its totals
+added amounts in different currencies into one meaningless figure. Generated text read
+"3 activity(ies)", "1 decision(s)".
+
+**Decision.** Commitments now shows each amount in its project's own currency, the same way
+Cost, Portfolio and Reports already do, and its totals are given per currency ("INR 1,200,000
+· USD 50,000"). Generated messages and summaries use real plurals ("1 activity", "3
+activities"). Only the generated text in the service layer changed; the same wording on
+individual screens follows in the Phase 7 page passes.
+
+**Verified.** New `test_commitments_currency_e2e.js` (two projects, INR and USD; fails on the
+previous build). Three existing tests updated to the new wording. Real Chromium at desktop and
+phone sizes: no "$", per-currency totals, no horizontal scroll.
+

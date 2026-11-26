@@ -12,6 +12,7 @@
  */
 import type { PCCStoreData, PCCProject, PCCReportTemplate } from "../types/pcc";
 import { localTodayIso } from "../utils/localDate";
+import { plural } from "../utils/plural";
 
 export var SEVERITY_MATRIX: { [probability: string]: { [impact: string]: string } } = {
   high: { low: "medium", medium: "high", high: "high" },
@@ -617,7 +618,7 @@ export function buildPortfolioReport(data: PCCStoreData, sections: { [key: strin
     return x.status === "overdue";
   }).length;
   var docPct = docTotal === 0 ? 0 : Math.round((docAvailable / docTotal) * 100);
-  var docSection = sectionEl("Document Control Compliance — " + docPct + "% available across portfolio (" + docTotal + " requirement(s), " + docOverdue + " overdue)");
+  var docSection = sectionEl("Document Control Compliance — " + docPct + "% available across portfolio (" + plural(docTotal, "requirement") + ", " + docOverdue + " overdue)");
   if (docTotal === 0) {
     docSection.appendChild(emptyNote("No document requirements assigned across the active portfolio."));
   } else {

@@ -42,11 +42,32 @@ export function packageName(packages: PCCPackage[], packageId: string | undefine
   return p ? p.name || "(unnamed package)" : "(package deleted)";
 }
 
-export function formatMoney(value: number | string | null | undefined): string {
+// Gate 6.4: the project's own currency, same format as Cost/Portfolio ("INR 1,000"; a plain
+// number when the project has none). This used to hardcode "$" for every project.
+export function formatMoney(value: number | string | null | undefined, currency?: string): string {
   if (value === null || value === undefined || value === "") return "—";
   var n = Number(value);
   if (isNaN(n)) return "—";
-  return (n < 0 ? "-$" : "$") + Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: 2 });
+  return (currency ? currency + " " : "") + n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
+export function projectCurrency(projects: PCCProject[], projectId: string | undefined): string {
+  var p = projects.find(function (x) {
+    return x.id === projectId;
+  });
+  return (p && p.currency) || "";
+}
+
+/** Totals that may span projects: one figure per currency ("INR 1,000 · USD 500"), never a
+ * mixed sum. `byCurrency` maps currency ("" = none set) to its total. */
+export function formatMoneyTotals(byCurrency: { [currency: string]: number }): string {
+  var keys = Object.keys(byCurrency).sort();
+  if (keys.length === 0) return formatMoney(0);
+  return keys
+    .map(function (k) {
+      return formatMoney(byCurrency[k], k);
+    })
+    .join(" · ");
 }
 
 export function actualValueFor(data: PCCStoreData, commitmentId: string): number {

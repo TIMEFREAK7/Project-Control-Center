@@ -39,6 +39,8 @@ import {
   getProjectContext,
   setProjectContext,
   viewActivityInSchedule,
+  projectCurrency,
+  formatMoneyTotals,
 } from "../services/commitmentsService";
 import type { ActivityOption, BudgetItemOption } from "../services/commitmentsService";
 import type { PCCCommitment, PCCPackage, PCCStoreData, PCCActivity } from "../types/pcc";
@@ -200,7 +202,7 @@ function CommitmentForm({
 
         {!isNew ? (
           <p className="text-secondary" style={{ fontSize: 12 }}>
-            Actual Value is computed automatically — {formatMoney(actual)} so far, from Cost Tracking's Actual Cost entries logged against this
+            Actual Value is computed automatically — {formatMoney(actual, projectCurrency(data.projects, commitment.project_id))} so far, from Cost Tracking's Actual Cost entries logged against this
             commitment. Log or edit those in Cost Tracking, not here.
           </p>
         ) : null}
@@ -221,22 +223,29 @@ function CommitmentForm({
 }
 
 function KpiStrip({ filtered, data }: { filtered: PCCCommitment[]; data: PCCStoreData }) {
-  const totals = { committed: 0, approved: 0, actual: 0, remaining: 0, atRisk: 0 };
+  // Gate 6.4: money is totalled per currency (the filter can span projects in different
+  // currencies), never into one mixed sum.
+  type ByCurrency = { [currency: string]: number };
+  const totals: { committed: ByCurrency; approved: ByCurrency; actual: ByCurrency; remaining: ByCurrency } = { committed: {}, approved: {}, actual: {}, remaining: {} };
+  const add = (bucket: ByCurrency, cur: string, v: number) => (bucket[cur] = (bucket[cur] || 0) + v);
+  let atRisk = 0;
   filtered.forEach((c) => {
+    const cur = projectCurrency(data.projects, c.project_id);
     const actual = actualValueFor(data, c.id);
-    totals.committed += Number(c.committed_value) || 0;
-    totals.approved += Number(c.approved_value) || 0;
-    totals.actual += actual;
-    totals.remaining += remainingFor(c.committed_value, actual) || 0;
-    if (commitmentIsAtRisk(c, data)) totals.atRisk++;
+    add(totals.committed, cur, Number(c.committed_value) || 0);
+    add(totals.approved, cur, Number(c.approved_value) || 0);
+    add(totals.actual, cur, actual);
+    add(totals.remaining, cur, remainingFor(c.committed_value, actual) || 0);
+    if (commitmentIsAtRisk(c, data)) atRisk++;
   });
+  const anyNegativeRemaining = Object.keys(totals.remaining).some((k) => totals.remaining[k] < 0);
 
   const kpis: { label: string; value: string | number; colorVar?: string | null }[] = [
-    { label: "TOTAL COMMITTED", value: formatMoney(totals.committed) },
-    { label: "TOTAL APPROVED", value: formatMoney(totals.approved) },
-    { label: "TOTAL ACTUAL", value: formatMoney(totals.actual) },
-    { label: "TOTAL REMAINING", value: formatMoney(totals.remaining), colorVar: totals.remaining < 0 ? "--status-critical" : null },
-    { label: "AT RISK", value: totals.atRisk, colorVar: totals.atRisk > 0 ? "--status-critical" : null },
+    { label: "TOTAL COMMITTED", value: formatMoneyTotals(totals.committed) },
+    { label: "TOTAL APPROVED", value: formatMoneyTotals(totals.approved) },
+    { label: "TOTAL ACTUAL", value: formatMoneyTotals(totals.actual) },
+    { label: "TOTAL REMAINING", value: formatMoneyTotals(totals.remaining), colorVar: anyNegativeRemaining ? "--status-critical" : null },
+    { label: "AT RISK", value: atRisk, colorVar: atRisk > 0 ? "--status-critical" : null },
   ];
 
   return (
@@ -266,6 +275,7 @@ function CommitmentRow({
 }) {
   const actual = actualValueFor(data, c.id);
   const remaining = remainingFor(c.committed_value, actual);
+  const cur = projectCurrency(data.projects, c.project_id);
   const metaParts = [projectName(data.projects, c.project_id), TYPE_LABELS[c.type || ""] || c.type];
   if (c.vendor_id) metaParts.push(vendorName(data.vendors, c.vendor_id));
   if (c.package_id) metaParts.push(packageName(data.packages, c.package_id));
@@ -282,8 +292,8 @@ function CommitmentRow({
         </span>
         <br />
         <span style={{ fontSize: 12 }}>
-          Committed {formatMoney(c.committed_value)} · Approved {formatMoney(c.approved_value)} · Actual {formatMoney(actual)} ·{" "}
-          <span style={{ color: remaining != null && remaining < 0 ? "var(--status-critical)" : "inherit" }}>Remaining {formatMoney(remaining)}</span>
+          Committed {formatMoney(c.committed_value, cur)} · Approved {formatMoney(c.approved_value, cur)} · Actual {formatMoney(actual, cur)} ·{" "}
+          <span style={{ color: remaining != null && remaining < 0 ? "var(--status-critical)" : "inherit" }}>Remaining {formatMoney(remaining, cur)}</span>
         </span>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
