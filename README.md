@@ -6720,3 +6720,33 @@ UTC and India time. In a real browser set to India time, at desktop and phone si
 schedule import with exact dates, an "Edit Excel" round trip that moves no dates, and a
 spreadsheet preview.
 
+## Closed decisions (Gate 0.3, 2026-11-26)
+
+These were each looked at and deliberately NOT done. Don't reopen one without a new reason
+that answers the one given here.
+
+- **`.mpp` import (Microsoft Project's native file):** no viable parser that keeps the app a
+  single dependency-free file. Microsoft Project XML import/export covers the exchange
+  instead. Detail: "PCC Architecture Upgrade — Phase 2 (Microsoft Project File
+  Interoperability — Import)" above.
+- **UI/UX Overhaul Gate 6 ("Existing Modules, one at a time"):** put on hold on 2026-08-21
+  after Documents, Risk Register and Schedule, then superseded by the 12-gate PCC Redesign
+  and the React migration, which reworked every page. Detail: HANDOFF.md, the UI/UX Overhaul
+  section.
+- **Title-block DOM split (a distinct treatment for the page-title cell):** the title block
+  has no room left at phone width, so splitting it would cost the space it needs. Detail: the
+  PCC Redesign write-up above and CLAUDE.md ("Header space at phone width is exhausted").
+- **Content Security Policy:** the app is one file of inline scripts, so a policy would have
+  to allow `'unsafe-inline'`, which defeats it. The Electron navigation guard and the preview
+  sanitizer are what protect it instead. Detail: "Full-project audit + fixes (2026-09-24)".
+- **A separate Spreadsheet Review capability:** it already exists inside Document Review
+  (AI), which reads spreadsheets' extracted text.
+- **AI on Android:** Ollama would have to listen on the local network with no
+  authentication for a phone to reach it, so any device on that network could use it. AI
+  stays Windows-only, through the Electron main process.
+- **`.sml` / `.plf` import:** not needed. Aditya confirmed (2026-11-26) that no such files are
+  in use; the files that matter are Microsoft Project, Excel, Word and photos, all already
+  supported.
+- **The engineering master prompt's Phases 8–9:** no longer available (confirmed 2026-11-26),
+  so nothing is planned from them.
+
