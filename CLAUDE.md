@@ -12,6 +12,7 @@ git config core.hooksPath .githooks   # once per clone: pre-push refuses a stale
 node build.js            # after ANY src/ or react/src change (runs tsc + the react bundle)
 cd tests && npm test     # full suite; before every merge, in UTC AND with TZ=Asia/Kolkata
 node --check src/js/x.js
+cd tests/visual && node shots.js --out <dir>   # Phase 7 screenshots (dev-only; npm install there once)
 node mirror-app/build.js # after store/projectContext/notifications.js, the 4 shared pages,
                          # react/src/services|utils|types, styles.css or mirror-app/src changes
 ```

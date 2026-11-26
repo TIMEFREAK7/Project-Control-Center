@@ -26,13 +26,15 @@ Don't propose "modernize the UI" as if starting from zero; check what gate this 
 Every PCC screen is Operate mode — the user is completing a task (data entry, review, analysis),
 not being persuaded or entertained. Concretely, that means:
 
-- One type family carries everything (`--font-body`/Inter) except page titles
-  (`--font-display`/Space Grotesk) and genuinely numeric alignment (`--font-mono`). Don't add a
-  second display face "for personality."
+- **Inter carries everything**, page titles and figures included (decided at Gate 7.0; until
+  Gate 7.2 ships it, titles still render in Space Grotesk). Figures use tabular numerals, not a
+  monospace face. `--font-mono` is for identifiers only (activity IDs, document numbers, codes).
+  Don't add a second display face "for personality."
 - Fixed rem/px type scale, not fluid `clamp()` — desktop-first tool, consistent DPI expectation.
-- Colour defaults to restrained: the accent (`--signal-amber`, now blue) marks primary actions,
-  current selection, and state — never decoration. A single surface (e.g. a KPI dashboard) can
-  earn more colour commitment; that's the exception, not the default.
+- Colour is restrained: the primary button is **ink** (`--ink`), not the accent. The accent
+  (`--signal-amber`, blue `#2563eb` from Gate 7.2) marks only selection, focus and links; the
+  status hues carry status and nothing else. Exact target tokens: `DESIGN_SYSTEM.md`'s "Phase 7
+  target" section. Screenshots for any Phase 7 gate: `tests/visual/shots.js`.
 - Standard navigation/form affordances only — no custom scrollbars, no invented modal behavior,
   no reinvented dropdowns. `.modal`/`.drawer` already exist; reuse them.
 - **Modal is not the first thought.** Exhaust inline/progressive alternatives (an expandable

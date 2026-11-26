@@ -1,0 +1,11 @@
+{
+  "name": "pcc-visual-shots",
+  "private": true,
+  "description": "Dev-only screenshot harness for Phase 7 (tests/visual/shots.js). Not part of npm test; ships nothing.",
+  "scripts": {
+    "shots": "node shots.js"
+  },
+  "devDependencies": {
+    "playwright-core": "1.49.1"
+  }
+}

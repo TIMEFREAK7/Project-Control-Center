@@ -7,15 +7,32 @@ it (and a zip) to Aditya directly after every major upgrade, not just committing
 
 ## Current state (2026-11-26)
 
-- `main` has every gate through 6.3. Schema **67**. 136 test files (`cd tests && npm test`),
+- `main` has every gate through 7.0. Schema **67**. 136 test files (`cd tests && npm test`),
   green in UTC and IST. Windows installer builds natively on this PC (1.10.0 last built).
-- Next in `DEFERRED_ROADMAP.md`: Phase 7 (visual refresh) starts with Gate 7.0, which ships
-  nothing and needs Aditya to choose between two variants. Features track: 1.1.
+- Next in `DEFERRED_ROADMAP.md`: Gate 7.1 (move inline font sizes to tokens, no visual change),
+  then 7.2 (the Gate 7.0 tokens into `styles.css`). Features track: 1.1.
 - Waiting on Aditya: Gate 0.1 (phone check of At a Glance 1.9 + predictive back) and the real
   Storage Management → App data reading (decides Gate 6.2).
 - Docs layout since Gate 6.3: `CLAUDE.md` = rules (10.5 KB); `docs/GOTCHAS.md` = the old
   CLAUDE.md, unedited; `docs/BUILD_HISTORY.md` = README's old history; `docs/HANDOFF_ARCHIVE.md`
   = this file's sessions before 2026-11-11; `README.md` = short user guide (ships in the zip).
+
+## 2026-11-26 — Gate 7.0: visual baseline and direction (nothing shipped)
+
+- Aditya chose Variant A (Inter, slate, blue `#2563eb`), ink primary button, module tint as a
+  hairline, Kubai duotone sidebar icons. Tokens + route→icon map: `.claude/docs/DESIGN_SYSTEM.md`
+  "Phase 7 target"; `pcc-ui` skill typography lines updated.
+- New dev-only harness `tests/visual/` (`npm install` there once; `playwright-core` 1.49.1, uses
+  the Chromium in `tools/playwright`): `node shots.js --out <dir> [--screens …] [--css f]
+  [--icons map.json] [--fonts dir] [--axe axe.min.js]`. Not in `npm test`.
+- Kept in `scratch/pcc-7.0/` (not the repo): baseline/variant shots, 12 comparison sheets,
+  `PLAN.md` (critique + token plans), the Kubai export + `icons.json` map (`kubai-map.mjs`), the
+  IBM Plex Sans files (unused now), `axe.min.js`. The variant stylesheets were deleted.
+- Reference repos added under `repos/`: `impeccable` (partial: README, LICENSE,
+  `skill/reference/*.md`; full clone kept failing) and `claude-wcag-skill`.
+- Baseline contrast failures for 7.2/7.5: Portfolio (5 light / 3 dark), Documents (2).
+- Push-check note: the mirror warning now shows on every push until `mirror-app/index.html` next
+  changes in a commit (6.4's services changed but the rebuild was identical).
 
 ## 2026-11-26 — Gate 6.3: docs split (docs only)
 
