@@ -294,6 +294,13 @@ gates with a test gate each). Start there when asked "what's next"; update each 
     `shell.openExternal`. So **never open files with `window.open(blob:)`**: it's refused in
     Electron and has no "new tab" in the Android WebView. Use `window.PCC.fileViewer.open()`
     (Knowledge Base was the last caller that didn't).
+  - **Every `pdfjsLib.getDocument()` call passes `isEvalSupported: false`** (Gate H.1,
+    2026-11-26). The bundled pdf.js 3.11.174 is covered by CVE-2024-4367: with eval on, a
+    crafted PDF font runs script, and pdf.js runs on the main thread here, so that script would
+    reach `window.PCC` and `window.PCC_ELECTRON`. Two call sites today (`fileViewer.js`,
+    `documentsService.ts`); a new one needs the flag, and `test_pdf_eval_disabled_e2e.js`
+    covers both. Upgrading to pdf.js 4.x (ES-module only) is a closed decision unless this
+    flag stops being enough.
   - **The mirror IPC writes exactly `pcc-mirror.json` and nothing else**
     (`mirrorFileWriter.js`'s `ALLOWED_FILENAME`). The folder is renderer-supplied free text,
     so the filename lock is what stops injected script from dropping an executable (e.g. in

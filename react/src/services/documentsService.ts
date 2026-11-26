@@ -318,7 +318,8 @@ function reconstructPdfPageText(items: PdfTextItem[]): string {
 function extractPdf(buffer: ArrayBuffer): Promise<PCCDocumentExtraction> {
   var typedArray = new Uint8Array(buffer);
   return window.pdfjsLib
-    .getDocument({ data: typedArray })
+    // isEvalSupported: false closes CVE-2024-4367 (font code run via new Function) in pdf.js 3.x.
+    .getDocument({ data: typedArray, isEvalSupported: false })
     .promise.then(function (pdf: any) {
       var pagesToRead = Math.min(pdf.numPages, PDF_MAX_PAGES);
       var pagePromises: Promise<string>[] = [];

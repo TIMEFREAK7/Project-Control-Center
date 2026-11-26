@@ -5,6 +5,21 @@ Paste this into a new chat to resume work with full context. This file lives in 
 path — see the standing instructions in `CLAUDE.md` about keeping it current and about handing
 it (and a zip) to Aditya directly after every major upgrade, not just committing quietly.
 
+## 2026-11-26 — Gate H.1: PDF parser no longer evaluates script
+
+- `src/js/fileViewer.js` and `react/src/services/documentsService.ts` pass
+  `isEvalSupported: false` to `pdfjsLib.getDocument()` (CVE-2024-4367 in pdf.js 3.11.174).
+  No third call site exists. pdf.js 4.x upgrade recorded as a closed decision.
+- New `tests/test_pdf_eval_disabled_e2e.js` (in the `npm test` chain, now 131 files): fails on
+  the old build, passes now. Real Chromium at 1440×900 and 412×915: a generated text PDF
+  renders in the viewer and its text extracts, zero console errors.
+- Schema still 67. The mirror app doesn't bundle pdf.js, so it's unaffected. No installer
+  built (none asked for).
+- Playwright's Chromium (1255) is on the SSD in `tools\playwright`. Installing straight to
+  the SSD fails (Playwright's lock file goes stale on exFAT), so install to a temp folder on
+  the PC with `PLAYWRIGHT_BROWSERS_PATH` pointing there, copy the browser folders across, and
+  delete the temp folder.
+
 ## 2026-11-26 — Gate 0.2: cheaper schema bumps (tests only)
 
 - `tests/schemaVersion.js` reads `SCHEMA_VERSION` from `src/js/store.js`. The 7 boot-check

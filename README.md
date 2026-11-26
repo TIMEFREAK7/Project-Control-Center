@@ -6638,3 +6638,19 @@ needs the step: `migrate()` sets the version inside each step, not from the cons
 failed on any machine with another locale. It now checks the date against the device's own
 locale, which is what the app displays; a reintroduced one-day shift still fails it.
 
+## Gate H.1: PDF parser no longer evaluates script (2026-11-26)
+
+**Problem.** The bundled pdf.js (3.11.174) is in the range covered by CVE-2024-4367: with its
+default `isEvalSupported: true`, a crafted font inside a PDF can run script. pdf.js runs on the
+app's main thread, so that script would have full access to the app and, on Windows, to the
+Electron bridge. Not reproduced here; the version, the default and the code path were confirmed.
+
+**Decision.** Pass `isEvalSupported: false` at both places the app opens a PDF: the in-app
+viewer and the Documents upload text extraction. Rejected for now: upgrading to pdf.js 4.x,
+which is ES-module only and would need a much larger change to `build.js`. That stays closed
+unless this flag turns out not to be enough.
+
+**Verified.** New `test_pdf_eval_disabled_e2e.js` checks both calls carry the flag; it fails
+against the previous build. The existing PDF tests pass, and in real Chromium a real PDF still
+renders in the viewer and its text is still extracted, at desktop and phone sizes.
+
