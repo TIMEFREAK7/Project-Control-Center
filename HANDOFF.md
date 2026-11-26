@@ -5,6 +5,17 @@ Paste this into a new chat to resume work with full context. This file lives in 
 path — see the standing instructions in `CLAUDE.md` about keeping it current and about handing
 it (and a zip) to Aditya directly after every major upgrade, not just committing quietly.
 
+## 2026-11-26 — Gate 6.1: local pre-push check (replaces GitHub CI)
+
+- Aditya chose no GitHub CI. New `.githooks/pre-push` (LF-only via `.gitattributes`). Enable
+  once per clone: `git config core.hooksPath .githooks` (already set in this clone).
+- Refuses: uncommitted changes in `src/`, `react/src/`, `build.js`; a committed `index.html`
+  that differs from a fresh `node build.js` (line endings ignored; it leaves the rebuilt file
+  for you to commit). Warns only: mirror-app inputs changed after `mirror-app/index.html`.
+- Adds about a minute to every push (the rebuild). Checks the branch you're on only.
+- Tested with `git push --dry-run` on a throwaway branch: all four cases behave.
+- Next in order: 6.4 (Commitments currency + plurals), then 6.3 (docs split).
+
 ## Closed decisions (Gate 0.3, 2026-11-26) — don't reopen without a new reason
 
 Full reasons in README.md's "Closed decisions" section.
@@ -19,6 +30,7 @@ Full reasons in README.md's "Closed decisions" section.
 - `.sml` / `.plf` import: not needed; no such files in use (Aditya, 2026-11-26). Files in use
   are MSP, Excel, Word and photos. Gate 4.4 closed.
 - Master prompt Phases 8–9: no longer available (Aditya, 2026-11-26). Nothing planned from them.
+- GitHub CI: not used (Aditya, 2026-11-26); the local pre-push check replaces it.
 
 ## 2026-11-26 — Gate H.4: SheetJS 0.18.5 → 0.20.3
 

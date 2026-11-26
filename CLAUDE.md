@@ -624,6 +624,10 @@ cd tests && npm install  # first time only
 cd tests && npm test    # run the full jsdom/fake-indexeddb suite (must pass before shipping)
 node --check src/js/whatever.js   # quick syntax check on a single file
 
+git config core.hooksPath .githooks   # once per clone: turns on the local pre-push check
+                                       # (refuses a push whose index.html is stale; warns when
+                                       # mirror-app/index.html may be stale). No GitHub CI.
+
 cd mirror-app && npm install  # first time only
 node mirror-app/build.js   # rebuild mirror-app/index.html — run after any src/js/{store,projectContext,notifications}.js
                             # change, any react/src/{pages/{Dashboard,MyWork,ActionCentre,Portfolio},services/*}.ts(x)
@@ -772,6 +776,8 @@ convention below and verify the reassembled file's checksum matches before sendi
 
 ## PR / shipping conventions (Aditya, standing instruction)
 
+- **There is no GitHub CI, by decision (Gate 6.1, 2026-11-26).** The safety net is the local
+  `.githooks/pre-push` check (see Commands) plus running the full suite here before every merge.
 - **If a PR has no comments, merge it — don't ask first.** This is a solo repo with no CI and no
   other reviewers; a clean PR (tests pass, no review comments) is ready by definition. Still stop
   and ask before merging if there *are* comments to address, or if something is genuinely
