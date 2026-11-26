@@ -5,6 +5,21 @@ Paste this into a new chat to resume work with full context. This file lives in 
 path — see the standing instructions in `CLAUDE.md` about keeping it current and about handing
 it (and a zip) to Aditya directly after every major upgrade, not just committing quietly.
 
+## Closed decisions (Gate 0.3, 2026-11-26) — don't reopen without a new reason
+
+Full reasons in README.md's "Closed decisions" section.
+- `.mpp` import: no dependency-free parser; MSP XML covers it.
+- UI/UX Overhaul Gate 6: on hold since 2026-08-21, superseded by the PCC Redesign + React
+  migration.
+- Title-block DOM split: no room at phone width.
+- Content Security Policy: would need `'unsafe-inline'`.
+- Separate Spreadsheet Review: already inside Document Review (AI).
+- AI on Android: would expose Ollama on the LAN with no authentication.
+
+**Still open from Gate 0.3 (asked 2026-11-26, awaiting Aditya):** what software produces
+`.sml` and `.plf` files (Gate 4.4 stays blocked until then), and the engineering master
+prompt's Phases 8–9 text (never saved; to be added to DEFERRED_ROADMAP.md when supplied).
+
 ## 2026-11-26 — Gate H.4: SheetJS 0.18.5 → 0.20.3
 
 - `src/js/vendor/xlsx.core.min.js` replaced with 0.20.3 from

@@ -133,7 +133,10 @@ future session re-opens them by accident:
   - what produces `.sml` and `.plf` files;
   - to paste the engineering master prompt's Phases 8–9 (never saved), then add them to this
     file.
-- **Status:** open.
+- **Status:** partly closed 2026-11-26. The six closed decisions are recorded in README.md
+  ("Closed decisions") and HANDOFF.md. Both questions were asked on 2026-11-26 and are still
+  waiting on Aditya; close this gate when they're answered (Gate 4.4 stays blocked until the
+  `.sml`/`.plf` answer).
 
 ---
 
