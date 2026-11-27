@@ -309,7 +309,7 @@ function VendorList({ data, filters, setFilters, editingVendorId, onEdit, onAdd,
     <>
       <div className="toolbar">
         <input
-          type="text"
+          type="text" className="search-input" aria-label="Search vendors"
           placeholder="Search vendor, company, contact, trade, project, document…"
           value={filters.search}
           onChange={(e) => setFilters((prev) => Object.assign({}, prev, { search: e.target.value }))}

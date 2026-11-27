@@ -336,7 +336,7 @@ export default function DecisionRegisterPage({
       ) : null}
 
       <div className="toolbar">
-        <input type="text" placeholder="Search title, context, decision, decided by…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <input type="text" className="search-input" aria-label="Search decisions" placeholder="Search title, context, decision, decided by…" value={search} onChange={(e) => setSearch(e.target.value)} />
         <select aria-label="Filter by status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
           <option value="">All statuses</option>
           {window.PCC.store.DECISION_STATUSES.map((s) => (

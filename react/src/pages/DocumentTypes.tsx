@@ -278,7 +278,7 @@ export default function DocumentTypesPage() {
 
       <div className="toolbar">
         <input
-          type="text"
+          type="text" className="search-input" aria-label="Search document types"
           placeholder="Search name or code…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}

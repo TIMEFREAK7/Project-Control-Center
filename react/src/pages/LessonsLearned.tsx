@@ -390,7 +390,7 @@ export default function LessonsLearnedPage({
 
       <div className="toolbar">
         <input
-          type="text"
+          type="text" className="search-input" aria-label="Search lessons learned"
           placeholder="Search title, what happened, recommendation, identified by…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}

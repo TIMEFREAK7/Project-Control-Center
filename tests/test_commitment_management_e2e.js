@@ -258,7 +258,7 @@ function setReactSelectValue(win, select, value) {
     await flush();
     // UI/UX Overhaul Gate 5: COMMITMENTS now lives on the Cost & Commitments sub-tab,
     // not the default Summary landing view.
-    var costTab = Array.from(outlet().querySelectorAll(".toolbar button")).find((b) => b.textContent.trim() === "Cost & Commitments");
+    var costTab = Array.from(outlet().querySelectorAll(".toolbar button, .tab-bar .tab-btn")).find((b) => b.textContent.trim() === "Cost & Commitments");
     assert.ok(costTab, "Cost & Commitments sub-tab not found");
     costTab.click();
     await flush();

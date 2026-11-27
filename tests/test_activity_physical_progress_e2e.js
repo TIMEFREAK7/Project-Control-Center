@@ -113,7 +113,7 @@ function setReactInputValue(win, el, value) {
     await flush();
     // UI/UX Overhaul Gate 5: the PROGRESS KPI section now lives on the Schedule
     // sub-tab, not the default Summary landing view.
-    var scheduleTab = Array.from(outlet().querySelectorAll(".toolbar button")).find((b) => b.textContent.trim() === "Schedule");
+    var scheduleTab = Array.from(outlet().querySelectorAll(".toolbar button, .tab-bar .tab-btn")).find((b) => b.textContent.trim() === "Schedule");
     assert.ok(scheduleTab, "Schedule sub-tab not found");
     scheduleTab.click();
     await flush();
@@ -165,7 +165,7 @@ function setReactInputValue(win, el, value) {
     win.PCC.executiveCenter.viewProject(projectId);
     win.PCC.router.go("executiveCenter");
     await flush();
-    var scheduleTab = Array.from(outlet().querySelectorAll(".toolbar button")).find((b) => b.textContent.trim() === "Schedule");
+    var scheduleTab = Array.from(outlet().querySelectorAll(".toolbar button, .tab-bar .tab-btn")).find((b) => b.textContent.trim() === "Schedule");
     assert.ok(scheduleTab, "Schedule sub-tab not found");
     scheduleTab.click();
     await flush();

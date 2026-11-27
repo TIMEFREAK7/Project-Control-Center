@@ -89,6 +89,9 @@
   --radius-lg: 8px;
   --radius-xs: 4px; /* Gate 7.1: two small tags used a literal 4 */
   --sidebar-width: 236px;
+  /* Gate 7.4: one control height (buttons, inputs, selects) and table row padding per density. */
+  --control-h: 36px;
+  --row-py: 8px;
 
   --space-1: 4px;
   --space-2: 8px;
@@ -202,6 +205,7 @@ html[data-theme="dark"] {
      against the heat map's own slightly higher tint alphas); --high needs its own value
      since its 0.22 alpha (vs badges' 0.15) pushes the badge critical shade back under 4.5:1. */
   --heatmap-high-text: #ed7e7e;
+  --icon-search: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23a1a1aa%22%20stroke-width%3D%222.2%22%20stroke-linecap%3D%22round%22%3E%3Ccircle%20cx%3D%2211%22%20cy%3D%2211%22%20r%3D%227%22/%3E%3Cpath%20d%3D%22M21%2021l-4.35-4.35%22/%3E%3C/svg%3E");
 }
 
 html[data-theme="light"] {
@@ -241,6 +245,7 @@ html[data-theme="light"] {
   --status-badge-info-text: #096972;
 
   --heatmap-high-text: #b61919;
+  --icon-search: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23475569%22%20stroke-width%3D%222.2%22%20stroke-linecap%3D%22round%22%3E%3Ccircle%20cx%3D%2211%22%20cy%3D%2211%22%20r%3D%227%22/%3E%3Cpath%20d%3D%22M21%2021l-4.35-4.35%22/%3E%3C/svg%3E");
 }
 
 * {
@@ -769,24 +774,36 @@ footer.app-footer {
   margin-top: var(--space-4);
 }
 
+/* Gate 7.4: KPI figures are one strip (a single row, hairline between figures) instead of a
+   grid of equal bordered cards. The strip itself is one surface, so in dark it sits on the
+   lifted grey like every other section. Phones: a compact two-column grid (780px block). */
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: var(--space-4);
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 0;
   margin-bottom: var(--space-4);
+  padding: var(--space-3) 0;
+  background-color: var(--bg-paper);
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-md);
 }
 
 .kpi-card {
   position: relative;
-  background-color: var(--bg-paper);
-  border: 1px solid var(--divider);
-  border-radius: var(--radius-md);
-  padding: 18px;
-  transition: border-color var(--transition-base);
+  background-color: transparent;
+  border: none;
+  border-left: 1px solid var(--divider);
+  border-radius: 0;
+  padding: var(--space-1) var(--space-4);
 }
 
-.kpi-card:hover {
-  border-color: var(--text-secondary);
+.kpi-grid > .kpi-card:first-child {
+  border-left-color: transparent;
+}
+
+.kpi-card--link:hover {
+  background-color: var(--hover-bg);
 }
 
 /* Same status icons as .status-badge (see --icon-status-* tokens), on the three KPI
@@ -836,9 +853,8 @@ footer.app-footer {
 .kpi-card__label {
   display: block;
   font-size: var(--text-xs);
-  letter-spacing: 1px;
   color: var(--text-secondary);
-  margin-bottom: var(--space-2);
+  margin-bottom: var(--space-1);
 }
 
 .kpi-card__value {
@@ -856,20 +872,32 @@ footer.app-footer {
   border-collapse: collapse;
 }
 
+/* Gate 7.4: header row sticky by default (it sticks to whatever scrolls the table), row height
+   follows density (--row-py), figures right-aligned via a .num cell class. */
 .data-table th {
   text-align: left;
   font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.03em;
   color: var(--text-secondary);
-  padding: var(--space-2) 10px;
+  padding: var(--row-py) 10px;
   border-bottom: 1px solid var(--divider);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background-color: var(--bg-paper);
 }
 
 .data-table td {
-  padding: var(--space-2) 10px;
+  padding: var(--row-py) 10px;
   font-size: var(--text-13);
   border-bottom: 1px solid var(--divider);
+}
+
+.data-table td.num,
+.data-table th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .data-table tbody tr:hover {
@@ -915,6 +943,7 @@ footer.app-footer {
 .data-table__sort-btn {
   display: inline-flex;
   align-items: center;
+  min-height: 24px; /* Gate 7.4: a 24 px target (was the 14 px text line) */
   gap: var(--space-1);
   background: none;
   border: none;
@@ -939,7 +968,14 @@ footer.app-footer {
   font-size: var(--text-13-5);
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
-  padding: 9px var(--space-4);
+  /* Gate 7.4: one height per density (--control-h), shared with inputs and selects. */
+  min-height: var(--control-h);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  text-align: center;
+  padding: 4px var(--space-4);
   cursor: pointer;
   transition: background-color var(--transition-fast), border-color var(--transition-fast),
     transform var(--transition-fast), opacity var(--transition-fast);
@@ -963,61 +999,34 @@ a:focus-visible {
   outline-offset: 2px;
 }
 
-/* Gooey hover pop, same family/technique as .sidebar__link-blob (grow a small blurred+
-   contrasted blob into the full shape via a plain CSS transition) -- but NOT a permanent
-   filter, because a primary button is solid/opaque at rest (unlike the nav row's
-   transparent rest state), and --signal-amber (#3d63dd, a saturated blue) is nowhere near
-   50% gray: a filter left applied at rest would blow it out toward pure rgb(0,0,255) (each
-   channel pushed away from 0.5 by the contrast factor, clamped). Transitioning `filter`
-   itself from blur(6px)/contrast(10) down to blur(0)/contrast(100%) (its identity, i.e. no
-   distortion) as PART of the same transition means the settled hover color is the real,
-   undistorted --signal-amber-dark once :hover finishes resolving -- the distortion only
-   exists during the brief transient. This is a `transition`, deliberately NOT a
-   `@keyframes`/`animation` (tried first): a real, confirmed browser quirk in this specific
-   document -- CSS `animation` triggered via `:hover` silently never starts when targeting
-   a `::before` pseudo-element here (verified directly: the identical keyframes apply fine
-   on the real element itself via :hover, and plain `transition`-driven properties apply
-   fine on this same ::before via :hover; only `::before` + `:hover` + `animation` together
-   fails, with no competing rule found) -- so this sticks to the mechanism already proven
-   to work for .sidebar__link-blob rather than fighting an unresolved engine quirk.
-   ::before (not a child span) so none of the 105 existing .btn--primary call sites across
-   the app need to change. inset:-1px (not 0) so it fully covers .btn's own transparent 1px
-   border ring -- inset:0 leaves a visible 1px gap at the border edge showing the page
-   behind it (same box-model gotcha the nav blob didn't have, since .sidebar__link has no
-   border). Deliberately NOT overflow:hidden on the button: that would clip the ::before's
-   own -1px bleed at the padding edge, right back to the exact 1px ring inset:-1px exists
-   to cover -- caught by code review, verified by pixel-sampling a real-Chromium repro
-   (the settled hover state showed a 1px ring of the un-hovered color around every button).
-   The tradeoff is a few px of blur bleeding past the button's rounded corner during the
-   brief (~180ms) hover-enter/leave transient -- far less bad than a permanent
-   wrong-color ring on all 105 call sites. */
+/* Gate 7.4: three button levels. Primary = ink fill (the one main action in a view); secondary
+   = .btn--ghost (bordered); quiet = .btn--quiet (no border, for low-emphasis actions). Hover is
+   a plain colour change: the blurred "gooey" ::before layer is gone. */
 .btn--primary {
-  position: relative;
-  z-index: 0;
-  isolation: isolate;
-  /* Gate 7.2: ink, not the accent (the accent never fills a button). */
   background-color: var(--ink);
   border-color: var(--ink);
   color: var(--on-ink);
 }
 
-.btn--primary::before {
-  content: "";
-  position: absolute;
-  inset: -1px;
-  z-index: -1;
-  border-radius: inherit;
+.btn--primary:hover:not(:disabled) {
   background-color: color-mix(in srgb, var(--ink) 84%, var(--on-ink));
-  opacity: 0;
-  transform: scale(0.4);
-  filter: blur(6px) contrast(10);
-  transition: opacity var(--transition-base), transform var(--transition-base), filter var(--transition-base);
+  border-color: color-mix(in srgb, var(--ink) 84%, var(--on-ink));
 }
 
-.btn--primary:hover:not(:disabled)::before {
-  opacity: 1;
-  transform: scale(1);
-  filter: blur(0) contrast(100%);
+/* A chosen value in a set of buttons (Gantt zoom): the selection fill, not the primary fill. */
+.btn--ghost[aria-pressed="true"] {
+  background-color: color-mix(in srgb, var(--signal-amber) 14%, var(--hover-bg));
+  border-color: var(--signal-amber);
+}
+
+.btn--quiet {
+  background-color: transparent;
+  border-color: transparent;
+  color: var(--text-primary);
+}
+
+.btn--quiet:hover:not(:disabled) {
+  background-color: var(--hover-bg);
 }
 
 .btn--ghost {
@@ -1034,7 +1043,8 @@ a:focus-visible {
 /* Size/semantic variants — additive, not yet adopted by any page this gate. Compose
    with .btn--primary/.btn--ghost (e.g. class="btn btn--ghost btn--sm"). */
 .btn--sm {
-  padding: 5px 11px;
+  min-height: 28px;
+  padding: 2px 11px;
   font-size: var(--text-12);
 }
 
@@ -1252,9 +1262,43 @@ a:focus-visible {
   align-items: center;
 }
 
+/* Gate 7.4: every single-line field and select in a page or dialog gets the shared control
+   height and base look, so no native 19 px control is left (Executive Center, Documents and
+   Reports had them). :where() keeps this at zero specificity: any existing class rule wins. The
+   browser's own select arrow is kept everywhere, so there is one chevron. */
+:where(main, .modal) :where(select, input:not([type]), input[type="text"], input[type="search"], input[type="number"],
+  input[type="date"], input[type="email"], input[type="time"], input[type="url"], input[type="tel"]) {
+  min-height: var(--control-h);
+  padding: 0 10px;
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-default);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: var(--text-13);
+}
+
+:where(main, .modal) :where(input[type="checkbox"], input[type="radio"]) {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--signal-amber);
+}
+
+/* Search boxes (.search-input, every register toolbar): a magnifier drawn as a background so
+   the input needs no wrapper; --icon-search is per theme (its stroke matches --text-secondary). */
+.toolbar input.search-input[type="text"] {
+  /* one attribute more than ".toolbar input[type=text]" below, so its padding can't reset this */
+  padding-left: 32px;
+  background-image: var(--icon-search);
+  background-repeat: no-repeat;
+  background-position: 10px center;
+  background-size: 14px 14px;
+}
+
 .toolbar input[type="text"],
 .toolbar select {
-  padding: 8px 10px;
+  height: var(--control-h);
+  padding: 0 10px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--divider);
   background-color: var(--bg-default);
@@ -1308,53 +1352,20 @@ a:focus-visible {
   transition: color var(--transition-fast);
 }
 
-/* Gooey active/hover indicator: same family as .sidebar__link-blob (grows from a small
-   near-circle into its final shape through blur()+contrast(), same low-alpha-safe
-   reasoning), reshaped as a bar since tabs indicate selection via an underline, not a
-   filled pill. Sits on ::after (border-bottom above stays transparent, reserving the
-   layout space) so none of the existing .tab-btn call sites need markup changes.
-   filter resolves to blur(0) contrast(100%) -- i.e. no distortion -- at every SETTLED
-   state (hover and active alike), same reasoning as .btn--primary: --signal-amber is a
-   saturated, fully-opaque blue, so leaving any real contrast() applied permanently would
-   blow it out. Growth is scaleX-only, not a uniform scale: the bar is only 3px tall, and
-   scaling that down uniformly during the transient shrinks it to under 1px -- invisible.
-   First attempt used blur(4px) on a 3px-tall bar and left contrast(20) applied at rest,
-   which read as a permanent smudge rather than a liquid growth -- confirmed by
-   screenshotting it, same "verify before trusting the math" lesson as the other two. */
-.tab-btn::after {
-  content: "";
-  position: absolute;
-  left: 10px;
-  right: 10px;
-  bottom: -2px;
-  height: 3px;
-  border-radius: 999px;
-  background-color: var(--signal-amber);
-  opacity: 0;
-  transform: scaleX(0.25);
-  filter: blur(2px) contrast(6);
-  transition: opacity var(--transition-base), transform var(--transition-base), filter var(--transition-base);
-  pointer-events: none;
+/* Gate 7.4: one tab design everywhere, a plain 2 px accent underline on the active tab (the
+   blurred, growing "gooey" bar is gone). margin-bottom:-1px lays the underline over the bar's
+   own hairline. */
+.tab-btn {
+  margin-bottom: -1px;
 }
 
 .tab-btn:hover:not(.tab-btn--active) {
   color: var(--text-primary);
 }
 
-.tab-btn:hover:not(.tab-btn--active)::after {
-  opacity: 0.45;
-  transform: scaleX(0.75);
-  filter: blur(0) contrast(100%);
-}
-
 .tab-btn--active {
   color: var(--text-primary);
-}
-
-.tab-btn--active::after {
-  opacity: 1;
-  transform: scaleX(1);
-  filter: blur(0) contrast(100%);
+  border-bottom-color: var(--signal-amber);
 }
 
 .tab-btn:focus-visible {
@@ -1832,6 +1843,36 @@ a:focus-visible {
   -webkit-mask-image: var(--icon-status-info);
 }
 
+/* Gate 7.4: inside a table cell, status is quiet: a small dot plus plain text, no tinted pill,
+   no capitals. Neutral states (complete, info) get a grey dot, so colour only marks what needs
+   attention. Pills stay as they are in record headers and cards. Same markup, CSS only. */
+td .status-badge {
+  background-color: transparent;
+  padding: 0;
+  gap: 6px;
+  color: var(--text-primary);
+  font-weight: 500;
+  font-size: var(--text-13);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+td .status-badge::before {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  mask-image: none;
+  -webkit-mask-image: none;
+  background-color: var(--text-secondary);
+}
+
+td .status-badge--on_track::before { background-color: var(--status-on-track); }
+td .status-badge--at_risk::before { background-color: var(--status-at-risk); }
+td .status-badge--warning::before { background-color: var(--status-warning); }
+td .status-badge--critical::before { background-color: var(--status-critical); }
+td .status-badge--complete::before,
+td .status-badge--info::before { background-color: var(--text-secondary); }
+
 .project-card__actions {
   display: flex;
   flex-wrap: wrap;
@@ -1937,32 +1978,23 @@ a:focus-visible {
   }
 }
 
+/* Gate 7.4: an empty state is one quiet line of what is missing, left-aligned, with no dashed
+   box and no large centred icon. .empty-state__action is the slot for the one button that fixes
+   it (wired page by page in the 7.5 passes). It wins over .panel when both classes are set. */
 .empty-state {
-  text-align: center;
-  padding: var(--space-7) 20px;
+  text-align: left;
+  padding: var(--space-3) 0;
   color: var(--text-secondary);
-  border-style: dashed;
+  background-color: transparent;
+  border: none;
   box-shadow: none;
   font-size: var(--text-13-5);
-  line-height: 1.6;
+  line-height: 1.5;
 }
 
-.empty-state::before {
-  content: "";
-  display: block;
-  width: 28px;
-  height: 28px;
-  margin: 0 auto var(--space-3);
-  background-color: var(--text-secondary);
-  opacity: 0.5;
-  mask-image: var(--icon-empty-state);
-  mask-repeat: no-repeat;
-  mask-size: contain;
-  mask-position: center;
-  -webkit-mask-image: var(--icon-empty-state);
-  -webkit-mask-repeat: no-repeat;
-  -webkit-mask-size: contain;
-  -webkit-mask-position: center;
+.empty-state__action {
+  margin-left: var(--space-3);
+  vertical-align: middle;
 }
 
 .form-grid {
@@ -2589,12 +2621,16 @@ a:focus-visible {
   --space-3: 8px;
   --space-4: 12px;
   --space-5: 16px;
+  --control-h: 32px;
+  --row-py: 4px;
 }
 
 [data-density="spacious"] {
   --space-3: 16px;
   --space-4: 20px;
   --space-5: 32px;
+  --control-h: 40px;
+  --row-py: 12px;
 }
 
 [data-density="compact"] main.page {
@@ -2720,12 +2756,19 @@ a:focus-visible {
     height: 20px;
   }
 
+  /* Gate 7.4: the touch tier's one control height, for buttons, inputs and selects alike
+     (was padding on .btn only, so fields stayed shorter than buttons). Beats density. */
+  :root {
+    --control-h: 44px;
+  }
+
   .btn {
-    padding: 12px 18px;
+    padding: 4px 18px;
   }
 
   .btn--sm {
-    padding: 9px 14px;
+    min-height: 36px;
+    padding: 4px 14px;
   }
 
   .card-menu__item,
@@ -2832,9 +2875,25 @@ a:focus-visible {
     padding: var(--space-4);
   }
 
+  /* Gate 7.4: compact two-column grid; hairlines between columns and between rows. */
   .kpi-grid {
+    grid-auto-flow: row;
     grid-template-columns: repeat(2, 1fr);
-    gap: 10px;
+    padding: 0;
+  }
+
+  .kpi-card {
+    border-left: none;
+    border-top: 1px solid var(--divider);
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .kpi-grid > .kpi-card:nth-child(-n + 2) {
+    border-top: none;
+  }
+
+  .kpi-grid > .kpi-card:nth-child(even) {
+    border-left: 1px solid var(--divider);
   }
 
   .panel {
@@ -2847,10 +2906,6 @@ a:focus-visible {
 }
 
 @media (max-width: 420px) {
-  .kpi-grid {
-    grid-template-columns: 1fr;
-  }
-
   .kpi-card__value {
     font-size: var(--text-xl);
   }

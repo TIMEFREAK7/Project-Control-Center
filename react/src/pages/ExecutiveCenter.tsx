@@ -1325,9 +1325,9 @@ function OverviewTab({ data, ctx, health, diagnostics, onChanged }: SubTabProps)
         </div>
       </div>
 
-      <div className="toolbar no-print" style={{ marginBottom: "var(--space-4)", flexWrap: "wrap" }}>
+      <div className="tab-bar no-print">
         {subTabs.map((t) => (
-          <button key={t.key} className={"btn " + (effectiveSubTab === t.key ? "btn--primary" : "btn--ghost")} onClick={() => setSubTab(t.key)}>
+          <button key={t.key} className={"tab-btn" + (effectiveSubTab === t.key ? " tab-btn--active" : "")} onClick={() => setSubTab(t.key)}>
             {t.label}
           </button>
         ))}
@@ -2217,13 +2217,15 @@ export default function ExecutiveCenterPage({ initialProjectId, initialTab }: Ex
             ))}
           </select>
         )}
-        <div className="toolbar__spacer" />
+      </div>
+      {/* Gate 7.4: one tab design everywhere (was primary/ghost buttons in the toolbar). */}
+      <div className="tab-bar no-print">
         {[
           { key: "overview", label: "Overview" },
           { key: "weeklyReviews", label: "Weekly Reviews" },
           { key: "output", label: "Snapshot & Management Pack" },
         ].map((t) => (
-          <button key={t.key} className={"btn " + (tab === t.key ? "btn--primary" : "btn--ghost")} onClick={() => setTab(t.key)}>
+          <button key={t.key} className={"tab-btn" + (tab === t.key ? " tab-btn--active" : "")} onClick={() => setTab(t.key)}>
             {t.label}
           </button>
         ))}

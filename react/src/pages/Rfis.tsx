@@ -567,7 +567,7 @@ export default function RfisPage({
       ) : null}
 
       <div className="toolbar">
-        <input type="text" placeholder="Search number, subject, question…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <input type="text" className="search-input" aria-label="Search RFIs and TQs" placeholder="Search number, subject, question…" value={search} onChange={(e) => setSearch(e.target.value)} />
         <select aria-label="Filter by type" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
           <option value="">All types</option>
           {window.PCC.store.RFI_TYPES.map((t) => (

@@ -245,6 +245,7 @@ interface InlineEditCellProps {
   display: React.ReactNode;
   title: string;
   children: React.ReactNode;
+  className?: string;
 }
 
 interface ActivityRowProps {
@@ -1570,10 +1571,10 @@ function ActivityMobileCard({ a, wbsItems, selected, onToggleSelect, rowMenuOpen
   );
 }
 
-function InlineEditCell({ editing, onBegin, display, title, children }: InlineEditCellProps) {
-  if (editing) return <td>{children}</td>;
+function InlineEditCell({ editing, onBegin, display, title, children, className }: InlineEditCellProps) {
+  if (editing) return <td className={className}>{children}</td>;
   return (
-    <td style={{ cursor: "pointer" }} title={title} onClick={onBegin}>
+    <td className={className} style={{ cursor: "pointer" }} title={title} onClick={onBegin}>
       {display}
     </td>
   );
@@ -1639,6 +1640,7 @@ function ActivityRow({ a, wbsItems, visibleColumns, selected, onToggleSelect, in
       ) : null}
       {visibleColumns.percent_complete ? (
         <InlineEditCell
+          className="num"
           editing={isEditingField("percent_complete")}
           onBegin={() => onBeginInline("percent_complete")}
           display={
@@ -1846,7 +1848,7 @@ function ActivitiesTab({ data, projectId, scheduleId, initialActivityTypeHint, i
       ) : null}
 
       <div className="toolbar" style={{ flexWrap: "wrap" }}>
-        <input type="text" placeholder="Search activity name…" value={filter.search} onChange={(e) => setFilter((f) => Object.assign({}, f, { search: e.target.value }))} />
+        <input type="text" className="search-input" aria-label="Search activities" placeholder="Search activity name…" value={filter.search} onChange={(e) => setFilter((f) => Object.assign({}, f, { search: e.target.value }))} />
         <select aria-label="Filter by WBS" value={filter.wbsId} onChange={(e) => setFilter((f) => Object.assign({}, f, { wbsId: e.target.value }))}>
           <option value="">WBS: All</option>
           {wbsItems.map((w) => (
@@ -1989,7 +1991,13 @@ function ActivitiesTab({ data, projectId, scheduleId, initialActivityTypeHint, i
                   <tr>
                     <th>{sortButton("name", "Activity")}</th>
                     <th></th>
-                    {ACTIVITY_GRID_COLUMNS.map((col) => (visibleColumns[col.key] ? <th key={col.key}>{sortButton(col.key, col.label)}</th> : null))}
+                    {ACTIVITY_GRID_COLUMNS.map((col) =>
+                      visibleColumns[col.key] ? (
+                        <th key={col.key} className={col.key === "percent_complete" ? "num" : undefined}>
+                          {sortButton(col.key, col.label)}
+                        </th>
+                      ) : null
+                    )}
                     <th></th>
                   </tr>
                 </thead>
@@ -2735,7 +2743,7 @@ function GanttToolbar({ data, projectId, allActivities, wbsItems, filter, setFil
     <React.Fragment>
       <div className="toolbar" style={{ flexWrap: "wrap" }}>
         <input
-          type="text"
+          type="text" className="search-input" aria-label="Search activities"
           placeholder="Search ID, name, WBS, contractor, discipline…"
           value={filter.search}
           style={{ minWidth: 220 }}
@@ -2796,7 +2804,7 @@ function GanttToolbar({ data, projectId, allActivities, wbsItems, filter, setFil
             Zoom:
           </span>
           {["auto", "day", "week", "month", "quarter", "year"].map((z) => (
-            <button key={z} className={"btn " + (zoom === z ? "btn--primary" : "btn--ghost")} onClick={() => setZoom(z)}>
+            <button key={z} className="btn btn--ghost" aria-pressed={zoom === z} onClick={() => setZoom(z)}>
               {GANTT_ZOOM_LABELS[z]}
             </button>
           ))}

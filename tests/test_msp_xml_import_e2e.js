@@ -152,7 +152,9 @@ function uploadXmlFile(win, fileInput, xmlText, filename) {
     var confirmBtn = Array.from(win.document.querySelectorAll("button")).find((b) => b.textContent.indexOf("Confirm Import") === 0);
     assert.ok(confirmBtn, "Confirm Import button not found");
     confirmBtn.click();
-    await flush();
+    // The import finishes asynchronously; one flush() was a race that failed about half the
+    // time even on the Gate 7.3 build (found 2026-11-27). Wait for the schedule itself.
+    await waitFor(() => win.PCC.store.get().schedules.some((s) => s.project_id === projectId));
 
     var data = win.PCC.store.get();
     var schedule = data.schedules.find((s) => s.project_id === projectId);

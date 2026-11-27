@@ -720,7 +720,7 @@ export default function MeetingsPage({
       ) : null}
 
       <div className="toolbar">
-        <input type="text" placeholder="Search title, attendees, agenda, minutes…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <input type="text" className="search-input" aria-label="Search meetings" placeholder="Search title, attendees, agenda, minutes…" value={search} onChange={(e) => setSearch(e.target.value)} />
         <select
           aria-label="Filter by project"
           value={projectFilter}
