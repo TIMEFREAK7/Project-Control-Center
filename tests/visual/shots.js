@@ -204,10 +204,16 @@ async function main() {
         const row = { shot: path.basename(file), hscroll: await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth) };
         if (opt.axe) {
           await page.addScriptTag({ path: opt.axe });
-          row.contrast = await page.evaluate(async () => {
+          const found = await page.evaluate(async () => {
             const r = await window.axe.run(document, { runOnly: { type: "rule", values: ["color-contrast"] } });
-            return r.violations.reduce((n, v) => n + v.nodes.length, 0);
+            const nodes = r.violations.flatMap((v) => v.nodes);
+            return nodes.map((n) => {
+              const d = (n.any[0] && n.any[0].data) || {};
+              return { target: n.target.join(" "), text: (n.html || "").replace(/<[^>]+>/g, "").trim().slice(0, 40), fg: d.fgColor, bg: d.bgColor, ratio: d.contrastRatio, need: d.expectedContrastRatio };
+            });
           });
+          row.contrast = found.length;
+          if (found.length) row.contrastNodes = found;
         }
         report.push(row);
         await page.close();
