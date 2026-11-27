@@ -7,16 +7,31 @@ it (and a zip) to Aditya directly after every major upgrade, not just committing
 
 ## Current state (2026-11-26)
 
-- `main` has every gate through 7.1. Schema **67**. 137 test files (`cd tests && npm test`),
+- `main` has every gate through 7.2. Schema **67**. 138 test files (`cd tests && npm test`),
   green in UTC and IST. Windows installer builds natively on this PC (1.10.0 last built).
-- Next in `DEFERRED_ROADMAP.md`: Gate 7.2 (the Gate 7.0 tokens into `styles.css`; scoped
-  2026-11-27: keep today's type scale, retune the two violet module hues, ink button now).
-  Features track: 1.1.
+- Next in `DEFERRED_ROADMAP.md`: Gate 7.3 (shell: sidebar, title block, module hairline, Kubai
+  icons, palette, toasts, dialogs, drawer, menus). Features track: 1.1.
 - Waiting on Aditya: Gate 0.1 (phone check of At a Glance 1.9 + predictive back) and the real
   Storage Management → App data reading (decides Gate 6.2).
 - Docs layout since Gate 6.3: `CLAUDE.md` = rules (10.5 KB); `docs/GOTCHAS.md` = the old
   CLAUDE.md, unedited; `docs/BUILD_HISTORY.md` = README's old history; `docs/HANDOFF_ARCHIVE.md`
   = this file's sessions before 2026-11-11; `README.md` = short user guide (ships in the zip).
+
+## 2026-11-27 — Gate 7.2: foundation tokens (the first visible Phase 7 change)
+
+- `styles.css` only (+ the two build scripts' font lists): Gate 7.0's Variant A values in both
+  theme blocks, `--ink`/`--on-ink` + ink `.btn--primary`, Inter for titles and figures
+  (`tabular-nums`; `.kpi-card__value.mono` too), Space Grotesk removed, radii 6/8/8, interim sizes
+  aliased onto the kept scale, module planning/management off violet, `--surface-2` /
+  `--border-default` per theme, placeholders `--text-secondary`.
+- Contrast, solved then measured: light-theme status hues darkened just enough for 4.6:1 as text
+  (badge/heat-map text re-solved too). axe on 28 screens × 2 themes: **0 failures (22 before)**.
+- Size: `index.html` 6,356.7 → 6,323.4 KB; mirror 710.9 → 677.8 KB.
+- New `tests/test_design_tokens_phase7.js` (11 checks; fails 10/10 on the old styles).
+- Before/after sheets: `scratch/pcc-7.2/sheets/` (8 screens × desktop/phone + 4 mirror tabs).
+- Left for 7.5: ~6 `.mono` uses on dates/scores; uppercase label text in pages.
+- Lesson repeated: never rebuild `index.html` while a suite runs in the background (the first
+  7.2 run was stopped and restarted on the final build).
 
 ## 2026-11-27 — Gate 7.1: size/radius/colour literals onto tokens (no visual change)
 

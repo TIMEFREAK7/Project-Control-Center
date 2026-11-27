@@ -6784,3 +6784,20 @@ scale. A new test refuses any literal size, radius or colour from now on.
 phone) are byte-identical to the previous build. The screenshot harness was made fully
 repeatable along the way (its record ids are now seeded).
 
+## Gate 7.2: the new colours, type and buttons (2026-11-27)
+
+**What changed for you.** The first visible step of the visual refresh, all in the stylesheet:
+one clean white (or near-black) surface instead of grey-on-white, slate greys, a clear blue for
+selection, focus and links, near-black ("ink") primary buttons, Inter for every heading and
+number (figures line up in columns; the old monospace digits with slashed zeros are gone except
+for codes and reference numbers), slightly tighter corners, and the two violet area colours
+replaced. The app got 33.7 KB smaller (one font family removed).
+
+**Readability.** Before this gate, 22 pieces of coloured status text across the app were too
+faint to meet the accessibility minimum (mostly red "High" labels and amber "Behind schedule"
+text). Each status colour was darkened in light mode by the smallest amount that passes, checked
+in every place it's used. Measured afterwards on 28 screens in both themes: zero failures.
+
+**Decided along the way (Aditya).** Keep the existing type scale; move the two violet area colours
+off violet; switch buttons to ink now rather than in a later gate.
+

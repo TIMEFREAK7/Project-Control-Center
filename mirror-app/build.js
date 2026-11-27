@@ -64,8 +64,6 @@ function typecheckAndBundleReact() {
 // Same font-embedding approach as the main app's build.js, reusing the exact same real
 // font files (src/css/fonts/*.woff2) rather than a second copy of them.
 const FONT_FILES = {
-  "fonts/space-grotesk-500.woff2": "font/woff2",
-  "fonts/space-grotesk-600.woff2": "font/woff2",
   "fonts/inter-400.woff2": "font/woff2",
   "fonts/inter-500.woff2": "font/woff2",
   "fonts/inter-600.woff2": "font/woff2",

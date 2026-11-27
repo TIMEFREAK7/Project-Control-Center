@@ -15,28 +15,33 @@ should disappear into the task.
 
 ## Typography
 
-- `--font-display: "Space Grotesk"` — page titles / title-block only.
-- `--font-body: "Inter"` — everything else: labels, buttons, body copy, table cells.
-- `--font-mono: "IBM Plex Mono"` — reserved for genuinely tabular/numeric alignment only
-  (`.kpi-card__value`, `.project-card__figures`, `.card-stat__value`, `.progress-bar__value`,
-  the `.mono` utility). Gate 1 deliberately removed mono from title-block/sidebar/footer labels
-  ("instrument readout" styling) — don't reintroduce it outside numeric alignment.
-- Type scale (fixed rem/px, not fluid clamp() — this is Operate mode, not a marketing page):
-  `--text-xs: 11px`, `--text-sm: 12.5px`, `--text-base: 14px`, `--text-md: 15px`,
-  `--text-lg: 18px`, `--text-xl: 22px`, `--text-2xl: 28px`.
+- **Inter for everything** (Gate 7.2): `--font-display` and `--font-body` are both Inter; Space
+  Grotesk was removed (−33.7 KB per app). Figures (`.kpi-card__value` incl. `.kpi-card__value.mono`,
+  `.card-stat__value`, `.progress-bar__value`, `.project-card__figures`) use Inter with
+  `font-variant-numeric: tabular-nums` (verified: the bundled subset has tabular digits).
+- `--font-mono: "IBM Plex Mono"` — identifiers only (`.mono`: RFI/CO numbers, codes, file names,
+  paths). ~6 `.mono` uses on dates/scores are left for the Gate 7.5 page passes.
+- Type scale (fixed px, not fluid clamp() — Operate mode): `--text-xs: 11px`, `--text-sm: 12.5px`,
+  `--text-base: 14px`, `--text-md: 15px`, `--text-lg: 18px`, `--text-xl: 22px`, `--text-2xl: 28px`.
+  Gate 7.1's `--text-9/10/10-5/12/13/13-5/17/20/24` are aliases onto it since 7.2
+  (9–10.5→xs, 12–13→sm, 13.5→base, 17→lg, 20–24→xl). No literal sizes anywhere
+  (`test_no_style_literals.js`).
 
 ## Colour
 
-- Accent: `--signal-amber: #3d63dd` (name is historical — it's blue now, changed at Gate 1;
-  don't rename the token, its value is what changed). `--signal-amber-dark: #2f4fb8` for hover/
-  active states.
-- Status vocabulary (semantic, not decorative — use these, not new one-off colours):
-  `--status-on-track` (green `#1f9d6c`), `--status-at-risk` (amber `#d69e2e`), `--status-warning`
-  (orange `#dd6b20`), `--status-critical` (red `#e53e3e`), `--status-info` (teal `#0e9aa7`,
-  deliberately distinct from the blue accent).
-- Dark theme surfaces: `--bg-default #0e1015` / `--bg-paper #15171e` / `--bg-paper-raised #1d2029`
-  — neutral slate, not navy (Gate 1 removed the "blueprint" navy family on purpose).
-- Light theme: `--bg-default #f4f5f7` / `--bg-paper #ffffff` / `--bg-paper-raised #f7f8fa`.
+- Accent (selection, focus, links only): `--signal-amber` `#2563eb` light / `#60a5fa` dark (name is
+  historical; never rename). Primary buttons are **ink**: `--ink`/`--on-ink` `#0f172a`/`#fff`
+  light, `#e2e8f0`/`#0b0f14` dark (Gate 7.2).
+- Status vocabulary (semantic, not decorative): `--status-on-track/at-risk/warning/critical/info`.
+  Dark keeps the `:root` hues (`#1f9d6c #d69e2e #dd6b20 #e53e3e #0e9aa7`). Light overrides them
+  darker (`#1a855b #956e20 #ba5a1b #d63a3a #0c818c`) so status text clears 4.6:1 on white; the
+  `--status-badge-*-text` and `--heatmap-high-text` shades were re-solved against the new tints.
+  Values solved per colour for >= 4.6:1 in every text use (scratch script), not eyeballed.
+- Surfaces (page and content share one): dark `#0b0f14` / raised `#111821`; light `#ffffff` /
+  raised `#f8fafc`. Text `#e2e8f0`/`#94a3b8` dark, `#0f172a`/`#475569` light. Hairline
+  `--divider` `#1e293b` / `#e2e8f0`. `--surface-2`/`--border-default` are per theme since 7.2.
+- Placeholders use `--text-secondary` app-wide (the browser grey was 4.17:1 on dark).
+- Measured at Gate 7.2 with axe on 28 screens × both themes: 0 color-contrast failures (22 before).
 - `--text-primary` / `--text-secondary`, `--divider`, `--hover-bg` all theme-swapped; never
   hard-code a colour that has a token — Gate 2's own bug (hardcoded `rgba()` status tints
   silently drifting from the token values after a palette change) is exactly the failure mode
@@ -55,8 +60,8 @@ see `styles.css` lines ~1834-1842. Use the scale; don't hand-write pixel margins
 
 ## Radius
 
-`--radius-sm: 6px` / `--radius-md: 10px` / `--radius-lg: 16px` — softened from the original
-sharper 4/8/12px "technical drawing" scale at Gate 1. Cascades through nearly every component
+`--radius-xs: 4px` (tags) / `--radius-sm: 6px` (controls) / `--radius-md: 8px` and `--radius-lg:
+8px` (cards) since Gate 7.2 (was 6/10/16). Cascades through nearly every component
 automatically since border-radius is tokenized almost everywhere; a hand-written `border-radius`
 value on a new component is very likely wrong.
 
@@ -122,19 +127,21 @@ check (`VISUAL_QA.md`) verifies it, doesn't assume it.
 checked against neighbours for silhouette collisions at actual render size (Gate 3 caught and
 fixed a real Meetings/Resources lookalike this way — don't skip the zoomed-comparison check).
 
-## Phase 7 target (decided at Gate 7.0, 2026-11-26 — NOT shipped yet)
+## Phase 7 target (decided at Gate 7.0, 2026-11-26)
+
+**Shipped in Gate 7.2 (now in the sections above):** typeface, all colour tokens, ink primary
+button, radii, the interim-size fold, and the two module hues moved off violet (planning
+`hsl(60 38% 42%)`, management `hsl(130 26% 42%)`). **Still to ship:** structure (7.4), module
+tint as a hairline, title block and Kubai icons (7.3). The text below is the original decision.
 
 Everything above describes `styles.css` as it ships today. This section is what Aditya chose
 from the Gate 7.0 comparison sheets (Variant A). Gate 7.2 puts the tokens into `styles.css`
 (token NAMES stay; only values change), Gate 7.3 the shell and icons, Gate 7.4 the components.
 Once a value ships, move it up into the sections above and delete it here.
 
-**Gate 7.1 (shipped) left interim tokens for 7.2 to fold in by value:** `--text-9`, `--text-10`,
-`--text-10-5`, `--text-12`, `--text-13`, `--text-13-5`, `--text-17`, `--text-20`, `--text-24`
-(each at exactly that px), `--radius-xs: 4px`, and `--surface-2: #2a2a2a` / `--border-default:
-#444` in `:root`, which are dark greys in BOTH themes today (a pre-existing light-mode bug kept
-as-is in 7.1). 7.2 gives those two real per-theme values and maps every interim size onto the
-final scale.
+**Gate 7.1's interim tokens are resolved (Gate 7.2):** the `--text-9` … `--text-24` sizes alias the
+named scale, and `--surface-2` / `--border-default` have per-theme values (they were one dark grey
+in both themes before).
 
 **Typeface: Inter for everything.** Titles, body and figures in one family; weight and size do
 the work. Figures use `font-variant-numeric: tabular-nums`, weight 600. `--font-display` becomes

@@ -698,7 +698,17 @@ of each gate. Tests prove nothing broke; they cannot prove it looks right.
   inside tables only). Remove unused font files.
 - **Acceptance:** contrast measured on badges, heat map cells, secondary text, placeholder
   text and disabled controls in both themes; bundle size before and after recorded.
-- **Status:** open.
+- **Status:** built 2026-11-27, awaiting Aditya's sign-off on the look (before/after sheets
+  sent). Variant A tokens in both themes; ink primary button moved here from 7.4 (Aditya's
+  call); Inter everywhere with tabular numerals (verified in the subset; KPI figures marked
+  `.mono` in pages fixed by a `.kpi-card__value.mono` rule); Space Grotesk removed (−33.7 KB
+  main, −33.1 KB mirror); radii 6/8/8; Gate 7.1 interim sizes aliased onto the kept scale
+  (Aditya's call); planning/management module hues moved off violet (Aditya's call). Contrast:
+  light status hues darkened by the smallest step that clears 4.6:1 as text, badge and heat-map
+  text re-solved, placeholders on `--text-secondary` (browser grey was 4.17:1 on dark);
+  disabled controls (45% opacity) are exempt under WCAG 1.4.3 and unchanged. axe: 0 failures
+  on 28 screens × 2 themes (22 before). Shadows already floating-only; focus ring follows the
+  new accent (5.2:1 / 7.6:1). New `test_design_tokens_phase7.js`.
 
 **Gate 7.3 — Shell.**
 - **Build:** sidebar (active item is a plain filled row, no glow, no stripe; group headers

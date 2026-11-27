@@ -1,16 +1,6 @@
-/* ===== Local fonts (no CDN — fully offline) ===== */
-@font-face {
-  font-family: "Space Grotesk";
-  src: url("fonts/space-grotesk-500.woff2") format("woff2");
-  font-weight: 500;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Space Grotesk";
-  src: url("fonts/space-grotesk-600.woff2") format("woff2");
-  font-weight: 600;
-  font-display: swap;
-}
+/* ===== Local fonts (no CDN — fully offline) =====
+   Gate 7.2: one text family (Inter) for titles, body and figures; IBM Plex Mono only for
+   identifiers. The display face was removed. */
 @font-face {
   font-family: "Inter";
   src: url("fonts/inter-400.woff2") format("woff2");
@@ -53,7 +43,7 @@
      780/480/420px rules further down predate this scheme and are untouched this gate —
      Gate 2/8 own re-pointing sidebar/nav behavior at these exact tiers). */
 :root {
-  --font-display: "Space Grotesk", ui-sans-serif, sans-serif;
+  --font-display: "Inter", ui-sans-serif, sans-serif; /* Gate 7.2: same family as body */
   --font-body: "Inter", ui-sans-serif, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
 
@@ -64,8 +54,8 @@
      it by name, including a test that asserts the reference itself, not its value) even
      though the color is now blue, not amber — a rename is a separate, later, wider-blast-
      radius change, not bundled into this token-value-only gate. */
-  --signal-amber: #3d63dd;
-  --signal-amber-dark: #2f4fb8;
+  --signal-amber: #2563eb; /* Gate 7.2; each theme block sets its own value */
+  --signal-amber-dark: #1d4ed8;
   --status-on-track: #1f9d6c;
   --status-at-risk: #d69e2e;
   --status-warning: #dd6b20;
@@ -82,24 +72,22 @@
      red/orange/amber and 140-243 for green/teal/blue are already spoken for), used only
      as a low-opacity wash + border — see the [data-nav-group] rules, never as a solid
      fill or text colour. */
-  --module-accent-planning: hsl(250 45% 60%);
+  /* Gate 7.2: planning and management moved off violet (Phase 7 bans violet/indigo accents). */
+  --module-accent-planning: hsl(60 38% 42%);
   --module-accent-controls: hsl(207 48% 55%);
-  --module-accent-management: hsl(268 40% 60%);
+  --module-accent-management: hsl(130 26% 42%);
   --module-accent-vendors: hsl(95 32% 40%);
   --module-accent-documents: hsl(304 36% 56%);
   --module-accent-site: hsl(340 45% 58%);
   --module-accent-reporting: hsl(322 38% 56%);
   --module-accent-system: hsl(220 8% 55%);
 
+  /* Gate 7.2: controls 6px, cards 8px (was 10/16). --surface-2 / --border-default now live in
+     the theme blocks below (they were one dark grey in both themes). */
   --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
+  --radius-md: 8px;
+  --radius-lg: 8px;
   --radius-xs: 4px; /* Gate 7.1: two small tags used a literal 4 */
-  /* Gate 7.1: pages referenced these with hard-coded dark fallbacks, so the dark grey shows in
-     light mode too. Defined at exactly that value to change nothing; Gate 7.2 gives them real
-     per-theme values. */
-  --surface-2: #2a2a2a;
-  --border-default: #444;
   --sidebar-width: 236px;
 
   --space-1: 4px;
@@ -121,17 +109,17 @@
   --text-lg: 18px;
   --text-xl: 22px;
   --text-2xl: 28px;
-  /* Gate 7.1 interim sizes: today's off-scale values, tokenised at their exact sizes so this
-     gate changes nothing visually. Gate 7.2 folds them into the scale above by value only. */
-  --text-9: 9px;
-  --text-10: 10px;
-  --text-10-5: 10.5px;
-  --text-12: 12px;
-  --text-13: 13px;
-  --text-13-5: 13.5px;
-  --text-17: 17px;
-  --text-20: 20px;
-  --text-24: 24px;
+  /* Gate 7.1's interim sizes, folded into the scale above at Gate 7.2 (Aditya kept this scale).
+     Aliases, so no page had to change; renaming the call sites is optional later work. */
+  --text-9: var(--text-xs);
+  --text-10: var(--text-xs);
+  --text-10-5: var(--text-xs);
+  --text-12: var(--text-sm);
+  --text-13: var(--text-sm);
+  --text-13-5: var(--text-base);
+  --text-17: var(--text-lg);
+  --text-20: var(--text-xl);
+  --text-24: var(--text-xl);
 
   --transition-fast: 120ms ease;
   --transition-base: 180ms ease;
@@ -162,13 +150,20 @@
 html[data-theme="dark"] {
   /* Neutral slate, not navy — the old #0b1420/#101b2b/#16243a family read as "blueprint,"
      which this gate is deliberately moving away from. */
-  --bg-default: #0e1015;
-  --bg-paper: #15171e;
-  --bg-paper-raised: #1d2029;
-  --text-primary: #edeef2;
-  --text-secondary: #9ba1af;
-  --divider: rgba(155, 161, 175, 0.14);
-  --hover-bg: rgba(155, 161, 175, 0.08);
+  /* Gate 7.2 (Phase 7, Variant A): slate neutrals; page and content share one surface. */
+  --bg-default: #0b0f14;
+  --bg-paper: #0b0f14;
+  --bg-paper-raised: #111821;
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --divider: #1e293b;
+  --hover-bg: #131b26;
+  --signal-amber: #60a5fa;
+  --signal-amber-dark: #3b82f6;
+  --ink: #e2e8f0;
+  --on-ink: #0b0f14;
+  --surface-2: #1b2430;
+  --border-default: #334155;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.34);
   --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.42);
@@ -185,11 +180,11 @@ html[data-theme="dark"] {
      since those contexts don't have this same tinted-background problem. Values are the
      minimum lightness shift off the base hue needed to clear 4.5:1 against the badge's own
      background blend — not a palette redesign. */
-  --status-badge-on-track-text: #21a672;
+  --status-badge-on-track-text: #28a976; /* Gate 7.2: re-solved for >= 4.6:1 on 15/22/25% tints */
   --status-badge-at-risk-text: var(--status-at-risk);
-  --status-badge-warning-text: #df6e23;
-  --status-badge-critical-text: #ea6262;
-  --status-badge-info-text: #0e9eac;
+  --status-badge-warning-text: #e17832;
+  --status-badge-critical-text: #ea6363;
+  --status-badge-info-text: #1ea4b1;
 
   /* Same audit, same root cause — the Risk Register heat map's severity cells (Gate 2's
      own writeup already flagged these three as sharing the badges' un-tokenized hardcoded-
@@ -200,13 +195,28 @@ html[data-theme="dark"] {
 }
 
 html[data-theme="light"] {
-  --bg-default: #f4f5f7;
+  /* Gate 7.2 (Phase 7, Variant A): slate neutrals; page and content share one surface. */
+  --bg-default: #ffffff;
   --bg-paper: #ffffff;
-  --bg-paper-raised: #f7f8fa;
-  --text-primary: #1a1d29;
-  --text-secondary: #5b6272;
-  --divider: rgba(26, 29, 41, 0.09);
-  --hover-bg: rgba(26, 29, 41, 0.045);
+  --bg-paper-raised: #f8fafc;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --divider: #e2e8f0;
+  --hover-bg: #f1f5f9;
+  --signal-amber: #2563eb;
+  --signal-amber-dark: #1d4ed8;
+  --ink: #0f172a;
+  --on-ink: #ffffff;
+  --surface-2: #f1f5f9;
+  --border-default: #cbd5e1;
+  /* Gate 7.2: on white, the :root status hues read as text at 2.4-4.1:1. The smallest
+     hue-preserving darkening that clears 4.6:1 as text AND keeps badge/heat-map text on their
+     tints >= 4.6:1 (solved per colour, not eyeballed). Dark theme keeps the :root values. */
+  --status-on-track: #1a855b;
+  --status-at-risk: #956e20;
+  --status-warning: #ba5a1b;
+  --status-critical: #d63a3a;
+  --status-info: #0c818c;
   --shadow-sm: 0 1px 2px rgba(20, 24, 38, 0.06);
   --shadow-md: 0 8px 24px rgba(20, 24, 38, 0.1);
   --shadow-lg: 0 16px 48px rgba(20, 24, 38, 0.16);
@@ -214,17 +224,23 @@ html[data-theme="light"] {
   /* Same GATE 1 fix as the dark theme block above, but light theme needed a much bigger
      shift: the same 15%-tint badge backgrounds sit near-white here, so all five statuses
      measured well under 4.5:1 (2.12-3.36:1) — --at_risk included, unlike dark theme. */
-  --status-badge-on-track-text: #17724f;
-  --status-badge-at-risk-text: #84611a;
-  --status-badge-warning-text: #a34f18;
-  --status-badge-critical-text: #c61b1b;
-  --status-badge-info-text: #0a737d;
+  --status-badge-on-track-text: #166c4b; /* Gate 7.2: re-solved against the darker bases */
+  --status-badge-at-risk-text: #7a5a18;
+  --status-badge-warning-text: #964916;
+  --status-badge-critical-text: #b61919;
+  --status-badge-info-text: #096972;
 
-  --heatmap-high-text: #bd1919;
+  --heatmap-high-text: #b61919;
 }
 
 * {
   box-sizing: border-box;
+}
+
+/* Gate 7.2: the browser's default placeholder grey (#757575) is 4.17:1 on the dark surface. */
+::placeholder {
+  color: var(--text-secondary);
+  opacity: 1;
 }
 
 html,
@@ -842,7 +858,8 @@ footer.app-footer {
 }
 
 .kpi-card__value {
-  font-family: var(--font-mono);
+  font-family: var(--font-body); /* Gate 7.2: figures in the text face, tabular digits */
+  font-variant-numeric: tabular-nums;
   font-size: var(--text-2xl);
   font-weight: 600;
 }
@@ -994,8 +1011,10 @@ a:focus-visible {
   position: relative;
   z-index: 0;
   isolation: isolate;
-  background-color: var(--signal-amber);
-  color: #fff;
+  /* Gate 7.2: ink, not the accent (the accent never fills a button). */
+  background-color: var(--ink);
+  border-color: var(--ink);
+  color: var(--on-ink);
 }
 
 .btn--primary::before {
@@ -1004,7 +1023,7 @@ a:focus-visible {
   inset: -1px;
   z-index: -1;
   border-radius: inherit;
-  background-color: var(--signal-amber-dark);
+  background-color: color-mix(in srgb, var(--ink) 84%, var(--on-ink));
   opacity: 0;
   transform: scale(0.4);
   filter: blur(6px) contrast(10);
@@ -1086,6 +1105,12 @@ a:focus-visible {
 
 .text-secondary {
   color: var(--text-secondary);
+}
+
+/* Gate 7.2: 22 KPI figures carry both classes; figures use the text face, IDs stay mono. */
+.kpi-card__value.mono {
+  font-family: var(--font-body);
+  font-variant-numeric: tabular-nums;
 }
 
 .mono {
@@ -1518,7 +1543,8 @@ a:focus-visible {
 }
 
 .project-card__figures {
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
+  font-variant-numeric: tabular-nums;
   font-size: var(--text-sm);
   color: var(--text-secondary);
   min-width: 140px;
@@ -1559,7 +1585,8 @@ a:focus-visible {
 }
 
 .card-stat__value {
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
+  font-variant-numeric: tabular-nums;
   font-size: var(--text-13);
   font-weight: 600;
 }
@@ -1703,7 +1730,8 @@ a:focus-visible {
 }
 
 .progress-bar__value {
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
+  font-variant-numeric: tabular-nums;
   font-weight: 600;
 }
 
