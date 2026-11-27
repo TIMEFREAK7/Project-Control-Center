@@ -16,6 +16,28 @@ it (and a zip) to Aditya directly after every major upgrade, not just committing
   CLAUDE.md, unedited; `docs/BUILD_HISTORY.md` = README's old history; `docs/HANDOFF_ARCHIVE.md`
   = this file's sessions before 2026-11-11; `README.md` = short user guide (ships in the zip).
 
+## Resuming in a new chat (set up 2026-11-27)
+
+- Branch `gate-7.5b` exists locally, cut from `main` at the 7.5a merge, with no changes yet.
+  Start 7.5b from there (or recreate it: `git checkout -B gate-7.5b main`).
+- Per gate, as before: inspect → propose scope and wait for Aditya → build → control run
+  (new test fails on the old build) → full suite in UTC and `TZ=Asia/Kolkata` → before/after
+  sheets in both themes, 1440×900 and 412×915, plus the mirror's 4 tabs → Aditya approves the
+  look → merge to `main`, push, zip verified in Chromium, send zip + this file → stop.
+- 7.5b scope from the roadmap: Schedule toolbar = one primary + grouped menus (Import / Export /
+  Baseline); Activities table; Gantt colours from tokens; the Gantt must NOT recompute CPM
+  results. Carry the 7.4/7.5a rules: sentence-case labels (+ update tests that read them, via
+  `relabel-tests.js`), `.panel--flat` sections, empty-state actions, no title subtitles.
+- Dev helpers (census, sheets, mirror compare, run-each, relabel) live OUTSIDE the repo in
+  `scratch/pcc-tools/` with a README; the visual harness is `tests/visual/shots.js`
+  (`--axe <scratch/pcc-7.0/axe/axe.min.js> --audit 1`).
+- Shell on this PC: PowerShell 5.1. Put `tools\bin` on PATH before `git push` (gh is the
+  credential helper). Mirror app: build from a C: temp copy with junctions (H.2 below). Never
+  write source or marker files with PowerShell `Set-Content`/`Out-File` (BOM; CLAUDE.md).
+- Open small items: Dashboard's own 7 phone filters stack (Portfolio's `.filter-fold` would fix
+  it); Executive Center's "INR 42,00,00,000" wraps in its KPI tile; title still truncates for
+  the 4 longest page names at 360 px.
+
 ## 2026-11-27 — Gate 7.5a: Overview page pass (Dashboard, My Work, Action Centre, Portfolio, Project Workspace, Executive Center)
 
 - **Bug found:** Dashboard's "Current context" card was empty at <=1150px and in the mirror app:
