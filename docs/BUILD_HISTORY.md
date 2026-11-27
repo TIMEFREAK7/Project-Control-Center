@@ -6769,3 +6769,18 @@ duotone sidebar icons (MIT). Exact values: `.claude/docs/DESIGN_SYSTEM.md` "Phas
 Rejected: Variant B (heavier type, +69 KB of fonts in all three apps, and its teal accent would
 have forced the info status off teal).
 
+## Gate 7.1: every size, radius and colour on a token (2026-11-27, no visual change)
+
+**Problem.** The new look (Gate 7.0) has to land by editing token values in `styles.css`, but
+158 font sizes, 2 radii and 4 colours were written directly into the React pages, and 30 sizes
+into `styles.css` itself, so changing the scale would have meant editing 22 page files.
+
+**Decision.** Every one now goes through a token. Most of those sizes weren't on the existing
+scale, so they got temporary tokens at exactly their current values (Aditya's choice) rather than
+being rounded, which would have moved text by up to a pixel. Gate 7.2 folds them into the final
+scale. A new test refuses any literal size, radius or colour from now on.
+
+**Verified.** 120 screenshots (28 screens and the At a Glance tabs, both themes, desktop and
+phone) are byte-identical to the previous build. The screenshot harness was made fully
+repeatable along the way (its record ids are now seeded).
+

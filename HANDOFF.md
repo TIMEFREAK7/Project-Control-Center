@@ -7,15 +7,27 @@ it (and a zip) to Aditya directly after every major upgrade, not just committing
 
 ## Current state (2026-11-26)
 
-- `main` has every gate through 7.0. Schema **67**. 136 test files (`cd tests && npm test`),
+- `main` has every gate through 7.1. Schema **67**. 137 test files (`cd tests && npm test`),
   green in UTC and IST. Windows installer builds natively on this PC (1.10.0 last built).
-- Next in `DEFERRED_ROADMAP.md`: Gate 7.1 (move inline font sizes to tokens, no visual change),
-  then 7.2 (the Gate 7.0 tokens into `styles.css`). Features track: 1.1.
+- Next in `DEFERRED_ROADMAP.md`: Gate 7.2 (the Gate 7.0 tokens into `styles.css`; scoped
+  2026-11-27: keep today's type scale, retune the two violet module hues, ink button now).
+  Features track: 1.1.
 - Waiting on Aditya: Gate 0.1 (phone check of At a Glance 1.9 + predictive back) and the real
   Storage Management → App data reading (decides Gate 6.2).
 - Docs layout since Gate 6.3: `CLAUDE.md` = rules (10.5 KB); `docs/GOTCHAS.md` = the old
   CLAUDE.md, unedited; `docs/BUILD_HISTORY.md` = README's old history; `docs/HANDOFF_ARCHIVE.md`
   = this file's sessions before 2026-11-11; `README.md` = short user guide (ships in the zip).
+
+## 2026-11-27 — Gate 7.1: size/radius/colour literals onto tokens (no visual change)
+
+- `styles.css` `:root`: interim `--text-9/10/10-5/12/13/13-5/17/20/24`, `--radius-xs`,
+  `--surface-2` / `--border-default` (dark in both themes on purpose; fix in 7.2). 158 inline
+  sizes, 2 radii, 4 colours (3× at-risk 8% → `color-mix`) in 22 pages and 30 CSS sizes moved.
+- New `tests/test_no_style_literals.js` (137 files now). Mirror app rebuilt (tabs identical).
+- Proof: 32/32 + 80/80 (20 more routes, before = `main`'s build via `shots.js --index`) + 8/8
+  mirror shots byte-identical. `shots.js` now seeds `Math.random` (Storage Management's
+  character count made runs differ before).
+- Work was paused once (SSD removed) as a local WIP commit, then resumed.
 
 ## 2026-11-26 — Gate 7.0: visual baseline and direction (nothing shipped)
 

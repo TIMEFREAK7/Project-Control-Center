@@ -145,6 +145,12 @@ async function main() {
   const browser = await chromium.launch({ executablePath: chromePath() });
   const context = await browser.newContext({ timezoneId: "Asia/Kolkata", locale: "en-IN" });
   await context.clock.setFixedTime(new Date(NOW));
+  // Record ids come from Math.random; seed it so every run stores the same bytes (Storage
+  // Management shows a character count, which otherwise differed run to run).
+  await context.addInitScript(() => {
+    let s = 0x2f6b3a1d;
+    Math.random = () => ((s = (s + 0x6d2b79f5) | 0), (((s ^ (s >>> 15)) * (1 | s)) >>> 0) / 4294967296);
+  });
   const errors = [];
 
   // Seed once; localStorage and IndexedDB persist across pages in this context.

@@ -129,6 +129,13 @@ from the Gate 7.0 comparison sheets (Variant A). Gate 7.2 puts the tokens into `
 (token NAMES stay; only values change), Gate 7.3 the shell and icons, Gate 7.4 the components.
 Once a value ships, move it up into the sections above and delete it here.
 
+**Gate 7.1 (shipped) left interim tokens for 7.2 to fold in by value:** `--text-9`, `--text-10`,
+`--text-10-5`, `--text-12`, `--text-13`, `--text-13-5`, `--text-17`, `--text-20`, `--text-24`
+(each at exactly that px), `--radius-xs: 4px`, and `--surface-2: #2a2a2a` / `--border-default:
+#444` in `:root`, which are dark greys in BOTH themes today (a pre-existing light-mode bug kept
+as-is in 7.1). 7.2 gives those two real per-theme values and maps every interim size onto the
+final scale.
+
 **Typeface: Inter for everything.** Titles, body and figures in one family; weight and size do
 the work. Figures use `font-variant-numeric: tabular-nums`, weight 600. `--font-display` becomes
 Inter (Space Grotesk's two files, ~26 KB, are removed in 7.2). `--font-mono` (IBM Plex Mono)

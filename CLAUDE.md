@@ -68,6 +68,9 @@ enough) · ExcelJS stays 4.4.0 (write-only use) · Resource rate×usage cost (no
   New register = one `RECORD_TYPES` entry + a `test_command_palette_e2e.js` case. Documents' API is
   `window.PCC.files`; tests of a Documents jump need a NEWER decoy in a DIFFERENT project.
 - Header space at phone width is used up: new shell actions go in the nav drawer.
+- No literal font size, radius or colour in React pages or `styles.css` (outside token
+  definitions): use `var(--text-*)`, `var(--radius-*)`, colour tokens. `test_no_style_literals.js`
+  enforces it, so restyling stays a token-value change in `styles.css`.
 - Blobs (file bytes) live in IndexedDB (`blobStore.js`, binary only); everything else is one
   `localStorage` value. One IDB database `pcc_data_v1`: `blobs`, `content`, `snapshots`.
 - `store.js` flushes a pending save on `pagehide`/`beforeunload`/hidden; its listeners are guarded
