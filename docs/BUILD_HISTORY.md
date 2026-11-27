@@ -6804,3 +6804,19 @@ review: in dark mode, sections weren't noticeable (page and content were one nea
 dark mode now follows ColorOS's approach — a near-black page with content on clearly lifted grey
 surfaces — while light mode keeps its single white surface.
 
+## Gate 7.3: the app's frame (2026-11-27)
+
+**What changed for Aditya.** The left menu marks the current page with a plain filled row
+instead of a blurred glow and a coloured edge, its section names are no longer in capitals, and
+every menu entry has a new two-tone icon (Storage Management had none). The top bar shows the
+area colour as a thin line only, with fine lines between its cells. Pop-up messages are one dark
+(or, in dark mode, light) strip with a small coloured dot for success, error, warning or info.
+
+**On a phone** the page name used to be cut to two letters ("Po…") because six buttons filled
+the top bar. Export, Import, Density and Focus now sit in the menu drawer under Search, as
+labelled rows; Home and Theme stay in the bar. Every page name now fits at 412 px. Aditya picked
+this after measurements showed that removing the "Sheet" label (the roadmap's suggestion)
+would not have freed any room.
+
+**Found along the way.** The search palette's grey detail text was slightly too faint on the
+highlighted row in dark mode (4.28:1); it is now full-strength text.

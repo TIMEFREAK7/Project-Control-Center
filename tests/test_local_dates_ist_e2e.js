@@ -82,7 +82,9 @@ async function check(label, fn) {
   // ---- 1. "Today" is the local date ----
 
   await check("the title-block DATE shows the local date (24th), not the UTC one (23rd)", () => {
-    const cell = Array.from(doc.querySelectorAll(".title-block__cell")).find((c) => /DATE/.test(c.textContent));
+    // Gate 7.3: labels are sentence case now ("Date"), so find the cell by its stable id.
+    const val = doc.getElementById("title-block-date");
+    const cell = val && val.closest(".title-block__cell");
     assert.ok(cell, "DATE cell not found");
     assert.ok(cell.textContent.indexOf("2026-09-24") !== -1, "got: " + cell.textContent);
   });

@@ -191,17 +191,17 @@ export function buildContextSwitcher(idPrefix: string): HTMLElement {
   wrap.className = "title-block__context-group";
 
   wrap.appendChild(
-    makeCell(idPrefix, "company", "COMPANY", idPrefix + "-company-select", "Current Company context — filters Client and Project below", (v) => {
+    makeCell(idPrefix, "company", "Company", idPrefix + "-company-select", "Current Company context — filters Client and Project below", (v) => {
       pc().setCompany(v);
     })
   );
   wrap.appendChild(
-    makeCell(idPrefix, "client", "CLIENT", idPrefix + "-client-select", "Current Client context — filters Project below", (v) => {
+    makeCell(idPrefix, "client", "Client", idPrefix + "-client-select", "Current Client context — filters Project below", (v) => {
       pc().setClient(v);
     })
   );
   wrap.appendChild(
-    makeCell(idPrefix, "project", "PROJECT", idPrefix + "-project-select", "Current project context — carries across every project-scoped page", (v) => {
+    makeCell(idPrefix, "project", "Project", idPrefix + "-project-select", "Current project context — carries across every project-scoped page", (v) => {
       pc().set(v);
     })
   );

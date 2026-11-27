@@ -5,17 +5,40 @@ Paste this into a new chat to resume work with full context. This file lives in 
 path — see the standing instructions in `CLAUDE.md` about keeping it current and about handing
 it (and a zip) to Aditya directly after every major upgrade, not just committing quietly.
 
-## Current state (2026-11-26)
+## Current state (2026-11-27)
 
-- `main` has every gate through 7.2. Schema **67**. 138 test files (`cd tests && npm test`),
-  green in UTC and IST. Windows installer builds natively on this PC (1.10.0 last built).
-- Next in `DEFERRED_ROADMAP.md`: Gate 7.3 (shell: sidebar, title block, module hairline, Kubai
-  icons, palette, toasts, dialogs, drawer, menus). Features track: 1.1.
+- `main` has every gate through 7.3. Schema **67**. 139 test files (`cd tests && npm test`), green in UTC and IST.
+  Windows installer builds natively on this PC (1.10.0 last built).
+- Next in `DEFERRED_ROADMAP.md` after 7.3: Gate 7.4 (shared components). Features track: 1.1.
 - Waiting on Aditya: Gate 0.1 (phone check of At a Glance 1.9 + predictive back) and the real
   Storage Management → App data reading (decides Gate 6.2).
 - Docs layout since Gate 6.3: `CLAUDE.md` = rules (10.5 KB); `docs/GOTCHAS.md` = the old
   CLAUDE.md, unedited; `docs/BUILD_HISTORY.md` = README's old history; `docs/HANDOFF_ARCHIVE.md`
   = this file's sessions before 2026-11-11; `README.md` = short user guide (ships in the zip).
+
+## 2026-11-27 — Gate 7.3: shell (sidebar, title block, icons, palette, toasts)
+
+- **Phone title (roadmap vs code):** the name had 36 px at 412 px because six header icons took
+  300 px; every one of the 29 names truncated, and the roadmap's "drop the Sheet label" fix frees
+  no width. Aditya chose to move Export / Import / Density / Focus into the nav drawer at
+  <=780 px (labelled rows under Search, `.drawer__action`; each clicks the hidden header button).
+  Measured in Chromium: 0 of 29 truncate at 412 px; the 4 longest still do at 360 px.
+- Sidebar: plain filled active row (the blurred "gooey" layer and left stripe are gone),
+  sentence-case group headers (`NAV_GROUPS` labels and `GROUP_SLUGS` keys changed together).
+- Kubai duotone icons on all 29 routes via `navIcon()` (unique mask ids per copy; see
+  DESIGN_SYSTEM.md "Icons"). Storage Management had no icon before; now `hard-drive`.
+- Title block: 2 px module hairline only (no wash), hairline cells, sentence-case labels (also in
+  `mirror-app/src/shim/contextSwitcher.ts`). Footer: sentence case ("Saved · time").
+- Palette: sentence-case groups, same fill as the sidebar, no stripe; dark detail text on the
+  highlight was 4.28:1 (pre-existing, found by opening the palette under axe), now primary.
+- Toasts: one ink surface with a status dot. Dialogs, drawer, "⋯" menus: already compliant.
+- Tests: new `test_shell_phase7.js` (1/14 on the old build, 14/14 now); nav test's group labels
+  updated to sentence case; `test_local_dates_ist_e2e.js` now finds the date cell by its id
+  (it matched the old "DATE" label text). axe 0 on 32 baseline shots + 16 shell states (drawer, palette,
+  toasts, sidebar; both themes, both sizes), 0 console errors, no sideways scroll.
+- Size: `index.html` 6,323.4 → 6,354.8 KB (icons); mirror 678.4 → 678.7 KB, tabs byte-identical.
+- Sheets: `scratch/pcc-7.3/sheets/` (8 screens × 2 sizes) and `scratch/pcc-7.3/states/`.
+- Left for 7.4: the blur hover on primary buttons and the tab underline (both "gooey" effects).
 
 ## 2026-11-27 — Gate 7.2: foundation tokens (the first visible Phase 7 change)
 

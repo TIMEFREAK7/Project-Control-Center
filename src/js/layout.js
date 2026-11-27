@@ -40,7 +40,7 @@
   // `cost` page, which already includes the EVM engine — not a separate route.
   var NAV_GROUPS = [
     {
-      label: "OVERVIEW",
+      label: "Overview",
       items: [
         { key: "dashboard", label: "Dashboard", code: "DB" },
         { key: "myWork", label: "My Work", code: "MW" },
@@ -52,7 +52,7 @@
       ],
     },
     {
-      label: "PLANNING & SCHEDULE",
+      label: "Planning & schedule",
       items: [
         { key: "schedule", label: "Schedule", code: "SC" },
         { key: "projectLookahead", label: "Project Lookahead", code: "LA" },
@@ -60,7 +60,7 @@
       ],
     },
     {
-      label: "PROJECT CONTROLS",
+      label: "Project controls",
       items: [
         { key: "cost", label: "Cost Tracking", code: "CT" },
         { key: "commitments", label: "Commitments", code: "CN" },
@@ -68,7 +68,7 @@
       ],
     },
     {
-      label: "PROJECT MANAGEMENT",
+      label: "Project management",
       items: [
         { key: "risks", label: "Risk Register", code: "RK" },
         { key: "rfis", label: "RFI / TQ", code: "RQ" },
@@ -78,14 +78,14 @@
       ],
     },
     {
-      label: "VENDORS",
+      label: "Vendors",
       items: [
         { key: "vendors", label: "Vendors", code: "VN" },
         { key: "vendorPerformanceCentre", label: "Vendor Performance Centre", code: "VP" },
       ],
     },
     {
-      label: "DOCUMENTS",
+      label: "Documents",
       items: [
         { key: "documents", label: "Documents", code: "DC" },
         { key: "documentTypes", label: "Document Types", code: "DT" },
@@ -94,7 +94,7 @@
       ],
     },
     {
-      label: "SITE & KNOWLEDGE",
+      label: "Site & knowledge",
       items: [
         { key: "dailylog", label: "Daily Log", code: "DL" },
         { key: "lessonsLearned", label: "Lessons Learned", code: "LL" },
@@ -102,11 +102,11 @@
       ],
     },
     {
-      label: "REPORTING",
+      label: "Reporting",
       items: [{ key: "reports", label: "Reports", code: "RP" }],
     },
     {
-      label: "SYSTEM",
+      label: "System",
       items: [{ key: "settings", label: "Settings", code: "ST" }],
     },
   ];
@@ -117,15 +117,15 @@
   // neutral) but keeps a slug here anyway for consistency with every other group rather
   // than a special-cased empty string.
   var GROUP_SLUGS = {
-    "OVERVIEW": "overview",
-    "PLANNING & SCHEDULE": "planning",
-    "PROJECT CONTROLS": "controls",
-    "PROJECT MANAGEMENT": "management",
-    "VENDORS": "vendors",
-    "DOCUMENTS": "documents",
-    "SITE & KNOWLEDGE": "site",
-    "REPORTING": "reporting",
-    "SYSTEM": "system",
+    "Overview": "overview",
+    "Planning & schedule": "planning",
+    "Project controls": "controls",
+    "Project management": "management",
+    "Vendors": "vendors",
+    "Documents": "documents",
+    "Site & knowledge": "site",
+    "Reporting": "reporting",
+    "System": "system",
   };
 
   var PAGE_TITLES = {
@@ -210,54 +210,55 @@
     home: '<svg ' + ICON_SVG_ATTRS + '><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
   };
 
-  // Redesign Gate 3 (Icon System Expansion): the nav list's own per-page icons, the
-  // "separate, much bigger design effort" flagged as out of scope back in Gate E — now in
-  // scope. One SVG per route key, same construction as ICONS above (stroke="currentColor",
-  // 24x24 viewBox), keyed to buildNavList()'s item.key rather than item.code. item.code
-  // stays in NAV_GROUPS (harmless, no longer rendered) rather than being ripped out —
-  // deleting a data field a future gate might still want is a bigger, unnecessary edit for
-  // a purely cosmetic change. Where two nav items are conceptually close (the four
-  // Documents-family entries; meetings vs. resources as "people" icons), the base shape is
-  // deliberately shared and only the secondary mark differs — the same convention real icon
-  // libraries use for file-text/file-check/files, not an oversight.
+  // Gate 7.3: Kubai duotone icons (kubai-icons, icons-duotone/, MIT License,
+  // Copyright (c) 2026 Kubai087 and the Kubai Icons contributors). Exported with the pack's
+  // styles/duotone/export.mjs --size 18; the two tones became classes so both follow
+  // currentColor (styles.css: .duo-body at 0.3 opacity, .duo-mark solid). Static, no motion.
+  // Route -> icon map: .claude/docs/DESIGN_SYSTEM.md (Lookahead, Change Mgmt and Storage
+  // Management use fast-forward / arrow-left-right / hard-drive instead of a redraw).
+  var KUBAI_OPEN = '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">';
   var NAV_ICONS = {
-    dashboard: '<svg ' + ICON_SVG_ATTRS + '><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg>',
-    myWork: '<svg ' + ICON_SVG_ATTRS + '><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 8l1.5 1.5L11 7"/><line x1="13" y1="8" x2="18" y2="8"/><path d="M7 13.5l1.5 1.5L11 12.5"/><line x1="13" y1="14" x2="18" y2="14"/></svg>',
-    actionCentre: '<svg ' + ICON_SVG_ATTRS + '><path d="M12 3a5 5 0 0 0-5 5v3.5c0 .8-.3 1.6-.9 2.2L4.5 15.5A1 1 0 0 0 5.2 17h13.6a1 1 0 0 0 .7-1.7l-1.6-1.8c-.6-.6-.9-1.4-.9-2.2V8a5 5 0 0 0-5-5z"/><path d="M9.5 20a2.5 2.5 0 0 0 5 0"/></svg>',
-    projectLookahead: '<svg ' + ICON_SVG_ATTRS + '><polyline points="6 5 12 12 6 19"/><polyline points="13 5 19 12 13 19"/></svg>',
-    portfolio: '<svg ' + ICON_SVG_ATTRS + '><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M8 8V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="3" y1="13" x2="21" y2="13"/></svg>',
-    // Company/Client/Project Management redesign: a building (Company) — the smaller
-    // icons this app already uses for Vendors (a building silhouette too, see below) were
-    // deliberately avoided for the *distinct* windows-grid look, so the two don't read as
-    // the same nav item at a glance.
-    organizations: '<svg ' + ICON_SVG_ATTRS + '><rect x="4" y="3" width="16" height="18" rx="1"/><line x1="8" y1="7" x2="8" y2="7.01"/><line x1="12" y1="7" x2="12" y2="7.01"/><line x1="16" y1="7" x2="16" y2="7.01"/><line x1="8" y1="11" x2="8" y2="11.01"/><line x1="12" y1="11" x2="12" y2="11.01"/><line x1="16" y1="11" x2="16" y2="11.01"/><line x1="8" y1="15" x2="8" y2="15.01"/><line x1="16" y1="15" x2="16" y2="15.01"/><rect x="10" y="15" width="4" height="6"/></svg>',
-    projectWorkspace: '<svg ' + ICON_SVG_ATTRS + '><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>',
-    executiveCenter: '<svg ' + ICON_SVG_ATTRS + '><rect x="3" y="4" width="18" height="12" rx="2"/><line x1="8" y1="20" x2="16" y2="20"/><line x1="12" y1="16" x2="12" y2="20"/><polyline points="7 13 10 9 13 12 17 7"/></svg>',
-    vendors: '<svg ' + ICON_SVG_ATTRS + '><rect x="5" y="3" width="14" height="18" rx="1"/><line x1="9" y1="7" x2="9" y2="7.01"/><line x1="15" y1="7" x2="15" y2="7.01"/><line x1="9" y1="12" x2="9" y2="12.01"/><line x1="15" y1="12" x2="15" y2="12.01"/><rect x="10" y="16" width="4" height="5"/></svg>',
-    vendorPerformanceCentre: '<svg ' + ICON_SVG_ATTRS + '><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="0.75" fill="currentColor"/></svg>',
-    documents: '<svg ' + ICON_SVG_ATTRS + '><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><polyline points="14 3 14 8 19 8"/><line x1="8.5" y1="13" x2="15.5" y2="13"/><line x1="8.5" y1="16.5" x2="15.5" y2="16.5"/></svg>',
-    documentTypes: '<svg ' + ICON_SVG_ATTRS + '><rect x="4" y="7" width="13" height="14" rx="1.5"/><path d="M8 7V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-2"/></svg>',
-    documentControlDashboard: '<svg ' + ICON_SVG_ATTRS + '><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><polyline points="14 3 14 8 19 8"/><polyline points="9 14 11 16 15.5 11.5"/></svg>',
-    dailylog: '<svg ' + ICON_SVG_ATTRS + '><rect x="5" y="4" width="14" height="17" rx="2"/><rect x="9" y="2" width="6" height="4" rx="1"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="16" y2="15"/></svg>',
-    risks: '<svg ' + ICON_SVG_ATTRS + '><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="16" x2="12" y2="16.01"/></svg>',
-    meetings: '<svg ' + ICON_SVG_ATTRS + '><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="8" r="2.5"/><path d="M15.5 14.3c2.6.6 4.5 2.9 4.5 5.7"/></svg>',
-    rfis: '<svg ' + ICON_SVG_ATTRS + '><path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9l-5 4v-4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/><path d="M9.5 9.5a2.5 2.5 0 0 1 5 0c0 1.5-2.5 1.8-2.5 3.5"/><line x1="12" y1="15.5" x2="12" y2="15.51"/></svg>',
-    changeOrders: '<svg ' + ICON_SVG_ATTRS + '><polyline points="17 2 21 6 17 10"/><line x1="3" y1="6" x2="21" y2="6"/><polyline points="7 22 3 18 7 14"/><line x1="3" y1="18" x2="21" y2="18"/></svg>',
-    decisionRegister: '<svg ' + ICON_SVG_ATTRS + '><line x1="12" y1="3" x2="12" y2="21"/><line x1="7" y1="7" x2="17" y2="7"/><path d="M3 7l4 7a4 4 0 0 1-8 0z"/><path d="M17 7l4 7a4 4 0 0 1-8 0z"/><line x1="9" y1="21" x2="15" y2="21"/></svg>',
-    lessonsLearned: '<svg ' + ICON_SVG_ATTRS + '><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 0 0-4 10.5c.6.6 1 1.4 1 2.5h6c0-1.1.4-1.9 1-2.5A6 6 0 0 0 12 3z"/></svg>',
-    knowledgeBase: '<svg ' + ICON_SVG_ATTRS + '><path d="M3 5.5C3 4.7 3.7 4 4.5 4H11v16H4.5A1.5 1.5 0 0 1 3 18.5z"/><path d="M21 5.5c0-.8-.7-1.5-1.5-1.5H13v16h6.5a1.5 1.5 0 0 0 1.5-1.5z"/></svg>',
-    schedule: '<svg ' + ICON_SVG_ATTRS + '><rect x="3" y="5" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="3" x2="8" y2="7"/><line x1="16" y1="3" x2="16" y2="7"/><line x1="7" y1="14" x2="7" y2="14.01"/><line x1="12" y1="14" x2="12" y2="14.01"/><line x1="17" y1="14" x2="17" y2="14.01"/></svg>',
-    delayRecoveryDashboard: '<svg ' + ICON_SVG_ATTRS + '><circle cx="12" cy="13" r="8"/><polyline points="12 9 12 13 15 15"/><path d="M4.2 9A8 8 0 0 1 9 4.2"/><polyline points="3 6 4.2 9 7.2 8"/></svg>',
-    cost: '<svg ' + ICON_SVG_ATTRS + '><circle cx="12" cy="12" r="9"/><path d="M12 6v12"/><path d="M15.5 9a3 3 0 0 0-3-1.5h-1a2.5 2.5 0 0 0 0 5h1a2.5 2.5 0 0 1 0 5h-1a3 3 0 0 1-3-1.5"/></svg>',
-    commitments: '<svg ' + ICON_SVG_ATTRS + '><path d="M6 3h12v17l-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5-2 1.5z"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="9" y1="12" x2="15" y2="12"/></svg>',
-    // A first real-Chromium check at actual render size found this too close to meetings'
-    // 2-person icon (same "two round heads + shoulders" silhouette). A 3-person group —
-    // one prominent figure in front, two smaller ones peeking from behind — reads as
-    // distinctly different in overall shape/weight, not just a re-skinned duplicate.
-    resources: '<svg ' + ICON_SVG_ATTRS + '><circle cx="12" cy="7" r="3"/><path d="M6 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="5" cy="9" r="2.2"/><path d="M2 19c0-2.5 1.3-4.5 3-5.3"/><circle cx="19" cy="9" r="2.2"/><path d="M22 19c0-2.5-1.3-4.5-3-5.3"/></svg>',
-    reports: '<svg ' + ICON_SVG_ATTRS + '><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><polyline points="14 3 14 8 19 8"/><line x1="9" y1="17" x2="9" y2="13"/><line x1="12" y1="17" x2="12" y2="11"/><line x1="15" y1="17" x2="15" y2="14"/></svg>',
-    settings: '<svg ' + ICON_SVG_ATTRS + '><circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M3 12h2M19 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></svg>',
+    dashboard: KUBAI_OPEN + '<g transform="translate(8 8) scale(1.083) translate(-8 -8)"><path class="duo-body" d="M2 3.667C2 3.057 2 2.586 2.293 2.293C2.586 2 3.057 2 3.667 2L3.667 2C4.276 2 4.748 2 5.04 2.293C5.333 2.586 5.333 3.057 5.333 3.667L5.333 3.667C5.333 4.276 5.333 4.748 5.04 5.04C4.748 5.333 4.276 5.333 3.667 5.333L3.667 5.333C3.057 5.333 2.586 5.333 2.293 5.04C2 4.748 2 4.276 2 3.667ZM2 8C2 7.39 2 6.919 2.293 6.626C2.586 6.333 3.057 6.333 3.667 6.333L3.667 6.333C4.276 6.333 4.748 6.333 5.04 6.626C5.333 6.919 5.333 7.39 5.333 8L5.333 8C5.333 8.61 5.333 9.081 5.04 9.374C4.748 9.667 4.276 9.667 3.667 9.667L3.667 9.667C3.057 9.667 2.586 9.667 2.293 9.374C2 9.081 2 8.61 2 8ZM2 12.333C2 11.724 2 11.252 2.293 10.96C2.586 10.667 3.057 10.667 3.667 10.667L3.667 10.667C4.276 10.667 4.748 10.667 5.04 10.96C5.333 11.252 5.333 11.724 5.333 12.333L5.333 12.333C5.333 12.943 5.333 13.414 5.04 13.707C4.748 14 4.276 14 3.667 14L3.667 14C3.057 14 2.586 14 2.293 13.707C2 13.414 2 12.943 2 12.333ZM6.333 3.667C6.333 3.057 6.333 2.586 6.626 2.293C6.919 2 7.39 2 8 2L8 2C8.61 2 9.081 2 9.374 2.293C9.667 2.586 9.667 3.057 9.667 3.667L9.667 3.667C9.667 4.276 9.667 4.748 9.374 5.04C9.081 5.333 8.61 5.333 8 5.333L8 5.333C7.39 5.333 6.919 5.333 6.626 5.04C6.333 4.748 6.333 4.276 6.333 3.667ZM6.333 12.333C6.333 11.724 6.333 11.252 6.626 10.96C6.919 10.667 7.39 10.667 8 10.667L8 10.667C8.61 10.667 9.081 10.667 9.374 10.96C9.667 11.252 9.667 11.724 9.667 12.333L9.667 12.333C9.667 12.943 9.667 13.414 9.374 13.707C9.081 14 8.61 14 8 14L8 14C7.39 14 6.919 14 6.626 13.707C6.333 13.414 6.333 12.943 6.333 12.333ZM10.667 3.667C10.667 3.057 10.667 2.586 10.96 2.293C11.252 2 11.724 2 12.333 2L12.333 2C12.943 2 13.414 2 13.707 2.293C14 2.586 14 3.057 14 3.667L14 3.667C14 4.276 14 4.748 13.707 5.04C13.414 5.333 12.943 5.333 12.333 5.333L12.333 5.333C11.724 5.333 11.252 5.333 10.96 5.04C10.667 4.748 10.667 4.276 10.667 3.667ZM10.667 8C10.667 7.39 10.667 6.919 10.96 6.626C11.252 6.333 11.724 6.333 12.333 6.333L12.333 6.333C12.943 6.333 13.414 6.333 13.707 6.626C14 6.919 14 7.39 14 8L14 8C14 8.61 14 9.081 13.707 9.374C13.414 9.667 12.943 9.667 12.333 9.667L12.333 9.667C11.724 9.667 11.252 9.667 10.96 9.374C10.667 9.081 10.667 8.61 10.667 8ZM10.667 12.333C10.667 11.724 10.667 11.252 10.96 10.96C11.252 10.667 11.724 10.667 12.333 10.667L12.333 10.667C12.943 10.667 13.414 10.667 13.707 10.96C14 11.252 14 11.724 14 12.333L14 12.333C14 12.943 14 13.414 13.707 13.707C13.414 14 12.943 14 12.333 14L12.333 14C11.724 14 11.252 14 10.96 13.707C10.667 13.414 10.667 12.943 10.667 12.333Z" fill="currentColor"/><path class="duo-mark" d="M6.333 8C6.333 7.39 6.333 6.919 6.626 6.626C6.919 6.333 7.39 6.333 8 6.333L8 6.333C8.61 6.333 9.081 6.333 9.374 6.626C9.667 6.919 9.667 7.39 9.667 8L9.667 8C9.667 8.61 9.667 9.081 9.374 9.374C9.081 9.667 8.61 9.667 8 9.667L8 9.667C7.39 9.667 6.919 9.667 6.626 9.374C6.333 9.081 6.333 8.61 6.333 8Z" fill="currentColor"/></g></svg>', // grid
+    myWork: KUBAI_OPEN + '<path class="duo-mark" d="M1.75 4L3.75 6L7 2.75" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path class="duo-mark" d="M1.75 11.25L3.75 13.25L7 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path class="duo-body" d="M8.28 4.375C8.28 3.685 8.84 3.125 9.53 3.125L13.75 3.125C14.44 3.125 15 3.685 15 4.375L15 4.375C15 5.065 14.44 5.625 13.75 5.625L9.53 5.625C8.84 5.625 8.28 5.065 8.28 4.375ZM8.28 11.625C8.28 10.935 8.84 10.375 9.53 10.375L13.75 10.375C14.44 10.375 15 10.935 15 11.625L15 11.625C15 12.315 14.44 12.875 13.75 12.875L9.53 12.875C8.84 12.875 8.28 12.315 8.28 11.625Z" fill="currentColor"/></svg>', // list-checks
+    actionCentre: KUBAI_OPEN + '<defs><mask id="bell-gap1" maskUnits="userSpaceOnUse" x="-2" y="-2" width="20" height="20"><rect x="-2" y="-2" width="20" height="20" fill="#fff"/><path d="M6.75 3.25A1.25 1.25 0 1 1 9.25 3.25A1.25 1.25 0 1 1 6.75 3.25ZM6.25 12.639C6.25 12.424 6.424 12.25 6.639 12.25L9.361 12.25C9.576 12.25 9.75 12.424 9.75 12.639L9.75 12.639C9.75 13.391 9.141 14 8.389 14L7.611 14C6.859 14 6.25 13.391 6.25 12.639Z" fill="#000" stroke="#000" stroke-width="1.846" stroke-linejoin="round"/></mask></defs><g transform="translate(8 8) scale(1.083) translate(-8 -8)"><g mask="url(#bell-gap1)"><path class="duo-body" d="M3 10.5V8a5 5 0 0 1 10 0V10.5ZM2 10.5C2 10.086 2.336 9.75 2.75 9.75L13.25 9.75C13.664 9.75 14 10.086 14 10.5L14 10.5C14 10.914 13.664 11.25 13.25 11.25L2.75 11.25C2.336 11.25 2 10.914 2 10.5Z" fill="currentColor"/></g><path class="duo-mark" d="M6.75 3.25A1.25 1.25 0 1 1 9.25 3.25A1.25 1.25 0 1 1 6.75 3.25ZM6.25 12.639C6.25 12.424 6.424 12.25 6.639 12.25L9.361 12.25C9.576 12.25 9.75 12.424 9.75 12.639L9.75 12.639C9.75 13.391 9.141 14 8.389 14L7.611 14C6.859 14 6.25 13.391 6.25 12.639Z" fill="currentColor"/></g></svg>', // bell
+    projectLookahead: KUBAI_OPEN + '<path class="duo-body" d="M1 8A7 7 0 1 1 15 8A7 7 0 1 1 1 8Z" fill="currentColor"/><path class="duo-mark" d="M4 8C4 6.881 4 6.324 4.422 6.119C4.844 5.913 5.283 6.258 6.162 6.949L6.162 6.949C6.707 7.377 7.036 7.635 7.036 8C7.036 8.365 6.707 8.623 6.162 9.051L6.162 9.051C5.283 9.742 4.844 10.087 4.422 9.881C4 9.676 4 9.119 4 8Z" fill="currentColor"/><path class="duo-mark" d="M8.5 8C8.5 6.881 8.5 6.324 8.922 6.119C9.344 5.913 9.783 6.258 10.662 6.949L10.662 6.949C11.207 7.377 11.536 7.635 11.536 8C11.536 8.365 11.207 8.623 10.662 9.051L10.662 9.051C9.783 9.742 9.344 10.087 8.922 9.881C8.5 9.676 8.5 9.119 8.5 8Z" fill="currentColor"/></svg>', // fast-forward
+    portfolio: KUBAI_OPEN + '<defs><mask id="briefcase-gap1" maskUnits="userSpaceOnUse" x="-2" y="-2" width="20" height="20"><rect x="-2" y="-2" width="20" height="20" fill="#fff"/><path d="M1 9.1C1 7.614 1 6.672 1.586 6.086C2.172 5.5 3.114 5.5 4.6 5.5L11.4 5.5C12.886 5.5 13.828 5.5 14.414 6.086C15 6.672 15 7.614 15 9.1L15 10.4C15 11.886 15 12.828 14.414 13.414C13.828 14 12.886 14 11.4 14L4.6 14C3.114 14 2.172 14 1.586 13.414C1 12.828 1 11.886 1 10.4Z" fill="#000" stroke="#000" stroke-width="2" stroke-linejoin="round"/></mask></defs><g mask="url(#briefcase-gap1)"><path class="duo-mark" d="M5.75 6V3.75A1 1 0 0 1 6.75 2.75H9.25A1 1 0 0 1 10.25 3.75V6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></g><path class="duo-body" d="M1 9.1C1 7.614 1 6.672 1.586 6.086C2.172 5.5 3.114 5.5 4.6 5.5L11.4 5.5C12.886 5.5 13.828 5.5 14.414 6.086C15 6.672 15 7.614 15 9.1L15 10.4C15 11.886 15 12.828 14.414 13.414C13.828 14 12.886 14 11.4 14L4.6 14C3.114 14 2.172 14 1.586 13.414C1 12.828 1 11.886 1 10.4Z" fill="currentColor"/><path class="duo-mark" d="M6.5 9.75C6.5 9.557 6.5 9.086 6.793 8.793C7.086 8.5 7.557 8.5 7.75 8.5L8.25 8.5C8.443 8.5 8.914 8.5 9.207 8.793C9.5 9.086 9.5 9.557 9.5 9.75L9.5 9.75C9.5 9.943 9.5 10.414 9.207 10.707C8.914 11 8.443 11 8.25 11L7.75 11C7.557 11 7.086 11 6.793 10.707C6.5 10.414 6.5 9.943 6.5 9.75Z" fill="currentColor"/></svg>', // briefcase
+    organizations: KUBAI_OPEN + '<defs><clipPath id="building-office-clip4" clipPathUnits="userSpaceOnUse"><path d="M3 5.5C3 3.643 3 2.464 3.732 1.732C4.464 1 5.643 1 7.5 1L8.5 1C10.357 1 11.536 1 12.268 1.732C13 2.464 13 3.643 13 5.5L13 10.5C13 12.357 13 13.536 12.268 14.268C11.536 15 10.357 15 8.5 15L7.5 15C5.643 15 4.464 15 3.732 14.268C3 13.536 3 12.357 3 10.5Z"/></clipPath></defs><path class="duo-body" d="M3 5.5C3 3.643 3 2.464 3.732 1.732C4.464 1 5.643 1 7.5 1L8.5 1C10.357 1 11.536 1 12.268 1.732C13 2.464 13 3.643 13 5.5L13 10.5C13 12.357 13 13.536 12.268 14.268C11.536 15 10.357 15 8.5 15L7.5 15C5.643 15 4.464 15 3.732 14.268C3 13.536 3 12.357 3 10.5Z" fill="currentColor"/><path class="duo-mark" d="M5 8.625C5 8.28 5.28 8 5.625 8L6.875 8C7.22 8 7.5 8.28 7.5 8.625L7.5 8.625C7.5 8.97 7.22 9.25 6.875 9.25L5.625 9.25C5.28 9.25 5 8.97 5 8.625ZM8.5 8.625C8.5 8.28 8.78 8 9.125 8L10.375 8C10.72 8 11 8.28 11 8.625L11 8.625C11 8.97 10.72 9.25 10.375 9.25L9.125 9.25C8.78 9.25 8.5 8.97 8.5 8.625Z" fill="currentColor"/><path class="duo-mark" d="M5 6.125C5 5.78 5.28 5.5 5.625 5.5L6.875 5.5C7.22 5.5 7.5 5.78 7.5 6.125L7.5 6.125C7.5 6.47 7.22 6.75 6.875 6.75L5.625 6.75C5.28 6.75 5 6.47 5 6.125ZM8.5 6.125C8.5 5.78 8.78 5.5 9.125 5.5L10.375 5.5C10.72 5.5 11 5.78 11 6.125L11 6.125C11 6.47 10.72 6.75 10.375 6.75L9.125 6.75C8.78 6.75 8.5 6.47 8.5 6.125Z" fill="currentColor"/><path class="duo-mark" d="M5 3.625C5 3.28 5.28 3 5.625 3L6.875 3C7.22 3 7.5 3.28 7.5 3.625L7.5 3.625C7.5 3.97 7.22 4.25 6.875 4.25L5.625 4.25C5.28 4.25 5 3.97 5 3.625ZM8.5 3.625C8.5 3.28 8.78 3 9.125 3L10.375 3C10.72 3 11 3.28 11 3.625L11 3.625C11 3.97 10.72 4.25 10.375 4.25L9.125 4.25C8.78 4.25 8.5 3.97 8.5 3.625Z" fill="currentColor"/><g clip-path="url(#building-office-clip4)"><path class="duo-mark" d="M6.75 12.25C6.75 11.56 7.31 11 8 11L8 11C8.69 11 9.25 11.56 9.25 12.25L9.25 15L6.75 15Z" fill="currentColor"/></g></svg>', // building-office
+    projectWorkspace: KUBAI_OPEN + '<path class="duo-body" d="M7.177 2.223C7.517 2.09 7.763 1.993 8 1.993C8.237 1.993 8.483 2.09 8.823 2.223L10.735 2.975C12.496 3.666 13.265 3.968 13.265 4.65C13.265 5.332 12.496 5.634 10.735 6.325L8.823 7.077C8.483 7.21 8.237 7.307 8 7.307C7.763 7.307 7.517 7.21 7.177 7.077L5.265 6.325C3.504 5.634 2.735 5.332 2.735 4.65C2.735 3.968 3.504 3.666 5.265 2.975Z" fill="currentColor"/><path class="duo-mark" d="M1 7.26C1 6.887 1 6.428 1.328 6.205C1.655 5.981 2.083 6.149 2.43 6.286L7.342 8.215C7.614 8.322 7.811 8.4 8 8.4C8.189 8.4 8.386 8.322 8.658 8.215L13.57 6.286C13.917 6.149 14.345 5.981 14.672 6.205C15 6.428 15 6.887 15 7.26L15 7.26C15 7.434 15 7.694 14.87 7.885C14.739 8.076 14.497 8.172 14.336 8.235L8.658 10.465C8.386 10.572 8.189 10.65 8 10.65C7.811 10.65 7.614 10.572 7.342 10.465L1.664 8.235C1.503 8.172 1.261 8.076 1.13 7.885C1 7.694 1 7.434 1 7.26Z" fill="currentColor"/><path class="duo-body" d="M1 10.584C1 10.211 1 9.752 1.328 9.529C1.655 9.305 2.083 9.473 2.43 9.61L7.342 11.539C7.614 11.646 7.811 11.724 8 11.724C8.189 11.724 8.386 11.646 8.658 11.539L13.57 9.61C13.917 9.473 14.345 9.305 14.672 9.529C15 9.752 15 10.211 15 10.584L15 10.584C15 10.758 15 11.018 14.87 11.209C14.739 11.4 14.497 11.496 14.336 11.559L8.658 13.789C8.386 13.896 8.189 13.974 8 13.974C7.811 13.974 7.614 13.896 7.342 13.789L1.664 11.559C1.503 11.496 1.261 11.4 1.13 11.209C1 11.018 1 10.758 1 10.584Z" fill="currentColor"/></svg>', // layers
+    executiveCenter: KUBAI_OPEN + '<g transform="translate(8 8) scale(1.083) translate(-8 -8)"><path class="duo-body" d="M2 9.167C2 8.557 2 8.086 2.293 7.793C2.586 7.5 3.057 7.5 3.667 7.5L3.667 7.5C4.276 7.5 4.748 7.5 5.04 7.793C5.333 8.086 5.333 8.557 5.333 9.167L5.333 12.333C5.333 12.943 5.333 13.414 5.04 13.707C4.748 14 4.276 14 3.667 14L3.667 14C3.057 14 2.586 14 2.293 13.707C2 13.414 2 12.943 2 12.333Z" fill="currentColor"/><path class="duo-mark" d="M6.333 3.667C6.333 3.057 6.333 2.586 6.626 2.293C6.919 2 7.39 2 8 2L8 2C8.61 2 9.081 2 9.374 2.293C9.667 2.586 9.667 3.057 9.667 3.667L9.667 12.333C9.667 12.943 9.667 13.414 9.374 13.707C9.081 14 8.61 14 8 14L8 14C7.39 14 6.919 14 6.626 13.707C6.333 13.414 6.333 12.943 6.333 12.333Z" fill="currentColor"/><path class="duo-body" d="M10.667 6.667C10.667 6.057 10.667 5.586 10.96 5.293C11.252 5 11.724 5 12.333 5L12.333 5C12.943 5 13.414 5 13.707 5.293C14 5.586 14 6.057 14 6.667L14 12.333C14 12.943 14 13.414 13.707 13.707C13.414 14 12.943 14 12.333 14L12.333 14C11.724 14 11.252 14 10.96 13.707C10.667 13.414 10.667 12.943 10.667 12.333Z" fill="currentColor"/></g></svg>', // chart-bar
+    vendors: KUBAI_OPEN + '<defs><clipPath id="truck-clip2" clipPathUnits="userSpaceOnUse"><path d="M12.25 0L16.25 0L16.25 7.75L12.25 7.75Z"/></clipPath><mask id="truck-gap3" maskUnits="userSpaceOnUse" x="-2" y="-2" width="20" height="20"><rect x="-2" y="-2" width="20" height="20" fill="#fff"/><path d="M2.25 11.25A2.25 2.25 0 1 1 6.75 11.25A2.25 2.25 0 1 1 2.25 11.25ZM10.5 11.25A2.25 2.25 0 1 1 15 11.25A2.25 2.25 0 1 1 10.5 11.25Z" fill="#000" stroke="#000" stroke-width="2" stroke-linejoin="round"/></mask><mask id="truck-cut3" maskUnits="userSpaceOnUse" x="-2" y="-2" width="20" height="20"><rect x="-2" y="-2" width="20" height="20" fill="#fff"/><path d="M3.625 11.25A0.875 0.875 0 1 1 5.375 11.25A0.875 0.875 0 1 1 3.625 11.25Z" fill="#000"/><path d="M11.875 11.25A0.875 0.875 0 1 1 13.625 11.25A0.875 0.875 0 1 1 11.875 11.25Z" fill="#000"/></mask></defs><g mask="url(#truck-gap3)"><path class="duo-body" d="M1 6.1C1 4.614 1 3.672 1.586 3.086C2.172 2.5 3.114 2.5 4.6 2.5L6.4 2.5C7.886 2.5 8.828 2.5 9.414 3.086C10 3.672 10 4.614 10 6.1L10 7.9C10 9.386 10 10.328 9.414 10.914C8.828 11.5 7.886 11.5 6.4 11.5L4.6 11.5C3.114 11.5 2.172 11.5 1.586 10.914C1 10.328 1 9.386 1 7.9Z" fill="currentColor"/></g><g mask="url(#truck-gap3)"><path class="duo-body" d="M11 6.6C11 6.057 11 5.586 11.293 5.293C11.586 5 12.057 5 12.6 5L12.6 5C13.415 5 14.121 5 14.561 5.439C15 5.879 15 6.585 15 7.4L15 9.1C15 9.915 15 10.621 14.561 11.061C14.121 11.5 13.415 11.5 12.6 11.5L12.6 11.5C12.057 11.5 11.586 11.5 11.293 11.207C11 10.914 11 10.443 11 9.9Z" fill="currentColor"/></g><g mask="url(#truck-gap3)"><g clip-path="url(#truck-clip2)"><path class="duo-mark" d="M11 6.6C11 6.057 11 5.586 11.293 5.293C11.586 5 12.057 5 12.6 5L12.6 5C13.415 5 14.121 5 14.561 5.439C15 5.879 15 6.585 15 7.4L15 9.1C15 9.915 15 10.621 14.561 11.061C14.121 11.5 13.415 11.5 12.6 11.5L12.6 11.5C12.057 11.5 11.586 11.5 11.293 11.207C11 10.914 11 10.443 11 9.9Z" fill="currentColor"/></g></g><g mask="url(#truck-cut3)"><path class="duo-mark" d="M2.25 11.25A2.25 2.25 0 1 1 6.75 11.25A2.25 2.25 0 1 1 2.25 11.25ZM10.5 11.25A2.25 2.25 0 1 1 15 11.25A2.25 2.25 0 1 1 10.5 11.25Z" fill="currentColor"/></g></svg>', // truck
+    vendorPerformanceCentre: KUBAI_OPEN + '<g transform="translate(8 8) scale(1.083) translate(-8 -8)"><path class="duo-body" d="M2 6.5C2 4.643 2 3.464 2.732 2.732C3.464 2 4.643 2 6.5 2L9.5 2C11.357 2 12.536 2 13.268 2.732C14 3.464 14 4.643 14 6.5L14 9.5C14 11.357 14 12.536 13.268 13.268C12.536 14 11.357 14 9.5 14L6.5 14C4.643 14 3.464 14 2.732 13.268C2 12.536 2 11.357 2 9.5Z" fill="currentColor"/><path class="duo-mark" d="M4.5 10.75L6.75 7.25L9.25 9.25L11.5 5.25" fill="none" stroke="currentColor" stroke-width="1.385" stroke-linecap="round" stroke-linejoin="round"/></g></svg>', // chart-line
+    documents: KUBAI_OPEN + '<defs><mask id="folder-gap1" maskUnits="userSpaceOnUse" x="-2" y="-2" width="20" height="20"><rect x="-2" y="-2" width="20" height="20" fill="#fff"/><path d="M1 4.7C1 3.586 1 2.879 1.439 2.439C1.879 2 2.586 2 3.7 2L5 2C5.415 2 6.121 2 6.561 2.439C7 2.879 7 3.586 7 4L7 4L10.5 4C12.357 4 13.536 4 14.268 4.732C15 5.464 15 6.643 15 8.5L15 9.5C15 11.357 15 12.536 14.268 13.268C13.536 14 12.357 14 10.5 14L5.5 14C3.643 14 2.464 14 1.732 13.268C1 12.536 1 11.357 1 9.5Z" fill="#000" stroke="#000" stroke-width="2" stroke-linejoin="round"/></mask></defs><g mask="url(#folder-gap1)"><path class="duo-mark" d="M6.5 8.2C6.5 7.085 6.5 6.379 6.939 5.939C7.379 5.5 8.085 5.5 9.2 5.5L10.3 5.5C11.415 5.5 12.121 5.5 12.561 5.939C13 6.379 13 7.085 13 8.2L13 9.3C13 10.415 13 11.121 12.561 11.561C12.121 12 11.415 12 10.3 12L9.2 12C8.085 12 7.379 12 6.939 11.561C6.5 11.121 6.5 10.415 6.5 9.3Z" fill="currentColor"/></g><path class="duo-body" d="M1 4.7C1 3.586 1 2.879 1.439 2.439C1.879 2 2.586 2 3.7 2L5 2C5.415 2 6.121 2 6.561 2.439C7 2.879 7 3.586 7 4L7 4L10.5 4C12.357 4 13.536 4 14.268 4.732C15 5.464 15 6.643 15 8.5L15 9.5C15 11.357 15 12.536 14.268 13.268C13.536 14 12.357 14 10.5 14L5.5 14C3.643 14 2.464 14 1.732 13.268C1 12.536 1 11.357 1 9.5Z" fill="currentColor"/><path class="duo-mark" d="M9 11.375C9 11.03 9.28 10.75 9.625 10.75L12.375 10.75C12.72 10.75 13 11.03 13 11.375L13 11.375C13 11.72 12.72 12 12.375 12L9.625 12C9.28 12 9 11.72 9 11.375Z" fill="currentColor"/></svg>', // folder
+    documentTypes: KUBAI_OPEN + '<path class="duo-body" d="M2 4.6C2 3.114 2 2.172 2.586 1.586C3.172 1 4.114 1 5.6 1L10.4 1C11.886 1 12.828 1 13.414 1.586C14 2.172 14 3.114 14 4.6L14 11.4C14 12.886 14 13.828 13.414 14.414C12.828 15 11.886 15 10.4 15L5.6 15C4.114 15 3.172 15 2.586 14.414C2 13.828 2 12.886 2 11.4Z" fill="currentColor"/><path class="duo-mark" d="M5 5.875C5 5.53 5.28 5.25 5.625 5.25L10.375 5.25C10.72 5.25 11 5.53 11 5.875L11 5.875C11 6.22 10.72 6.5 10.375 6.5L5.625 6.5C5.28 6.5 5 6.22 5 5.875Z" fill="currentColor"/><path class="duo-mark" d="M5 8.5C5 8.155 5.28 7.875 5.625 7.875L10.375 7.875C10.72 7.875 11 8.155 11 8.5L11 8.5C11 8.845 10.72 9.125 10.375 9.125L5.625 9.125C5.28 9.125 5 8.845 5 8.5Z" fill="currentColor"/><path class="duo-mark" d="M5 11.125C5 10.78 5.28 10.5 5.625 10.5L7.875 10.5C8.22 10.5 8.5 10.78 8.5 11.125L8.5 11.125C8.5 11.47 8.22 11.75 7.875 11.75L5.625 11.75C5.28 11.75 5 11.47 5 11.125Z" fill="currentColor"/></svg>', // file-text
+    documentControlDashboard: KUBAI_OPEN + '<defs><mask id="clipboard-gap1" maskUnits="userSpaceOnUse" x="-2" y="-2" width="20" height="20"><rect x="-2" y="-2" width="20" height="20" fill="#fff"/><path d="M5 2.5C5 2.057 5 1.586 5.293 1.293C5.586 1 6.057 1 6.5 1L9.5 1C9.943 1 10.414 1 10.707 1.293C11 1.586 11 2.057 11 2.5L11 2.5C11 2.943 11 3.414 10.707 3.707C10.414 4 9.943 4 9.5 4L6.5 4C6.057 4 5.586 4 5.293 3.707C5 3.414 5 2.943 5 2.5Z" fill="#000" stroke="#000" stroke-width="2" stroke-linejoin="round"/></mask></defs><g mask="url(#clipboard-gap1)"><path class="duo-body" d="M2 6.1C2 4.614 2 3.672 2.586 3.086C3.172 2.5 4.114 2.5 5.6 2.5L10.4 2.5C11.886 2.5 12.828 2.5 13.414 3.086C14 3.672 14 4.614 14 6.1L14 11.4C14 12.886 14 13.828 13.414 14.414C12.828 15 11.886 15 10.4 15L5.6 15C4.114 15 3.172 15 2.586 14.414C2 13.828 2 12.886 2 11.4Z" fill="currentColor"/></g><path class="duo-mark" d="M5 2.5C5 2.057 5 1.586 5.293 1.293C5.586 1 6.057 1 6.5 1L9.5 1C9.943 1 10.414 1 10.707 1.293C11 1.586 11 2.057 11 2.5L11 2.5C11 2.943 11 3.414 10.707 3.707C10.414 4 9.943 4 9.5 4L6.5 4C6.057 4 5.586 4 5.293 3.707C5 3.414 5 2.943 5 2.5Z" fill="currentColor"/><path class="duo-mark" d="M5 7.875C5 7.53 5.28 7.25 5.625 7.25L10.375 7.25C10.72 7.25 11 7.53 11 7.875L11 7.875C11 8.22 10.72 8.5 10.375 8.5L5.625 8.5C5.28 8.5 5 8.22 5 7.875Z" fill="currentColor"/><path class="duo-mark" d="M5 10.5C5 10.155 5.28 9.875 5.625 9.875L7.875 9.875C8.22 9.875 8.5 10.155 8.5 10.5L8.5 10.5C8.5 10.845 8.22 11.125 7.875 11.125L5.625 11.125C5.28 11.125 5 10.845 5 10.5Z" fill="currentColor"/></svg>', // clipboard
+    storageManagement: KUBAI_OPEN + '<path class="duo-body" d="M1 7C1 5.143 1 3.964 1.732 3.232C2.464 2.5 3.643 2.5 5.5 2.5L10.5 2.5C12.357 2.5 13.536 2.5 14.268 3.232C15 3.964 15 5.143 15 7L15 9C15 10.857 15 12.036 14.268 12.768C13.536 13.5 12.357 13.5 10.5 13.5L5.5 13.5C3.643 13.5 2.464 13.5 1.732 12.768C1 12.036 1 10.857 1 9Z" fill="currentColor"/><path class="duo-mark" d="M3.375 10.5C3.375 10.155 3.655 9.875 4 9.875L6.75 9.875C7.095 9.875 7.375 10.155 7.375 10.5L7.375 10.5C7.375 10.845 7.095 11.125 6.75 11.125L4 11.125C3.655 11.125 3.375 10.845 3.375 10.5Z" fill="currentColor"/><path class="duo-mark" d="M9.125 10.5A0.625 0.625 0 1 1 10.375 10.5A0.625 0.625 0 1 1 9.125 10.5Z" fill="currentColor"/><path class="duo-mark" d="M11.375 10.5A0.625 0.625 0 1 1 12.625 10.5A0.625 0.625 0 1 1 11.375 10.5Z" fill="currentColor"/></svg>', // hard-drive
+    dailylog: KUBAI_OPEN + '<defs><mask id="notebook-gap2" maskUnits="userSpaceOnUse" x="-2" y="-2" width="20" height="20"><rect x="-2" y="-2" width="20" height="20" fill="#fff"/><path d="M2 4C2 3.655 2.28 3.375 2.625 3.375L4.375 3.375C4.72 3.375 5 3.655 5 4L5 4C5 4.345 4.72 4.625 4.375 4.625L2.625 4.625C2.28 4.625 2 4.345 2 4ZM2 8C2 7.655 2.28 7.375 2.625 7.375L4.375 7.375C4.72 7.375 5 7.655 5 8L5 8C5 8.345 4.72 8.625 4.375 8.625L2.625 8.625C2.28 8.625 2 8.345 2 8ZM2 12C2 11.655 2.28 11.375 2.625 11.375L4.375 11.375C4.72 11.375 5 11.655 5 12L5 12C5 12.345 4.72 12.625 4.375 12.625L2.625 12.625C2.28 12.625 2 12.345 2 12Z" fill="#000" stroke="#000" stroke-width="2" stroke-linejoin="round"/></mask></defs><g mask="url(#notebook-gap2)"><path class="duo-body" d="M3.5 4.6C3.5 3.114 3.5 2.172 4.086 1.586C4.672 1 5.614 1 7.1 1L10.4 1C11.886 1 12.828 1 13.414 1.586C14 2.172 14 3.114 14 4.6L14 11.4C14 12.886 14 13.828 13.414 14.414C12.828 15 11.886 15 10.4 15L7.1 15C5.614 15 4.672 15 4.086 14.414C3.5 13.828 3.5 12.886 3.5 11.4Z" fill="currentColor"/></g><g mask="url(#notebook-gap2)"><path class="duo-mark" d="M7.25 5.625C7.25 5.28 7.53 5 7.875 5L10.625 5C10.97 5 11.25 5.28 11.25 5.625L11.25 5.625C11.25 5.97 10.97 6.25 10.625 6.25L7.875 6.25C7.53 6.25 7.25 5.97 7.25 5.625Z" fill="currentColor"/></g><path class="duo-mark" d="M2 4C2 3.655 2.28 3.375 2.625 3.375L4.375 3.375C4.72 3.375 5 3.655 5 4L5 4C5 4.345 4.72 4.625 4.375 4.625L2.625 4.625C2.28 4.625 2 4.345 2 4ZM2 8C2 7.655 2.28 7.375 2.625 7.375L4.375 7.375C4.72 7.375 5 7.655 5 8L5 8C5 8.345 4.72 8.625 4.375 8.625L2.625 8.625C2.28 8.625 2 8.345 2 8ZM2 12C2 11.655 2.28 11.375 2.625 11.375L4.375 11.375C4.72 11.375 5 11.655 5 12L5 12C5 12.345 4.72 12.625 4.375 12.625L2.625 12.625C2.28 12.625 2 12.345 2 12Z" fill="currentColor"/></svg>', // notebook
+    risks: KUBAI_OPEN + '<path class="duo-body" d="M4.913 5.145C6.187 3.021 6.868 1.887 8 1.887C9.132 1.887 9.813 3.021 11.087 5.145L13.129 8.548C14.479 10.798 15.182 11.971 14.608 12.985C14.034 14 12.666 14 10.042 14L5.958 14C3.334 14 1.966 14 1.392 12.985C0.818 11.971 1.521 10.798 2.871 8.548Z" fill="currentColor"/><path class="duo-mark" d="M8 6V8.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path class="duo-mark" d="M6.875 11.375A1.125 1.125 0 1 1 9.125 11.375A1.125 1.125 0 1 1 6.875 11.375Z" fill="currentColor"/></svg>', // triangle-alert
+    meetings: KUBAI_OPEN + '<defs><mask id="messages-square-gap1" maskUnits="userSpaceOnUse" x="-2" y="-2" width="20" height="20"><rect x="-2" y="-2" width="20" height="20" fill="#fff"/><path d="M1 9.6C1 8.114 1 7.172 1.586 6.586C2.172 6 3.114 6 4.6 6L7.4 6C8.886 6 9.828 6 10.414 6.586C11 7.172 11 8.114 11 9.6L11 10.4C11 11.886 11 12.828 10.414 13.414C9.828 14 8.886 14 7.4 14L1 14Z" fill="#000" stroke="#000" stroke-width="2" stroke-linejoin="round"/></mask></defs><g mask="url(#messages-square-gap1)"><path class="duo-mark" d="M5 5.6C5 4.114 5 3.172 5.586 2.586C6.172 2 7.114 2 8.6 2L11.4 2C12.886 2 13.828 2 14.414 2.586C15 3.172 15 4.114 15 5.6L15 10L8.6 10C7.114 10 6.172 10 5.586 9.414C5 8.828 5 7.886 5 6.4Z" fill="currentColor"/></g><path class="duo-body" d="M1 9.6C1 8.114 1 7.172 1.586 6.586C2.172 6 3.114 6 4.6 6L7.4 6C8.886 6 9.828 6 10.414 6.586C11 7.172 11 8.114 11 9.6L11 10.4C11 11.886 11 12.828 10.414 13.414C9.828 14 8.886 14 7.4 14L1 14Z" fill="currentColor"/><path class="duo-mark" d="M3.25 8.875C3.25 8.53 3.53 8.25 3.875 8.25L7.625 8.25C7.97 8.25 8.25 8.53 8.25 8.875L8.25 8.875C8.25 9.22 7.97 9.5 7.625 9.5L3.875 9.5C3.53 9.5 3.25 9.22 3.25 8.875Z" fill="currentColor"/><path class="duo-mark" d="M3.25 11.125C3.25 10.78 3.53 10.5 3.875 10.5L5.625 10.5C5.97 10.5 6.25 10.78 6.25 11.125L6.25 11.125C6.25 11.47 5.97 11.75 5.625 11.75L3.875 11.75C3.53 11.75 3.25 11.47 3.25 11.125Z" fill="currentColor"/></svg>', // messages-square
+    rfis: KUBAI_OPEN + '<path class="duo-body" d="M1 8A7 7 0 1 1 15 8A7 7 0 1 1 1 8Z" fill="currentColor"/><path class="duo-mark" d="M6 6.375A2 2 0 0 1 10 6.375A1 1 0 0 1 9 7.375A1 1 0 0 0 8 8.375" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path class="duo-mark" d="M6.875 11.25A1.125 1.125 0 1 1 9.125 11.25A1.125 1.125 0 1 1 6.875 11.25Z" fill="currentColor"/></svg>', // circle-help
+    changeOrders: KUBAI_OPEN + '<path class="duo-body" d="M1 8A7 7 0 1 1 15 8A7 7 0 1 1 1 8Z" fill="currentColor"/><path class="duo-mark" d="M5 6H11M9.5 4.5L11 6L9.5 7.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path class="duo-mark" d="M11 10H5M6.5 8.5L5 10L6.5 11.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>', // arrow-left-right
+    decisionRegister: KUBAI_OPEN + '<path class="duo-mark" d="M2 1.75C2 1.336 2.336 1 2.75 1L2.75 1C3.164 1 3.5 1.336 3.5 1.75L3.5 14.25C3.5 14.664 3.164 15 2.75 15L2.75 15C2.336 15 2 14.664 2 14.25Z" fill="currentColor"/><path class="duo-body" d="M4.5 2.147C4.5 2.057 4.5 1.586 4.793 1.293C5.086 1 5.557 1 5.647 1L5.852 1C6.772 1 7.678 1.214 8.5 1.625L8.5 1.625C9.322 2.036 10.228 2.25 11.148 2.25L11.498 2.25C11.886 2.25 12.828 2.25 13.414 2.836C14 3.422 14 4.364 14 4.752L14 6.248C14 6.636 14 7.578 13.414 8.164C12.828 8.75 11.886 8.75 11.498 8.75L11.148 8.75C10.228 8.75 9.322 8.536 8.5 8.125L8.5 8.125C7.678 7.714 6.772 7.5 5.852 7.5L5.647 7.5C5.557 7.5 5.086 7.5 4.793 7.207C4.5 6.914 4.5 6.443 4.5 6.353Z" fill="currentColor"/></svg>', // flag
+    lessonsLearned: KUBAI_OPEN + '<defs><mask id="bookmark-cut1" maskUnits="userSpaceOnUse" x="-2" y="-2" width="20" height="20"><rect x="-2" y="-2" width="20" height="20" fill="#fff"/><path d="M7.5 8.5A1 1 0 1 1 9.5 8.5A1 1 0 1 1 7.5 8.5Z" fill="#000"/></mask></defs><path class="duo-body" d="M2 4.6C2 3.114 2 2.172 2.586 1.586C3.172 1 4.114 1 5.6 1L10.4 1C11.886 1 12.828 1 13.414 1.586C14 2.172 14 3.114 14 4.6L14 11.4C14 12.886 14 13.828 13.414 14.414C12.828 15 11.886 15 10.4 15L5.6 15C4.114 15 3.172 15 2.586 14.414C2 13.828 2 12.886 2 11.4Z" fill="currentColor"/><g mask="url(#bookmark-cut1)"><path class="duo-mark" d="M6.75 1L10.25 1L10.25 8.5L6.75 8.5Z" fill="currentColor"/></g></svg>', // bookmark
+    knowledgeBase: KUBAI_OPEN + '<path class="duo-body" d="M1 7.4C1 5.171 1 3.757 1.879 2.879C2.757 2 4.171 2 6.4 2L7.5 2L7.5 14L6.4 14C4.171 14 2.757 14 1.879 13.121C1 12.243 1 10.829 1 8.6Z" fill="currentColor"/><path class="duo-body" d="M8.5 2L9.6 2C11.829 2 13.243 2 14.121 2.879C15 3.757 15 5.171 15 7.4L15 8.6C15 10.829 15 12.243 14.121 13.121C13.243 14 11.829 14 9.6 14L8.5 14Z" fill="currentColor"/><path class="duo-mark" d="M3 6.625C3 6.28 3.28 6 3.625 6L4.875 6C5.22 6 5.5 6.28 5.5 6.625L5.5 6.625C5.5 6.97 5.22 7.25 4.875 7.25L3.625 7.25C3.28 7.25 3 6.97 3 6.625ZM3 9.375C3 9.03 3.28 8.75 3.625 8.75L4.875 8.75C5.22 8.75 5.5 9.03 5.5 9.375L5.5 9.375C5.5 9.72 5.22 10 4.875 10L3.625 10C3.28 10 3 9.72 3 9.375Z" fill="currentColor"/><path class="duo-mark" d="M10.5 6.625C10.5 6.28 10.78 6 11.125 6L12.375 6C12.72 6 13 6.28 13 6.625L13 6.625C13 6.97 12.72 7.25 12.375 7.25L11.125 7.25C10.78 7.25 10.5 6.97 10.5 6.625ZM10.5 9.375C10.5 9.03 10.78 8.75 11.125 8.75L12.375 8.75C12.72 8.75 13 9.03 13 9.375L13 9.375C13 9.72 12.72 10 12.375 10L11.125 10C10.78 10 10.5 9.72 10.5 9.375Z" fill="currentColor"/></svg>', // book-open
+    schedule: KUBAI_OPEN + '<path class="duo-body" d="M1 7.4C1 5.171 1 3.757 1.879 2.879C2.757 2 4.171 2 6.4 2L9.6 2C11.829 2 13.243 2 14.121 2.879C15 3.757 15 5.171 15 7.4L15 8.6C15 10.829 15 12.243 14.121 13.121C13.243 14 11.829 14 9.6 14L6.4 14C4.171 14 2.757 14 1.879 13.121C1 12.243 1 10.829 1 8.6Z" fill="currentColor"/><path class="duo-mark" d="M3.25 5.167C3.25 4.66 3.66 4.25 4.167 4.25L7.333 4.25C7.84 4.25 8.25 4.66 8.25 5.167L8.25 5.167C8.25 5.673 7.84 6.083 7.333 6.083L4.167 6.083C3.66 6.083 3.25 5.673 3.25 5.167Z" fill="currentColor"/><path class="duo-mark" d="M6 8C6 8 6 7.62 6.268 7.352C6.537 7.083 6.917 7.083 6.917 7.083L10.083 7.083C10.083 7.083 10.463 7.083 10.732 7.352C11 7.62 11 8 11 8L11 8C11 8 11 8.38 10.732 8.648C10.463 8.917 10.083 8.917 10.083 8.917L6.917 8.917C6.917 8.917 6.537 8.917 6.268 8.648C6 8.38 6 8 6 8Z" fill="currentColor"/><path class="duo-mark" d="M9 10.833C9 10.833 9 10.454 9.268 10.185C9.537 9.917 9.917 9.917 9.917 9.917L11.833 9.917C11.833 9.917 12.213 9.917 12.482 10.185C12.75 10.454 12.75 10.833 12.75 10.833L12.75 10.833C12.75 10.833 12.75 11.213 12.482 11.482C12.213 11.75 11.833 11.75 11.833 11.75L9.917 11.75C9.917 11.75 9.537 11.75 9.268 11.482C9 11.213 9 10.833 9 10.833Z" fill="currentColor"/></svg>', // chart-gantt
+    delayRecoveryDashboard: KUBAI_OPEN + '<defs><mask id="alarm-clock-gap1" maskUnits="userSpaceOnUse" x="-2" y="-2" width="20" height="20"><rect x="-2" y="-2" width="20" height="20" fill="#fff"/><path d="M2.75 8.75A5.25 5.25 0 1 1 13.25 8.75A5.25 5.25 0 1 1 2.75 8.75Z" fill="#000" stroke="#000" stroke-width="1.846" stroke-linejoin="round"/></mask></defs><g transform="translate(8 8) scale(1.083) translate(-8 -8)"><g mask="url(#alarm-clock-gap1)"><path class="duo-mark" d="M2 3.75A1.75 1.75 0 1 1 5.5 3.75A1.75 1.75 0 1 1 2 3.75ZM10.5 3.75A1.75 1.75 0 1 1 14 3.75A1.75 1.75 0 1 1 10.5 3.75Z" fill="currentColor"/></g><path class="duo-body" d="M2.75 8.75A5.25 5.25 0 1 1 13.25 8.75A5.25 5.25 0 1 1 2.75 8.75Z" fill="currentColor"/><path class="duo-mark" d="M8 6.25V8.75" fill="none" stroke="currentColor" stroke-width="1.385" stroke-linecap="round" stroke-linejoin="round"/><path class="duo-mark" d="M8 8.75H10" fill="none" stroke="currentColor" stroke-width="1.385" stroke-linecap="round" stroke-linejoin="round"/></g></svg>', // alarm-clock
+    cost: KUBAI_OPEN + '<defs><mask id="wallet-gap0" maskUnits="userSpaceOnUse" x="-2" y="-2" width="20" height="20"><rect x="-2" y="-2" width="20" height="20" fill="#fff"/><path d="M1 7.4C1 5.171 1 3.757 1.879 2.879C2.757 2 4.171 2 6.4 2L9.6 2C11.829 2 13.243 2 14.121 2.879C15 3.757 15 5.171 15 7.4L15 8.6C15 10.829 15 12.243 14.121 13.121C13.243 14 11.829 14 9.6 14L6.4 14C4.171 14 2.757 14 1.879 13.121C1 12.243 1 10.829 1 8.6Z" fill="#000" stroke="#000" stroke-width="2" stroke-linejoin="round"/></mask><mask id="wallet-cut1" maskUnits="userSpaceOnUse" x="-2" y="-2" width="20" height="20"><rect x="-2" y="-2" width="20" height="20" fill="#fff"/><path d="M10.5 8A0.75 0.75 0 1 1 12 8A0.75 0.75 0 1 1 10.5 8Z" fill="#000"/></mask></defs><path class="duo-body" d="M1 7.4C1 5.171 1 3.757 1.879 2.879C2.757 2 4.171 2 6.4 2L9.6 2C11.829 2 13.243 2 14.121 2.879C15 3.757 15 5.171 15 7.4L15 8.6C15 10.829 15 12.243 14.121 13.121C13.243 14 11.829 14 9.6 14L6.4 14C4.171 14 2.757 14 1.879 13.121C1 12.243 1 10.829 1 8.6Z" fill="currentColor"/><g mask="url(#wallet-cut1)"><path class="duo-mark" d="M9.5 8C9.5 7.034 10.284 6.25 11.25 6.25L12.25 6.25C13.216 6.25 14 7.034 14 8L14 8C14 8.966 13.216 9.75 12.25 9.75L11.25 9.75C10.284 9.75 9.5 8.966 9.5 8Z" fill="currentColor"/></g></svg>', // wallet
+    commitments: KUBAI_OPEN + '<path class="duo-body" d="M2 4.6C2 3.114 2 2.172 2.586 1.586C3.172 1 4.114 1 5.6 1L10.4 1C11.886 1 12.828 1 13.414 1.586C14 2.172 14 3.114 14 4.6L14 13L2 13ZM2 13A2 2 0 1 1 6 13A2 2 0 1 1 2 13ZM6 13A2 2 0 1 1 10 13A2 2 0 1 1 6 13ZM10 13A2 2 0 1 1 14 13A2 2 0 1 1 10 13Z" fill="currentColor"/><path class="duo-mark" d="M5 4.875C5 4.53 5.28 4.25 5.625 4.25L10.375 4.25C10.72 4.25 11 4.53 11 4.875L11 4.875C11 5.22 10.72 5.5 10.375 5.5L5.625 5.5C5.28 5.5 5 5.22 5 4.875ZM5 7.5C5 7.155 5.28 6.875 5.625 6.875L10.375 6.875C10.72 6.875 11 7.155 11 7.5L11 7.5C11 7.845 10.72 8.125 10.375 8.125L5.625 8.125C5.28 8.125 5 7.845 5 7.5Z" fill="currentColor"/><path class="duo-mark" d="M5 10.125C5 9.78 5.28 9.5 5.625 9.5L7.875 9.5C8.22 9.5 8.5 9.78 8.5 10.125L8.5 10.125C8.5 10.47 8.22 10.75 7.875 10.75L5.625 10.75C5.28 10.75 5 10.47 5 10.125Z" fill="currentColor"/></svg>', // receipt
+    resources: KUBAI_OPEN + '<defs><mask id="users-gap1" maskUnits="userSpaceOnUse" x="-2" y="-2" width="20" height="20"><rect x="-2" y="-2" width="20" height="20" fill="#fff"/><path d="M3.563 7.5A2.25 2.25 0 1 1 8.063 7.5A2.25 2.25 0 1 1 3.563 7.5Z" fill="#000" stroke="#000" stroke-width="1.846" stroke-linejoin="round"/></mask><mask id="users-gap2" maskUnits="userSpaceOnUse" x="-2" y="-2" width="20" height="20"><rect x="-2" y="-2" width="20" height="20" fill="#fff"/><path d="M2 12.917C2 11.72 2.97 10.75 4.167 10.75L7.458 10.75C8.655 10.75 9.625 11.72 9.625 12.917L9.625 12.917C9.625 13.515 9.14 14 8.542 14L3.083 14C2.485 14 2 13.515 2 12.917Z" fill="#000" stroke="#000" stroke-width="1.846" stroke-linejoin="round"/></mask></defs><g transform="translate(8 8) scale(1.083) translate(-8 -8)"><g mask="url(#users-gap2)"><g mask="url(#users-gap1)"><path class="duo-body" d="M8 4.25A2.25 2.25 0 1 1 12.5 4.25A2.25 2.25 0 1 1 8 4.25ZM6.5 11.25C6.5 10.671 6.5 9.257 7.379 8.379C8.257 7.5 9.671 7.5 10.25 7.5L10.25 7.5C10.829 7.5 12.243 7.5 13.121 8.379C14 9.257 14 10.671 14 11.25L14 11.833C14 12.415 14 13.121 13.561 13.561C13.121 14 12.415 14 11.833 14L8.667 14C8.085 14 7.379 14 6.939 13.561C6.5 13.121 6.5 12.415 6.5 11.833Z" fill="currentColor"/></g></g><path class="duo-mark" d="M3.563 7.5A2.25 2.25 0 1 1 8.063 7.5A2.25 2.25 0 1 1 3.563 7.5Z" fill="currentColor"/><path class="duo-body" d="M2 12.917C2 11.72 2.97 10.75 4.167 10.75L7.458 10.75C8.655 10.75 9.625 11.72 9.625 12.917L9.625 12.917C9.625 13.515 9.14 14 8.542 14L3.083 14C2.485 14 2 13.515 2 12.917Z" fill="currentColor"/></g></svg>', // users
+    reports: KUBAI_OPEN + '<path class="duo-body" d="M2 4.6C2 3.114 2 2.172 2.586 1.586C3.172 1 4.114 1 5.6 1L10.4 1C11.886 1 12.828 1 13.414 1.586C14 2.172 14 3.114 14 4.6L14 11.4C14 12.886 14 13.828 13.414 14.414C12.828 15 11.886 15 10.4 15L5.6 15C4.114 15 3.172 15 2.586 14.414C2 13.828 2 12.886 2 11.4Z" fill="currentColor"/><path class="duo-mark" d="M4.75 8.75C4.75 8.336 5.086 8 5.5 8L5.5 8C5.914 8 6.25 8.336 6.25 8.75L6.25 12L4.75 12Z" fill="currentColor"/><path class="duo-mark" d="M7.25 5.75C7.25 5.336 7.586 5 8 5L8 5C8.414 5 8.75 5.336 8.75 5.75L8.75 12L7.25 12Z" fill="currentColor"/><path class="duo-mark" d="M9.75 7.5C9.75 7.086 10.086 6.75 10.5 6.75L10.5 6.75C10.914 6.75 11.25 7.086 11.25 7.5L11.25 12L9.75 12Z" fill="currentColor"/></svg>', // file-chart
+    settings: KUBAI_OPEN + '<path class="duo-body" d="M2.75 8A5.25 5.25 0 1 1 13.25 8A5.25 5.25 0 1 1 2.75 8ZM12.2 8C12.2 7.493 12.2 7.139 12.42 6.92C12.639 6.7 12.993 6.7 13.5 6.7L13.7 6.7C14.207 6.7 14.561 6.7 14.78 6.92C15 7.139 15 7.493 15 8L15 8C15 8.507 15 8.861 14.78 9.08C14.561 9.3 14.207 9.3 13.7 9.3L13.5 9.3C12.993 9.3 12.639 9.3 12.42 9.08C12.2 8.861 12.2 8.507 12.2 8ZM10.97 10.97C11.329 10.611 11.578 10.361 11.889 10.361C12.2 10.361 12.45 10.611 12.808 10.97L12.95 11.111C13.308 11.47 13.558 11.72 13.558 12.031C13.558 12.341 13.308 12.591 12.95 12.95L12.95 12.95C12.591 13.308 12.341 13.558 12.031 13.558C11.72 13.558 11.47 13.308 11.111 12.95L10.97 12.808C10.611 12.45 10.361 12.2 10.361 11.889C10.361 11.578 10.611 11.329 10.97 10.97ZM8 12.2C8.507 12.2 8.861 12.2 9.08 12.42C9.3 12.639 9.3 12.993 9.3 13.5L9.3 13.7C9.3 14.207 9.3 14.561 9.08 14.78C8.861 15 8.507 15 8 15L8 15C7.493 15 7.139 15 6.92 14.78C6.7 14.561 6.7 14.207 6.7 13.7L6.7 13.5C6.7 12.993 6.7 12.639 6.92 12.42C7.139 12.2 7.493 12.2 8 12.2ZM5.03 10.97C5.389 11.329 5.639 11.578 5.639 11.889C5.639 12.2 5.389 12.45 5.03 12.808L4.889 12.95C4.53 13.308 4.28 13.558 3.969 13.558C3.659 13.558 3.409 13.308 3.05 12.95L3.05 12.95C2.692 12.591 2.442 12.341 2.442 12.031C2.442 11.72 2.692 11.47 3.05 11.111L3.192 10.97C3.55 10.611 3.8 10.361 4.111 10.361C4.422 10.361 4.671 10.611 5.03 10.97ZM3.8 8C3.8 8.507 3.8 8.861 3.58 9.08C3.361 9.3 3.007 9.3 2.5 9.3L2.3 9.3C1.793 9.3 1.439 9.3 1.22 9.08C1 8.861 1 8.507 1 8L1 8C1 7.493 1 7.139 1.22 6.92C1.439 6.7 1.793 6.7 2.3 6.7L2.5 6.7C3.007 6.7 3.361 6.7 3.58 6.92C3.8 7.139 3.8 7.493 3.8 8ZM5.03 5.03C4.671 5.389 4.422 5.639 4.111 5.639C3.8 5.639 3.55 5.389 3.192 5.03L3.05 4.889C2.692 4.53 2.442 4.28 2.442 3.969C2.442 3.659 2.692 3.409 3.05 3.05L3.05 3.05C3.409 2.692 3.659 2.442 3.969 2.442C4.28 2.442 4.53 2.692 4.889 3.05L5.03 3.192C5.389 3.55 5.639 3.8 5.639 4.111C5.639 4.422 5.389 4.671 5.03 5.03ZM8 3.8C7.493 3.8 7.139 3.8 6.92 3.58C6.7 3.361 6.7 3.007 6.7 2.5L6.7 2.3C6.7 1.793 6.7 1.439 6.92 1.22C7.139 1 7.493 1 8 1L8 1C8.507 1 8.861 1 9.08 1.22C9.3 1.439 9.3 1.793 9.3 2.3L9.3 2.5C9.3 3.007 9.3 3.361 9.08 3.58C8.861 3.8 8.507 3.8 8 3.8ZM10.97 5.03C10.611 4.671 10.361 4.422 10.361 4.111C10.361 3.8 10.611 3.55 10.97 3.192L11.111 3.05C11.47 2.692 11.72 2.442 12.031 2.442C12.341 2.442 12.591 2.692 12.95 3.05L12.95 3.05C13.308 3.409 13.558 3.659 13.558 3.969C13.558 4.28 13.308 4.53 12.95 4.889L12.808 5.03C12.45 5.389 12.2 5.639 11.889 5.639C11.578 5.639 11.329 5.389 10.97 5.03Z" fill="currentColor"/><path class="duo-mark" d="M5.75 8A2.25 2.25 0 1 1 10.25 8A2.25 2.25 0 1 1 5.75 8Z" fill="currentColor"/></svg>', // settings
   };
+
+  // The same icon renders in the sidebar, the phone drawer and the command palette at once,
+  // and some icons carry a <mask id>. Each copy gets its own ids: a url(#id) that resolves to
+  // a copy inside the hidden (display:none) sidebar doesn't paint in Chromium.
+  var navIconSeq = 0;
+  function navIcon(key) {
+    var svg = NAV_ICONS[key];
+    if (!svg) return "";
+    var n = ++navIconSeq;
+    return svg.replace(/(id="|url\(#)([\w-]+)/g, function (m, pre, id) { return pre + id + "-" + n; });
+  }
 
   function applyTheme(theme) {
     document.documentElement.setAttribute("data-theme", theme);
@@ -450,7 +451,7 @@
         a.href = "#/" + item.key;
         a.setAttribute("data-route", item.key);
         a.innerHTML =
-          '<span class="sidebar__link-blob" aria-hidden="true"></span><span class="sidebar__icon">' + (NAV_ICONS[item.key] || "") + '</span><span class="sidebar__label">' + item.label + "</span>";
+          '<span class="sidebar__icon">' + navIcon(item.key) + '</span><span class="sidebar__label">' + item.label + "</span>";
         a.addEventListener("click", closeNav);
         li.appendChild(a);
         itemsList.appendChild(li);
@@ -462,6 +463,36 @@
     });
 
     return nav;
+  }
+
+  /** Gate 7.3: at phone width the header has room for Home and Theme only, so Export,
+   * Import, Density and Focus become labelled drawer rows (shown by CSS at <=780px only,
+   * where their header buttons hide). Each row clicks the real header button, so the
+   * export spinner, import confirm and toggle state stay in one place. */
+  function buildDrawerActions() {
+    var density = window.PCC.store.get().settings.density || "comfortable";
+    var rows = [
+      { action: "export", target: "title-export-btn", icon: ICONS.export, label: "Export data" },
+      { action: "import", target: "title-import-btn", icon: ICONS.import, label: "Import data" },
+      { action: "density", target: "density-toggle-btn", icon: DENSITY_ICONS[density], label: "Density: " + DENSITY_LABELS[density] },
+      { action: "focus", target: "focus-mode-toggle-btn", icon: ICONS.focus, label: focusModeOn ? "Exit focus mode" : "Focus mode" },
+    ];
+    var wrap = document.createElement("div");
+    wrap.className = "drawer__actions";
+    rows.forEach(function (r) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "drawer__action";
+      b.setAttribute("data-action", r.action);
+      b.innerHTML = r.icon + "<span>" + r.label + "</span>";
+      b.onclick = function () {
+        closeNav();
+        var target = document.getElementById(r.target);
+        if (target) target.click();
+      };
+      wrap.appendChild(b);
+    });
+    return wrap;
   }
 
   var navKeydownHandler = null;
@@ -536,6 +567,7 @@
     var body = document.createElement("div");
     body.className = "drawer__body";
     body.appendChild(searchBtn);
+    body.appendChild(buildDrawerActions());
     body.appendChild(buildNavList());
 
     drawer.appendChild(header);
@@ -765,17 +797,17 @@
     }
 
     wrap.appendChild(
-      makeCell("company", "COMPANY", idPrefix + "-company-select", "Current Company context — filters Client and Project below", function (v) {
+      makeCell("company", "Company", idPrefix + "-company-select", "Current Company context — filters Client and Project below", function (v) {
         window.PCC.projectContext.setCompany(v);
       })
     );
     wrap.appendChild(
-      makeCell("client", "CLIENT", idPrefix + "-client-select", "Current Client context — filters Project below", function (v) {
+      makeCell("client", "Client", idPrefix + "-client-select", "Current Client context — filters Project below", function (v) {
         window.PCC.projectContext.setClient(v);
       })
     );
     wrap.appendChild(
-      makeCell("project", "PROJECT", idPrefix + "-project-select", "Current project context — carries across every project-scoped page", function (v) {
+      makeCell("project", "Project", idPrefix + "-project-select", "Current project context — carries across every project-scoped page", function (v) {
         window.PCC.projectContext.set(v);
       })
     );
@@ -814,12 +846,12 @@
     menuBtn.onclick = openNav;
     header.appendChild(menuBtn);
 
-    header.appendChild(cell("SHEET", "Dashboard", { grow: true, id: "title-block-sheet" }));
+    header.appendChild(cell("Sheet", "Dashboard", { grow: true, id: "title-block-sheet" }));
     header.appendChild(buildProjectContextCell());
 
     var data = window.PCC.store.get();
-    header.appendChild(cell("COMPANY", data.settings.company_name || "\u2014", { id: "title-block-company" }));
-    header.appendChild(cell("DATE", localIsoDate(), { id: "title-block-date" }));
+    header.appendChild(cell("Company", data.settings.company_name || "\u2014", { id: "title-block-company" }));
+    header.appendChild(cell("Date", localIsoDate(), { id: "title-block-date" }));
 
     var actions = document.createElement("div");
     actions.className = "title-block__actions";
@@ -836,8 +868,11 @@
       window.PCC.router.go("myWork");
     };
 
+    // Gate 7.3: Export, Import, Density and Focus hide at phone width (.icon-btn--hide-mobile)
+    // so the page name has room; openNav()'s drawer rows click these same buttons there.
     var exportBtn = document.createElement("button");
-    exportBtn.className = "icon-btn";
+    exportBtn.className = "icon-btn icon-btn--hide-mobile";
+    exportBtn.id = "title-export-btn";
     exportBtn.title = "Export all data to a single file";
     exportBtn.innerHTML = ICONS.export;
     exportBtn.onclick = function () {
@@ -891,7 +926,8 @@
     };
 
     var importBtn = document.createElement("button");
-    importBtn.className = "icon-btn";
+    importBtn.className = "icon-btn icon-btn--hide-mobile";
+    importBtn.id = "title-import-btn";
     importBtn.title = "Import data from a file";
     importBtn.innerHTML = ICONS.import;
     importBtn.onclick = function () {
@@ -909,14 +945,14 @@
 
     var currentDensity = window.PCC.store.get().settings.density || "comfortable";
     var densityBtn = document.createElement("button");
-    densityBtn.className = "icon-btn";
+    densityBtn.className = "icon-btn icon-btn--hide-mobile";
     densityBtn.id = "density-toggle-btn";
     densityBtn.title = "Spacing density: " + DENSITY_LABELS[currentDensity] + " (click to cycle)";
     densityBtn.innerHTML = '<span id="density-toggle-icon">' + DENSITY_ICONS[currentDensity] + "</span>";
     densityBtn.onclick = toggleDensity;
 
     var focusModeBtn = document.createElement("button");
-    focusModeBtn.className = "icon-btn" + (focusModeOn ? " icon-btn--active" : "");
+    focusModeBtn.className = "icon-btn icon-btn--hide-mobile" + (focusModeOn ? " icon-btn--active" : "");
     focusModeBtn.id = "focus-mode-toggle-btn";
     focusModeBtn.title = focusModeOn ? "Exit Focus Mode" : "Enter Focus Mode (hide non-essential chrome)";
     focusModeBtn.innerHTML = ICONS.focus;
@@ -972,11 +1008,11 @@
     footer.className = "app-footer";
 
     var left = document.createElement("span");
-    left.textContent = "PROJECT CONTROL CENTER \u2014 LOCAL, OFFLINE INSTANCE";
+    left.textContent = "Project Control Center \u2014 local, offline instance";
 
     var right = document.createElement("span");
     right.id = "footer-save-status";
-    right.textContent = "REV 0.1";
+    right.textContent = "Rev 0.1";
 
     footer.appendChild(left);
     footer.appendChild(right);
@@ -1259,7 +1295,7 @@
 
     window.PCC.store.onPersisted(function (data, ok) {
       var status = document.getElementById("footer-save-status");
-      if (status) status.textContent = ok ? "SAVED \u00b7 " + (window.PCC.dates ? window.PCC.dates.formatTime(new Date()) : new Date().toLocaleTimeString()) : "NOT SAVED \u2014 see notification";
+      if (status) status.textContent = ok ? "Saved \u00b7 " + (window.PCC.dates ? window.PCC.dates.formatTime(new Date()) : new Date().toLocaleTimeString()) : "Not saved \u2014 see notification";
       if (ok) warnIfStorageNearlyFull();
     });
   }
@@ -1317,7 +1353,7 @@
       var out = [];
       NAV_GROUPS.forEach(function (g) {
         g.items.forEach(function (item) {
-          out.push({ key: item.key, label: item.label, group: g.label, icon: NAV_ICONS[item.key] || "" });
+          out.push({ key: item.key, label: item.label, group: g.label, icon: navIcon(item.key) });
         });
       });
       return out;

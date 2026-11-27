@@ -718,7 +718,19 @@ of each gate. Tests prove nothing broke; they cannot prove it looks right.
   drop or shrink the "Sheet" label there before truncating the name), footer, command
   palette, toasts, dialogs, drawer, "⋯" menus.
 - **Tests:** the navigation, modal, palette and tablet/mobile e2e files stay green.
-- **Status:** open.
+- **Status:** done 2026-11-27 (Aditya signed off on the look). **Roadmap vs code:** the
+  phone title truncated because six header icons took 300 of 412 px (36 px left for the name;
+  all 29 names truncated), not because of the "Sheet" label, so dropping the label alone would
+  have changed nothing. Aditya chose: at <=780 px Export / Import / Density / Focus move into the
+  nav drawer as labelled rows (Home and Theme stay); 0 of 29 names truncate at 412 px (4 longest
+  still do at 360 px). Sidebar: plain filled active row (gooey blur layer and left stripe gone),
+  sentence-case group headers; Kubai duotone icons on all 29 routes (Storage Management had none);
+  title block: 2 px module hairline only, hairline cells, sentence-case labels; footer sentence
+  case; palette: sentence-case groups, same fill as the sidebar, no stripe, detail text fixed
+  (4.28:1 on the highlight in dark, found by opening the palette under axe); toasts: ink surface
+  plus status dot. Dialogs, drawer and "⋯" menus already met the rules (no change). Index
+  6,324 → 6,354.8 KB (icons); mirror 678.4 → 678.7 KB, its tabs byte-identical. axe 0 on 32
+  baseline shots + 16 shell states. New `test_shell_phase7.js` (1/14 on the old build).
 
 **Gate 7.4 — Shared components.**
 - **Build:**
