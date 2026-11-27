@@ -79,13 +79,14 @@ site/reporting/system` (`styles.css`, defined once in `:root` — not theme-swap
 low opacity so one hue works across both themes). `layout.js`'s `setActiveNav(routeName)` sets
 `documentElement[data-nav-group]` to the active NAV_GROUPS group's slug on every navigation
 (`GROUP_SLUGS` map, same file); `styles.css`'s `[data-nav-group="…"] .title-block` rules pick a
-token into `--module-accent`, and `.title-block` itself renders it as a ~6% background wash + a
-tinted bottom border via `color-mix()`. OVERVIEW has no rule and stays neutral (home base). This
+token into `--module-accent`, and `.title-block` itself renders it as a 2 px bottom hairline
+(`--module-accent` 55% into `--divider` via `color-mix()`; Gate 7.3 removed the old 6% background
+wash). OVERVIEW has no rule and stays neutral (home base). This
 is an identity cue only ("which area of the app am I in"), never state — deliberately a separate
 palette from `--status-*`/`--signal-amber` so a module's header tint can never be misread as a
 status. Applies once, app-wide, via `.title-block` (the persistent shell header) — no per-page
 component changes needed, and nothing here overrides Operate mode's "colour is restrained by
-default" rule, since the wash is low-opacity and the border is the only saturated element.
+default" rule, since the hairline is the only coloured element.
 
 **Real bug hit shipping this**: a CSS comment describing this feature contained the literal
 substring `--status-*/--signal-amber` — the `*/` inside it closed the comment early, and
@@ -123,16 +124,30 @@ for report views. See `UI_ARCHITECTURE.md` for the shell structure these apply t
 internally — the mobile drawer and desktop sidebar share one nav renderer, `buildNavList()`,
 per Gate 4; never build a second nav implementation).
 
+**Shell, as of Gate 7.3:** the active nav row and the command palette's highlighted option share
+one plain fill (`--signal-amber` 14% into `--hover-bg`); no blur/"gooey" layer, no left stripe.
+Nav group headers and title-block labels are sentence case, no letter-spacing. Title-block cells
+are split by 1 px `--divider` hairlines. Toasts are one `--ink`/`--on-ink` surface with an 8 px
+status dot (`--toast-dot`, set per variant). At `max-width: 780px` the header keeps only Home and
+Theme; Export, Import, Density and Focus are `.drawer__action` rows in the nav drawer (they click
+the hidden header buttons, so the logic lives in one place).
+
 Every interactive component should define default/hover/focus/active/disabled states at minimum
 (loading/error where applicable) — Impeccable's Operate-mode rule, and this audit's per-component
 check (`VISUAL_QA.md`) verifies it, doesn't assume it.
 
 ## Icons
 
-27 nav-route SVG icons + 7 shell-chrome icons, `stroke="currentColor"`, 24×24 viewBox, inherit
-`.sidebar__link`'s colour (Gate 3). Any new nav destination needs a new icon built the same way,
-checked against neighbours for silhouette collisions at actual render size (Gate 3 caught and
-fixed a real Meetings/Resources lookalike this way — don't skip the zoomed-comparison check).
+**Nav routes (Gate 7.3): Kubai duotone**, 29 icons in `layout.js`'s `NAV_ICONS` (MIT, notice kept
+there), 16×16 viewBox drawn at 18 px. Shapes carry `class="duo-body"` (0.3 opacity) or
+`duo-mark`; both fill/stroke `currentColor`, so `.sidebar__icon` sets the colour
+(`--text-secondary`, `--signal-amber` when active). Always insert them through `navIcon(key)`:
+it gives each copy unique `<mask id>`s, because the same icon renders in the sidebar, drawer and
+palette at once and a `url(#id)` that resolves into the hidden (`display:none`) sidebar doesn't
+paint. A new nav destination: export a pack icon (`styles/duotone/export.mjs --size 18
+--primary #111111 --secondary #eeeeee`) and convert it the same way.
+
+**Shell chrome:** 7+ stroke icons (`ICONS` in `layout.js`), `stroke="currentColor"`, 24×24.
 
 ## Phase 7 target (decided at Gate 7.0, 2026-11-26)
 
@@ -141,8 +156,10 @@ button, radii, the interim-size fold, and the two module hues moved off violet (
 `hsl(60 38% 42%)`, management `hsl(130 26% 42%)`). **Changed from the decision below:** the dark
 theme does NOT use one surface; it uses near-black page + lifted grey content (Aditya, after
 seeing 7.2). "One surface" now applies to light only, and 7.4's "fewer boxes" work must keep dark
-panels on `--bg-paper`. **Still to ship:** structure (7.4), module
-tint as a hairline, title block and Kubai icons (7.3). The text below is the original decision.
+panels on `--bg-paper`. **Shipped in Gate 7.3:** module tint as a hairline, title block,
+Kubai icons (sections above; Lookahead/Change Mgmt use the pack's `fast-forward` /
+`arrow-left-right` instead of a redraw, Storage Management got `hard-drive`). **Still to ship:**
+structure (7.4). The text below is the original decision.
 
 Everything above describes `styles.css` as it ships today. This section is what Aditya chose
 from the Gate 7.0 comparison sheets (Variant A). Gate 7.2 puts the tokens into `styles.css`
