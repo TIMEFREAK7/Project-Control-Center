@@ -26,9 +26,9 @@ export interface NavGroup {
 }
 
 export var NAV_GROUPS: NavGroup[] = [
-  { label: "PLANNING & SCHEDULE", items: [{ key: "schedule", label: "Schedule" }] },
+  { label: "Planning & schedule", items: [{ key: "schedule", label: "Schedule" }] },
   {
-    label: "PROJECT CONTROLS",
+    label: "Project controls",
     items: [
       { key: "cost", label: "Cost Tracking" },
       { key: "commitments", label: "Commitments" },
@@ -36,7 +36,7 @@ export var NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: "PROJECT MANAGEMENT",
+    label: "Project management",
     items: [
       { key: "risks", label: "Risks / Issues" },
       { key: "rfis", label: "RFI / TQ" },
@@ -45,17 +45,17 @@ export var NAV_GROUPS: NavGroup[] = [
       { key: "meetings", label: "Meetings" },
     ],
   },
-  { label: "VENDORS", items: [{ key: "vendors", label: "Vendors" }] },
-  { label: "DOCUMENTS", items: [{ key: "documents", label: "Documents" }] },
+  { label: "Vendors", items: [{ key: "vendors", label: "Vendors" }] },
+  { label: "Documents", items: [{ key: "documents", label: "Documents" }] },
   {
-    label: "SITE & KNOWLEDGE",
+    label: "Site & knowledge",
     items: [
       { key: "dailylog", label: "Daily Log" },
       { key: "lessonsLearned", label: "Lessons Learned" },
       { key: "knowledgeBase", label: "Knowledge Base" },
     ],
   },
-  { label: "REPORTING", items: [{ key: "reports", label: "Reports" }] },
+  { label: "Reporting", items: [{ key: "reports", label: "Reports" }] },
 ];
 
 function today(): string {

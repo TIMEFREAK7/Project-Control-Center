@@ -162,11 +162,11 @@ function kpiValue(container, label) {
   });
 
   await check("Overview KPI tiles reflect real seeded figures (Finish/Budget/Risks/RFIs/Documents)", () => {
-    assert.strictEqual(kpiValue(outlet(), "FINISH"), "2027-03-15");
-    assert.ok(kpiValue(outlet(), "BUDGET").indexOf("100,000") !== -1);
-    assert.strictEqual(kpiValue(outlet(), "OPEN RISKS / ISSUES"), "2");
-    assert.strictEqual(kpiValue(outlet(), "OPEN RFIs / TQs"), "1");
-    assert.strictEqual(kpiValue(outlet(), "DOCUMENTS"), "1/2");
+    assert.strictEqual(kpiValue(outlet(), "Finish"), "2027-03-15");
+    assert.ok(kpiValue(outlet(), "Budget").indexOf("100,000") !== -1);
+    assert.strictEqual(kpiValue(outlet(), "Open risks / issues"), "2");
+    assert.strictEqual(kpiValue(outlet(), "Open RFIs / TQs"), "1");
+    assert.strictEqual(kpiValue(outlet(), "Documents"), "1/2");
   });
 
   await check("Redesign Gate 8: the header vitals strip shows Progress/Schedule Status/Key Milestone/Current Health", () => {
@@ -178,10 +178,10 @@ function kpiValue(container, label) {
     }
     // PROGRESS moved here from the KPI grid (see the check above, which no longer
     // asserts it) — same 62% figure, seeded on Riverside Tower below.
-    assert.strictEqual(vitalValue("PROGRESS"), "62%");
-    assert.ok(vitalValue("SCHEDULE STATUS"), "Schedule Status vital not found");
-    assert.ok(vitalValue("KEY MILESTONE") && vitalValue("KEY MILESTONE").indexOf("Site Handover") !== -1, "Key Milestone must show the seeded milestone");
-    assert.strictEqual(vitalValue("CURRENT HEALTH"), "At Risk", "must match the project's own status, same figure the header badge already shows");
+    assert.strictEqual(vitalValue("Progress"), "62%");
+    assert.ok(vitalValue("Schedule status"), "Schedule Status vital not found");
+    assert.ok(vitalValue("Key milestone") && vitalValue("Key milestone").indexOf("Site Handover") !== -1, "Key Milestone must show the seeded milestone");
+    assert.strictEqual(vitalValue("Current health"), "At Risk", "must match the project's own status, same figure the header badge already shows");
   });
 
   await check("Management Attention surfaces every cheap, non-CPM signal: critical risk, overdue RFI, overdue document, overdue meeting action, pending CO, cost warning", () => {
@@ -249,9 +249,9 @@ function kpiValue(container, label) {
     win.PCC.projectWorkspace.viewProject(projA);
     win.PCC.router.go("projectWorkspace");
     win.PCC.router.render();
-    const directory = Array.from(outlet().querySelectorAll(".panel")).find((p) => p.textContent.indexOf("PLANNING & SCHEDULE") !== -1);
+    const directory = Array.from(outlet().querySelectorAll(".panel")).find((p) => p.textContent.indexOf("Planning & schedule") !== -1);
     assert.ok(directory, "module directory panel not found");
-    ["PLANNING & SCHEDULE", "PROJECT CONTROLS", "PROJECT MANAGEMENT", "VENDORS", "DOCUMENTS", "SITE & KNOWLEDGE", "REPORTING"].forEach((label) => {
+    ["Planning & schedule", "Project controls", "Project management", "Vendors", "Documents", "Site & knowledge", "Reporting"].forEach((label) => {
       assert.ok(directory.textContent.indexOf(label) !== -1, "module directory missing group " + label);
     });
     ["Daily Log", "Decision Register", "Lessons Learned", "Knowledge Base", "Commitments", "Resources", "Vendors", "Reports"].forEach((label) => {
@@ -287,7 +287,7 @@ function kpiValue(container, label) {
     setReactSelectValue(win, select, projB);
     await flush();
     assert.ok(outlet().textContent.indexOf("Harbor Bridge") !== -1);
-    assert.strictEqual(kpiValue(outlet(), "OPEN RISKS / ISSUES"), "0", "Harbor Bridge has no seeded risks");
+    assert.strictEqual(kpiValue(outlet(), "Open risks / issues"), "0", "Harbor Bridge has no seeded risks");
   });
 
   await check("no active projects shows the empty state, not a crash", () => {

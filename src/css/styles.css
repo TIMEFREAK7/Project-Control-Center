@@ -770,6 +770,47 @@ footer.app-footer {
   padding: 20px;
 }
 
+/* Gate 7.5 ("fewer boxes"): a panel that only wraps a section (a heading plus its list or
+   figures) is not a box. Light: one surface, sections split by a hairline and space. Dark keeps
+   the lifted grey surface (Aditya's ColorOS call at 7.2), just without the border. Discrete
+   objects (project cards, attention items, dialogs) keep the plain .panel/.card box. */
+.panel--flat {
+  background-color: transparent;
+  border: none;
+  border-top: 1px solid var(--divider);
+  border-radius: 0;
+  padding: var(--space-4) 0;
+}
+
+html[data-theme="dark"] .panel--flat {
+  background-color: var(--bg-paper);
+  border-top: none;
+  border-radius: var(--radius-md);
+  padding: var(--space-4) 20px;
+}
+
+/* Gate 7.5a: Dashboard's context card duplicates the title-block switcher wherever that one is
+   visible (>1150px); the mirror app has no title block, so it always keeps the card. */
+@media (min-width: 1151px) {
+  .dashboard-context-card {
+    display: none;
+  }
+}
+
+.mirror-app-shell .dashboard-context-card {
+  display: block;
+}
+
+/* Gate 7.5a: a toolbar's secondary filters fold behind a "Filters" toggle on phones only
+   (.filter-fold is display:contents elsewhere, so the toolbar lays out exactly as before). */
+.filter-fold {
+  display: contents;
+}
+
+.filter-fold__toggle {
+  display: none;
+}
+
 .panel + .panel {
   margin-top: var(--space-4);
 }
@@ -1587,11 +1628,10 @@ a:focus-visible {
   gap: 2px;
 }
 
+/* Gate 7.5a: sentence case (capitals only on table column headers). */
 .card-stat__label {
   font-size: var(--text-10-5);
   color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
 }
 
 .card-stat__value {
@@ -1769,9 +1809,7 @@ a:focus-visible {
   font-size: var(--text-10-5);
   padding: 3px 9px;
   border-radius: var(--radius-lg);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  white-space: nowrap;
+  white-space: nowrap; /* Gate 7.5a: sentence case, no forced capitals or tracking */
 }
 
 /* Status icons (Lucide, see --icon-status-* tokens above) — status was already carried by
@@ -1957,9 +1995,7 @@ td .status-badge--info::before { background-color: var(--text-secondary); }
   display: block;
   color: var(--text-secondary);
   font-size: var(--text-10-5);
-  letter-spacing: 0.6px;
-  text-transform: uppercase;
-  margin-bottom: 3px;
+  margin-bottom: 3px; /* Gate 7.5a: sentence case, no forced capitals or tracking */
 }
 
 .detail-item__value {
@@ -2721,7 +2757,9 @@ td .status-badge--info::before { background-color: var(--text-secondary); }
     overflow-x: hidden;
   }
 
-  .title-block__cell:not(.title-block__cell--grow) {
+  /* Gate 7.5a: scoped to the title block, so Dashboard's context card (same cell class) keeps
+     its selects at the widths where it's the only switcher on screen. */
+  .title-block .title-block__cell:not(.title-block__cell--grow) {
     display: none;
   }
 
@@ -2863,7 +2901,21 @@ td .status-badge--info::before { background-color: var(--text-secondary); }
     display: flex;
   }
 
-  .title-block__cell:not(.title-block__cell--grow) {
+  .filter-fold__toggle {
+    display: inline-flex;
+  }
+
+  .filter-fold {
+    display: none;
+  }
+
+  .filter-fold--open {
+    display: contents;
+  }
+
+  /* Gate 7.5a: scoped to the title block, so Dashboard's context card (same cell class) keeps
+     its selects at the widths where it's the only switcher on screen. */
+  .title-block .title-block__cell:not(.title-block__cell--grow) {
     display: none;
   }
 

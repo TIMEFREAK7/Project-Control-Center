@@ -252,7 +252,7 @@ function setReactSelectValue(win, select, value) {
     assert.strictEqual(kpiValue("TOTAL REMAINING"), "USD 25,000");
   });
 
-  await check("Executive Center shows a COMMITMENTS KPI section with the same totals", async () => {
+  await check("Executive Center shows a Commitments KPI section with the same totals", async () => {
     win.PCC.executiveCenter.viewProject(projectId);
     win.PCC.router.go("executiveCenter");
     await flush();
@@ -263,18 +263,18 @@ function setReactSelectValue(win, select, value) {
     costTab.click();
     await flush();
     var text = outlet().textContent;
-    assert.ok(text.indexOf("COMMITMENTS") !== -1, "Commitments KPI section must render");
+    assert.ok(text.indexOf("Commitments") !== -1, "Commitments KPI section must render");
     assert.ok(text.indexOf("25,000") !== -1, "actual/remaining figures should appear");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("Portfolio's Details panel shows a COMMITMENTS section with Total Committed", () => {
+  await check("Portfolio's Details panel shows a Commitments section with Total Committed", () => {
     win.PCC.router.go("portfolio");
     win.PCC.router.render();
     win.PCC.portfolio.viewProject(projectId);
     win.PCC.router.render();
     var text = outlet().textContent;
-    assert.ok(text.indexOf("COMMITMENTS (1)") !== -1);
+    assert.ok(text.indexOf("Commitments (1)") !== -1);
     assert.ok(text.indexOf("Total Committed 50,000") !== -1);
   });
 

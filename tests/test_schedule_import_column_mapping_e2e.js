@@ -191,7 +191,11 @@ function uploadWorkbook(win, fileInput, headers, dataRows, filename) {
     var confirmBtn = Array.from(outlet().querySelectorAll("button")).find((b) => b.textContent.indexOf("Confirm Import") === 0);
     assert.ok(confirmBtn, "'Confirm Import' button not found");
     confirmBtn.click();
-    await flush();
+    // The import finishes asynchronously; one flush() raced it under load (2026-11-27, same as
+    // the MSP/P6 import tests). Wait up to 3 s for the imported activity.
+    for (var waited = 0; waited < 150 && !win.PCC.store.get().activities.some((a) => a.project_id === projectId && a.external_id === "A010"); waited++) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
 
     var activity = win.PCC.store.get().activities.find((a) => a.project_id === projectId && a.external_id === "A010");
     assert.ok(activity, "expected an activity with external_id 'A010' to have been created");

@@ -262,7 +262,7 @@ function findButtonByText(win, text) {
     detailsBtn.click();
     await flush();
     var outlet = win.document.getElementById("page-outlet");
-    assert.ok(outlet.textContent.indexOf("COST TRACKING") !== -1, "expected a Cost Tracking section in project details");
+    assert.ok(outlet.textContent.indexOf("Cost tracking") !== -1, "expected a Cost Tracking section in project details");
     assert.ok(outlet.textContent.indexOf("Budgeted") !== -1 && outlet.textContent.indexOf("variance") !== -1);
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });

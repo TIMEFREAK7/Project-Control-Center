@@ -88,7 +88,7 @@ function BucketPanel({
   projectsById: { [id: string]: PCCProject };
 }) {
   return (
-    <div className="panel" style={{ marginBottom: 16 }}>
+    <div className="panel panel--flat" style={{ marginBottom: 16 }}>
       <h3 style={{ marginBottom: 8 }}>
         {bucketDef.label} ({items.length})
       </h3>
@@ -150,23 +150,12 @@ export default function ActionCentrePage() {
     setProjectContext(value);
   }
 
-  const subText =
-    items.length === 0
-      ? effectiveFilter
-        ? "Nothing outstanding for this project right now."
-        : "Nothing outstanding across the active portfolio right now."
-      : "Meeting actions, RFI/TQ responses, document submissions, recovery actions, newly-identified delays, and pending Change Orders across " +
-        activeProjects.length +
-        " active project" +
-        (activeProjects.length === 1 ? "" : "s") +
-        ".";
+  // Gate 7.5a: no explanatory sentence under the title; the empty state is one short line.
+  const emptyText = effectiveFilter ? "Nothing outstanding for this project right now." : "Nothing outstanding across the active portfolio right now.";
 
   return (
     <div>
-      <h2 style={{ marginBottom: 4 }}>Planner Action Centre</h2>
-      <p className="text-secondary" style={{ marginTop: 0, marginBottom: 20 }}>
-        {subText}
-      </p>
+      <h2 style={{ marginBottom: "var(--space-4)" }}>Planner Action Centre</h2>
 
       {allActiveProjects.length > 0 ? (
         <div className="toolbar no-print" style={{ marginBottom: 8 }}>
@@ -185,10 +174,7 @@ export default function ActionCentrePage() {
       ) : null}
 
       {items.length === 0 ? (
-        <div className="panel empty-state">
-          Nothing to show yet. Once Meeting Actions, RFI/TQ, Document Requirements, Recovery Actions, newly-identified
-          Delays, or Change Orders have due dates or pending status, they'll surface here.
-        </div>
+        <div className="panel empty-state">{emptyText}</div>
       ) : (
         <ActionCentreResults data={data} items={items} projectsById={projectsById} />
       )}
@@ -231,10 +217,10 @@ function ActionCentreResults({
   return (
     <>
       <div className="kpi-grid">
-        <KpiCard label="OVERDUE" value={byBucket.overdue!.length} colorVar={byBucket.overdue!.length > 0 ? "--status-critical" : null} />
-        <KpiCard label="DUE TODAY" value={byBucket.today!.length} colorVar={byBucket.today!.length > 0 ? "--status-at-risk" : null} />
-        <KpiCard label="DUE THIS WEEK" value={byBucket.week!.length} colorVar={byBucket.week!.length > 0 ? "--status-at-risk" : null} />
-        <KpiCard label="NO DUE DATE" value={byBucket.waiting!.length} colorVar={null} />
+        <KpiCard label="Overdue" value={byBucket.overdue!.length} colorVar={byBucket.overdue!.length > 0 ? "--status-critical" : null} />
+        <KpiCard label="Due today" value={byBucket.today!.length} colorVar={byBucket.today!.length > 0 ? "--status-at-risk" : null} />
+        <KpiCard label="Due this week" value={byBucket.week!.length} colorVar={byBucket.week!.length > 0 ? "--status-at-risk" : null} />
+        <KpiCard label="No due date" value={byBucket.waiting!.length} colorVar={null} />
       </div>
 
       {buckets.map((b) => (

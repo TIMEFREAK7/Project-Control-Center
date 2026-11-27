@@ -120,7 +120,7 @@ function diffDays(fromIso, toIso) {
     assert.ok(projectId && scheduleId && lateActivityId);
   });
 
-  await check("Executive Center's STATUS DATE section shows the correct Completed/In Progress/Not Started/Remaining Duration counts", async () => {
+  await check("Executive Center's Status date section shows the correct Completed/In Progress/Not Started/Remaining Duration counts", async () => {
     win.PCC.executiveCenter.viewProject(projectId);
     win.PCC.router.go("executiveCenter");
     await flush();
@@ -132,7 +132,7 @@ function diffDays(fromIso, toIso) {
     await flush();
 
     var text = outlet().textContent;
-    assert.ok(text.indexOf("STATUS DATE (2026-06-01)") !== -1, "section header must show the schedule's own data_date as the status date");
+    assert.ok(text.indexOf("Status date (2026-06-01)") !== -1, "section header must show the schedule's own data_date as the status date");
 
     var kpiCards = Array.from(outlet().querySelectorAll(".kpi-card"));
     function kpiValue(label) {

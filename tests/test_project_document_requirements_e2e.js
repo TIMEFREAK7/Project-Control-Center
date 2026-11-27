@@ -66,12 +66,12 @@ function findLabelContaining(dom, text) {
 }
 function requirementFieldCount(dom) {
   const body = dom.window.document.body.textContent;
-  const m = body.match(/DOCUMENT REQUIREMENTS \((\d+) of (\d+)\)/);
+  const m = body.match(/Document requirements \((\d+) of (\d+)\)/);
   return m ? { selected: Number(m[1]), total: Number(m[2]) } : null;
 }
 function requirementSummaryCount(dom) {
   const body = dom.window.document.body.textContent;
-  const m = body.match(/DOCUMENT REQUIREMENTS \((\d+) of (\d+) available\)/);
+  const m = body.match(/Document requirements \((\d+) of (\d+) available\)/);
   return m ? { available: Number(m[1]), total: Number(m[2]) } : null;
 }
 function findFieldByLabel(dom, labelText) {
@@ -378,7 +378,7 @@ function setReactValue(win, el, value) {
 
     var bodyText = win.document.getElementById("page-outlet").textContent;
     assert.ok(bodyText.indexOf("due 2020-01-01") !== -1, "the read-only summary must show the requirement's due date");
-    assert.ok(/DOCUMENT REQUIREMENTS \(\d+ of \d+ available, 1 overdue\)/.test(bodyText), "the header must call out the overdue count once a date has passed");
+    assert.ok(/Document requirements \(\d+ of \d+ available, 1 overdue\)/.test(bodyText), "the header must call out the overdue count once a date has passed");
     assert.ok(bodyText.indexOf("Overdue") !== -1);
   });
 

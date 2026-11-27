@@ -282,7 +282,7 @@ function DocumentRequirementsField({ data, project, docReq, setDocReq }: Documen
   return (
     <div style={{ marginTop: "var(--space-4)", paddingTop: "var(--space-4)", borderTop: "1px solid var(--divider)" }}>
       <div className="detail-item__label">
-        DOCUMENT REQUIREMENTS ({docReq.selectedTypeIds.length} of {activeTypes.length})
+        Document requirements ({docReq.selectedTypeIds.length} of {activeTypes.length})
       </div>
       <p className="text-secondary" style={{ fontSize: "var(--text-sm)", margin: "var(--space-1) 0 0" }}>
         Select which document types this project needs. Status updates automatically once a matching document is attached.
@@ -323,7 +323,7 @@ function DocumentRequirementsField({ data, project, docReq, setDocReq }: Documen
               .map(([cat, types]) => (
                 <div key={cat}>
                   <div className="text-secondary" style={{ fontSize: "var(--text-xs)", fontWeight: 600, marginBottom: "var(--space-1)" }}>
-                    {cat.toUpperCase()}
+                    {cat}
                   </div>
                   {types.map((t) => {
                     const checked = docReq.selectedTypeIds.indexOf(t.id) !== -1;
@@ -520,13 +520,13 @@ function ProjectForm({ isNew, project, data, onCancel, onSaved }: ProjectFormPro
 
 function KpiStrip({ kpis }: { kpis: PortfolioKpis }) {
   const items = [
-    { label: "TOTAL PROJECTS", value: kpis.total, colorVar: null },
-    { label: "ACTIVE", value: kpis.active, colorVar: null },
-    { label: "COMPLETED", value: kpis.completed, colorVar: null },
-    { label: "AT RISK", value: kpis.atRisk, colorVar: kpis.atRisk > 0 ? "var(--status-at-risk)" : null },
-    { label: "DELAYED", value: kpis.delayed, colorVar: kpis.delayed > 0 ? "var(--status-critical)" : null },
-    { label: "UPCOMING", value: kpis.upcoming, colorVar: null },
-    { label: "UNADDRESSED DELAY (DAYS)", value: kpis.unaddressedDelayDays, colorVar: kpis.unaddressedDelayDays > 0 ? "var(--status-critical)" : null },
+    { label: "Total projects", value: kpis.total, colorVar: null },
+    { label: "Active", value: kpis.active, colorVar: null },
+    { label: "Completed", value: kpis.completed, colorVar: null },
+    { label: "At risk", value: kpis.atRisk, colorVar: kpis.atRisk > 0 ? "var(--status-at-risk)" : null },
+    { label: "Delayed", value: kpis.delayed, colorVar: kpis.delayed > 0 ? "var(--status-critical)" : null },
+    { label: "Upcoming", value: kpis.upcoming, colorVar: null },
+    { label: "Unaddressed delay (days)", value: kpis.unaddressedDelayDays, colorVar: kpis.unaddressedDelayDays > 0 ? "var(--status-critical)" : null },
   ];
   return (
     <div className="kpi-grid" style={{ marginBottom: "var(--space-4)" }}>
@@ -551,9 +551,16 @@ function RagCell({ rag }: { rag: string }) {
   return <span className={"status-badge status-badge--" + (RAG_BADGE_CLASS[rag] || "info")}>{RAG_LABEL[rag] || rag}</span>;
 }
 
-function CompareTable({ projects, onOpenDetails }: { projects: PCCProject[]; onOpenDetails: (id: string) => void }) {
+function CompareTable({ projects, onOpenDetails, onClearFilters }: { projects: PCCProject[]; onOpenDetails: (id: string) => void; onClearFilters: () => void }) {
   if (projects.length === 0) {
-    return <div className="panel empty-state">No projects match this search/filter.</div>;
+    return (
+      <div className="panel empty-state">
+        No projects match this search/filter.
+        <button className="btn btn--ghost empty-state__action" onClick={onClearFilters}>
+          Clear filters
+        </button>
+      </div>
+    );
   }
   return (
     <div className="panel">
@@ -575,7 +582,7 @@ function CompareTable({ projects, onOpenDetails }: { projects: PCCProject[]; onO
             return (
               <tr key={p.id}>
                 <td>
-                  <button className="btn btn--ghost" onClick={() => onOpenDetails(p.id)}>
+                  <button className="btn btn--quiet" onClick={() => onOpenDetails(p.id)}>
                     {p.name || "(unnamed project)"}
                   </button>
                 </td>
@@ -696,13 +703,14 @@ function ProjectCard({ p, data, expanded, menuOpen, onToggleDetails, onToggleMen
       </div>
 
       <div className="project-card__actions">
-        <button className="btn btn--primary" onClick={() => viewWorkspace(p.id)}>
+        {/* Gate 7.5a: one primary per view (+ Add Project); per-card actions are secondary/quiet. */}
+        <button className="btn btn--ghost" onClick={() => viewWorkspace(p.id)}>
           Open Workspace
         </button>
-        <button className="btn btn--ghost" onClick={() => viewExecutiveCenter(p.id)}>
+        <button className="btn btn--quiet" onClick={() => viewExecutiveCenter(p.id)}>
           Executive Center
         </button>
-        <button className="btn btn--ghost" onClick={onToggleDetails}>
+        <button className="btn btn--quiet" onClick={onToggleDetails}>
           {expanded ? "Hide Details" : "Details"}
         </button>
 
@@ -802,7 +810,7 @@ function VendorsSection({ p, data, onChanged }: { p: PCCProject; data: PCCStoreD
   return (
     <div style={{ marginTop: "var(--space-4)", paddingTop: "var(--space-4)", borderTop: "1px solid var(--divider)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span className="detail-item__label">VENDORS ({links.length})</span>
+        <span className="detail-item__label">Vendors ({links.length})</span>
         <div style={{ display: "flex", gap: "var(--space-2)" }}>
           <button
             className="btn btn--ghost"
@@ -913,7 +921,7 @@ function DocumentRequirementsSummary({ p, data, onEdit }: { p: PCCProject; data:
     <div style={{ marginTop: "var(--space-4)", paddingTop: "var(--space-4)", borderTop: "1px solid var(--divider)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "var(--space-2)" }}>
         <span className="detail-item__label">
-          DOCUMENT REQUIREMENTS ({availableCount} of {requirements.length} available{overdueCount > 0 ? ", " + overdueCount + " overdue" : ""})
+          Document requirements ({availableCount} of {requirements.length} available{overdueCount > 0 ? ", " + overdueCount + " overdue" : ""})
         </span>
         <button className="btn btn--ghost" onClick={onEdit}>
           Edit Requirements
@@ -969,7 +977,7 @@ function CostSection({ p, data }: { p: PCCProject; data: PCCStoreData }) {
   return (
     <div style={{ marginTop: "var(--space-4)", paddingTop: "var(--space-4)", borderTop: "1px solid var(--divider)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span className="detail-item__label">COST TRACKING</span>
+        <span className="detail-item__label">Cost tracking</span>
         <button className="btn btn--ghost" onClick={() => viewCost(p.id)}>
           View All
         </button>
@@ -1024,7 +1032,7 @@ function ResourcesAssignedSection({ p, data }: { p: PCCProject; data: PCCStoreDa
   return (
     <div style={{ marginTop: "var(--space-4)", paddingTop: "var(--space-4)", borderTop: "1px solid var(--divider)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span className="detail-item__label">RESOURCES ASSIGNED</span>
+        <span className="detail-item__label">Resources assigned</span>
         <button className="btn btn--ghost" onClick={() => viewResources(p.id)}>
           View All
         </button>
@@ -1057,7 +1065,7 @@ function CommitmentsSection({ p, data }: { p: PCCProject; data: PCCStoreData }) 
   return (
     <div style={{ marginTop: "var(--space-4)", paddingTop: "var(--space-4)", borderTop: "1px solid var(--divider)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span className="detail-item__label">COMMITMENTS ({commitments.length})</span>
+        <span className="detail-item__label">Commitments ({commitments.length})</span>
         <button className="btn btn--ghost" onClick={() => viewCommitments(p.id)}>
           View All
         </button>
@@ -1103,7 +1111,7 @@ function ProjectDetails({ p, data, onChanged, onEditRequirements }: ProjectDetai
       </div>
 
       <LinkedListSection
-        label="ATTACHMENTS"
+        label="Attachments"
         items={attachedDocs}
         emptyText="No documents attached to this project yet."
         onViewAll={attachedDocs.length > 0 ? () => exportArchive(p, data.documents) : null}
@@ -1129,7 +1137,7 @@ function ProjectDetails({ p, data, onChanged, onEditRequirements }: ProjectDetai
       <DocumentRequirementsSummary p={p} data={data} onEdit={onEditRequirements} />
 
       <LinkedListSection
-        label="DAILY LOGS"
+        label="Daily logs"
         items={projectLogs}
         emptyText="No daily log entries yet for this project."
         onViewAll={() => viewDailyLogs(p.id)}
@@ -1146,7 +1154,7 @@ function ProjectDetails({ p, data, onChanged, onEditRequirements }: ProjectDetai
       />
 
       <LinkedListSection
-        label="OPEN RISKS / ISSUES"
+        label="Open risks / issues"
         items={projectRisks}
         emptyText="No open risks or issues for this project."
         onViewAll={() => viewRisks(p.id)}
@@ -1158,7 +1166,7 @@ function ProjectDetails({ p, data, onChanged, onEditRequirements }: ProjectDetai
       />
 
       <LinkedListSection
-        label="MEETINGS"
+        label="Meetings"
         items={projectMeetings}
         emptyText="No meetings logged yet for this project."
         onViewAll={() => viewMeetings(p.id)}
@@ -1176,7 +1184,7 @@ function ProjectDetails({ p, data, onChanged, onEditRequirements }: ProjectDetai
       />
 
       <LinkedListSection
-        label="OPEN RFIs / TQs"
+        label="Open RFIs / TQs"
         items={projectRfis}
         emptyText="No open RFIs or Technical Queries for this project."
         onViewAll={() => viewRfis(p.id)}
@@ -1191,7 +1199,7 @@ function ProjectDetails({ p, data, onChanged, onEditRequirements }: ProjectDetai
       />
 
       <LinkedListSection
-        label="OPEN CHANGE ORDERS"
+        label="Open change orders"
         items={projectChangeOrders}
         emptyText="No open Change Orders for this project."
         onViewAll={() => viewChangeOrders(p.id)}
@@ -1260,6 +1268,7 @@ export default function PortfolioPage({ initialExpandedId, initialStatusFilter }
   const [typeFilter, setTypeFilter] = useState("");
   const [yearFilter, setYearFilter] = useState("");
   const [showArchived, setShowArchived] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [view, setView] = useState("cards");
   const pendingPrefill = window.PCC.pendingProjectPrefill;
   const [editingId, setEditingId] = useState<string | null>(() => (pendingPrefill ? "new" : null));
@@ -1274,6 +1283,13 @@ export default function PortfolioPage({ initialExpandedId, initialStatusFilter }
   const filters: PortfolioFilters = { search, statusFilter, healthFilter, clientFilter, countryFilter, locationFilter, sectorFilter, pmFilter, plannerFilter, typeFilter, yearFilter, showArchived };
   const filtered = data.projects.filter((p) => projectMatchesFilters(p, data, filters));
   const kpis = computePortfolioKpis(data);
+  // Gate 7.5a: the folded phone filters show how many are set; Clear filters resets them all.
+  const activeFilterCount = [statusFilter, healthFilter, clientFilter, countryFilter, locationFilter, sectorFilter, pmFilter, plannerFilter, typeFilter, yearFilter].filter(Boolean).length + (showArchived ? 1 : 0);
+  function clearFilters() {
+    setSearch("");
+    [setStatusFilter, setHealthFilter, setClientFilter, setCountryFilter, setLocationFilter, setSectorFilter, setPmFilter, setPlannerFilter, setTypeFilter, setYearFilter].forEach((set) => set(""));
+    setShowArchived(false);
+  }
 
   const projectBeingEdited = !editingId ? null : editingId === "new" ? newProject(pendingPrefill || {}) : data.projects.find((p) => p.id === editingId);
 
@@ -1309,6 +1325,10 @@ export default function PortfolioPage({ initialExpandedId, initialStatusFilter }
 
       <div className="toolbar">
         <input type="text" className="search-input" aria-label="Search projects" placeholder="Search by name, client, company, location, sector, PM, or planner…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <button className="btn btn--ghost filter-fold__toggle" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(!filtersOpen)}>
+          {"Filters" + (activeFilterCount ? " (" + activeFilterCount + ")" : "")}
+        </button>
+        <div className={"filter-fold" + (filtersOpen ? " filter-fold--open" : "")}>
         <select aria-label="Filter by status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
           <option value="">All statuses</option>
           {window.PCC.store.PROJECT_STATUSES.map((s) => (
@@ -1392,6 +1412,7 @@ export default function PortfolioPage({ initialExpandedId, initialStatusFilter }
           <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
           Show archived
         </label>
+        </div>
         <div className="toolbar__spacer" />
         <button
           className="btn btn--primary"
@@ -1422,9 +1443,24 @@ export default function PortfolioPage({ initialExpandedId, initialStatusFilter }
             setExpandedId(id);
             setView("cards");
           }}
+          onClearFilters={clearFilters}
         />
       ) : filtered.length === 0 ? (
-        <div className="panel empty-state">{data.projects.length === 0 ? "No projects yet. Click “+ Add Project” to create your first one." : "No projects match this search/filter."}</div>
+        data.projects.length === 0 ? (
+          <div className="panel empty-state">
+            No projects yet.
+            <button className="btn btn--ghost empty-state__action" onClick={() => setEditingId("new")}>
+              + Add Project
+            </button>
+          </div>
+        ) : (
+          <div className="panel empty-state">
+            No projects match this search/filter.
+            <button className="btn btn--ghost empty-state__action" onClick={clearFilters}>
+              Clear filters
+            </button>
+          </div>
+        )
       ) : (
         <div className="project-list">
           {filtered.map((p) => (

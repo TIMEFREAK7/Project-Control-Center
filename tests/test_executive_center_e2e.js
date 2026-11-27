@@ -238,7 +238,7 @@ function findButtonByText(dom, text) {
 
   await check("Gate 27: Document Control Status section shows the no-requirements default before any are assigned", () => {
     var outlet = win.document.getElementById("page-outlet");
-    assert.ok(outlet.textContent.indexOf("DOCUMENT CONTROL STATUS") !== -1, "the new 6th summary section must render");
+    assert.ok(outlet.textContent.indexOf("Document Control Status") !== -1, "the new 6th summary section must render");
     assert.ok(outlet.textContent.indexOf("No document requirements have been assigned to this project yet.") !== -1);
   });
 

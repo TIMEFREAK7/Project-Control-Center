@@ -203,10 +203,10 @@ function todayPlusDays(days) {
   });
 
   await check("the KPI cards show the correct counts", () => {
-    assert.strictEqual(kpiValue(dom, "OVERDUE"), 3, "1 meeting action + 1 RFI + 1 document requirement (BOQ, day -1) all overdue");
-    assert.strictEqual(kpiValue(dom, "DUE TODAY"), 1);
-    assert.strictEqual(kpiValue(dom, "DUE THIS WEEK"), 1);
-    assert.strictEqual(kpiValue(dom, "NO DUE DATE"), 4, "1 undated meeting action + 1 undated RFI + 1 undated document requirement + 1 pending change order");
+    assert.strictEqual(kpiValue(dom, "Overdue"), 3, "1 meeting action + 1 RFI + 1 document requirement (BOQ, day -1) all overdue");
+    assert.strictEqual(kpiValue(dom, "Due today"), 1);
+    assert.strictEqual(kpiValue(dom, "Due this week"), 1);
+    assert.strictEqual(kpiValue(dom, "No due date"), 4, "1 undated meeting action + 1 undated RFI + 1 undated document requirement + 1 pending change order");
   });
 
   await check("the Overdue bucket sorts ascending by due date (RFI day -3, meeting action day -2, document day -1)", () => {

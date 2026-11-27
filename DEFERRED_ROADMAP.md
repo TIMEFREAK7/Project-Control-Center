@@ -775,7 +775,18 @@ Apply 7.2–7.4 and the "one primary action" rule. No new features, no moved dat
 - **7.5d Cost and supply:** Cost, Commitments, Resources, Vendors, Vendor Performance.
 - **7.5e Documents and system:** Documents, Document Types, Document Control, Storage,
   Daily Log, Lessons Learned, Knowledge Base, Reports (the screen), Settings.
-- **Status:** open (all five).
+- **Status:** 7.5a done 2026-11-27 (Aditya signed off on the look); 7.5b–e open.
+  7.5a found Dashboard's context card was EMPTY at <=1150px and in the mirror app (it reuses
+  `.title-block__cell`, which the title block's hide rule caught); the rule is now scoped to
+  `.title-block`, and the card shows only at <=1150px (always in the mirror). Portfolio phone:
+  first project 1,077 → 537 px (filters fold behind "Filters (n)", <=780px only). One primary
+  per view; 64+ uppercase labels → sentence case (abbreviations kept), and `.status-badge` /
+  `.card-stat__label` / `.detail-item__label` no longer force capitals (all pages); title
+  subtitles removed (Dashboard keeps "n of m match these filters" only when filtered, which
+  isn't visible elsewhere); `.panel--flat` on section wrappers (dark keeps the lifted surface);
+  empty states with their action (+ Add Project, Clear filters, Go to Portfolio, + New Weekly
+  Review); dates out of `.mono`. Left: Dashboard's own 7 phone filters still stack (same fold
+  would fix it); Executive Center's "INR 42,00,00,000" wraps in its KPI tile.
 
 **Gate 7.6 — In-app confirmation dialogs (conditional).**
 - **Gap:** 48 native `confirm()` calls. They look like the browser, not the app, and cannot

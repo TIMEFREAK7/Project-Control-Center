@@ -132,7 +132,9 @@ function uploadXerFile(win, fileInput, xerText, filename) {
     var confirmBtn = Array.from(win.document.querySelectorAll("button")).find((b) => b.textContent.indexOf("Confirm Import") === 0);
     assert.ok(confirmBtn, "Confirm Import button not found");
     confirmBtn.click();
-    await flush();
+    // Same race as test_msp_xml_import_e2e.js (fixed at Gate 7.4): the import finishes
+    // asynchronously, so wait for the schedule instead of one flush() (seen failing 2026-11-27).
+    await waitFor(() => win.PCC.store.get().schedules.some((s) => s.project_id === projectId));
 
     var data = win.PCC.store.get();
     var schedule = data.schedules.find((s) => s.project_id === projectId);

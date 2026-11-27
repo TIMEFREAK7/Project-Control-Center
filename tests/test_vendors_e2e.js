@@ -195,7 +195,7 @@ function findButtonsByTextPrefix(dom, prefix) {
     findButtonByText(dom, "Details").click();
     await flush();
     var text = outlet().textContent;
-    assert.ok(text.indexOf("VENDORS (1)") !== -1, "expected the Vendors section to show the 1 link made from the Vendor Profile side, got: " + text.slice(0, 1000));
+    assert.ok(text.indexOf("Vendors (1)") !== -1, "expected the Vendors section to show the 1 link made from the Vendor Profile side, got: " + text.slice(0, 1000));
     assert.ok(text.indexOf("Acme Steel Suppliers") !== -1);
     assert.ok(text.indexOf("Steel Supplier") !== -1, "expected the role set from the Vendor Profile side to show here too");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
@@ -206,7 +206,7 @@ function findButtonsByTextPrefix(dom, prefix) {
     await flush();
     var afterUnlink = win.PCC.store.get();
     assert.strictEqual(afterUnlink.vendor_project_links.filter((l) => l.vendor_id === vendorId).length, 0);
-    assert.ok(outlet().textContent.indexOf("VENDORS (0)") !== -1);
+    assert.ok(outlet().textContent.indexOf("Vendors (0)") !== -1);
 
     var linkBtn = findButtonByText(dom, "+ Link Vendor");
     assert.strictEqual(linkBtn.disabled, false, "the vendor should be available to link again after unlinking");
@@ -222,7 +222,7 @@ function findButtonsByTextPrefix(dom, prefix) {
     var afterRelink = win.PCC.store.get();
     var relinked = afterRelink.vendor_project_links.filter((l) => l.vendor_id === vendorId && l.project_id === projectId);
     assert.strictEqual(relinked.length, 1);
-    assert.ok(outlet().textContent.indexOf("VENDORS (1)") !== -1);
+    assert.ok(outlet().textContent.indexOf("Vendors (1)") !== -1);
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 

@@ -110,7 +110,7 @@ function KpiEmptySection({ title, message }: { title: string; message: string })
 
 function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="panel" style={{ flex: "1 1 320px", minWidth: 280 }}>
+    <div className="panel panel--flat" style={{ flex: "1 1 320px", minWidth: 280 }}>
       <h4 style={{ marginBottom: "var(--space-3)" }}>{title}</h4>
       {children}
     </div>
@@ -240,7 +240,7 @@ function RiskHeatMapMini({ risks }: { risks: PCCRisk[] }) {
             .map((prob) => (
               <tr key={prob}>
                 <td className="text-secondary" style={{ padding: "var(--space-1) var(--space-2)" }}>
-                  {prob.toUpperCase()}
+                  {prob.charAt(0).toUpperCase() + prob.slice(1)}
                 </td>
                 {RISK_LEVELS.map((impact) => {
                   var sev = SEVERITY_MATRIX[prob][impact];
@@ -268,7 +268,7 @@ function RiskHeatMapMini({ risks }: { risks: PCCRisk[] }) {
             <td />
             {RISK_LEVELS.map((impact) => (
               <td key={impact} className="text-secondary" style={{ textAlign: "center", fontSize: "var(--text-xs)" }}>
-                {impact.toUpperCase()}
+                {impact.charAt(0).toUpperCase() + impact.slice(1)}
               </td>
             ))}
           </tr>
@@ -452,7 +452,7 @@ function DetailItem({ label, value }: { label: string; value: string | number | 
 function HealthScorePanel({ health, onChanged }: { health: HealthScoreResult; onChanged: () => void }) {
   const [editingWeights, setEditingWeights] = useState(false);
   return (
-    <div className="panel" style={{ marginTop: "var(--space-4)" }}>
+    <div className="panel panel--flat" style={{ marginTop: "var(--space-4)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <h3>Project Health Score</h3>
         <button className="btn btn--ghost no-print" onClick={() => setEditingWeights((v) => !v)}>
@@ -524,7 +524,7 @@ function HealthScorePanel({ health, onChanged }: { health: HealthScoreResult; on
 
 function DiagnosticsPanel({ diagnostics, projectId }: { diagnostics: DiagnosticAlert[]; projectId: string }) {
   return (
-    <div className="panel" style={{ marginTop: "var(--space-4)" }}>
+    <div className="panel panel--flat" style={{ marginTop: "var(--space-4)" }}>
       <h3 style={{ marginBottom: "var(--space-3)" }}>Project Health Diagnostics ({diagnostics.length})</h3>
       {diagnostics.length === 0 ? (
         <p className="text-secondary" style={{ fontSize: "var(--text-sm)" }}>
@@ -561,7 +561,7 @@ function ExecutiveSummaryPanel({ data, ctx, onChanged }: { data: PCCStoreData; c
   const [draft, setDraft] = useState("");
 
   return (
-    <div className="panel" style={{ marginTop: "var(--space-4)" }}>
+    <div className="panel panel--flat" style={{ marginTop: "var(--space-4)" }}>
       <h3 style={{ marginBottom: "var(--space-3)" }}>Executive Summary</h3>
       <p className="text-secondary no-print" style={{ fontSize: "var(--text-xs)", marginBottom: "var(--space-3)" }}>
         Generated from real project data below. Edit any section to override it before printing/exporting; overrides are saved and persist until reset.
@@ -575,7 +575,7 @@ function ExecutiveSummaryPanel({ data, ctx, onChanged }: { data: PCCStoreData; c
           <div key={section.key} style={{ marginBottom: "var(--space-4)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <strong style={{ fontSize: "var(--text-sm)" }}>
-                {section.label.toUpperCase()}
+                {section.label}
                 {override ? " (edited)" : ""}
               </strong>
               {!isEditing ? (
@@ -699,7 +699,7 @@ function UpcomingItemsPanel({ ctx }: { ctx: PopulatedProjectContext }) {
       ) : (
         items.map((i, idx) => (
           <div key={idx} style={{ fontSize: "var(--text-sm)", marginBottom: "var(--space-2)" }}>
-            <span className="mono text-secondary">{i.date}</span> — {i.text}
+            <span className="text-secondary">{i.date}</span> — {i.text}
           </div>
         ))
       )}
@@ -720,7 +720,7 @@ function VendorPerformancePanel({ data, projectId }: { data: PCCStoreData; proje
   var vendorIds = Object.keys(reviewsByVendor);
 
   return (
-    <div className="panel" style={{ marginTop: "var(--space-4)" }}>
+    <div className="panel panel--flat" style={{ marginTop: "var(--space-4)" }}>
       <h3 style={{ marginBottom: "var(--space-3)" }}>Vendor Performance</h3>
       {vendorIds.length === 0 ? (
         <p className="text-secondary" style={{ fontSize: "var(--text-sm)" }}>
@@ -759,7 +759,7 @@ function VendorPerformancePanel({ data, projectId }: { data: PCCStoreData; proje
 
 function KeyDecisionsPanel({ ctx }: { ctx: PopulatedProjectContext }) {
   return (
-    <div className="panel" style={{ marginTop: "var(--space-4)" }}>
+    <div className="panel panel--flat" style={{ marginTop: "var(--space-4)" }}>
       <h3 style={{ marginBottom: "var(--space-3)" }}>Key Decisions ({ctx.pendingDecisions.length})</h3>
       {ctx.pendingDecisions.length === 0 ? (
         <p className="text-secondary" style={{ fontSize: "var(--text-sm)" }}>
@@ -801,7 +801,7 @@ function ManagementActionListPanel({ ctx }: { ctx: PopulatedProjectContext }) {
   }
 
   return (
-    <div className="panel" style={{ marginTop: "var(--space-4)" }}>
+    <div className="panel panel--flat" style={{ marginTop: "var(--space-4)" }}>
       <h3 style={{ marginBottom: "var(--space-3)" }}>Management Action List</h3>
       {items.length === 0 ? (
         <p className="text-secondary" style={{ fontSize: "var(--text-sm)" }}>
@@ -828,7 +828,7 @@ function ManagementActionListPanel({ ctx }: { ctx: PopulatedProjectContext }) {
 function SchedulePerformanceDetail({ ctx, onChanged }: { ctx: PopulatedProjectContext; onChanged: () => void }) {
   var snapshots = ctx.schedulePerformanceSnapshots;
   return (
-    <div className="panel" style={{ marginTop: "var(--space-3)" }}>
+    <div className="panel panel--flat" style={{ marginTop: "var(--space-3)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--space-3)" }}>
         <h4>Schedule Performance Score</h4>
         {ctx.schedulePerformance.rag ? <RagBadge rag={ctx.schedulePerformance.rag} /> : null}
@@ -902,7 +902,7 @@ function StatusDateDetail({ ctx }: { ctx: PopulatedProjectContext }) {
   return (
     <>
       {ctx.forecastLateActivities.length > 0 ? (
-        <div className="panel" style={{ marginTop: "var(--space-3)" }}>
+        <div className="panel panel--flat" style={{ marginTop: "var(--space-3)" }}>
           <h4 style={{ marginBottom: "var(--space-2)" }}>Forecast to Finish Late ({ctx.forecastLateActivities.length})</h4>
           {ctx.forecastLateActivities.slice(0, 20).map((a) => (
             <p key={a.id} style={{ fontSize: "var(--text-sm)", margin: "var(--space-1) 0" }}>
@@ -918,7 +918,7 @@ function StatusDateDetail({ ctx }: { ctx: PopulatedProjectContext }) {
       ) : null}
 
       {ctx.outOfSequenceActivities.length > 0 ? (
-        <div className="panel" style={{ marginTop: "var(--space-3)" }}>
+        <div className="panel panel--flat" style={{ marginTop: "var(--space-3)" }}>
           <h4 style={{ marginBottom: "var(--space-2)" }}>
             Out of Sequence ({ctx.outOfSequenceActivities.length}) — {modeLabel} mode
           </h4>
@@ -947,7 +947,7 @@ function StatusDateDetail({ ctx }: { ctx: PopulatedProjectContext }) {
         </p>
       ) : null}
 
-      <div className="panel" style={{ marginTop: "var(--space-3)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "var(--space-2)" }}>
+      <div className="panel panel--flat" style={{ marginTop: "var(--space-3)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "var(--space-2)" }}>
         <span style={{ fontSize: "var(--text-sm)" }}>
           {ctx.baselineCount > 0
             ? "Float Changes and Milestone Variance are computed from " + ctx.baselineCount + " captured baseline" + (ctx.baselineCount === 1 ? "" : "s") + " on the Baselines tab."
@@ -966,7 +966,7 @@ function StatusDateDetail({ ctx }: { ctx: PopulatedProjectContext }) {
 function DelayRecoveryGapDetail({ ctx }: { ctx: PopulatedProjectContext }) {
   if (ctx.unaddressedDelayActivities.length === 0) return null;
   return (
-    <div className="panel" style={{ marginTop: "var(--space-3)" }}>
+    <div className="panel panel--flat" style={{ marginTop: "var(--space-3)" }}>
       <h4 style={{ marginBottom: "var(--space-2)" }}>Activities With Unaddressed Delay ({ctx.unaddressedDelayActivities.length})</h4>
       {ctx.unaddressedDelayActivities.slice(0, 20).map((a) => (
         <div key={a.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "var(--space-2)", margin: "var(--space-1) 0" }}>
@@ -1003,7 +1003,7 @@ function SummarySubTab({ data, ctx, health, diagnostics, onChanged }: SubTabProp
   var p = ctx.project;
   return (
     <>
-      <div className="panel">
+      <div className="panel panel--flat">
         <h3 style={{ marginBottom: "var(--space-3)" }}>Project Details</h3>
         <div className="detail-grid">
           <DetailItem label="Location" value={[p.location, p.country].filter(Boolean).join(", ")} />
@@ -1042,7 +1042,7 @@ function ScheduleSubTab({ ctx, onChanged }: { ctx: PopulatedProjectContext; onCh
   return (
     <>
       <KpiSection
-        title="PROGRESS"
+        title="Progress"
         kpis={[
           { label: "Overall Progress", value: fmtPct(p.progress) },
           { label: "Schedule Progress", value: fmtPct(ctx.scheduleProgressPct) },
@@ -1052,7 +1052,7 @@ function ScheduleSubTab({ ctx, onChanged }: { ctx: PopulatedProjectContext; onCh
 
       {ctx.totalActivityCount > 0 ? (
         <KpiSection
-          title="SCHEDULE"
+          title="Schedule"
           kpis={[
             { label: "Critical Activities", value: ctx.criticalActivities.length, colorVar: ctx.criticalActivities.length ? "--status-critical" : null },
             { label: "Near-Critical", value: ctx.nearCriticalActivities.length, colorVar: ctx.nearCriticalActivities.length ? "--status-at-risk" : null },
@@ -1067,13 +1067,13 @@ function ScheduleSubTab({ ctx, onChanged }: { ctx: PopulatedProjectContext; onCh
           footnote={ctx.scheduleVarianceSource === "official_baseline" && ctx.officialBaseline ? 'Schedule Variance measured against the Official Baseline ("' + ctx.officialBaseline.name + '").' : null}
         />
       ) : (
-        <KpiEmptySection title="SCHEDULE" message="No schedule with activities yet — see the Schedule page." />
+        <KpiEmptySection title="Schedule" message="No schedule with activities yet — see the Schedule page." />
       )}
 
       {ctx.totalActivityCount > 0 ? (
         <>
           <KpiSection
-            title={"STATUS DATE (" + ctx.referenceDate + ")"}
+            title={"Status date (" + ctx.referenceDate + ")"}
             kpis={[
               { label: "Completed", value: ctx.completedActivityCount },
               { label: "In Progress", value: ctx.inProgressActivityCount },
@@ -1090,7 +1090,7 @@ function ScheduleSubTab({ ctx, onChanged }: { ctx: PopulatedProjectContext; onCh
       {ctx.totalActivityCount > 0 ? (
         <>
           <KpiSection
-            title="SCHEDULE PERFORMANCE"
+            title="Schedule performance"
             kpis={[
               { label: "SPI", value: ctx.evm && ctx.evm.spi != null ? ctx.evm.spi.toFixed(2) : "—", colorVar: ctx.evm && ctx.evm.spi != null && ctx.evm.spi < 1 ? "--status-critical" : null },
               {
@@ -1116,13 +1116,13 @@ function ScheduleSubTab({ ctx, onChanged }: { ctx: PopulatedProjectContext; onCh
           <SchedulePerformanceDetail ctx={ctx} onChanged={onChanged} />
         </>
       ) : (
-        <KpiEmptySection title="SCHEDULE PERFORMANCE" message="No schedule with activities yet — see the Schedule page." />
+        <KpiEmptySection title="Schedule performance" message="No schedule with activities yet — see the Schedule page." />
       )}
 
       {ctx.allDelayRecords.length > 0 || ctx.allRecoveryActions.length > 0 ? (
         <>
           <KpiSection
-            title="DELAY & RECOVERY"
+            title="Delay & recovery"
             kpis={[
               { label: "Delay Records", value: ctx.allDelayRecords.length },
               { label: "Total Delay Days", value: ctx.totalDelayDays, colorVar: ctx.totalDelayDays > 0 ? "--status-critical" : null },
@@ -1133,7 +1133,7 @@ function ScheduleSubTab({ ctx, onChanged }: { ctx: PopulatedProjectContext; onCh
           <DelayRecoveryGapDetail ctx={ctx} />
         </>
       ) : (
-        <KpiEmptySection title="DELAY & RECOVERY" message="No delay records or recovery actions logged for this project yet — see an activity's own Detail Panel in the Schedule module." />
+        <KpiEmptySection title="Delay & recovery" message="No delay records or recovery actions logged for this project yet — see an activity's own Detail Panel in the Schedule module." />
       )}
 
       <div style={{ marginTop: "var(--space-4)" }}>
@@ -1174,7 +1174,7 @@ function CostSubTab({ ctx }: { ctx: PopulatedProjectContext }) {
   return (
     <>
       <KpiSection
-        title="COST"
+        title="Cost"
         kpis={[
           { label: "Budget", value: fmtMoney(ctx.costSummary.budgeted, p.currency) },
           { label: "Actual", value: fmtMoney(ctx.costSummary.actual, p.currency) },
@@ -1185,7 +1185,7 @@ function CostSubTab({ ctx }: { ctx: PopulatedProjectContext }) {
 
       {ctx.commitmentSummary.count > 0 ? (
         <KpiSection
-          title="COMMITMENTS"
+          title="Commitments"
           kpis={[
             { label: "Committed", value: fmtMoney(ctx.commitmentSummary.committed, p.currency) },
             { label: "Approved", value: fmtMoney(ctx.commitmentSummary.approved, p.currency) },
@@ -1195,7 +1195,7 @@ function CostSubTab({ ctx }: { ctx: PopulatedProjectContext }) {
           ]}
         />
       ) : (
-        <KpiEmptySection title="COMMITMENTS" message="No commitments logged for this project yet — see the Commitments page." />
+        <KpiEmptySection title="Commitments" message="No commitments logged for this project yet — see the Commitments page." />
       )}
 
       {ctx.evm ? (
@@ -1222,9 +1222,9 @@ function RiskSubTab({ ctx }: { ctx: PopulatedProjectContext }) {
   var closedRfis = ctx.allRfis.length - ctx.openRfis.length;
   return (
     <>
-      <KpiSection title="RISKS" kpis={[{ label: "Open Risks", value: ctx.openRisks.length }, { label: "High Risks", value: ctx.highRisks.length, colorVar: ctx.highRisks.length ? "--status-critical" : null }]} />
+      <KpiSection title="Risks" kpis={[{ label: "Open Risks", value: ctx.openRisks.length }, { label: "High Risks", value: ctx.highRisks.length, colorVar: ctx.highRisks.length ? "--status-critical" : null }]} />
       <KpiSection
-        title="ISSUES"
+        title="Issues"
         kpis={[{ label: "Open Issues", value: ctx.openIssues.length }, { label: "Critical Issues", value: ctx.criticalIssues.length, colorVar: ctx.criticalIssues.length ? "--status-critical" : null }]}
       />
       <KpiSection
@@ -1236,7 +1236,7 @@ function RiskSubTab({ ctx }: { ctx: PopulatedProjectContext }) {
         ]}
       />
       <KpiSection
-        title="CHANGES"
+        title="Changes"
         kpis={[
           { label: "Open Change Orders", value: ctx.openChangeOrders.length },
           { label: "Pending Approvals", value: ctx.pendingChangeOrders.length, colorVar: ctx.pendingChangeOrders.length ? "--status-at-risk" : null },
@@ -1277,7 +1277,7 @@ function RiskSubTab({ ctx }: { ctx: PopulatedProjectContext }) {
 function ResourcesSubTab({ ctx }: { ctx: PopulatedProjectContext }) {
   return (
     <KpiSection
-      title="RESOURCES"
+      title="Resources"
       kpis={[
         { label: "Resources Assigned", value: ctx.assignedResourceCount },
         { label: "Over-Allocated (Portfolio-Wide)", value: ctx.overAllocatedResources.length, colorVar: ctx.overAllocatedResources.length ? "--status-critical" : null },
@@ -1300,7 +1300,7 @@ function OverviewTab({ data, ctx, health, diagnostics, onChanged }: SubTabProps)
 
   return (
     <>
-      <div className="panel">
+      <div className="panel panel--flat">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "var(--space-3)" }}>
           <div>
             <h3 style={{ marginBottom: 2 }}>{p.name || "(unnamed project)"}</h3>
@@ -1313,15 +1313,15 @@ function OverviewTab({ data, ctx, health, diagnostics, onChanged }: SubTabProps)
           <RagBadge rag={health.rag} />
         </div>
         <div className="kpi-grid">
-          <KpiCard label="PROGRESS" value={fmtPct(p.progress)} />
+          <KpiCard label="Progress" value={fmtPct(p.progress)} />
           <KpiCard
-            label="SCHEDULE VARIANCE"
+            label="Schedule variance"
             value={ctx.forecastVarianceDays == null ? "—" : (ctx.forecastVarianceDays > 0 ? "+" : "") + ctx.forecastVarianceDays + "d"}
             colorVar={(ctx.forecastVarianceDays || 0) > 0 ? "--status-critical" : null}
           />
-          <KpiCard label="COST VARIANCE" value={fmtMoney(ctx.costSummary.variance, p.currency)} colorVar={ctx.costSummary.variance < 0 ? "--status-critical" : null} />
-          <KpiCard label="OPEN RISKS" value={ctx.openRisks.length} colorVar={ctx.highRisks.length ? "--status-critical" : null} />
-          <KpiCard label="OVERDUE RFIs" value={ctx.overdueRfis.length} colorVar={ctx.overdueRfis.length ? "--status-critical" : null} />
+          <KpiCard label="Cost variance" value={fmtMoney(ctx.costSummary.variance, p.currency)} colorVar={ctx.costSummary.variance < 0 ? "--status-critical" : null} />
+          <KpiCard label="Open risks" value={ctx.openRisks.length} colorVar={ctx.highRisks.length ? "--status-critical" : null} />
+          <KpiCard label="Overdue RFIs" value={ctx.overdueRfis.length} colorVar={ctx.overdueRfis.length ? "--status-critical" : null} />
         </div>
       </div>
 
@@ -1554,7 +1554,12 @@ function WeeklyReviewsTab({ data, ctx, health, onProjectChanged }: { data: PCCSt
       ) : null}
 
       {reviews.length === 0 ? (
-        <div className="panel empty-state">No weekly reviews logged yet for this project. Click “+ New Weekly Review” to capture the first one.</div>
+        <div className="panel empty-state">
+          No weekly reviews logged yet for this project.
+          <button className="btn btn--ghost empty-state__action no-print" onClick={openNew}>
+            + New Weekly Review
+          </button>
+        </div>
       ) : (
         <div className="project-list">
           {reviews.map((r, idx) => (
@@ -1652,7 +1657,7 @@ function ProjectSnapshotDoc({ data, ctx, health, diagnostics }: ReportDocProps) 
         <LogoImg data={data} />
         <div style={{ textAlign: "right", flexShrink: 0 }}>
           <RagBadge rag={health.rag} />
-          <div className="mono" style={{ fontSize: "var(--text-xl)", fontWeight: 700, marginTop: 4 }}>
+          <div style={{ fontSize: "var(--text-xl)", fontWeight: 700, marginTop: 4, fontVariantNumeric: "tabular-nums" }}>
             {health.score == null ? "—" : health.score}
           </div>
         </div>
@@ -2151,7 +2156,7 @@ function OutputTab({ data, ctx, health, diagnostics }: ReportDocProps) {
         </div>
       ) : null}
 
-      <div className="panel">
+      <div className="panel panel--flat">
         {mode === "snapshot" ? (
           <ProjectSnapshotDoc data={data} ctx={ctx} health={health} diagnostics={diagnostics} />
         ) : (
@@ -2189,12 +2194,9 @@ export default function ExecutiveCenterPage({ initialProjectId, initialTab }: Ex
 
   return (
     <>
-      <h2 className="focus-mode-hide" style={{ marginBottom: "var(--space-2)" }}>
+      <h2 className="focus-mode-hide" style={{ marginBottom: "var(--space-4)" }}>
         Project Executive Center
       </h2>
-      <p className="text-secondary focus-mode-hide" style={{ fontSize: "var(--text-sm)", marginBottom: "var(--space-4)" }}>
-        Management rollup for one project — every number reads live from Portfolio, Schedule, Cost Tracking, Risk Register, RFI/TQ, Change Management, and Meetings.
-      </p>
 
       <div className="toolbar no-print">
         {activeProjects.length === 0 ? (
@@ -2232,7 +2234,12 @@ export default function ExecutiveCenterPage({ initialProjectId, initialTab }: Ex
       </div>
 
       {activeProjects.length === 0 ? (
-        <div className="panel empty-state">Add a project in Portfolio first to see its Executive Center.</div>
+        <div className="panel empty-state">
+          Add a project in Portfolio first to see its Executive Center.
+          <button className="btn btn--ghost empty-state__action" onClick={() => window.PCC.router.go("portfolio")}>
+            Go to Portfolio
+          </button>
+        </div>
       ) : (
         (() => {
           var ctx = buildProjectContext(data, effectiveProjectId) as PopulatedProjectContext;
