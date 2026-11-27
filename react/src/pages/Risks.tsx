@@ -524,7 +524,7 @@ export default function RisksPage({
       ) : null}
 
       <div className="toolbar">
-        <input type="text" placeholder="Search title, description, owner…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <input type="text" className="search-input" aria-label="Search risks" placeholder="Search title, description, owner…" value={search} onChange={(e) => setSearch(e.target.value)} />
         <select aria-label="Filter by type" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
           <option value="">All types</option>
           {window.PCC.store.RISK_TYPES.map((t) => (

@@ -403,7 +403,7 @@ function CommitmentsTab({
       ) : null}
 
       <div className="toolbar">
-        <input type="text" placeholder="Search PO/Contract #, notes…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <input type="text" className="search-input" aria-label="Search commitments" placeholder="Search PO/Contract #, notes…" value={search} onChange={(e) => setSearch(e.target.value)} />
         <select
           aria-label="Filter by project"
           value={projectFilter}

@@ -200,7 +200,7 @@ function RegisterTab({ data, editingId, onEdit, onAdd, onCancelEdit, onSaved, on
       ) : null}
 
       <div className="toolbar">
-        <input type="text" placeholder="Search resource name…" value={search} onChange={(e) => onSearchChange(e.target.value)} />
+        <input type="text" className="search-input" aria-label="Search resources" placeholder="Search resource name…" value={search} onChange={(e) => onSearchChange(e.target.value)} />
         <select aria-label="Filter by type" value={typeFilter} onChange={(e) => onTypeFilterChange(e.target.value)}>
           <option value="">All Types</option>
           {window.PCC.store.RESOURCE_TYPES.map((t) => (

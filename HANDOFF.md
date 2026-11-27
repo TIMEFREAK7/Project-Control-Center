@@ -7,14 +7,49 @@ it (and a zip) to Aditya directly after every major upgrade, not just committing
 
 ## Current state (2026-11-27)
 
-- `main` has every gate through 7.3. Schema **67**. 139 test files (`cd tests && npm test`), green in UTC and IST.
+- `main` has every gate through 7.4. Schema **67**. 140 test files (`cd tests && npm test`), green in UTC and IST.
   Windows installer builds natively on this PC (1.10.0 last built).
-- Next in `DEFERRED_ROADMAP.md` after 7.3: Gate 7.4 (shared components). Features track: 1.1.
+- Next in `DEFERRED_ROADMAP.md` after 7.4: Gate 7.5a (Overview page pass). Features track: 1.1.
 - Waiting on Aditya: Gate 0.1 (phone check of At a Glance 1.9 + predictive back) and the real
   Storage Management → App data reading (decides Gate 6.2).
 - Docs layout since Gate 6.3: `CLAUDE.md` = rules (10.5 KB); `docs/GOTCHAS.md` = the old
   CLAUDE.md, unedited; `docs/BUILD_HISTORY.md` = README's old history; `docs/HANDOFF_ARCHIVE.md`
   = this file's sessions before 2026-11-11; `README.md` = short user guide (ships in the zip).
+
+## 2026-11-27 — Gate 7.4: shared components
+
+- Aditya's calls: search boxes = magnifier + screen-reader name (not a visible label); "fewer
+  boxes" per page in 7.5; empty states restyled now, actions wired in 7.5.
+- Buttons: primary (ink, plain hover; the blurred ::before layer is gone), secondary
+  (`.btn--ghost`), new quiet (`.btn--quiet`). Gantt zoom shows its choice with `aria-pressed`
+  and the selection fill, not the primary fill.
+- One control height `--control-h` (36 / 32 / 40 by density, 44 in the touch tier) for buttons,
+  toolbar fields and every unclassed field in pages/dialogs (`:where()` rule, zero
+  specificity); native 19 px selects gone. Checkboxes 18 px.
+- 18 search boxes on 17 pages: `search-input` class + `aria-label` (Cost was missing from the
+  roadmap's count). Tabs: Executive Center (both rows) and Portfolio Cards/Compare are underline
+  tabs; the underline is plain (no blur).
+- Status in table cells = dot + text (grey for complete/info); KPI grid = one strip, two
+  columns on phones; `.data-table` sticky header, `--row-py`, `.num`; quiet empty states.
+- **Roadmap vs code:** Schedule had 0 sub-24 px controls at phone width (roadmap said 31);
+  Reports' 13 matched (4 native selects + 9 checkboxes). None failed WCAG 2.5.8 with its
+  spacing exception, but all are now >= 24 px or 18 px with clearance.
+- **Moved to 7.5:** sentence case for KPI and other labels (108 uppercase strings, 18 pages,
+  several read by tests).
+- **Bug caught before shipping:** a stray U+FEFF (from a PowerShell-written marker file) sat
+  mid-`styles.css` and silently dropped the primary-button, tab and empty-state rules (primary
+  rendered browser-grey). Removed; `test_components_phase7.js` now fails on any mid-file BOM.
+- Tests: new `test_components_phase7.js` (1/16 on the old build, 17/17 now). Ten older tests
+  found Executive Center's sub-tabs as `.toolbar button`; they now also accept
+  `.tab-bar .tab-btn` (gate5 Executive Center, resources, status-date ×2, commitments ×2,
+  physical progress, advanced schedule performance, baseline revision, integrated controls).
+  `test_msp_xml_import_e2e.js` had a pre-existing race (one `flush()` after Confirm Import;
+  failed 3/5 runs on the 7.3 build too): it now waits for the schedule (10/10). New
+  `tests/visual/shots.js --audit 1` (24 px targets with the WCAG spacing exception + accessible
+  names): old build fails 10 shots, new build passes 32/32. axe 0, 0 console errors.
+- Size: `index.html` 6,354.8 → 6,357.6 KB; mirror 678.7 → 680.4 KB (its four tabs change too:
+  KPI strip, 44 px phone controls).
+- Sheets: `scratch/pcc-7.4/sheets/` (8 screens × 2 sizes + 4 mirror tabs).
 
 ## 2026-11-27 — Gate 7.3: shell (sidebar, title block, icons, palette, toasts)
 

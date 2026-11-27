@@ -434,7 +434,7 @@ export default function OrganizationsPage() {
       ) : null}
 
       <div className="toolbar">
-        <input type="text" placeholder="Search companies or clients…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <input type="text" className="search-input" aria-label="Search companies and clients" placeholder="Search companies or clients…" value={search} onChange={(e) => setSearch(e.target.value)} />
         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "var(--text-13)", whiteSpace: "nowrap" }}>
           <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
           Show archived

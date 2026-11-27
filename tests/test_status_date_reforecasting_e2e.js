@@ -180,7 +180,7 @@ function findButtonByText(dom, text) {
     await flush();
     // UI/UX Overhaul Gate 5: STATUS DATE now lives on the Schedule sub-tab. The next
     // check stays on it too, since nothing here navigates away.
-    var scheduleTab = Array.from(outlet().querySelectorAll(".toolbar button")).find((b) => b.textContent.trim() === "Schedule");
+    var scheduleTab = Array.from(outlet().querySelectorAll(".toolbar button, .tab-bar .tab-btn")).find((b) => b.textContent.trim() === "Schedule");
     assert.ok(scheduleTab, "Schedule sub-tab not found");
     scheduleTab.click();
     await flush();
@@ -205,7 +205,7 @@ function findButtonByText(dom, text) {
     // sub-tab — re-navigate to the Schedule sub-tab to see the live-recomputed panel.
     win.PCC.router.render();
     await flush();
-    var scheduleTab = Array.from(outlet().querySelectorAll(".toolbar button")).find((b) => b.textContent.trim() === "Schedule");
+    var scheduleTab = Array.from(outlet().querySelectorAll(".toolbar button, .tab-bar .tab-btn")).find((b) => b.textContent.trim() === "Schedule");
     assert.ok(scheduleTab, "Schedule sub-tab not found");
     scheduleTab.click();
     await flush();

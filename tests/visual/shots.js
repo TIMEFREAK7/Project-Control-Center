@@ -7,7 +7,9 @@
 //   cd tests/visual && npm install            (once; playwright-core only, no browser download)
 //   node shots.js --out <dir> [--screens dashboard,schedule-activities] [--themes light,dark]
 //                 [--sizes desktop,phone] [--css <override.css>] [--icons <map.json>]
-//                 [--fonts <dir>] [--axe <axe.min.js>] [--index <other index.html>]
+//                 [--fonts <dir>] [--axe <axe.min.js>] [--index <other index.html>] [--audit 1]
+// --audit 1 (Gate 7.4): fails (exit 1) if a visible control is under 24 px without WCAG 2.5.8's
+// spacing exception, or a visible field has no accessible name.
 // --screens also takes any route name (e.g. vendors,cost) beyond the eight named screens.
 //
 // --css injects a stylesheet after load ({{FONTS}} in it becomes the --fonts dir as a file URL).
@@ -51,6 +53,7 @@ function args() {
     css: a.css ? fs.readFileSync(a.css, "utf8").split("{{FONTS}}").join(a.fonts ? pathToFileURL(path.resolve(a.fonts)).href : "") : null,
     icons: a.icons ? JSON.parse(fs.readFileSync(a.icons, "utf8")) : null,
     axe: a.axe ? path.resolve(a.axe) : null,
+    audit: a.audit === "1" || a.audit === "true",
   };
 }
 
@@ -215,6 +218,34 @@ async function main() {
           row.contrast = found.length;
           if (found.length) row.contrastNodes = found;
         }
+        if (opt.audit) {
+          // Gate 7.4: WCAG 2.5.8 target size (24 px, or a 24 px circle around a smaller target
+          // that touches no other target) and an accessible name on every visible field.
+          // Inline links inside running text are exempt (WCAG's inline exception).
+          row.audit = await page.evaluate(() => {
+            const vis = (el) => { const r = el.getBoundingClientRect(); const cs = getComputedStyle(el); return r.width > 0 && r.height > 0 && cs.visibility !== "hidden"; };
+            const label = (el) => (el.textContent || el.value || el.placeholder || el.getAttribute("aria-label") || "").trim().slice(0, 24);
+            const targets = Array.from(document.querySelectorAll("main button, main a[href], main input:not([type=hidden]), main select, main textarea, main [role=button]"))
+              .filter(vis).filter((el) => !(el.tagName === "A" && getComputedStyle(el).display === "inline"));
+            const rects = targets.map((el) => el.getBoundingClientRect());
+            const small = [];
+            targets.forEach((el, i) => {
+              const r = rects[i];
+              if (r.width >= 24 && r.height >= 24) return;
+              const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+              const clash = rects.some((o, k) => {
+                if (k === i || targets[k].contains(el) || el.contains(targets[k])) return false;
+                const dx = Math.max(o.left - cx, 0, cx - o.right), dy = Math.max(o.top - cy, 0, cy - o.bottom);
+                return Math.hypot(dx, dy) < 12;
+              });
+              if (clash) small.push(el.tagName.toLowerCase() + " '" + label(el) + "' " + Math.round(r.width) + "x" + Math.round(r.height));
+            });
+            const named = (el) => (el.getAttribute("aria-label") || (el.labels && el.labels[0] && el.labels[0].textContent) || el.getAttribute("title") || el.getAttribute("aria-labelledby") || "").trim();
+            const unnamed = Array.from(document.querySelectorAll("main input:not([type=hidden]), main select, main textarea"))
+              .filter(vis).filter((el) => !named(el)).map((el) => el.tagName.toLowerCase() + " '" + label(el) + "'");
+            return { small, unnamed };
+          });
+        }
         report.push(row);
         await page.close();
       }
@@ -223,8 +254,12 @@ async function main() {
   await browser.close();
   fs.writeFileSync(path.join(opt.out, "report.json"), JSON.stringify({ errors, shots: report }, null, 2));
   console.log(`${report.length} shots → ${opt.out}; console/page errors: ${errors.length}`);
-  report.forEach((r) => console.log(`  ${r.shot}${r.hscroll ? "  SIDEWAYS SCROLL" : ""}${r.contrast != null ? "  contrast issues: " + r.contrast : ""}`));
+  report.forEach((r) => console.log(`  ${r.shot}${r.hscroll ? "  SIDEWAYS SCROLL" : ""}${r.contrast != null ? "  contrast issues: " + r.contrast : ""}` +
+    (r.audit ? `  small targets: ${r.audit.small.length}  unnamed fields: ${r.audit.unnamed.length}` : "")));
   errors.slice(0, 10).forEach((e) => console.log("  ERROR " + e));
+  const auditFails = report.filter((r) => r.audit && (r.audit.small.length || r.audit.unnamed.length));
+  auditFails.forEach((r) => console.log("  AUDIT " + r.shot + ": " + r.audit.small.concat(r.audit.unnamed).slice(0, 8).join(" | ")));
+  if (auditFails.length) process.exitCode = 1;
 }
 
 main().catch((e) => {

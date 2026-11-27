@@ -124,6 +124,28 @@ for report views. See `UI_ARCHITECTURE.md` for the shell structure these apply t
 internally — the mobile drawer and desktop sidebar share one nav renderer, `buildNavList()`,
 per Gate 4; never build a second nav implementation).
 
+**Components, as of Gate 7.4:**
+- Buttons: three levels. `.btn--primary` (ink; one per view), `.btn--ghost` (secondary,
+  bordered), `.btn--quiet` (no border). Hover is a plain colour change (no blur layer). A chosen
+  value in a button set uses `aria-pressed="true"` on `.btn--ghost` (selection fill), never the
+  primary fill.
+- One control height `--control-h`: 36 px comfortable, 32 compact, 40 spacious, 44 in the
+  touch tier (<=1023px, beats density). `.btn`, toolbar fields and every unclassed field/select
+  in `main`/`.modal` (a zero-specificity `:where()` rule) use it; the native select arrow is kept.
+  Checkboxes/radios 18 px (WCAG 2.5.8 spacing exception).
+- Search boxes: `className="search-input"` + `aria-label="Search …"`; the magnifier is
+  `--icon-search` (per theme) as a background.
+- Tabs: `.tab-bar` + `.tab-btn`/`--active` everywhere, a plain 2 px accent underline.
+- Status in a table cell (`td .status-badge`): dot + plain text, grey dot for complete/info.
+  Pills stay in headers and cards.
+- KPIs: `.kpi-grid` is one strip (one surface, hairlines between figures); two columns with
+  hairlines at <=780px.
+- `.data-table`: sticky header by default, `--row-py` row padding per density, `.num` cells
+  right-aligned with tabular digits, 24 px sort buttons.
+- `.empty-state`: one left-aligned secondary line, no box or icon; `.empty-state__action` holds
+  the one fixing button (wired per page in 7.5).
+- KPI labels are still uppercase strings in the pages (108 across 18 files): 7.5.
+
 **Shell, as of Gate 7.3:** the active nav row and the command palette's highlighted option share
 one plain fill (`--signal-amber` 14% into `--hover-bg`); no blur/"gooey" layer, no left stripe.
 Nav group headers and title-block labels are sentence case, no letter-spacing. Title-block cells
@@ -158,8 +180,10 @@ theme does NOT use one surface; it uses near-black page + lifted grey content (A
 seeing 7.2). "One surface" now applies to light only, and 7.4's "fewer boxes" work must keep dark
 panels on `--bg-paper`. **Shipped in Gate 7.3:** module tint as a hairline, title block,
 Kubai icons (sections above; Lookahead/Change Mgmt use the pack's `fast-forward` /
-`arrow-left-right` instead of a redraw, Storage Management got `hard-drive`). **Still to ship:**
-structure (7.4). The text below is the original decision.
+`arrow-left-right` instead of a redraw, Storage Management got `hard-drive`). **Shipped in Gate
+7.4:** the shared components ("Components, as of Gate 7.4" above). **Still to ship (7.5, per
+page, Aditya's call):** "fewer boxes" (which panels lose their border), quiet-button choices,
+empty-state actions, sentence-case labels in pages. The text below is the original decision.
 
 Everything above describes `styles.css` as it ships today. This section is what Aditya chose
 from the Gate 7.0 comparison sheets (Variant A). Gate 7.2 puts the tokens into `styles.css`

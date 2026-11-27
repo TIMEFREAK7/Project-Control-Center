@@ -366,7 +366,7 @@ function Toolbar({
   return (
     <div className="toolbar">
       <input
-        type="text"
+        type="text" className="search-input" aria-label="Search cost items"
         placeholder={tab === "budget" ? "Search name, notes…" : "Search description, vendor, invoice…"}
         value={search}
         onChange={(e) => onSearchChange(e.target.value)}

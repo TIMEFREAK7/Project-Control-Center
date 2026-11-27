@@ -118,7 +118,7 @@ function findButtonByText(dom, text) {
     // live on the Schedule sub-tab, not the default Summary landing view. Every check
     // after this one stays on the Schedule sub-tab too, since nothing here navigates
     // away from it.
-    var scheduleTab = Array.from(outlet().querySelectorAll(".toolbar button")).find((b) => b.textContent.trim() === "Schedule");
+    var scheduleTab = Array.from(outlet().querySelectorAll(".toolbar button, .tab-bar .tab-btn")).find((b) => b.textContent.trim() === "Schedule");
     assert.ok(scheduleTab, "Schedule sub-tab not found");
     scheduleTab.click();
     await flush();
@@ -183,7 +183,7 @@ function findButtonByText(dom, text) {
     // resetting the Schedule sub-tab's local selection back to the default (Summary) —
     // re-select it before reading Schedule-only content (the S-Curve chart).
     win.PCC.router.render();
-    var scheduleTab = Array.from(outlet().querySelectorAll(".toolbar button")).find((b) => b.textContent.trim() === "Schedule");
+    var scheduleTab = Array.from(outlet().querySelectorAll(".toolbar button, .tab-bar .tab-btn")).find((b) => b.textContent.trim() === "Schedule");
     scheduleTab.click();
     await flush();
 

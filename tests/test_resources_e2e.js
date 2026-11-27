@@ -268,7 +268,7 @@ function setReactSelectValue(win, select, value) {
     // Resources sub-tab only appears (and needs clicking into) once data.resources has
     // real rows, same "only show when the module exists" condition the old always-on
     // RESOURCES section used to gate itself with.
-    var resourcesTab = Array.from(win.document.querySelectorAll(".toolbar button")).find((b) => b.textContent.trim() === "Resources");
+    var resourcesTab = Array.from(win.document.querySelectorAll(".toolbar button, .tab-bar .tab-btn")).find((b) => b.textContent.trim() === "Resources");
     assert.ok(resourcesTab, "Resources sub-tab not found");
     resourcesTab.click();
     await flush();
@@ -291,7 +291,7 @@ function setReactSelectValue(win, select, value) {
     win.PCC.executiveCenter.viewProject(win.PCC.store.get().projects.find((p) => p.name === "Empty Project").id);
     win.PCC.router.go("executiveCenter");
     await flush();
-    var resourcesTab = Array.from(win.document.querySelectorAll(".toolbar button")).find((b) => b.textContent.trim() === "Resources");
+    var resourcesTab = Array.from(win.document.querySelectorAll(".toolbar button, .tab-bar .tab-btn")).find((b) => b.textContent.trim() === "Resources");
     assert.ok(resourcesTab, "Resources sub-tab still shows since resources exist in the app");
     resourcesTab.click();
     await flush();

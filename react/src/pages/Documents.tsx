@@ -1326,7 +1326,7 @@ export default function DocumentsPage({ initialFormOpen, initialProjectId, initi
     !isEmpty && !trashEmpty ? (
       <div className="toolbar">
         <input
-          type="text"
+          type="text" className="search-input" aria-label="Search documents"
           placeholder="Search filename, document number…"
           value={filters.search}
           onChange={(e) => setFilters((prev) => Object.assign({}, prev, { search: e.target.value }))}

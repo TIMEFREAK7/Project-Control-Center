@@ -42,7 +42,8 @@ function findButtonByText(dom, text, root) {
   return Array.from(scope.querySelectorAll("button")).find((b) => b.textContent.trim() === text);
 }
 function subTabButtons(dom) {
-  return Array.from(dom.window.document.querySelectorAll(".toolbar button"));
+  // Gate 7.4: the sub-tabs are underline tabs in a .tab-bar now (were buttons in a .toolbar).
+  return Array.from(dom.window.document.querySelectorAll(".toolbar button, .tab-bar .tab-btn"));
 }
 function clickSubTab(dom, label) {
   const btn = subTabButtons(dom).find((b) => b.textContent.trim() === label);

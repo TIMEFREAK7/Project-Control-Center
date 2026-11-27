@@ -561,7 +561,7 @@ function CompareTable({ projects, onOpenDetails }: { projects: PCCProject[]; onO
         <thead>
           <tr>
             <th>Project</th>
-            <th>Progress</th>
+            <th className="num">Progress</th>
             <th>Schedule</th>
             <th>Risk</th>
             <th>Health</th>
@@ -579,7 +579,7 @@ function CompareTable({ projects, onOpenDetails }: { projects: PCCProject[]; onO
                     {p.name || "(unnamed project)"}
                   </button>
                 </td>
-                <td>{(p.progress || 0) + "%"}</td>
+                <td className="num">{(p.progress || 0) + "%"}</td>
                 <td>
                   <RagCell rag={summary.scheduleRag} />
                 </td>
@@ -1308,7 +1308,7 @@ export default function PortfolioPage({ initialExpandedId, initialStatusFilter }
       ) : null}
 
       <div className="toolbar">
-        <input type="text" placeholder="Search by name, client, company, location, sector, PM, or planner…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <input type="text" className="search-input" aria-label="Search projects" placeholder="Search by name, client, company, location, sector, PM, or planner…" value={search} onChange={(e) => setSearch(e.target.value)} />
         <select aria-label="Filter by status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
           <option value="">All statuses</option>
           {window.PCC.store.PROJECT_STATUSES.map((s) => (
@@ -1393,14 +1393,6 @@ export default function PortfolioPage({ initialExpandedId, initialStatusFilter }
           Show archived
         </label>
         <div className="toolbar__spacer" />
-        {[
-          { key: "cards", label: "Cards" },
-          { key: "compare", label: "Compare" },
-        ].map((v) => (
-          <button key={v.key} className={"btn " + (view === v.key ? "btn--primary" : "btn--ghost")} onClick={() => setView(v.key)}>
-            {v.label}
-          </button>
-        ))}
         <button
           className="btn btn--primary"
           onClick={() => {
@@ -1409,6 +1401,18 @@ export default function PortfolioPage({ initialExpandedId, initialStatusFilter }
         >
           + Add Project
         </button>
+      </div>
+
+      {/* Gate 7.4: the Cards/Compare view switch uses the one tab design (was primary/ghost buttons). */}
+      <div className="tab-bar">
+        {[
+          { key: "cards", label: "Cards" },
+          { key: "compare", label: "Compare" },
+        ].map((v) => (
+          <button key={v.key} className={"tab-btn" + (view === v.key ? " tab-btn--active" : "")} onClick={() => setView(v.key)}>
+            {v.label}
+          </button>
+        ))}
       </div>
 
       {view === "compare" ? (

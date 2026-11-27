@@ -6820,3 +6820,23 @@ would not have freed any room.
 
 **Found along the way.** The search palette's grey detail text was slightly too faint on the
 highlighted row in dark mode (4.28:1); it is now full-strength text.
+
+## Gate 7.4: shared building blocks (2026-11-27)
+
+**What changed for Aditya.** Buttons come in three strengths: the dark main button, an outlined
+one, and a new plain one for minor actions; the main button no longer blurs on hover. Every
+button, text box and drop-down is now one height (36 px on a computer, 44 px on a phone), so
+nothing on a page is a tiny native control any more. Every search box shows a magnifier and is
+named for screen readers. Tabs look the same everywhere: Executive Center and Portfolio's
+Cards/Compare switch were filled buttons and are now underlined tabs. In tables, a status is a
+small coloured dot with plain text (grey for done or informational) instead of a tinted capital
+badge. The figure tiles at the top of pages are one strip with fine lines between figures, and
+two columns on a phone, so Portfolio's seven stacked cards became four short rows. "Nothing
+here yet" messages are one quiet line.
+
+**Decided along the way (Aditya).** Search boxes get an icon and a hidden name rather than a
+visible label; removing section borders and adding the empty-state buttons happen page by page
+in 7.5. Changing the capitalised labels inside pages also moved to 7.5.
+
+**Caught before shipping.** An invisible character in the stylesheet was silently switching off
+three of the new rules; a test now guards against it.

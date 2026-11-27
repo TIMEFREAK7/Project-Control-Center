@@ -329,7 +329,7 @@ export default function KnowledgeBasePage() {
       ) : null}
 
       <div className="toolbar">
-        <input type="text" placeholder="Search title, body, tags…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <input type="text" className="search-input" aria-label="Search knowledge base" placeholder="Search title, body, tags…" value={search} onChange={(e) => setSearch(e.target.value)} />
         <select aria-label="Filter by category" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
           <option value="">All categories</option>
           {categoryOptions().map((c) => (

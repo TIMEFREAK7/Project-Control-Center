@@ -625,7 +625,7 @@ export default function DailyLogPage({
       ) : null}
 
       <div className="toolbar">
-        <input type="text" placeholder="Search activities, notes, weather…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <input type="text" className="search-input" aria-label="Search daily logs" placeholder="Search activities, notes, weather…" value={search} onChange={(e) => setSearch(e.target.value)} />
         <select
           aria-label="Filter by project"
           value={projectFilter}

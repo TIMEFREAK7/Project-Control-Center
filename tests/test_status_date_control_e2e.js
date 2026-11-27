@@ -126,7 +126,7 @@ function diffDays(fromIso, toIso) {
     await flush();
     // UI/UX Overhaul Gate 5: STATUS DATE now lives on the Schedule sub-tab. Every check
     // after this one stays on the Schedule sub-tab too, since nothing here navigates away.
-    var scheduleTab = Array.from(outlet().querySelectorAll(".toolbar button")).find((b) => b.textContent.trim() === "Schedule");
+    var scheduleTab = Array.from(outlet().querySelectorAll(".toolbar button, .tab-bar .tab-btn")).find((b) => b.textContent.trim() === "Schedule");
     assert.ok(scheduleTab, "Schedule sub-tab not found");
     scheduleTab.click();
     await flush();
@@ -185,7 +185,7 @@ function diffDays(fromIso, toIso) {
     // sub-tab — re-navigate to the Schedule sub-tab to see the updated panel.
     win.PCC.router.render();
     await flush();
-    var scheduleTab = Array.from(outlet().querySelectorAll(".toolbar button")).find((b) => b.textContent.trim() === "Schedule");
+    var scheduleTab = Array.from(outlet().querySelectorAll(".toolbar button, .tab-bar .tab-btn")).find((b) => b.textContent.trim() === "Schedule");
     assert.ok(scheduleTab, "Schedule sub-tab not found");
     scheduleTab.click();
     await flush();

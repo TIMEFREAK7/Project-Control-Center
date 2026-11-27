@@ -576,7 +576,7 @@ export default function ChangeOrdersPage({
       ) : null}
 
       <div className="toolbar">
-        <input type="text" placeholder="Search number, title, description…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <input type="text" className="search-input" aria-label="Search change orders" placeholder="Search number, title, description…" value={search} onChange={(e) => setSearch(e.target.value)} />
         <select aria-label="Filter by status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
           <option value="">All statuses</option>
           {window.PCC.store.CHANGE_ORDER_STATUSES.map((s) => (

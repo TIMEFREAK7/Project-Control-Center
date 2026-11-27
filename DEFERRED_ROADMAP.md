@@ -746,7 +746,20 @@ of each gate. Tests prove nothing broke; they cannot prove it looks right.
   - pointer targets at least 24×24 px (Schedule has 31 smaller at phone width, Reports 13).
 - **Tests:** an e2e check that no visible control on the eight baseline screens is under
   24 px, and that every visible input has an accessible name.
-- **Status:** open.
+- **Status:** done 2026-11-27 (Aditya signed off on the look). Aditya's calls: search
+  boxes get a magnifier + screen-reader name (not a visible label); "fewer boxes" moves to 7.5
+  per page; empty states restyled now, their actions wired in 7.5. **Roadmap vs code:**
+  measured in Chromium, Schedule had 0 sub-24 px controls at phone width (11 checkboxes), 8
+  14 px sort buttons on desktop; Reports' 13 = 4 native 19 px selects + 9 checkboxes; with
+  WCAG 2.5.8's spacing exception none failed, but all are now >= 24 px (checkboxes 18 px with
+  clearance). 18 search boxes on 17 pages (Cost's was missed by the roadmap's count). Built:
+  three button levels (blur hover gone; `.btn--quiet`), `--control-h` per density (36/32/40,
+  44 touch) for buttons and fields, tabs unified (Executive Center x2, Portfolio Cards/Compare)
+  with a plain underline, Gantt zoom on `aria-pressed`, status dots in tables, KPI strip / 2-col
+  phone grid, `.data-table` sticky header + `--row-py` + `.num`, quiet empty states with an
+  action slot. **Moved to 7.5:** KPI/label sentence case (108 uppercase strings in 18 pages,
+  several read by tests). New `test_components_phase7.js` (1/16 on the old build) and
+  `shots.js --audit 1` (fails the old build on 10 shots, passes 32/32 now). axe 0.
 
 **Gate 7.5 — Page passes (five separate gates; stop after each).**
 Apply 7.2–7.4 and the "one primary action" rule. No new features, no moved data.

@@ -884,3 +884,14 @@ convention below and verify the reassembled file's checksum matches before sendi
   in an upload/paste that has to be re-supplied each time. If the user separately maintains their own
   pasted-in handoff copy outside the repo, update that too when asked, but `HANDOFF.md` is the one
   that persists on its own.
+
+## A byte-order mark in the middle of styles.css (Gate 7.4, 2026-11-27)
+
+While building Gate 7.4, CSS blocks were spliced into `styles.css` from small marker files. The
+first attempt to write those files went through PowerShell, which saves UTF-8 with a BOM, and
+the BOM (U+FEFF) travelled into the middle of `styles.css` in front of three new comments. The
+browser treats it as part of the next selector, so the whole following rule was dropped with no
+error: primary buttons rendered browser-grey, and the tab and empty-state rules vanished. jsdom
+tests could not see it; a real-Chromium `getComputedStyle` did. Fix: strip it, and
+`test_components_phase7.js` now fails on any U+FEFF after the first character. Rule: write
+source with the editor tools or Node, never PowerShell `Set-Content`/`Out-File`.
