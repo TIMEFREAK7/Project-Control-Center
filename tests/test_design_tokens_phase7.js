@@ -35,9 +35,10 @@ function token(src, name) {
 const LIGHT = { "--bg-default": "#ffffff", "--bg-paper": "#ffffff", "--bg-paper-raised": "#f8fafc", "--text-primary": "#0f172a",
   "--text-secondary": "#475569", "--divider": "#e2e8f0", "--hover-bg": "#f1f5f9", "--signal-amber": "#2563eb",
   "--signal-amber-dark": "#1d4ed8", "--ink": "#0f172a", "--on-ink": "#ffffff" };
-const DARK = { "--bg-default": "#0b0f14", "--bg-paper": "#0b0f14", "--bg-paper-raised": "#111821", "--text-primary": "#e2e8f0",
-  "--text-secondary": "#94a3b8", "--divider": "#1e293b", "--hover-bg": "#131b26", "--signal-amber": "#60a5fa",
-  "--signal-amber-dark": "#3b82f6", "--ink": "#e2e8f0", "--on-ink": "#0b0f14" };
+// Dark: ColorOS-style elevation (Aditya's review of Gate 7.2): near-black page, lifted grey content.
+const DARK = { "--bg-default": "#0a0a0b", "--bg-paper": "#1c1d21", "--bg-paper-raised": "#26282d", "--text-primary": "#ececee",
+  "--text-secondary": "#a1a1aa", "--divider": "#33363d", "--hover-bg": "#2a2c32", "--signal-amber": "#60a5fa",
+  "--signal-amber-dark": "#3b82f6", "--ink": "#ececee", "--on-ink": "#0a0a0b" };
 
 for (const [theme, expect] of [["light", LIGHT], ["dark", DARK]]) {
   check(`${theme} theme ships the Gate 7.0 neutral, accent and ink values`, () => {
@@ -82,6 +83,15 @@ check("primary button is ink, not the accent", () => {
   const i = css.indexOf("\n.btn--primary {");
   const rule = css.slice(i, css.indexOf("}", i));
   assert.ok(/var\(--ink\)/.test(rule) && /var\(--on-ink\)/.test(rule), rule.trim().slice(0, 200));
+});
+
+check("dark mode separates sections by elevation: content surface visibly lifted from the page", () => {
+  const b = block('html[data-theme="dark"]');
+  const lum = (h) => { const c = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4))); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+  const r = (lum(token(b, "--bg-paper")) + 0.05) / (lum(token(b, "--bg-default")) + 0.05);
+  // ColorOS/iOS-style dark: grey content on near-black is ~1.2 (iOS #1C1C1E on black = 1.23).
+  // The one-surface version that read as a single flat sheet was 1.00.
+  assert.ok(r >= 1.15, "card vs page luminance ratio only " + r.toFixed(2));
 });
 
 check("radii: controls 6px, cards 8px", () => {

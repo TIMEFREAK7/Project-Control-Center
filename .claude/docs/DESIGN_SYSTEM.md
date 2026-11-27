@@ -33,13 +33,20 @@ should disappear into the task.
   historical; never rename). Primary buttons are **ink**: `--ink`/`--on-ink` `#0f172a`/`#fff`
   light, `#e2e8f0`/`#0b0f14` dark (Gate 7.2).
 - Status vocabulary (semantic, not decorative): `--status-on-track/at-risk/warning/critical/info`.
-  Dark keeps the `:root` hues (`#1f9d6c #d69e2e #dd6b20 #e53e3e #0e9aa7`). Light overrides them
-  darker (`#1a855b #956e20 #ba5a1b #d63a3a #0c818c`) so status text clears 4.6:1 on white; the
-  `--status-badge-*-text` and `--heatmap-high-text` shades were re-solved against the new tints.
-  Values solved per colour for >= 4.6:1 in every text use (scratch script), not eyeballed.
-- Surfaces (page and content share one): dark `#0b0f14` / raised `#111821`; light `#ffffff` /
-  raised `#f8fafc`. Text `#e2e8f0`/`#94a3b8` dark, `#0f172a`/`#475569` light. Hairline
-  `--divider` `#1e293b` / `#e2e8f0`. `--surface-2`/`--border-default` are per theme since 7.2.
+  `:root` hues `#1f9d6c #d69e2e #dd6b20 #e53e3e #0e9aa7`. Light overrides them darker
+  (`#1a855b #956e20 #ba5a1b #d63a3a #0c818c`), dark lifts four of them (`#2ba274 #df722b #ea6666
+  #199fab`) so status text clears 4.6:1 on every surface it sits on; the `--status-badge-*-text`
+  and `--heatmap-high-text` shades were re-solved against the tints. Solved per colour for
+  >= 4.6:1 in every text use, not eyeballed.
+- **Light: one surface.** Page and content share `#ffffff` (raised `#f8fafc`); text
+  `#0f172a`/`#475569`; hairline `#e2e8f0`.
+- **Dark: ColorOS-style elevation** (Aditya's review of Gate 7.2: with one near-black surface the
+  sections didn't separate). Page and input wells `#0a0a0b` (`--bg-default`); sidebar, title
+  block, footer, panels, cards and dialogs `#1c1d21` (`--bg-paper`); menus/selected `#26282d`
+  (`--bg-paper-raised`); neutral text `#ececee`/`#a1a1aa`; hairline `#33363d`. Content/page
+  luminance ratio 1.16 (iOS-like reference ~1.2), pinned by `test_design_tokens_phase7.js`.
+  Separation in dark comes from the surface step, not from borders or shadows.
+- `--surface-2`/`--border-default` are per theme since 7.2.
 - Placeholders use `--text-secondary` app-wide (the browser grey was 4.17:1 on dark).
 - Measured at Gate 7.2 with axe on 28 screens × both themes: 0 color-contrast failures (22 before).
 - `--text-primary` / `--text-secondary`, `--divider`, `--hover-bg` all theme-swapped; never
@@ -131,7 +138,10 @@ fixed a real Meetings/Resources lookalike this way — don't skip the zoomed-com
 
 **Shipped in Gate 7.2 (now in the sections above):** typeface, all colour tokens, ink primary
 button, radii, the interim-size fold, and the two module hues moved off violet (planning
-`hsl(60 38% 42%)`, management `hsl(130 26% 42%)`). **Still to ship:** structure (7.4), module
+`hsl(60 38% 42%)`, management `hsl(130 26% 42%)`). **Changed from the decision below:** the dark
+theme does NOT use one surface; it uses near-black page + lifted grey content (Aditya, after
+seeing 7.2). "One surface" now applies to light only, and 7.4's "fewer boxes" work must keep dark
+panels on `--bg-paper`. **Still to ship:** structure (7.4), module
 tint as a hairline, title block and Kubai icons (7.3). The text below is the original decision.
 
 Everything above describes `styles.css` as it ships today. This section is what Aditya chose

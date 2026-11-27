@@ -160,20 +160,30 @@
 html[data-theme="dark"] {
   /* Neutral slate, not navy — the old #0b1420/#101b2b/#16243a family read as "blueprint,"
      which this gate is deliberately moving away from. */
-  /* Gate 7.2 (Phase 7, Variant A): slate neutrals; page and content share one surface. */
-  --bg-default: #0b0f14;
-  --bg-paper: #0b0f14;
-  --bg-paper-raised: #111821;
-  --text-primary: #e2e8f0;
-  --text-secondary: #94a3b8;
-  --divider: #1e293b;
-  --hover-bg: #131b26;
+  /* Gate 7.2, revised on Aditya's review (sections were hard to tell apart when page and
+     content shared one near-black): ColorOS-style elevation instead of borders. A near-black
+     page (and input wells), content grouped on clearly lifted neutral-grey surfaces (sidebar,
+     title block, panels, cards, dialogs), menus/selected one step higher. Light theme keeps the
+     single white surface. */
+  --bg-default: #0a0a0b;
+  --bg-paper: #1c1d21;
+  --bg-paper-raised: #26282d;
+  --text-primary: #ececee;
+  --text-secondary: #a1a1aa;
+  --divider: #33363d;
+  --hover-bg: #2a2c32;
   --signal-amber: #60a5fa;
   --signal-amber-dark: #3b82f6;
-  --ink: #e2e8f0;
-  --on-ink: #0b0f14;
-  --surface-2: #1b2430;
-  --border-default: #334155;
+  --ink: #ececee;
+  --on-ink: #0a0a0b;
+  --surface-2: #26282d;
+  --border-default: #3a3d45;
+  /* Status text sits on three dark surfaces now; each hue lifted by the smallest step that
+     clears 4.6:1 on page, card and raised (at-risk already did). */
+  --status-on-track: #2ba274;
+  --status-warning: #df722b;
+  --status-critical: #ea6666;
+  --status-info: #199fab;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.34);
   --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.42);
@@ -190,18 +200,18 @@ html[data-theme="dark"] {
      since those contexts don't have this same tinted-background problem. Values are the
      minimum lightness shift off the base hue needed to clear 4.5:1 against the badge's own
      background blend — not a palette redesign. */
-  --status-badge-on-track-text: #28a976; /* Gate 7.2: re-solved for >= 4.6:1 on 15/22/25% tints */
-  --status-badge-at-risk-text: var(--status-at-risk);
-  --status-badge-warning-text: #e17832;
-  --status-badge-critical-text: #ea6363;
-  --status-badge-info-text: #1ea4b1;
+  --status-badge-on-track-text: #48b68b; /* Gate 7.2: re-solved for >= 4.6:1 on 15/22/25% tints over a card */
+  --status-badge-at-risk-text: #d8a338;
+  --status-badge-warning-text: #e68e53;
+  --status-badge-critical-text: #ee8484;
+  --status-badge-info-text: #41b2bd;
 
   /* Same audit, same root cause — the Risk Register heat map's severity cells (Gate 2's
      own writeup already flagged these three as sharing the badges' un-tokenized hardcoded-
      rgba() pattern). --low/--medium reuse the badge text tokens above (already clear 4.5:1
      against the heat map's own slightly higher tint alphas); --high needs its own value
      since its 0.22 alpha (vs badges' 0.15) pushes the badge critical shade back under 4.5:1. */
-  --heatmap-high-text: #ea6666;
+  --heatmap-high-text: #ed7e7e;
 }
 
 html[data-theme="light"] {

@@ -698,8 +698,7 @@ of each gate. Tests prove nothing broke; they cannot prove it looks right.
   inside tables only). Remove unused font files.
 - **Acceptance:** contrast measured on badges, heat map cells, secondary text, placeholder
   text and disabled controls in both themes; bundle size before and after recorded.
-- **Status:** built 2026-11-27, awaiting Aditya's sign-off on the look (before/after sheets
-  sent). Variant A tokens in both themes; ink primary button moved here from 7.4 (Aditya's
+- **Status:** done 2026-11-27 (Aditya signed off on the revised look). Variant A tokens in both themes; ink primary button moved here from 7.4 (Aditya's
   call); Inter everywhere with tabular numerals (verified in the subset; KPI figures marked
   `.mono` in pages fixed by a `.kpi-card__value.mono` rule); Space Grotesk removed (−33.7 KB
   main, −33.1 KB mirror); radii 6/8/8; Gate 7.1 interim sizes aliased onto the kept scale
@@ -708,7 +707,10 @@ of each gate. Tests prove nothing broke; they cannot prove it looks right.
   text re-solved, placeholders on `--text-secondary` (browser grey was 4.17:1 on dark);
   disabled controls (45% opacity) are exempt under WCAG 1.4.3 and unchanged. axe: 0 failures
   on 28 screens × 2 themes (22 before). Shadows already floating-only; focus ring follows the
-  new accent (5.2:1 / 7.6:1). New `test_design_tokens_phase7.js`.
+  new accent (5.2:1 / 7.6:1). New `test_design_tokens_phase7.js`. Revised after Aditya's first
+  review: dark mode's single near-black surface hid the sections, so dark now uses
+  ColorOS-style elevation (near-black page `#0a0a0b`, grey content `#1c1d21`), with dark status
+  shades re-solved; still 0 axe failures. "One surface" now applies to the light theme only.
 
 **Gate 7.3 — Shell.**
 - **Build:** sidebar (active item is a plain filled row, no glow, no stripe; group headers

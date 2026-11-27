@@ -6799,5 +6799,8 @@ text). Each status colour was darkened in light mode by the smallest amount that
 in every place it's used. Measured afterwards on 28 screens in both themes: zero failures.
 
 **Decided along the way (Aditya).** Keep the existing type scale; move the two violet area colours
-off violet; switch buttons to ink now rather than in a later gate.
+off violet; switch buttons to ink now rather than in a later gate. After the first before/after
+review: in dark mode, sections weren't noticeable (page and content were one near-black), so
+dark mode now follows ColorOS's approach — a near-black page with content on clearly lifted grey
+surfaces — while light mode keeps its single white surface.
 

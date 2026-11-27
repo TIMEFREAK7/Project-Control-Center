@@ -26,6 +26,10 @@ it (and a zip) to Aditya directly after every major upgrade, not just committing
   `--border-default` per theme, placeholders `--text-secondary`.
 - Contrast, solved then measured: light-theme status hues darkened just enough for 4.6:1 as text
   (badge/heat-map text re-solved too). axe on 28 screens × 2 themes: **0 failures (22 before)**.
+- **Revised after Aditya's review:** in dark mode, sections didn't separate (page and content
+  were the same near-black). Dark now uses ColorOS-style elevation: page `#0a0a0b`, content
+  surfaces `#1c1d21`, raised `#26282d`, neutral text; dark status/badge shades re-solved for the
+  grey cards. Light unchanged. Still 0 axe failures. Phase 7's "one surface" is light-only now.
 - Size: `index.html` 6,356.7 → 6,323.4 KB; mirror 710.9 → 677.8 KB.
 - New `tests/test_design_tokens_phase7.js` (11 checks; fails 10/10 on the old styles).
 - Before/after sheets: `scratch/pcc-7.2/sheets/` (8 screens × desktop/phone + 4 mirror tabs).
