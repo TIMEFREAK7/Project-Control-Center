@@ -132,8 +132,6 @@ const JS_ORDER = [
 // needing to bundle+embed the ~1.1MB worker script as base64 or manage a Blob Worker.
 
 const FONT_FILES = {
-  "fonts/space-grotesk-500.woff2": "font/woff2",
-  "fonts/space-grotesk-600.woff2": "font/woff2",
   "fonts/inter-400.woff2": "font/woff2",
   "fonts/inter-500.woff2": "font/woff2",
   "fonts/inter-600.woff2": "font/woff2",
