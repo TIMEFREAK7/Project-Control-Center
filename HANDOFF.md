@@ -7,15 +7,46 @@ it (and a zip) to Aditya directly after every major upgrade, not just committing
 
 ## Current state (2026-11-27)
 
-- `main` has every gate through 7.4. Schema **67**. 140 test files (`cd tests && npm test`), green in UTC and IST.
+- `main` has every gate through 7.5a. Schema **67**. 141 test files (`cd tests && npm test`), green in UTC and IST.
   Windows installer builds natively on this PC (1.10.0 last built).
-- Next in `DEFERRED_ROADMAP.md` after 7.4: Gate 7.5a (Overview page pass). Features track: 1.1.
+- Next in `DEFERRED_ROADMAP.md` after 7.5a: Gate 7.5b (Schedule page pass). Features track: 1.1.
 - Waiting on Aditya: Gate 0.1 (phone check of At a Glance 1.9 + predictive back) and the real
   Storage Management → App data reading (decides Gate 6.2).
 - Docs layout since Gate 6.3: `CLAUDE.md` = rules (10.5 KB); `docs/GOTCHAS.md` = the old
   CLAUDE.md, unedited; `docs/BUILD_HISTORY.md` = README's old history; `docs/HANDOFF_ARCHIVE.md`
   = this file's sessions before 2026-11-11; `README.md` = short user guide (ships in the zip).
 
+## 2026-11-27 — Gate 7.5a: Overview page pass (Dashboard, My Work, Action Centre, Portfolio, Project Workspace, Executive Center)
+
+- **Bug found:** Dashboard's "Current context" card was empty at <=1150px and in the mirror app:
+  it reuses `.title-block__cell`, and the title block's hide rules (1150px and 780px blocks)
+  were unscoped. Now `.title-block .title-block__cell…`; the card (`.dashboard-context-card`)
+  shows only at <=1150px and always under `.mirror-app-shell`.
+- Portfolio phone: the 10 filters + Show archived fold behind a "Filters (n)" toggle at <=780px
+  (`.filter-fold` is `display:contents` elsewhere, so desktop is unchanged). First project at
+  537 px of 915 (was 1,077).
+- One primary per view (Portfolio's "Open Workspace" → secondary; per-card/row actions quiet);
+  Project Workspace's Overview/Executive Center switch is a `.tab-bar`.
+- Copy: subtitles removed (Dashboard keeps "n of m active projects match these filters." only
+  while filtered; My Work states "Across N active projects." / "For <project>."). 64+ uppercase
+  labels on these pages (+ `projectWorkspaceService` group labels) → sentence case,
+  abbreviations kept; `.status-badge`, `.card-stat__label`, `.detail-item__label` no longer
+  force capitals (this reaches every page). Executive Center's Summary headings stay Title Case
+  (the print snapshot and tests use them); they were only shown uppercased.
+- `.panel--flat` (new) on section wrappers: light = hairline + space, dark = lifted surface
+  without a border. Real objects (project cards, attention items, forms) keep the box.
+- Empty states with actions: + Add Project, Clear filters (cards and Compare), Go to Portfolio
+  (Executive Center, Workspace), + New Weekly Review; Action Centre's is one line.
+- Dates on Executive Center / Workspace no longer `.mono`.
+- Tests: new `test_overview_phase7.js` (1/17 on the old build, 17/17 now). 19 older tests read
+  the old capitals/subtitles: label strings updated inside their quotes only (mapping in this
+  gate's scratch `relabel-tests.js`). `test_integrated_project_controls_e2e.js` keeps the
+  Delay & Recovery Dashboard's uppercase label (that page is 7.5c). The P6 and column-mapping
+  import tests got the same "wait for the import" fix as MSP at 7.4 (both raced under load).
+- Chromium: 24 shots (6 pages × 2 themes × 2 sizes) 0 console errors, 0 contrast failures,
+  audit pass; mirror rebuilt (682.4 KB), its 4 tabs change. Sheets: `scratch/pcc-7.5a/sheets/`.
+- Left: Dashboard's own 7 phone filters still stack above its KPIs (the same fold would fix it);
+  Executive Center's "INR 42,00,00,000" wraps inside its KPI tile.
 ## 2026-11-27 — Gate 7.4: shared components
 
 - Aditya's calls: search boxes = magnifier + screen-reader name (not a visible label); "fewer

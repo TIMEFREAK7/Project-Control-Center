@@ -53,7 +53,7 @@ import type { PCCProject, PCCStoreData } from "../types/pcc";
    local-only offline app (see README.md's own framing of this same point). */
 function FirstRunWelcome() {
   return (
-    <div className="panel">
+    <div className="panel panel--flat">
       <h3 style={{ marginBottom: 8 }}>Welcome to Project Control Center</h3>
       <p className="text-secondary" style={{ marginTop: 0, marginBottom: 16 }}>
         Project planning, controls, and portfolio management — schedules, risks, documents, cost tracking, and reporting, all in one
@@ -81,9 +81,11 @@ function ContextSwitcherPanel() {
     containerRef.current!.appendChild(buildContextSwitcher("dashboard-context"));
   }, []);
   return (
-    <div className="panel no-print" style={{ marginBottom: 16 }}>
-      <div className="text-secondary" style={{ fontSize: "var(--text-xs)", letterSpacing: "0.4px", marginBottom: 8 }}>
-        CURRENT CONTEXT
+    // Gate 7.5a: shown only where the title block hides its own switcher (<=1150px) and always in
+    // the mirror app (styles.css .dashboard-context-card).
+    <div className="panel panel--flat no-print dashboard-context-card" style={{ marginBottom: 16 }}>
+      <div className="text-secondary" style={{ fontSize: "var(--text-xs)", marginBottom: 8 }}>
+        Current context
       </div>
       <div ref={containerRef} />
     </div>
@@ -131,7 +133,7 @@ function PortfolioExceptionsPanel({ exceptions }: { exceptions: PortfolioExcepti
     { label: "Critical Delays", value: exceptions.criticalDelays, route: "delayRecoveryDashboard" },
   ];
   return (
-    <div className="panel" style={{ marginBottom: 16 }}>
+    <div className="panel panel--flat" style={{ marginBottom: 16 }}>
       <h3 style={{ marginBottom: 10 }}>Portfolio Exceptions</h3>
       <div className="project-card__stats">
         {stats.map((stat) => (
@@ -155,7 +157,7 @@ function PortfolioExceptionsPanel({ exceptions }: { exceptions: PortfolioExcepti
 function ManagementAttentionPanel({ groups }: { groups: AttentionGroup[] }) {
   const totalAlerts = groups.reduce((sum, g) => sum + g.alerts.length, 0);
   return (
-    <div className="panel" style={{ marginBottom: 16, borderColor: totalAlerts > 0 ? "var(--status-critical)" : undefined }}>
+    <div className="panel panel--flat" style={{ marginBottom: 16, borderColor: totalAlerts > 0 ? "var(--status-critical)" : undefined }}>
       <h3 style={{ marginBottom: 10 }}>Management Attention ({totalAlerts})</h3>
       {groups.length === 0 ? (
         <p className="text-secondary" style={{ margin: 0 }}>
@@ -166,7 +168,7 @@ function ManagementAttentionPanel({ groups }: { groups: AttentionGroup[] }) {
           <div key={g.project.id} style={{ marginBottom: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
               <span style={{ fontWeight: 600, fontSize: "var(--text-13)" }}>{g.project.name || "(unnamed project)"}</span>
-              <button className="btn btn--ghost" onClick={() => viewProjectInExecutiveCenter(g.project.id)}>
+              <button className="btn btn--quiet" onClick={() => viewProjectInExecutiveCenter(g.project.id)}>
                 View Project
               </button>
             </div>
@@ -202,7 +204,7 @@ function RemindersPanel({ reminders, data }: { reminders: Reminder[]; data: PCCS
   });
 
   return (
-    <div className="panel" style={{ marginBottom: 16 }}>
+    <div className="panel panel--flat" style={{ marginBottom: 16 }}>
       <h3 style={{ marginBottom: 10 }}>Document Reminders ({reminders.length})</h3>
       {reminders.length === 0 ? (
         <p className="text-secondary" style={{ margin: 0 }}>
@@ -228,7 +230,7 @@ function RemindersPanel({ reminders, data }: { reminders: Reminder[]; data: PCCS
                     {badgeInfo.label}
                   </span>
                   {project ? (
-                    <button className="btn btn--ghost" onClick={() => viewProjectInPortfolio(project.id)}>
+                    <button className="btn btn--quiet" onClick={() => viewProjectInPortfolio(project.id)}>
                       View Project
                     </button>
                   ) : null}
@@ -313,13 +315,13 @@ export default function DashboardPage() {
   const dueSoonCount = reminders.length - overdueCount;
 
   const kpis = [
-    { label: "ACTIVE PROJECTS", value: filtered.length, colorVar: null, route: "portfolio", status: "" },
-    { label: "ON TRACK", value: countByStatus("on_track"), colorVar: "--status-on-track", route: "portfolio", status: "on_track" },
-    { label: "AT RISK", value: countByStatus("at_risk"), colorVar: "--status-at-risk", route: "portfolio", status: "at_risk" },
-    { label: "CRITICAL", value: countByStatus("critical"), colorVar: "--status-critical", route: "portfolio", status: "critical" },
-    { label: "OVERDUE DOCS", value: overdueCount, colorVar: overdueCount > 0 ? "--status-critical" : null, route: "documentControlDashboard", status: undefined },
+    { label: "Active projects", value: filtered.length, colorVar: null, route: "portfolio", status: "" },
+    { label: "On track", value: countByStatus("on_track"), colorVar: "--status-on-track", route: "portfolio", status: "on_track" },
+    { label: "At risk", value: countByStatus("at_risk"), colorVar: "--status-at-risk", route: "portfolio", status: "at_risk" },
+    { label: "Critical", value: countByStatus("critical"), colorVar: "--status-critical", route: "portfolio", status: "critical" },
+    { label: "Overdue docs", value: overdueCount, colorVar: overdueCount > 0 ? "--status-critical" : null, route: "documentControlDashboard", status: undefined },
     {
-      label: "DUE SOON (" + dueSoonWindowDays(data) + "D)",
+      label: "Due soon (" + dueSoonWindowDays(data) + "d)",
       value: dueSoonCount,
       colorVar: dueSoonCount > 0 ? "--status-at-risk" : null,
       route: "documentControlDashboard",
@@ -354,20 +356,14 @@ export default function DashboardPage() {
 
   return (
     <>
-      <h2 style={{ marginBottom: 4 }}>Portfolio Overview</h2>
-      <p className="text-secondary" style={{ marginTop: 0, marginBottom: 20 }}>
-        {active.length === 0
-          ? "No active projects yet — add one from the Portfolio page to populate this view."
-          : filtered.length === active.length
-          ? "Portfolio-wide health across " + active.length + " active project" + (active.length === 1 ? "" : "s") + "."
-          : "Portfolio-wide health across " +
-            filtered.length +
-            " of " +
-            active.length +
-            " active project" +
-            (active.length === 1 ? "" : "s") +
-            " matching these filters."}
-      </p>
+      {/* Gate 7.5a: no sentence under the title unless filters hide projects; the KPI strip
+          shows the count, but not how many were filtered out. */}
+      <h2 style={{ marginBottom: filtered.length === active.length ? "var(--space-4)" : 4 }}>Portfolio Overview</h2>
+      {filtered.length !== active.length ? (
+        <p className="text-secondary" style={{ marginTop: 0, marginBottom: 20 }}>
+          {filtered.length + " of " + active.length + " active project" + (active.length === 1 ? "" : "s") + " match these filters."}
+        </p>
+      ) : null}
 
       <ContextSwitcherPanel />
 
@@ -420,7 +416,7 @@ export default function DashboardPage() {
         </>
       ) : null}
 
-      <div className="panel">
+      <div className="panel panel--flat">
         {active.length === 0 ? (
           <>
             <h3 style={{ marginBottom: 8 }}>Get started</h3>

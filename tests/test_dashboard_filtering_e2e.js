@@ -122,10 +122,11 @@ function bodyTextExcludingContextSwitcher(outletEl) {
     var clientOptions = Array.from(clientSelect.options).map((o) => o.textContent);
     assert.deepStrictEqual(clientOptions, ["All clients", "Acme Corp", "Beta Industries"]);
 
-    assert.strictEqual(kpiValue(dom, "ACTIVE PROJECTS"), 2);
+    assert.strictEqual(kpiValue(dom, "Active projects"), 2);
     var text = bodyTextExcludingContextSwitcher(outlet());
     assert.ok(text.indexOf("Riverside Tower") !== -1 && text.indexOf("Harbor Plaza") !== -1);
-    assert.ok(text.indexOf("across 2 active projects.") !== -1, "got: " + text.slice(0, 300));
+    // Gate 7.5a: unfiltered, no sentence under the title (the KPI strip shows the count).
+    assert.ok(text.indexOf("match these filters") === -1, "got: " + text.slice(0, 300));
   });
 
   await check("filtering by Client 'Acme Corp' narrows the KPI strip, Recent Projects, and Management Attention to just that project", () => {
@@ -133,13 +134,13 @@ function bodyTextExcludingContextSwitcher(outletEl) {
     clientSelect.value = "Acme Corp";
     clientSelect.dispatchEvent(new win.Event("change", { bubbles: true }));
 
-    assert.strictEqual(kpiValue(dom, "ACTIVE PROJECTS"), 1);
+    assert.strictEqual(kpiValue(dom, "Active projects"), 1);
     var text = bodyTextExcludingContextSwitcher(outlet());
     assert.ok(text.indexOf("Riverside Tower") !== -1);
     assert.ok(text.indexOf("Harbor Plaza") === -1, "Harbor Plaza must be filtered out everywhere, including Recent Projects and Management Attention");
     assert.ok(text.indexOf("Riverside Tower risk") !== -1, "Management Attention must still show the matching project's own alert");
     assert.ok(text.indexOf("Harbor Plaza risk") === -1, "Management Attention must not show the filtered-out project's alert");
-    assert.ok(text.indexOf("across 1 of 2 active projects matching these filters.") !== -1, "got: " + text.slice(0, 300));
+    assert.ok(text.indexOf("1 of 2 active projects match these filters.") !== -1, "got: " + text.slice(0, 300));
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
@@ -148,7 +149,7 @@ function bodyTextExcludingContextSwitcher(outletEl) {
     countrySelect.value = "UAE"; // Acme Corp's project is India, not UAE — no project satisfies both filters
     countrySelect.dispatchEvent(new win.Event("change", { bubbles: true }));
 
-    assert.strictEqual(kpiValue(dom, "ACTIVE PROJECTS"), 0);
+    assert.strictEqual(kpiValue(dom, "Active projects"), 0);
     var text = bodyTextExcludingContextSwitcher(outlet());
     assert.ok(text.indexOf("No active projects match these filters.") !== -1, "got: " + text.slice(0, 400));
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
@@ -162,7 +163,7 @@ function bodyTextExcludingContextSwitcher(outletEl) {
   });
 
   await check("resetting filters back to 'All' restores the full unfiltered view", () => {
-    assert.strictEqual(kpiValue(dom, "ACTIVE PROJECTS"), 2);
+    assert.strictEqual(kpiValue(dom, "Active projects"), 2);
     var text = bodyTextExcludingContextSwitcher(outlet());
     assert.ok(text.indexOf("Riverside Tower") !== -1 && text.indexOf("Harbor Plaza") !== -1);
   });
@@ -175,7 +176,7 @@ function bodyTextExcludingContextSwitcher(outletEl) {
 
     yearSelect.value = "2026";
     yearSelect.dispatchEvent(new win.Event("change", { bubbles: true }));
-    assert.strictEqual(kpiValue(dom, "ACTIVE PROJECTS"), 1);
+    assert.strictEqual(kpiValue(dom, "Active projects"), 1);
     assert.ok(outlet().textContent.indexOf("Harbor Plaza") !== -1);
     yearSelect.value = "";
     yearSelect.dispatchEvent(new win.Event("change", { bubbles: true }));

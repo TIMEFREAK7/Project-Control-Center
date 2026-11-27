@@ -38,7 +38,7 @@ function findButtonByText(dom, text) {
   const buttons = Array.from(dom.window.document.querySelectorAll("button"));
   return buttons.find((b) => b.textContent.trim() === text);
 }
-// Section headings ("TODAY"/"THIS WEEK"/"WAITING FOR"/"RECENTLY UPDATED") repeat panel
+// Section headings ("Today"/"This week"/"Waiting for"/"Recently updated") repeat panel
 // titles across sections (e.g. "Meetings" appears under both THIS WEEK and RECENTLY
 // UPDATED), so panels must be scoped to their section rather than searched globally.
 function sectionPanels(dom, sectionLabel) {
@@ -167,61 +167,61 @@ function addDaysIso(days) {
     assert.ok(projId);
   });
 
-  await check("TODAY: Overdue Actions, Today's Meetings, Approvals, Activities to Update all show their seeded item", () => {
-    const overdue = panelByHeading(dom, "TODAY", "Overdue Actions");
+  await check("Today: Overdue Actions, Today's Meetings, Approvals, Activities to Update all show their seeded item", () => {
+    const overdue = panelByHeading(dom, "Today", "Overdue Actions");
     assert.ok(overdue && overdue.textContent.indexOf("Overdue Punch List Item") !== -1, "overdue meeting action must show");
 
-    const todaysMeetings = panelByHeading(dom, "TODAY", "Today's Meetings");
+    const todaysMeetings = panelByHeading(dom, "Today", "Today's Meetings");
     assert.ok(todaysMeetings && todaysMeetings.textContent.indexOf("Site Progress Meeting") !== -1, "today's meeting must show");
 
-    const approvals = panelByHeading(dom, "TODAY", "Approvals");
+    const approvals = panelByHeading(dom, "Today", "Approvals");
     assert.ok(approvals && approvals.textContent.indexOf("Additional Piling") !== -1, "pending change order must show");
     assert.ok(approvals.textContent.indexOf("Consultant Sign-off") !== -1, "pending decision must show");
 
-    const toUpdate = panelByHeading(dom, "TODAY", "Activities to Update");
+    const toUpdate = panelByHeading(dom, "Today", "Activities to Update");
     assert.ok(toUpdate && toUpdate.textContent.indexOf("Excavation") !== -1, "stale not_started activity must show");
   });
 
-  await check("THIS WEEK: Meetings, Milestones, Vendor Follow-ups, Reviews all show their seeded item", () => {
-    const weekMeetings = panelByHeading(dom, "THIS WEEK", "Meetings");
+  await check("This week: Meetings, Milestones, Vendor Follow-ups, Reviews all show their seeded item", () => {
+    const weekMeetings = panelByHeading(dom, "This week", "Meetings");
     assert.ok(weekMeetings && weekMeetings.textContent.indexOf("Design Kickoff Review") !== -1, "this week's meeting must show");
 
-    const milestones = panelByHeading(dom, "THIS WEEK", "Milestones");
+    const milestones = panelByHeading(dom, "This week", "Milestones");
     assert.ok(milestones && milestones.textContent.indexOf("Slab Pour Complete") !== -1, "this week's milestone must show");
 
-    const followups = panelByHeading(dom, "THIS WEEK", "Vendor Follow-ups");
+    const followups = panelByHeading(dom, "This week", "Vendor Follow-ups");
     assert.ok(followups && followups.textContent.indexOf("Acme Rebar Supply") !== -1, "vendor follow-up must show");
 
-    const reviews = panelByHeading(dom, "THIS WEEK", "Reviews");
+    const reviews = panelByHeading(dom, "This week", "Reviews");
     assert.ok(reviews && reviews.textContent.indexOf("Riverside Tower") !== -1, "overdue review (no review ever taken, cadence default 7) must show");
   });
 
-  await check("WAITING FOR: each party bucket shows exactly its own item", () => {
-    assert.ok(panelByHeading(dom, "WAITING FOR", "Vendor").textContent.indexOf("Facade Revision") !== -1);
-    assert.ok(panelByHeading(dom, "WAITING FOR", "Client").textContent.indexOf("Foundation Query") !== -1);
-    assert.ok(panelByHeading(dom, "WAITING FOR", "Consultant").textContent.indexOf("Consultant Sign-off") !== -1);
-    assert.ok(panelByHeading(dom, "WAITING FOR", "Management").textContent.indexOf("Additional Piling") !== -1);
+  await check("Waiting for: each party bucket shows exactly its own item", () => {
+    assert.ok(panelByHeading(dom, "Waiting for", "Vendor").textContent.indexOf("Facade Revision") !== -1);
+    assert.ok(panelByHeading(dom, "Waiting for", "Client").textContent.indexOf("Foundation Query") !== -1);
+    assert.ok(panelByHeading(dom, "Waiting for", "Consultant").textContent.indexOf("Consultant Sign-off") !== -1);
+    assert.ok(panelByHeading(dom, "Waiting for", "Management").textContent.indexOf("Additional Piling") !== -1);
   });
 
-  await check("RECENTLY UPDATED: Projects/Activities/RFIs/Risks/Meetings each show a seeded record", () => {
-    const recentProjects = panelByHeading(dom, "RECENTLY UPDATED", "Projects");
+  await check("Recently updated: Projects/Activities/RFIs/Risks/Meetings each show a seeded record", () => {
+    const recentProjects = panelByHeading(dom, "Recently updated", "Projects");
     assert.ok(recentProjects && recentProjects.textContent.indexOf("Riverside Tower") !== -1);
 
-    const recentActivities = panelByHeading(dom, "RECENTLY UPDATED", "Activities");
+    const recentActivities = panelByHeading(dom, "Recently updated", "Activities");
     assert.ok(recentActivities && recentActivities.textContent.indexOf("Excavation") !== -1);
 
-    const recentRfis = panelByHeading(dom, "RECENTLY UPDATED", "RFIs");
+    const recentRfis = panelByHeading(dom, "Recently updated", "RFIs");
     assert.ok(recentRfis && recentRfis.textContent.indexOf("Foundation Query") !== -1);
 
-    const recentRisks = panelByHeading(dom, "RECENTLY UPDATED", "Risks");
+    const recentRisks = panelByHeading(dom, "Recently updated", "Risks");
     assert.ok(recentRisks && recentRisks.textContent.indexOf("Ground Conditions Risk") !== -1);
 
-    const recentMeetings = panelByHeading(dom, "RECENTLY UPDATED", "Meetings");
+    const recentMeetings = panelByHeading(dom, "Recently updated", "Meetings");
     assert.ok(recentMeetings && (recentMeetings.textContent.indexOf("Site Progress Meeting") !== -1 || recentMeetings.textContent.indexOf("Design Kickoff Review") !== -1));
   });
 
   await check("clicking an Approvals item (the whole row, Redesign Gate 7's clickable-row style) navigates to the Decision Register with that decision expanded", () => {
-    const approvals = panelByHeading(dom, "TODAY", "Approvals");
+    const approvals = panelByHeading(dom, "Today", "Approvals");
     const row = Array.from(approvals.querySelectorAll(".attention-item--clickable")).find((r) => r.textContent.indexOf("Consultant Sign-off") !== -1);
     assert.ok(row, "clickable row not found for the Consultant Sign-off item");
     row.click();

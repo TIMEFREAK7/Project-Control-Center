@@ -66,18 +66,18 @@ function Header({ project, data }: { project: PCCProject; data: PCCStoreData }) 
       </div>
 
       <div className="project-card__stats" style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--divider)" }}>
-        <VitalChip label="PROGRESS" value={Math.max(0, Math.min(100, project.progress || 0)) + "%"} />
+        <VitalChip label="Progress" value={Math.max(0, Math.min(100, project.progress || 0)) + "%"} />
         <VitalChip
-          label="SCHEDULE STATUS"
+          label="Schedule status"
           value={scheduleStatus}
           colorVar={scheduleStatus === "Behind Schedule" ? "--status-at-risk" : "--status-on-track"}
         />
         <VitalChip
-          label="KEY MILESTONE"
+          label="Key milestone"
           value={keyMilestone ? (keyMilestone.activity.name || "(unnamed milestone)") + " · " + keyMilestone.date : "None scheduled"}
         />
         <VitalChip
-          label="CURRENT HEALTH"
+          label="Current health"
           value={STATUS_LABELS[project.status || ""] || project.status || ""}
           colorVar={
             project.status === "critical"
@@ -97,18 +97,19 @@ function Header({ project, data }: { project: PCCProject; data: PCCStoreData }) 
 function Nav({ projectId }: { projectId: string }) {
   return (
     <div className="no-print" style={{ marginBottom: 16 }}>
-      <div className="toolbar" style={{ marginBottom: 12 }}>
-        <button className="btn btn--primary">Overview</button>
-        <button className="btn btn--ghost" onClick={() => navigateToModule("executiveCenter", projectId)}>
+      {/* Gate 7.5a: Overview / Executive Center is a view switch, so it uses the one tab design. */}
+      <div className="tab-bar">
+        <button className="tab-btn tab-btn--active">Overview</button>
+        <button className="tab-btn" onClick={() => navigateToModule("executiveCenter", projectId)}>
           Executive Center
         </button>
       </div>
 
-      <div className="panel">
+      <div className="panel panel--flat">
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 16 }}>
           {NAV_GROUPS.map((group) => (
             <div key={group.label}>
-              <p className="text-secondary" style={{ fontSize: "var(--text-xs)", fontWeight: 600, letterSpacing: "0.04em", margin: "0 0 6px" }}>
+              <p className="text-secondary" style={{ fontSize: "var(--text-xs)", fontWeight: 600, margin: "0 0 6px" }}>
                 {group.label}
               </p>
               {group.items.map((item) => (
@@ -133,7 +134,7 @@ function KpiCard({ label, value, colorVar }: { label: string; value: string | nu
   return (
     <div className="kpi-card">
       <span className="kpi-card__label">{label}</span>
-      <span className="kpi-card__value mono" style={colorVar ? { color: "var(" + colorVar + ")" } : undefined}>
+      <span className="kpi-card__value" style={colorVar ? { color: "var(" + colorVar + ")" } : undefined}>
         {value}
       </span>
     </div>
@@ -142,7 +143,7 @@ function KpiCard({ label, value, colorVar }: { label: string; value: string | nu
 
 function AttentionPanel({ items, projectId }: { items: AttentionItem[]; projectId: string }) {
   return (
-    <div className="panel" style={{ marginTop: 16 }}>
+    <div className="panel panel--flat" style={{ marginTop: 16 }}>
       <h3 style={{ marginBottom: 10 }}>Management Attention ({items.length})</h3>
       {items.length === 0 ? (
         <p className="text-secondary" style={{ fontSize: "var(--text-13)", margin: 0 }}>
@@ -166,7 +167,7 @@ function AttentionPanel({ items, projectId }: { items: AttentionItem[]; projectI
 
 function ListPanel({ title, items, dateMono }: { title: string; items: DatedItem[]; dateMono: boolean }) {
   return (
-    <div className="panel" style={{ flex: "1 1 320px", minWidth: 280 }}>
+    <div className="panel panel--flat" style={{ flex: "1 1 320px", minWidth: 280 }}>
       <h4 style={{ marginBottom: 10 }}>{title}</h4>
       {items.length === 0 ? (
         <p className="text-secondary" style={{ fontSize: "var(--text-13)" }}>
@@ -177,7 +178,7 @@ function ListPanel({ title, items, dateMono }: { title: string; items: DatedItem
           {items.map((i, idx) => (
             <div key={idx} style={{ fontSize: "var(--text-12)", marginBottom: 6 }}>
               {dateMono ? (
-                <span className="mono text-secondary">{i.date}</span>
+                <span className="text-secondary">{i.date}</span>
               ) : (
                 <span className="text-secondary">{formatDate(i.date)}</span>
               )}
@@ -200,11 +201,11 @@ function Overview({ data, project }: { data: PCCStoreData; project: PCCProject }
   return (
     <>
       <div className="kpi-grid">
-        <KpiCard label="FINISH" value={project.finish_date || "—"} />
-        <KpiCard label="BUDGET" value={fmtMoney(project.budget, project.currency)} />
-        <KpiCard label="OPEN RISKS / ISSUES" value={stats.openRisks} colorVar={stats.openRisks > 0 ? "--status-at-risk" : null} />
-        <KpiCard label="OPEN RFIs / TQs" value={stats.openRfis} colorVar={stats.overdueRfis.length > 0 ? "--status-critical" : null} />
-        <KpiCard label="DOCUMENTS" value={stats.docsAvailable + "/" + stats.docsTotal} />
+        <KpiCard label="Finish" value={project.finish_date || "—"} />
+        <KpiCard label="Budget" value={fmtMoney(project.budget, project.currency)} />
+        <KpiCard label="Open risks / issues" value={stats.openRisks} colorVar={stats.openRisks > 0 ? "--status-at-risk" : null} />
+        <KpiCard label="Open RFIs / TQs" value={stats.openRfis} colorVar={stats.overdueRfis.length > 0 ? "--status-critical" : null} />
+        <KpiCard label="Documents" value={stats.docsAvailable + "/" + stats.docsTotal} />
       </div>
 
       <AttentionPanel items={attentionItems} projectId={project.id} />
@@ -227,7 +228,12 @@ export default function ProjectWorkspacePage({ initialProjectId }: { initialProj
     return (
       <>
         <h2 style={{ marginBottom: 6 }}>Project Workspace</h2>
-        <div className="panel empty-state">Add a project in Portfolio first to open its Workspace.</div>
+        <div className="panel empty-state">
+          Add a project in Portfolio first to open its Workspace.
+          <button className="btn btn--ghost empty-state__action" onClick={() => window.PCC.router.go("portfolio")}>
+            Go to Portfolio
+          </button>
+        </div>
       </>
     );
   }

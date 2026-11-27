@@ -149,12 +149,12 @@ function setReactSelectValue(win, select, value) {
   });
 
   await check("the KPI strip shows correct Total/Active/Completed/At Risk/Delayed/Upcoming counts", () => {
-    assert.strictEqual(kpiValue(dom, "TOTAL PROJECTS"), "4", "4 including the archived one");
-    assert.strictEqual(kpiValue(dom, "ACTIVE"), "3", "3 non-archived");
-    assert.strictEqual(kpiValue(dom, "COMPLETED"), "1", "Project Charlie only");
-    assert.strictEqual(kpiValue(dom, "AT RISK"), "1", "Project Beta only (non-archived at_risk)");
-    assert.strictEqual(kpiValue(dom, "DELAYED"), "1", "Project Alpha has one activity past its planned finish");
-    assert.strictEqual(kpiValue(dom, "UPCOMING"), "1", "Project Beta's start_date is in the future");
+    assert.strictEqual(kpiValue(dom, "Total projects"), "4", "4 including the archived one");
+    assert.strictEqual(kpiValue(dom, "Active"), "3", "3 non-archived");
+    assert.strictEqual(kpiValue(dom, "Completed"), "1", "Project Charlie only");
+    assert.strictEqual(kpiValue(dom, "At risk"), "1", "Project Beta only (non-archived at_risk)");
+    assert.strictEqual(kpiValue(dom, "Delayed"), "1", "Project Alpha has one activity past its planned finish");
+    assert.strictEqual(kpiValue(dom, "Upcoming"), "1", "Project Beta's start_date is in the future");
   });
 
   await check("the new filters are populated from real project data and filtering by Country narrows the Cards list", async () => {

@@ -130,7 +130,7 @@ function findButtonByText(dom, text) {
     assert.ok(project1Id && project2Id && scheduleId && activityAId && activityBId);
   });
 
-  await check("Executive Center Overview shows the DELAY & RECOVERY KPI panel with per-activity gap math, not a flat project-wide subtraction", async () => {
+  await check("Executive Center Overview shows the Delay & recovery KPI panel with per-activity gap math, not a flat project-wide subtraction", async () => {
     win.PCC.executiveCenter.viewProject(project1Id, "overview");
     win.PCC.router.go("executiveCenter");
     await flush();
@@ -243,6 +243,7 @@ function findButtonByText(dom, text) {
       var card = kpiCards.find((c) => c.textContent.indexOf(label) !== -1);
       return card ? card.querySelector(".kpi-card__value").textContent : undefined;
     }
+    // Delay & Recovery Dashboard is a 7.5c page: its own labels are still uppercase here.
     assert.strictEqual(kpiValue("UNADDRESSED DELAY (DAYS)"), "9");
 
     var text = outlet().textContent;
@@ -259,8 +260,8 @@ function findButtonByText(dom, text) {
     await flush();
 
     var kpiCards = Array.from(outlet().querySelectorAll(".kpi-card"));
-    var card = kpiCards.find((c) => c.textContent.indexOf("UNADDRESSED DELAY (DAYS)") !== -1);
-    assert.ok(card, "UNADDRESSED DELAY (DAYS) KPI card not found on Portfolio Performance");
+    var card = kpiCards.find((c) => c.textContent.indexOf("Unaddressed delay (days)") !== -1);
+    assert.ok(card, "Unaddressed delay (days) KPI card not found on Portfolio Performance");
     assert.strictEqual(card.querySelector(".kpi-card__value").textContent, "9");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });

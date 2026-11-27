@@ -64,7 +64,7 @@ function ListPanel({
   badgeClass: string;
 }) {
   return (
-    <div className="panel">
+    <div className="panel panel--flat">
       <h3 style={{ marginBottom: 8 }}>
         {heading} ({items.length})
       </h3>
@@ -141,9 +141,10 @@ export default function MyWorkPage() {
     <div>
       <h2 style={{ marginBottom: 4 }}>My Work</h2>
       <p className="text-secondary" style={{ marginTop: 0, marginBottom: 8 }}>
+        {/* Gate 7.5a: states only the scope, which the page doesn't show elsewhere */}
         {effectiveFilter
-          ? "Your personal cockpit for " + (projectsById[effectiveFilter].name || "(unnamed project)") + "."
-          : "Your personal cockpit across " + allActiveProjects.length + " active project" + (allActiveProjects.length === 1 ? "" : "s") + "."}
+          ? "For " + (projectsById[effectiveFilter].name || "(unnamed project)") + "."
+          : "Across " + allActiveProjects.length + " active project" + (allActiveProjects.length === 1 ? "" : "s") + "."}
       </p>
 
       {allActiveProjects.length > 0 ? (
@@ -162,7 +163,7 @@ export default function MyWorkPage() {
         </div>
       ) : null}
 
-      <SectionHeading>TODAY</SectionHeading>
+      <SectionHeading>Today</SectionHeading>
       <Grid>
         <ListPanel heading="Overdue Actions" items={collectOverdueActions(data, activeProjectIds)} emptyText="Nothing overdue." projectsById={projectsById} badgeClass="critical" />
         <ListPanel heading="Today's Meetings" items={collectTodaysMeetings(data, activeProjectIds)} emptyText="No meetings today." projectsById={projectsById} badgeClass="info" />
@@ -170,7 +171,7 @@ export default function MyWorkPage() {
         <ListPanel heading="Activities to Update" items={collectActivitiesToUpdate(data, activeProjectIds)} emptyText="Nothing behind its own plan dates." projectsById={projectsById} badgeClass="at_risk" />
       </Grid>
 
-      <SectionHeading>THIS WEEK</SectionHeading>
+      <SectionHeading>This week</SectionHeading>
       <Grid>
         <ListPanel heading="Meetings" items={collectWeekMeetings(data, activeProjectIds)} emptyText={"No meetings in the next " + WEEK_WINDOW_DAYS + " days."} projectsById={projectsById} badgeClass="info" />
         <ListPanel heading="Milestones" items={collectWeekMilestones(data, activeProjectIds)} emptyText={"No milestones in the next " + WEEK_WINDOW_DAYS + " days."} projectsById={projectsById} badgeClass="info" />
@@ -178,7 +179,7 @@ export default function MyWorkPage() {
         <ListPanel heading="Reviews" items={collectReviewsDue(data, activeProjects)} emptyText="No reviews due." projectsById={projectsById} badgeClass="info" />
       </Grid>
 
-      <SectionHeading>WAITING FOR</SectionHeading>
+      <SectionHeading>Waiting for</SectionHeading>
       <Grid>
         <ListPanel heading="Vendor" items={waitingFor.vendor} emptyText="Nothing waiting on a vendor." projectsById={projectsById} badgeClass="info" />
         <ListPanel heading="Client" items={waitingFor.client} emptyText="Nothing waiting on the client." projectsById={projectsById} badgeClass="info" />
@@ -186,7 +187,7 @@ export default function MyWorkPage() {
         <ListPanel heading="Management" items={waitingFor.management} emptyText="Nothing waiting on management." projectsById={projectsById} badgeClass="info" />
       </Grid>
 
-      <SectionHeading>RECENTLY UPDATED</SectionHeading>
+      <SectionHeading>Recently updated</SectionHeading>
       <Grid>
         <ListPanel heading="Projects" items={recent.projects} emptyText="No recent activity." projectsById={projectsById} badgeClass="info" />
         <ListPanel heading="Activities" items={recent.activities} emptyText="No recent activity." projectsById={projectsById} badgeClass="info" />

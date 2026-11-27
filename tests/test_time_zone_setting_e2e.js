@@ -142,15 +142,15 @@ function setReactSelectValue(win, el, value) {
     setZone("America/New_York"); // today = 23rd → due today
     win.PCC.router.go("actionCentre");
     await flush();
-    assert.strictEqual(kpi("DUE TODAY"), 1);
-    assert.strictEqual(kpi("OVERDUE"), 0);
+    assert.strictEqual(kpi("Due today"), 1);
+    assert.strictEqual(kpi("Overdue"), 0);
     setZone("Asia/Tokyo"); // today = 24th → overdue
     win.PCC.router.go("dashboard");
     await flush();
     win.PCC.router.go("actionCentre");
     await flush();
-    assert.strictEqual(kpi("OVERDUE"), 1);
-    assert.strictEqual(kpi("DUE TODAY"), 0);
+    assert.strictEqual(kpi("Overdue"), 1);
+    assert.strictEqual(kpi("Due today"), 0);
   });
 
   await check("timestamps display in the chosen zone", () => {

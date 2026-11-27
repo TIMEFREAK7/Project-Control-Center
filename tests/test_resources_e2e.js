@@ -243,12 +243,12 @@ function setReactSelectValue(win, select, value) {
     await flush();
 
     var outlet = win.document.getElementById("page-outlet");
-    assert.ok(outlet.textContent.indexOf("RESOURCES ASSIGNED") !== -1);
+    assert.ok(outlet.textContent.indexOf("Resources assigned") !== -1);
     assert.ok(outlet.textContent.indexOf("Tower Crane #1") !== -1);
     assert.ok(outlet.textContent.indexOf("over-allocated") !== -1, "should flag the portfolio-wide over-allocation right in Portfolio's own details");
 
     var viewAllBtns = Array.from(outlet.querySelectorAll("button")).filter((b) => b.textContent.trim() === "View All");
-    var resourcesViewAllBtn = viewAllBtns.find((b) => b.parentElement.textContent.indexOf("RESOURCES ASSIGNED") !== -1);
+    var resourcesViewAllBtn = viewAllBtns.find((b) => b.parentElement.textContent.indexOf("Resources assigned") !== -1);
     assert.ok(resourcesViewAllBtn, "Resources Assigned View All button not found");
     resourcesViewAllBtn.click();
     // resources.js is a React-migrated page — portfolio.js's click handler already
@@ -260,7 +260,7 @@ function setReactSelectValue(win, select, value) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("Executive Center shows a RESOURCES KPI section now that the module has real data", async () => {
+  await check("Executive Center shows a Resources KPI section now that the module has real data", async () => {
     win.PCC.executiveCenter.viewProject(projectAId);
     win.PCC.router.go("executiveCenter");
     await flush();
@@ -273,13 +273,13 @@ function setReactSelectValue(win, select, value) {
     resourcesTab.click();
     await flush();
     var outlet = win.document.getElementById("page-outlet");
-    assert.ok(outlet.textContent.indexOf("RESOURCES") !== -1);
+    assert.ok(outlet.textContent.indexOf("Resources") !== -1);
     assert.ok(outlet.textContent.indexOf("Resources Assigned") !== -1);
     assert.ok(outlet.textContent.indexOf("Over-Allocated") !== -1);
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("a project with zero resources assigned shows no RESOURCES KPI section for it, and Executive Center for a resource-free project omits the section entirely if no resources exist anywhere", async () => {
+  await check("a project with zero resources assigned shows no Resources KPI section for it, and Executive Center for a resource-free project omits the section entirely if no resources exist anywhere", async () => {
     // This app has resources now (seeded above), so the section should still appear
     // globally, but a project with no assignments shows 0 / not over-allocated — not
     // fabricated non-zero numbers.
@@ -296,7 +296,7 @@ function setReactSelectValue(win, select, value) {
     resourcesTab.click();
     await flush();
     var outlet = win.document.getElementById("page-outlet");
-    assert.ok(outlet.textContent.indexOf("RESOURCES") !== -1, "section still shows since resources exist in the app");
+    assert.ok(outlet.textContent.indexOf("Resources") !== -1, "section still shows since resources exist in the app");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 

@@ -103,7 +103,7 @@ async function check(label, fn) {
     assert.strictEqual(r.results.a.early_start, "2026-09-24");
   });
 
-  await check("Action Centre buckets by the local date: due-yesterday is OVERDUE, due-today is DUE TODAY", async () => {
+  await check("Action Centre buckets by the local date: due-yesterday is Overdue, due-today is Due today", async () => {
     S.update((d) => {
       const p = S.newProject({ name: "IST Project" });
       d.projects.push(p);
@@ -116,8 +116,8 @@ async function check(label, fn) {
       const card = Array.from(doc.querySelectorAll(".kpi-card")).find((c) => c.querySelector(".kpi-card__label").textContent === label);
       return Number(card.querySelector(".kpi-card__value").textContent);
     };
-    assert.strictEqual(kpi("OVERDUE"), 1, "the RFI due on the 23rd is overdue on the 24th");
-    assert.strictEqual(kpi("DUE TODAY"), 1, "the RFI due on the 24th is due today");
+    assert.strictEqual(kpi("Overdue"), 1, "the RFI due on the 23rd is overdue on the 24th");
+    assert.strictEqual(kpi("Due today"), 1, "the RFI due on the 24th is due today");
   });
 
   // ---- 2. Excel dates import as the date they say ----

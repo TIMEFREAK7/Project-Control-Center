@@ -119,9 +119,9 @@ function clickSubTab(dom, label) {
     var text = outlet().textContent;
     assert.ok(text.indexOf("Riverside Tower") !== -1);
     assert.ok(text.indexOf("Acme Developers") !== -1);
-    assert.ok(text.indexOf("PROGRESS") !== -1 && text.indexOf("62%") !== -1);
-    assert.ok(text.indexOf("OPEN RISKS") !== -1);
-    assert.ok(text.indexOf("OVERDUE RFIs") !== -1);
+    assert.ok(text.indexOf("Progress") !== -1 && text.indexOf("62%") !== -1);
+    assert.ok(text.indexOf("Open risks") !== -1);
+    assert.ok(text.indexOf("Overdue RFIs") !== -1);
   });
 
   await check("Summary is the default sub-tab: Health Score/Diagnostics/Executive Summary/Management Action List show, but the old flat KPI sections do not", () => {
@@ -164,8 +164,8 @@ function clickSubTab(dom, label) {
     clickSubTab(dom, "Schedule");
     await flush();
     var text = outlet().textContent;
-    assert.ok(text.indexOf("PROGRESS") !== -1 && text.indexOf("Schedule Progress") !== -1);
-    assert.ok(text.indexOf("SCHEDULE PERFORMANCE") !== -1);
+    assert.ok(text.indexOf("Progress") !== -1 && text.indexOf("Schedule Progress") !== -1);
+    assert.ok(text.indexOf("Schedule performance") !== -1);
     assert.ok(text.indexOf("Progress S-Curve") !== -1);
     assert.ok(text.indexOf("Milestone Timeline") !== -1);
     assert.ok(text.indexOf("Project Health Score") === -1, "Summary-only content must not leak onto Schedule");
@@ -175,8 +175,8 @@ function clickSubTab(dom, label) {
     clickSubTab(dom, "Cost & Commitments");
     await flush();
     var text = outlet().textContent;
-    assert.ok(text.indexOf("COST") !== -1);
-    assert.ok(text.indexOf("COMMITMENTS") !== -1);
+    assert.ok(text.indexOf("Cost") !== -1);
+    assert.ok(text.indexOf("Commitments") !== -1);
     assert.ok(text.indexOf("EVM") !== -1, "budget items exist so EVM should render");
     assert.ok(text.indexOf("SPI") !== -1 && text.indexOf("CPI") !== -1);
   });

@@ -6840,3 +6840,19 @@ in 7.5. Changing the capitalised labels inside pages also moved to 7.5.
 
 **Caught before shipping.** An invisible character in the stylesheet was silently switching off
 three of the new rules; a test now guards against it.
+
+## Gate 7.5a: the Overview pages (2026-11-27)
+
+**What changed for Aditya.** Dashboard, My Work, Action Centre, Portfolio, Project Workspace and
+Executive Center (also the phone app's pages) now follow the new rules page by page: one dark
+main button per view, no explanatory sentence under the title, labels in normal sentence case
+instead of capitals (status pills everywhere too), sections separated by a fine line instead of
+a box (in dark mode they keep their lighter grey surface), and "nothing here" messages that
+offer the button that fixes it ("+ Add Project", "Clear filters", "Go to Portfolio").
+
+**On a phone**, Portfolio's ten filter drop-downs now sit behind one "Filters" button, so the
+first project shows without scrolling.
+
+**Found along the way.** Dashboard's "Current context" box was empty on phones, tablets and in
+the phone app (its drop-downs were being hidden by a rule meant for the top bar); it now works
+there and is hidden on wide screens, where the top bar already has the same switcher.

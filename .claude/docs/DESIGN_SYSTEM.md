@@ -144,7 +144,14 @@ per Gate 4; never build a second nav implementation).
   right-aligned with tabular digits, 24 px sort buttons.
 - `.empty-state`: one left-aligned secondary line, no box or icon; `.empty-state__action` holds
   the one fixing button (wired per page in 7.5).
-- KPI labels are still uppercase strings in the pages (108 across 18 files): 7.5.
+- Uppercase label strings in pages: fixed per page in 7.5 (Overview done in 7.5a). Shared
+  `.status-badge`, `.card-stat__label`, `.detail-item__label` are sentence case since 7.5a.
+- `.panel--flat` (7.5): a section wrapper, not a box. Light: hairline + space; dark: the lifted
+  `--bg-paper` surface without a border. Discrete objects keep `.panel`/`.card`.
+- `.filter-fold` + `.filter-fold__toggle` (7.5a): secondary toolbar filters fold behind
+  "Filters (n)" at <=780px only; `display:contents` elsewhere so desktop layout is untouched.
+- Title-block hide rules are scoped to `.title-block` (7.5a): the Dashboard context card reuses
+  `.title-block__cell` and must keep its selects.
 
 **Shell, as of Gate 7.3:** the active nav row and the command palette's highlighted option share
 one plain fill (`--signal-amber` 14% into `--hover-bg`); no blur/"gooey" layer, no left stripe.

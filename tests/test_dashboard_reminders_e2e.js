@@ -110,8 +110,8 @@ function remindersPanelText(dom) {
     var text = outlet().textContent;
     assert.ok(text.indexOf("Document Reminders (0)") !== -1);
     assert.ok(text.indexOf("Nothing overdue or due within the next 14 days") !== -1);
-    assert.strictEqual(kpiValue(dom, "OVERDUE DOCS"), 0);
-    assert.strictEqual(kpiValue(dom, "DUE SOON"), 0);
+    assert.strictEqual(kpiValue(dom, "Overdue docs"), 0);
+    assert.strictEqual(kpiValue(dom, "Due soon"), 0);
   });
 
   await check("seed four requirements: overdue, due-soon (within 14 days), far-future required, and available-despite-past-due", () => {
@@ -150,13 +150,13 @@ function remindersPanelText(dom) {
     var posBoq = text.indexOf("BOQ");
     var posItp = text.indexOf("ITP");
     assert.ok(posBoq !== -1 && posItp !== -1 && posBoq < posItp, "the overdue BOQ row must render before the due-soon ITP row");
-    assert.ok(text.indexOf("OVERDUE") !== -1 || text.indexOf("Overdue") !== -1);
+    assert.ok(text.indexOf("Overdue") !== -1 || text.indexOf("Overdue") !== -1);
     assert.ok(text.indexOf("REQUIRED") !== -1 || text.indexOf("Required") !== -1, "the due-soon row (no matching document) should read Required, not Overdue");
   });
 
   await check("the KPI cards show the correct overdue and due-soon counts", () => {
-    assert.strictEqual(kpiValue(dom, "OVERDUE DOCS"), 1);
-    assert.strictEqual(kpiValue(dom, "DUE SOON"), 1);
+    assert.strictEqual(kpiValue(dom, "Overdue docs"), 1);
+    assert.strictEqual(kpiValue(dom, "Due soon"), 1);
   });
 
   await check("'View Project' navigates to Portfolio with the project's Details expanded", () => {
@@ -181,7 +181,7 @@ function remindersPanelText(dom) {
     var text = outlet().textContent;
     assert.ok(text.indexOf("Document Reminders (1)") !== -1, "fulfilling the overdue requirement must drop the count from 2 to 1; got: " + text.match(/Document Reminders \(\d+\)/));
     assert.ok(text.indexOf("BOQ") === -1, "the now-fulfilled BOQ requirement must no longer appear");
-    assert.strictEqual(kpiValue(dom, "OVERDUE DOCS"), 0);
+    assert.strictEqual(kpiValue(dom, "Overdue docs"), 0);
   });
 
   await check("route 'dashboard' still renders without throwing after this gate's changes", () => {
