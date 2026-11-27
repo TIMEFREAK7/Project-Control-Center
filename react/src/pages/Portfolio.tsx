@@ -987,7 +987,7 @@ function CostSection({ p, data }: { p: PCCProject; data: PCCStoreData }) {
           {summary.usingPortfolioBudget ? (
             <>
               <br />
-              <span className="text-secondary" style={{ fontSize: 11 }}>
+              <span className="text-secondary" style={{ fontSize: "var(--text-xs)" }}>
                 Budgeted from this project's Budget field — no Cost Tracking line items yet.
               </span>
             </>

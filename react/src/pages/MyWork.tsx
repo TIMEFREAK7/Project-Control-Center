@@ -85,7 +85,7 @@ function ListPanel({
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-secondary" style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.04em", margin: "24px 0 10px" }}>
+    <p className="text-secondary" style={{ fontSize: "var(--text-12)", fontWeight: 600, letterSpacing: "0.04em", margin: "24px 0 10px" }}>
       {children}
     </p>
   );

@@ -7,7 +7,8 @@
 //   cd tests/visual && npm install            (once; playwright-core only, no browser download)
 //   node shots.js --out <dir> [--screens dashboard,schedule-activities] [--themes light,dark]
 //                 [--sizes desktop,phone] [--css <override.css>] [--icons <map.json>]
-//                 [--fonts <dir>] [--axe <axe.min.js>]
+//                 [--fonts <dir>] [--axe <axe.min.js>] [--index <other index.html>]
+// --screens also takes any route name (e.g. vendors,cost) beyond the eight named screens.
 //
 // --css injects a stylesheet after load ({{FONTS}} in it becomes the --fonts dir as a file URL).
 // --icons is {"navRouteKey": "<svg …>"} and replaces those sidebar icons. Both exist so a
@@ -20,7 +21,7 @@ const { pathToFileURL } = require("url");
 const { chromium } = require("playwright-core");
 
 const REPO = path.resolve(__dirname, "..", "..");
-const INDEX_URL = pathToFileURL(path.join(REPO, "index.html")).href;
+let INDEX_URL = pathToFileURL(path.join(REPO, "index.html")).href; // --index <file> overrides
 const NOW = "2026-11-20T10:00:00+05:30";
 
 const SCREENS = {
@@ -40,6 +41,7 @@ function args() {
   const argv = process.argv.slice(2);
   for (let i = 0; i < argv.length; i += 2) a[argv[i].replace(/^--/, "")] = argv[i + 1];
   if (!a.out) throw new Error("--out <dir> is required");
+  if (a.index) INDEX_URL = pathToFileURL(path.resolve(a.index)).href; // e.g. an older build, for before/after
   const list = (v, all) => (v ? v.split(",") : Object.keys(all));
   return {
     out: path.resolve(a.out),
@@ -143,6 +145,12 @@ async function main() {
   const browser = await chromium.launch({ executablePath: chromePath() });
   const context = await browser.newContext({ timezoneId: "Asia/Kolkata", locale: "en-IN" });
   await context.clock.setFixedTime(new Date(NOW));
+  // Record ids come from Math.random; seed it so every run stores the same bytes (Storage
+  // Management shows a character count, which otherwise differed run to run).
+  await context.addInitScript(() => {
+    let s = 0x2f6b3a1d;
+    Math.random = () => ((s = (s + 0x6d2b79f5) | 0), (((s ^ (s >>> 15)) * (1 | s)) >>> 0) / 4294967296);
+  });
   const errors = [];
 
   // Seed once; localStorage and IndexedDB persist across pages in this context.
@@ -169,7 +177,7 @@ async function main() {
     await tp.close();
     for (const size of opt.sizes) {
       for (const name of opt.screens) {
-        const sc = SCREENS[name];
+        const sc = SCREENS[name] || { route: name }; // any other route name works as a screen
         const page = await context.newPage();
         page.on("pageerror", (e) => errors.push(`${name}/${theme}/${size}: ${e.message}`));
         page.on("console", (m) => m.type() === "error" && errors.push(`${name}/${theme}/${size}: ${m.text()}`));
@@ -196,10 +204,16 @@ async function main() {
         const row = { shot: path.basename(file), hscroll: await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth) };
         if (opt.axe) {
           await page.addScriptTag({ path: opt.axe });
-          row.contrast = await page.evaluate(async () => {
+          const found = await page.evaluate(async () => {
             const r = await window.axe.run(document, { runOnly: { type: "rule", values: ["color-contrast"] } });
-            return r.violations.reduce((n, v) => n + v.nodes.length, 0);
+            const nodes = r.violations.flatMap((v) => v.nodes);
+            return nodes.map((n) => {
+              const d = (n.any[0] && n.any[0].data) || {};
+              return { target: n.target.join(" "), text: (n.html || "").replace(/<[^>]+>/g, "").trim().slice(0, 40), fg: d.fgColor, bg: d.bgColor, ratio: d.contrastRatio, need: d.expectedContrastRatio };
+            });
           });
+          row.contrast = found.length;
+          if (found.length) row.contrastNodes = found;
         }
         report.push(row);
         await page.close();

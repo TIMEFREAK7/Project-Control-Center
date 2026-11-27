@@ -86,7 +86,7 @@ function RiskForm({
     <div className="panel" style={{ marginBottom: 16 }}>
       <h3 style={{ marginBottom: 14 }}>{isNew ? "Add Register Entry" : "Edit Register Entry"}</h3>
       {sourceMeeting ? (
-        <p className="text-secondary" style={{ fontSize: 12, marginTop: -8, marginBottom: 14 }}>
+        <p className="text-secondary" style={{ fontSize: "var(--text-12)", marginTop: -8, marginBottom: 14 }}>
           Linked to meeting: &#8220;{sourceMeeting.title}&#8221; ({sourceMeeting.meeting_date})
         </p>
       ) : null}
@@ -144,7 +144,7 @@ function RiskForm({
           ))}
         </div>
 
-        {showError ? <p style={{ color: "var(--status-critical)", fontSize: 13 }}>Title and Project are required.</p> : null}
+        {showError ? <p style={{ color: "var(--status-critical)", fontSize: "var(--text-13)" }}>Title and Project are required.</p> : null}
 
         <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
           <button type="submit" className="btn btn--primary" disabled={activeProjects.length === 0}>
@@ -182,7 +182,7 @@ function Heatmap({
   return (
     <div className="panel" style={{ marginBottom: 16 }}>
       <h3 style={{ marginBottom: 4 }}>Heat Map</h3>
-      <p className="text-secondary" style={{ fontSize: 12, marginTop: 0, marginBottom: 12 }}>
+      <p className="text-secondary" style={{ fontSize: "var(--text-12)", marginTop: 0, marginBottom: 12 }}>
         {isNarrowed
           ? "Reflects the current search/type/status/project filters below. Click a cell to also filter by that probability/impact combination."
           : "Click a cell to filter the list below by that probability/impact combination."}
@@ -283,7 +283,7 @@ function RiskDetails({ r, data }: { r: PCCRisk; data: PCCStoreData }) {
             CHANGE ORDERS RAISED ({linkedChangeOrders.length})
           </p>
           {linkedChangeOrders.map((co) => (
-            <p key={co.id} style={{ fontSize: 13, margin: "0 0 2px" }}>
+            <p key={co.id} style={{ fontSize: "var(--text-13)", margin: "0 0 2px" }}>
               <span className="mono">{co.number}</span> — {co.title || "(untitled)"}
             </p>
           ))}

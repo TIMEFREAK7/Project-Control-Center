@@ -161,7 +161,7 @@ function BudgetForm({
           <textarea id="costbudgetfield-notes" rows={2} defaultValue={item.notes || ""} />
         </div>
 
-        {showError ? <p style={{ color: "var(--status-critical)", fontSize: 13 }}>Project, Name, and a Planned Amount are required.</p> : null}
+        {showError ? <p style={{ color: "var(--status-critical)", fontSize: "var(--text-13)" }}>Project, Name, and a Planned Amount are required.</p> : null}
 
         <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
           <button type="submit" className="btn btn--primary" disabled={activeProjects.length === 0}>
@@ -326,7 +326,7 @@ function ActualForm({
         </div>
 
         {showError ? (
-          <p style={{ color: "var(--status-critical)", fontSize: 13 }}>Project, Description, Amount, and Date are required.</p>
+          <p style={{ color: "var(--status-critical)", fontSize: "var(--text-13)" }}>Project, Description, Amount, and Date are required.</p>
         ) : null}
 
         <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
@@ -487,7 +487,7 @@ function BudgetTab({
                   <div>
                     <strong>{b.name}</strong>
                     <br />
-                    <span className="text-secondary" style={{ fontSize: 12 }}>
+                    <span className="text-secondary" style={{ fontSize: "var(--text-12)" }}>
                       {CATEGORY_LABELS[b.category || ""]} · {projectName(data.projects, b.project_id)} · Planned {formatMoney(b.planned_amount)} · Actual so far{" "}
                       {formatMoney(actualTotal)}
                       {linkedActivity ? " · linked to “" + linkedActivity.name + "” (" + (linkedActivity.percent_complete || 0) + "% complete)" : ""}
@@ -604,7 +604,7 @@ function ActualsTab({
                   <div>
                     <strong>{a.description}</strong>
                     <br />
-                    <span className="text-secondary" style={{ fontSize: 12 }}>
+                    <span className="text-secondary" style={{ fontSize: "var(--text-12)" }}>
                       {CATEGORY_LABELS[a.category || ""]} · {projectName(data.projects, a.project_id)} · {a.date} · {formatMoney(a.amount)}
                       {a.vendor ? " · " + a.vendor : ""}
                       {linkedBudget ? " · against “" + linkedBudget.name + "”" : ""}
@@ -663,7 +663,7 @@ function SummaryTab({ data }: { data: PCCStoreData }) {
       </div>
 
       {totals.fallbackCount > 0 ? (
-        <p className="text-secondary" style={{ fontSize: 12, marginTop: -10, marginBottom: 10 }}>
+        <p className="text-secondary" style={{ fontSize: "var(--text-12)", marginTop: -10, marginBottom: 10 }}>
           {totals.fallbackCount} of {activeProjects.length} project(s) above use Portfolio's Budget field as a stand-in, since they have no Cost Tracking
           budget line items yet — add line items on the Budget tab for a more detailed number.
         </p>
@@ -685,7 +685,7 @@ function SummaryTab({ data }: { data: PCCStoreData }) {
                   <div>
                     <strong>{p.name || "(unnamed project)"}</strong>
                     <br />
-                    <span className="text-secondary" style={{ fontSize: 12 }}>
+                    <span className="text-secondary" style={{ fontSize: "var(--text-12)" }}>
                       Budgeted {formatMoney(s.budgeted)} · Actual {formatMoney(s.actual)}
                       {pctUsed !== null ? " (" + pctUsed + "% used)" : ""}
                       {s.usingPortfolioBudget ? " · from Portfolio's Budget field (no cost line items yet)" : ""}
@@ -710,7 +710,7 @@ function EvmTab({ data }: { data: PCCStoreData }) {
   if (activeProjects.length === 0) {
     return (
       <>
-        <p className="text-secondary" style={{ fontSize: 12, marginBottom: 10 }}>
+        <p className="text-secondary" style={{ fontSize: "var(--text-12)", marginBottom: 10 }}>
           Planned Value and Earned Value only reflect budget items linked to a Schedule activity (set on the Budget tab). Actual Cost always reflects
           everything logged, linked or not.
         </p>
@@ -737,7 +737,7 @@ function EvmTab({ data }: { data: PCCStoreData }) {
 
   return (
     <>
-      <p className="text-secondary" style={{ fontSize: 12, marginBottom: 10 }}>
+      <p className="text-secondary" style={{ fontSize: "var(--text-12)", marginBottom: 10 }}>
         Planned Value and Earned Value only reflect budget items linked to a Schedule activity (set on the Budget tab). Actual Cost always reflects
         everything logged, linked or not.
       </p>
@@ -766,7 +766,7 @@ function EvmTab({ data }: { data: PCCStoreData }) {
       </div>
 
       {coveragePct !== null && coveragePct < 100 ? (
-        <p className="text-secondary" style={{ fontSize: 12, marginTop: -10, marginBottom: 10 }}>
+        <p className="text-secondary" style={{ fontSize: "var(--text-12)", marginTop: -10, marginBottom: 10 }}>
           {coveragePct}% of total budget across active projects is linked to schedule activities — the rest isn't reflected in these figures. Link budget
           items to activities on the Budget tab for full coverage.
         </p>
@@ -780,7 +780,7 @@ function EvmTab({ data }: { data: PCCStoreData }) {
               <div>
                 <strong>{p.name || "(unnamed project)"}</strong>
                 <br />
-                <span className="text-secondary" style={{ fontSize: 12 }}>
+                <span className="text-secondary" style={{ fontSize: "var(--text-12)" }}>
                   EV {formatMoney(evm.ev)} · AC {formatMoney(evm.ac)} · PV {formatMoney(evm.pv)} · CPI {formatIndex(evm.cpi)} · SPI {formatIndex(evm.spi)}
                   {evm.eac != null ? " · EAC " + formatMoney(evm.eac) : ""}
                   {evm.coveragePct != null ? " · " + evm.coveragePct + "% linked" : " · nothing linked yet"}
@@ -830,7 +830,7 @@ export default function CostPage({ initialProjectFilter }: { initialProjectFilte
   return (
     <>
       <h2 style={{ marginBottom: 6 }}>Cost Tracking</h2>
-      <p className="text-secondary" style={{ fontSize: 12, marginBottom: 16 }}>
+      <p className="text-secondary" style={{ fontSize: "var(--text-12)", marginBottom: 16 }}>
         Budget line items vs. actual costs incurred, per project. No automatic link to Contract Value or Change Orders — reconciliation stays a manual,
         deliberate act.
       </p>

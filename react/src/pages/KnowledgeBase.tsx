@@ -148,7 +148,7 @@ function ArticleForm({
 
           {showExistingFile ? (
             <>
-              <p style={{ fontSize: 13, margin: "4px 0" }}>
+              <p style={{ fontSize: "var(--text-13)", margin: "4px 0" }}>
                 {"Currently attached: " + article.filename + (article.file_size ? " (" + fmtSize(article.file_size) + ")" : "")}
               </p>
               <button type="button" className="btn btn--ghost" style={{ marginBottom: 6 }} onClick={() => setRemoveExistingFile(true)}>
@@ -158,17 +158,17 @@ function ArticleForm({
           ) : null}
 
           {pendingFile ? (
-            <p style={{ fontSize: 13, margin: "4px 0" }}>{"Selected: " + pendingFile.name + " (" + fmtSize(pendingFile.size) + ")"}</p>
+            <p style={{ fontSize: "var(--text-13)", margin: "4px 0" }}>{"Selected: " + pendingFile.name + " (" + fmtSize(pendingFile.size) + ")"}</p>
           ) : null}
 
           <input type="file" id="kbfield-file" onChange={handleFileChange} />
 
           {readError ? (
-            <p style={{ color: "var(--status-critical)", fontSize: 13 }}>{readError}</p>
+            <p style={{ color: "var(--status-critical)", fontSize: "var(--text-13)" }}>{readError}</p>
           ) : null}
         </div>
 
-        {showError ? <p style={{ color: "var(--status-critical)", fontSize: 13 }}>Title is required.</p> : null}
+        {showError ? <p style={{ color: "var(--status-critical)", fontSize: "var(--text-13)" }}>Title is required.</p> : null}
 
         <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
           <button type="submit" className="btn btn--primary" disabled={saving}>

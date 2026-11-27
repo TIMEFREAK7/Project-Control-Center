@@ -1304,7 +1304,7 @@ function OverviewTab({ data, ctx, health, diagnostics, onChanged }: SubTabProps)
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "var(--space-3)" }}>
           <div>
             <h3 style={{ marginBottom: 2 }}>{p.name || "(unnamed project)"}</h3>
-            <span className="text-secondary" style={{ fontSize: 12 }}>
+            <span className="text-secondary" style={{ fontSize: "var(--text-12)" }}>
               {p.client || "—"}
               {p.sector ? " · " + p.sector : ""}
               {p.project_type ? " · " + p.project_type : ""}
@@ -1645,14 +1645,14 @@ function ProjectSnapshotDoc({ data, ctx, health, diagnostics }: ReportDocProps) 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "var(--space-3)", marginBottom: "var(--space-3)" }}>
         <div>
           <h2 style={{ marginBottom: 2 }}>{ctx.project.name || "(unnamed project)"}</h2>
-          <p className="text-secondary" style={{ fontSize: 11, margin: 0 }}>
+          <p className="text-secondary" style={{ fontSize: "var(--text-xs)", margin: 0 }}>
             Project Snapshot · {ctx.project.client || ""} · Data Date {ctx.schedule ? ctx.schedule.data_date : "—"} · Generated {today()}
           </p>
         </div>
         <LogoImg data={data} />
         <div style={{ textAlign: "right", flexShrink: 0 }}>
           <RagBadge rag={health.rag} />
-          <div className="mono" style={{ fontSize: 22, fontWeight: 700, marginTop: 4 }}>
+          <div className="mono" style={{ fontSize: "var(--text-xl)", fontWeight: 700, marginTop: 4 }}>
             {health.score == null ? "—" : health.score}
           </div>
         </div>
@@ -1747,7 +1747,7 @@ function ManagementPackDoc({ data, ctx, health, diagnostics, sections }: ReportD
           <LogoImg data={data} style={{ display: "block", margin: "0 auto var(--space-3)" }} />
           <h1 style={{ marginBottom: 6 }}>{p.name || "(unnamed project)"}</h1>
           <p className="text-secondary">Management Pack</p>
-          <p className="text-secondary" style={{ fontSize: 12 }}>
+          <p className="text-secondary" style={{ fontSize: "var(--text-12)" }}>
             {data.settings.company_name || ""} · Generated {today()} · Data Date {ctx.schedule ? ctx.schedule.data_date : "—"}
           </p>
         </div>

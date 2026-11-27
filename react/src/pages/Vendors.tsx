@@ -522,7 +522,7 @@ function OverviewTab({ vendor, data }: { vendor: PCCVendor; data: PCCStoreData }
   function Stat({ label, count }: { label: string; count: number }) {
     return (
       <div>
-        <strong>{count}</strong> <span className="text-secondary" style={{ fontSize: 12 }}>{label}</span>
+        <strong>{count}</strong> <span className="text-secondary" style={{ fontSize: "var(--text-12)" }}>{label}</span>
       </div>
     );
   }
@@ -557,7 +557,7 @@ function OverviewTab({ vendor, data }: { vendor: PCCVendor; data: PCCStoreData }
 
       {delayStats.totalEvents > 0 ? (
         <>
-          <p className="text-secondary" style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.4px", margin: "var(--space-4) 0 var(--space-2)" }}>
+          <p className="text-secondary" style={{ fontSize: "var(--text-xs)", fontWeight: 600, letterSpacing: "0.4px", margin: "var(--space-4) 0 var(--space-2)" }}>
             DELAY ANALYSIS
           </p>
           <div style={{ display: "flex", gap: "var(--space-5)", flexWrap: "wrap" }}>
@@ -568,7 +568,7 @@ function OverviewTab({ vendor, data }: { vendor: PCCVendor; data: PCCStoreData }
             <Stat label="Recovery Actions" count={delayStats.recoveryActionsCount} />
           </div>
           {delayStats.repeatedCauses.length > 0 ? (
-            <p className="text-secondary" style={{ fontSize: 12, marginTop: "var(--space-2)" }}>
+            <p className="text-secondary" style={{ fontSize: "var(--text-12)", marginTop: "var(--space-2)" }}>
               Repeated causes: {delayStats.repeatedCauses.join(", ")}
             </p>
           ) : null}
@@ -680,11 +680,11 @@ function ProjectsTab({ vendor, data, onChanged }: { vendor: PCCVendor; data: PCC
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div>
                 <strong>{projectName(data.projects, l.project_id)}</strong>
-                <p className="text-secondary" style={{ fontSize: 12, margin: "4px 0 0" }}>
+                <p className="text-secondary" style={{ fontSize: "var(--text-12)", margin: "4px 0 0" }}>
                   {l.role ? "Role: " + l.role + " — " : ""}
                   Contract: {CONTRACT_STATUS_LABELS[l.contract_status || ""] || l.contract_status}
                 </p>
-                {l.scope_of_work ? <p style={{ fontSize: 13, margin: "6px 0 0" }}>{l.scope_of_work}</p> : null}
+                {l.scope_of_work ? <p style={{ fontSize: "var(--text-13)", margin: "6px 0 0" }}>{l.scope_of_work}</p> : null}
               </div>
               <div style={{ display: "flex", gap: "var(--space-2)" }}>
                 <button className="btn btn--ghost" onClick={() => setEditingId(l.id)}>
@@ -795,7 +795,7 @@ function ContactsTab({ vendor, data, onChanged }: { vendor: PCCVendor; data: PCC
               <div>
                 <strong>{c.name || "(unnamed)"}</strong>
                 {c.is_primary ? <span className="status-badge status-badge--on_track" style={{ marginLeft: 6 }}>Primary</span> : null}
-                <p className="text-secondary" style={{ fontSize: 12, margin: "4px 0 0" }}>
+                <p className="text-secondary" style={{ fontSize: "var(--text-12)", margin: "4px 0 0" }}>
                   {[c.designation, c.mobile, c.email].filter(Boolean).join(" · ")}
                 </p>
               </div>
@@ -996,13 +996,13 @@ function DocumentsTab({ vendor, data, onChanged }: { vendor: PCCVendor; data: PC
                 <div>
                   <strong>{documentLabel(doc)}</strong>{" "}
                   <span className="status-badge status-badge--info">Rev {doc.revision_number}</span>
-                  <p className="text-secondary" style={{ fontSize: 12, margin: "4px 0 0" }}>
+                  <p className="text-secondary" style={{ fontSize: "var(--text-12)", margin: "4px 0 0" }}>
                     {doc.filename} · {formatBytes(doc.file_size)} · {(doc.upload_date || "").slice(0, 10)}
                     {doc.project_id ? " · " + projectName(data.projects, doc.project_id) : ""}
                     {expiryText}
                   </p>
-                  {doc.tags ? <p style={{ fontSize: 12, margin: "4px 0 0" }}>Tags: {doc.tags}</p> : null}
-                  {doc.comments ? <p style={{ fontSize: 13, margin: "6px 0 0" }}>{doc.comments}</p> : null}
+                  {doc.tags ? <p style={{ fontSize: "var(--text-12)", margin: "4px 0 0" }}>Tags: {doc.tags}</p> : null}
+                  {doc.comments ? <p style={{ fontSize: "var(--text-13)", margin: "6px 0 0" }}>{doc.comments}</p> : null}
                 </div>
                 <div style={{ display: "flex", gap: "var(--space-2)", flexShrink: 0 }}>
                   <button className="btn btn--ghost" onClick={() => openStoredVendorDocument(doc)}>
@@ -1149,10 +1149,10 @@ function MeetingsTab({ vendor, data, onChanged }: { vendor: PCCVendor; data: PCC
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                 <div>
                   <strong>{m.title}</strong>
-                  <p className="text-secondary" style={{ fontSize: 12, margin: "4px 0 0" }}>
+                  <p className="text-secondary" style={{ fontSize: "var(--text-12)", margin: "4px 0 0" }}>
                     {m.meeting_date} · Participants: {m.attendees || "—"} · {attachmentCount} attachment{attachmentCount === 1 ? "" : "s"}
                   </p>
-                  {m.minutes ? <p style={{ fontSize: 13, margin: "6px 0 0" }}>{m.minutes.slice(0, 200) + (m.minutes.length > 200 ? "…" : "")}</p> : null}
+                  {m.minutes ? <p style={{ fontSize: "var(--text-13)", margin: "6px 0 0" }}>{m.minutes.slice(0, 200) + (m.minutes.length > 200 ? "…" : "")}</p> : null}
                 </div>
                 <div style={{ display: "flex", gap: "var(--space-2)" }}>
                   <button className="btn btn--ghost" onClick={() => viewMeeting(m.id)}>
@@ -1252,7 +1252,7 @@ function RfisTab({ vendor, data, onChanged }: { vendor: PCCVendor; data: PCCStor
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                 <div>
                   <strong className="mono">{r.number}</strong> {r.subject} <span className="status-badge status-badge--info">{RFI_TYPE_LABELS[r.type || ""]}</span>
-                  <p className="text-secondary" style={{ fontSize: 12, margin: "4px 0 0" }}>
+                  <p className="text-secondary" style={{ fontSize: "var(--text-12)", margin: "4px 0 0" }}>
                     Status: {RFI_STATUS_LABELS[r.status || ""]}
                     {r.date_required ? " · Response due: " + r.date_required : ""}
                   </p>
@@ -1335,7 +1335,7 @@ function RisksTab({ vendor, data, onChanged }: { vendor: PCCVendor; data: PCCSto
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                 <div>
                   <strong>{r.title}</strong> <span className="status-badge status-badge--info">{r.type}</span>
-                  <p className="text-secondary" style={{ fontSize: 12, margin: "4px 0 0" }}>
+                  <p className="text-secondary" style={{ fontSize: "var(--text-12)", margin: "4px 0 0" }}>
                     Status: {r.status}
                   </p>
                 </div>
@@ -1452,10 +1452,10 @@ function PerformanceTab({ vendor, data, onChanged }: { vendor: PCCVendor; data: 
     <>
       {reviews.length > 0 ? (
         <div className="panel" style={{ marginBottom: "var(--space-3)" }}>
-          <p className="text-secondary" style={{ fontSize: 11, marginBottom: 4 }}>
+          <p className="text-secondary" style={{ fontSize: "var(--text-xs)", marginBottom: 4 }}>
             OVERALL RATING ({reviews.length} review{reviews.length === 1 ? "" : "s"})
           </p>
-          <p style={{ fontSize: 24, fontWeight: 600, margin: 0 }}>
+          <p style={{ fontSize: "var(--text-24)", fontWeight: 600, margin: 0 }}>
             {(Math.round((reviews.reduce((sum, r) => sum + overallRating(r), 0) / reviews.length) * 10) / 10).toFixed(1)} / 5
           </p>
         </div>
@@ -1487,14 +1487,14 @@ function PerformanceTab({ vendor, data, onChanged }: { vendor: PCCVendor; data: 
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div>
                 <strong>{ratingText(overallRating(r))} overall</strong>
-                <p className="text-secondary" style={{ fontSize: 12, margin: "4px 0 0" }}>
+                <p className="text-secondary" style={{ fontSize: "var(--text-12)", margin: "4px 0 0" }}>
                   {r.review_date}
                   {r.reviewed_by ? " · " + r.reviewed_by : ""}
                 </p>
-                <p style={{ fontSize: 12, margin: "6px 0 0" }}>
+                <p style={{ fontSize: "var(--text-12)", margin: "6px 0 0" }}>
                   Quality: {ratingText(r.quality_rating || 0)} · Delivery: {ratingText(r.delivery_rating || 0)} · Communication: {ratingText(r.communication_rating || 0)} · Safety: {ratingText(r.safety_rating || 0)}
                 </p>
-                {r.comments ? <p style={{ fontSize: 13, margin: "6px 0 0" }}>{r.comments}</p> : null}
+                {r.comments ? <p style={{ fontSize: "var(--text-13)", margin: "6px 0 0" }}>{r.comments}</p> : null}
               </div>
               <div style={{ display: "flex", gap: "var(--space-2)" }}>
                 <button className="btn btn--ghost" onClick={() => setEditingId(r.id)}>
@@ -1548,7 +1548,7 @@ function NotesTab({ vendor, data, onChanged }: { vendor: PCCVendor; data: PCCSto
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div>
                 <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{n.note_text}</p>
-                <p className="text-secondary" style={{ fontSize: 11, margin: "6px 0 0" }}>
+                <p className="text-secondary" style={{ fontSize: "var(--text-xs)", margin: "6px 0 0" }}>
                   {formatDateTime(n.created_at)}
                 </p>
               </div>
@@ -1594,10 +1594,10 @@ function LookaheadTab({ vendor, data }: { vendor: PCCVendor; data: PCCStoreData 
   return (
     <>
       <div className="panel" style={{ marginBottom: "var(--space-3)" }}>
-        <p className="text-secondary" style={{ fontSize: 11, marginBottom: 4 }}>
+        <p className="text-secondary" style={{ fontSize: "var(--text-xs)", marginBottom: 4 }}>
           DOCUMENT LOOKAHEAD
         </p>
-        <p style={{ fontSize: 13, margin: 0 }}>
+        <p style={{ fontSize: "var(--text-13)", margin: 0 }}>
           {rows.length} document requirement{rows.length === 1 ? "" : "s"} assigned across {new Set(rows.map((r) => r.project_id)).size} project(s)
           {overdueCount > 0 ? (
             <>
@@ -1662,10 +1662,10 @@ function ActivitiesTab({ vendor, data }: { vendor: PCCVendor; data: PCCStoreData
   return (
     <>
       <div className="panel" style={{ marginBottom: "var(--space-3)" }}>
-        <p className="text-secondary" style={{ fontSize: 11, marginBottom: 4 }}>
+        <p className="text-secondary" style={{ fontSize: "var(--text-xs)", marginBottom: 4 }}>
           ASSIGNED ACTIVITIES
         </p>
-        <p style={{ fontSize: 13, margin: 0 }}>
+        <p style={{ fontSize: "var(--text-13)", margin: 0 }}>
           {rows.length} activit{rows.length === 1 ? "y" : "ies"} assigned across {new Set(rows.map((a) => a.project_id)).size} project(s)
         </p>
       </div>

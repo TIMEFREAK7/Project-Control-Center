@@ -222,7 +222,7 @@ export default function ReportsPage() {
 
       <div className="panel no-print" style={{ marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 13 }} id="report-template-label">Template:</span>
+          <span style={{ fontSize: "var(--text-13)" }} id="report-template-label">Template:</span>
           <select aria-labelledby="report-template-label" value={selectedTemplateId[reportType]} onChange={(e) => handleTemplateChange(e.target.value)}>
             <option value="">— Custom selection —</option>
             {currentTemplates.map((t) => (
@@ -274,7 +274,7 @@ export default function ReportsPage() {
           }}
         >
           {Object.keys(sectionKeys).map((key) => (
-            <label key={key} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+            <label key={key} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "var(--text-12)" }}>
               <input type="checkbox" checked={!!sections[reportType][key]} onChange={() => handleToggleSection(key)} />
               {sectionKeys[key]}
             </label>
@@ -294,7 +294,7 @@ export default function ReportsPage() {
             }}
           >
             {Object.keys(REPORT_DAY_SECTION_LABELS).map((key) => (
-              <label key={key} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+              <label key={key} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "var(--text-12)" }}>
                 <span>{REPORT_DAY_SECTION_LABELS[key]}:</span>
                 <select
                   aria-label={REPORT_DAY_SECTION_LABELS[key]}

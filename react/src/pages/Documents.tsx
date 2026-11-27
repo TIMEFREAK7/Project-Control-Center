@@ -159,7 +159,7 @@ function DuplicateWarning({ matches, data, onAcknowledge, onCancel }: { matches:
         borderRadius: "var(--radius-md)",
         padding: "var(--space-3)",
         marginTop: "var(--space-3)",
-        background: "rgba(214, 158, 46, 0.08)",
+        background: "color-mix(in srgb, var(--status-at-risk) 8%, transparent)",
       }}
     >
       <p style={{ fontWeight: 600, fontSize: "var(--text-sm)", marginBottom: "var(--space-2)" }}>
@@ -207,7 +207,7 @@ function NomenclatureNotice({ data, pendingFile, form }: { data: PCCStoreData; p
         marginTop: "var(--space-2)",
         fontSize: "var(--text-sm)",
         border: ok ? "1px solid var(--status-on_track, #3fa66a)" : "1px solid var(--status-at-risk)",
-        background: ok ? "rgba(31, 157, 108, 0.08)" : "rgba(214, 158, 46, 0.08)",
+        background: ok ? "rgba(31, 157, 108, 0.08)" : "color-mix(in srgb, var(--status-at-risk) 8%, transparent)",
       }}
     >
       {ok
@@ -698,7 +698,7 @@ function BulkImportPanel({ data, initialProjectId, onClose, onImported }: BulkIm
 
       <div
         className="panel"
-        style={{ border: "2px dashed var(--border-default, #444)", textAlign: "center", padding: "var(--space-5)", marginTop: "var(--space-3)", marginBottom: "var(--space-3)" }}
+        style={{ border: "2px dashed var(--border-default)", textAlign: "center", padding: "var(--space-5)", marginTop: "var(--space-3)", marginBottom: "var(--space-3)" }}
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
           e.preventDefault();
@@ -765,7 +765,7 @@ function BulkImportPanel({ data, initialProjectId, onClose, onImported }: BulkIm
                   <div>
                     <strong>{entry.name}</strong> · {formatBytes(entry.size)}
                     <br />
-                    <span className="text-secondary" style={{ fontSize: 12 }}>
+                    <span className="text-secondary" style={{ fontSize: "var(--text-12)" }}>
                       {(BULK_STATUS_LABELS[entry.status] || entry.status) + statusNote}
                     </span>
                   </div>
@@ -1564,7 +1564,7 @@ export default function DocumentsPage({ initialFormOpen, initialProjectId, initi
         Documents
       </h2>
       <div className="panel focus-mode-hide" style={{ marginBottom: "var(--space-4)" }}>
-        <p className="text-secondary" style={{ margin: 0, fontSize: 13 }}>
+        <p className="text-secondary" style={{ margin: 0, fontSize: "var(--text-13)" }}>
           Excel, Word, and PDF files are read client-side, and both the extracted data/text and the original file itself are saved with
           the document — no internet needed, nothing distorted. “Open File” always reproduces the exact file you uploaded. PDF text
           extraction won't work on scanned/image-only PDFs (no text layer to read), but the original still opens fine. Browser storage

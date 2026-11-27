@@ -738,7 +738,7 @@ function ScheduleBar({
       {currentSchedule && isCpmStale(currentSchedule, data) ? (
         <span
           className="text-secondary"
-          style={{ color: "var(--status-at-risk)", fontSize: "12.5px", alignSelf: "center" }}
+          style={{ color: "var(--status-at-risk)", fontSize: "var(--text-sm)", alignSelf: "center" }}
           title="Activities, dates, or relationships have changed since the critical path was last calculated."
         >
           ⚠ Critical path out of date
@@ -1123,7 +1123,7 @@ function RelationshipsTab({ data, scheduleId, initialPrefillPredecessorId, refre
                 <strong>{activityName(activities, r.predecessor_id)}</strong> →{" "}
                 <strong>{activityName(activities, r.successor_id)}</strong>
                 <br />
-                <span className="text-secondary" style={{ fontSize: 12 }}>
+                <span className="text-secondary" style={{ fontSize: "var(--text-12)" }}>
                   {r.type} · Lag: {r.lag} day(s)
                 </span>
               </div>
@@ -1296,12 +1296,12 @@ function CalendarsTab({ data, projectId, refresh }: CalendarsTabProps) {
                 <div>
                   <strong>{cal.name}</strong>
                   {cal.is_default ? (
-                    <span className="text-secondary" style={{ fontSize: 11, border: "1px solid var(--divider)", borderRadius: 4, padding: "1px 6px", marginLeft: 6 }}>
+                    <span className="text-secondary" style={{ fontSize: "var(--text-xs)", border: "1px solid var(--divider)", borderRadius: "var(--radius-xs)", padding: "1px 6px", marginLeft: 6 }}>
                       Default
                     </span>
                   ) : null}
                   <br />
-                  <span className="text-secondary" style={{ fontSize: 12 }}>
+                  <span className="text-secondary" style={{ fontSize: "var(--text-12)" }}>
                     {formatWorkingDays(cal.working_days)} · {(cal.holidays || []).length} holiday{(cal.holidays || []).length === 1 ? "" : "s"} · used by {referencingCount} activit
                     {referencingCount === 1 ? "y" : "ies"}
                   </span>
@@ -1445,7 +1445,7 @@ function ActivityForm({ activity, isNew, wbsItems, vendors, calendars, projectId
           {stale ? "— changed since the last “Calculate Schedule” run; these numbers may no longer be correct. — " : "— "}
           {floatLabel}
           <br />
-          <span className="text-secondary" style={{ fontSize: 12 }}>
+          <span className="text-secondary" style={{ fontSize: "var(--text-12)" }}>
             ES {activity.early_start} · EF {activity.early_finish} · LS {activity.late_start} · LF {activity.late_finish} · Free Float {activity.free_float} day(s)
           </span>
         </div>
@@ -1645,7 +1645,7 @@ function ActivityRow({ a, wbsItems, visibleColumns, selected, onToggleSelect, in
             <React.Fragment>
               {(a.percent_complete || 0) + "%"}
               <br />
-              <span className="text-secondary" style={{ fontSize: 11 }}>
+              <span className="text-secondary" style={{ fontSize: "var(--text-xs)" }}>
                 {(a.physical_progress || 0) + "% physical"}
               </span>
             </React.Fragment>
@@ -2169,13 +2169,13 @@ function ImportPanel({ data, projectId, onDone, onImported }: ImportPanelProps) 
           “— Ignore this column —”. <strong>Activity ID</strong> and <strong>Activity Name</strong> (marked *) are required for a row to import.
         </p>
         <div style={{ display: "grid", gridTemplateColumns: "minmax(120px, 1fr) minmax(100px, 1fr) minmax(160px, 1.2fr)", gap: "var(--space-2) var(--space-3)", alignItems: "center", marginBottom: "var(--space-3)", maxHeight: 360, overflowY: "auto" }}>
-          <div className="text-secondary" style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.4px" }}>
+          <div className="text-secondary" style={{ fontSize: "var(--text-xs)", fontWeight: 600, letterSpacing: "0.4px" }}>
             UPLOADED COLUMN
           </div>
-          <div className="text-secondary" style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.4px" }}>
+          <div className="text-secondary" style={{ fontSize: "var(--text-xs)", fontWeight: 600, letterSpacing: "0.4px" }}>
             SAMPLE VALUE
           </div>
-          <div className="text-secondary" style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.4px" }}>
+          <div className="text-secondary" style={{ fontSize: "var(--text-xs)", fontWeight: 600, letterSpacing: "0.4px" }}>
             MAPS TO PCC FIELD
           </div>
           {headers.map((h, i) => {
@@ -2239,7 +2239,7 @@ function ImportPanel({ data, projectId, onDone, onImported }: ImportPanelProps) 
     <div className="panel" style={{ marginBottom: "var(--space-4)" }}>
       <h3 style={{ marginBottom: "var(--space-3)" }}>Import Schedule</h3>
       {duplicateMatches.length > 0 && !duplicateAcknowledged ? (
-        <div style={{ border: "1px solid var(--status-at-risk)", borderRadius: "var(--radius-md)", padding: "var(--space-3)", marginBottom: "var(--space-4)", background: "rgba(214, 158, 46, 0.08)" }}>
+        <div style={{ border: "1px solid var(--status-at-risk)", borderRadius: "var(--radius-md)", padding: "var(--space-3)", marginBottom: "var(--space-4)", background: "color-mix(in srgb, var(--status-at-risk) 8%, transparent)" }}>
           <p style={{ fontWeight: 600, fontSize: "var(--text-sm)" }}>This file looks like it may have been imported before</p>
           {duplicateMatches.map((m, i) => (
             <p key={i} style={{ fontSize: "var(--text-sm)", marginTop: "var(--space-2)" }}>
@@ -2456,7 +2456,7 @@ function ExcelEditorPanel({ schedule, data, onDone }: ExcelEditorPanelProps) {
     <div className="panel" style={{ marginBottom: "var(--space-4)" }}>
       <h3 style={{ marginBottom: "var(--space-3)" }}>Edit Excel — {schedule.name}</h3>
       {blockedByHandAdded ? (
-        <div style={{ border: "1px solid var(--status-at-risk)", borderRadius: "var(--radius-md)", padding: "var(--space-3)", marginBottom: "var(--space-4)", background: "rgba(214, 158, 46, 0.08)" }}>
+        <div style={{ border: "1px solid var(--status-at-risk)", borderRadius: "var(--radius-md)", padding: "var(--space-3)", marginBottom: "var(--space-4)", background: "color-mix(in srgb, var(--status-at-risk) 8%, transparent)" }}>
           <p style={{ fontWeight: 600, fontSize: "var(--text-sm)" }}>
             {handAdded.length} activit{handAdded.length === 1 ? "y" : "ies"} on this schedule {handAdded.length === 1 ? "isn’t" : "aren’t"} from the Excel file
           </p>
@@ -3481,10 +3481,10 @@ function RecoveryActionsSection({ activity, data, refresh }: RecoveryActionsSect
             <div key={r.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "var(--space-2)", marginBottom: "var(--space-2)", fontSize: "var(--text-sm)" }}>
               <div>
                 <strong>{r.description}</strong>{" "}
-                <span className="text-secondary" style={{ fontSize: 12 }}>
+                <span className="text-secondary" style={{ fontSize: "var(--text-12)" }}>
                   ({MITIGATION_TYPE_LABELS[r.mitigation_type || ""]})
                 </span>
-                <p className="text-secondary" style={{ fontSize: 12, margin: "4px 0 0" }}>
+                <p className="text-secondary" style={{ fontSize: "var(--text-12)", margin: "4px 0 0" }}>
                   {(r.responsible_person ? r.responsible_person + " · " : "") +
                     (r.target_recovery_date ? "target " + r.target_recovery_date : "no target date") +
                     (r.estimated_recovery_days != null ? " · est. " + r.estimated_recovery_days + "d recovery" : "") +
@@ -3493,7 +3493,7 @@ function RecoveryActionsSection({ activity, data, refresh }: RecoveryActionsSect
                     (r.delay_id ? " · linked to delay" : "")}
                 </p>
                 {r.comments ? (
-                  <p className="text-secondary" style={{ fontSize: 12, margin: "4px 0 0" }}>
+                  <p className="text-secondary" style={{ fontSize: "var(--text-12)", margin: "4px 0 0" }}>
                     {r.comments}
                   </p>
                 ) : null}
@@ -3548,7 +3548,7 @@ function DelayScheduleImpact({ delayRecord, links, data, scheduleId }: DelaySche
   if (!impact.any_schedule_calculated) {
     return (
       <div style={boxStyle}>
-        <p className="text-secondary" style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.4px", margin: "0 0 4px" }}>
+        <p className="text-secondary" style={{ fontSize: "var(--text-xs)", fontWeight: 600, letterSpacing: "0.4px", margin: "0 0 4px" }}>
           IMPACT SUMMARY
         </p>
         <ImpactSummaryRow label="Status" value="Schedule not yet calculated" />
@@ -3593,7 +3593,7 @@ function DelayScheduleImpact({ delayRecord, links, data, scheduleId }: DelaySche
 
   return (
     <div style={boxStyle}>
-      <p className="text-secondary" style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.4px", margin: "0 0 4px" }}>
+      <p className="text-secondary" style={{ fontSize: "var(--text-xs)", fontWeight: 600, letterSpacing: "0.4px", margin: "0 0 4px" }}>
         IMPACT SUMMARY
       </p>
       <ImpactSummaryRow
@@ -3621,7 +3621,7 @@ function DelayScheduleImpact({ delayRecord, links, data, scheduleId }: DelaySche
       )}
       {projectImpactRow}
       <ImpactSummaryRow label="Status" value={status.text} colorVar={status.colorVar} />
-      <p className="text-secondary" style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.4px", margin: "var(--space-2) 0 4px" }}>
+      <p className="text-secondary" style={{ fontSize: "var(--text-xs)", fontWeight: 600, letterSpacing: "0.4px", margin: "var(--space-2) 0 4px" }}>
         AFFECTED ACTIVITIES ({impact.per_activity.length})
       </p>
       {impact.per_activity.map((a, i) => (
@@ -3649,7 +3649,7 @@ function RecoveryForecastProgression({ delayRecord, links, data }: RecoveryForec
 
   return (
     <div style={{ marginTop: "var(--space-2)", padding: "var(--space-2) var(--space-3)", border: "1px solid var(--divider)", borderRadius: "var(--radius-md)", background: "var(--bg-default)" }}>
-      <p className="text-secondary" style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.4px", margin: "0 0 4px" }}>
+      <p className="text-secondary" style={{ fontSize: "var(--text-xs)", fontWeight: 600, letterSpacing: "0.4px", margin: "0 0 4px" }}>
         RECOVERY FORECAST
       </p>
       <ImpactSummaryRow label="Original Finish" value={forecast.original_finish || "—"} />
@@ -3968,7 +3968,7 @@ function DelayRecordForm({ editing, isNew, activity, data, onDone }: DelayRecord
               <label htmlFor="delayfield-underlying_cause">Underlying Cause — why did that condition occur?</label>
               <input id="delayfield-underlying_cause" type="text" value={underlyingCause} onChange={(e) => setUnderlyingCause(e.target.value)} />
             </div>
-            <p className="text-secondary" style={{ gridColumn: "1 / -1", fontSize: 11, fontWeight: 600, letterSpacing: "0.4px", margin: "var(--space-2) 0 0" }}>
+            <p className="text-secondary" style={{ gridColumn: "1 / -1", fontSize: "var(--text-xs)", fontWeight: 600, letterSpacing: "0.4px", margin: "var(--space-2) 0 0" }}>
               RELATED RECORDS (optional)
             </p>
             <RecordLinkField
@@ -4084,7 +4084,7 @@ function DelayRecordsSection({ activity, data, scheduleId, refresh }: DelayRecor
             <div key={r.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "var(--space-2)", marginBottom: "var(--space-3)", fontSize: "var(--text-sm)" }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <strong>{r.description}</strong>
-                <p className="text-secondary" style={{ fontSize: 12, margin: "4px 0 0" }}>
+                <p className="text-secondary" style={{ fontSize: "var(--text-12)", margin: "4px 0 0" }}>
                   {DELAY_CATEGORY_LABELS[r.delay_category || ""] +
                     " · " +
                     DELAY_RESPONSIBILITY_LABELS[r.responsibility_classification || ""] +
@@ -4096,7 +4096,7 @@ function DelayRecordsSection({ activity, data, scheduleId, refresh }: DelayRecor
                     (r.identified_date ? " · identified " + r.identified_date : "")}
                 </p>
                 {relatedText ? (
-                  <p className="text-secondary" style={{ fontSize: 12, margin: "4px 0 0" }}>
+                  <p className="text-secondary" style={{ fontSize: "var(--text-12)", margin: "4px 0 0" }}>
                     Related: {relatedText}
                   </p>
                 ) : null}
@@ -4323,7 +4323,7 @@ function BaselineCompareResult({ result, currentScheduleName }: BaselineCompareR
                   <div>
                     <strong>{m.name}</strong>
                     <br />
-                    <span className="text-secondary" style={{ fontSize: 12 }}>
+                    <span className="text-secondary" style={{ fontSize: "var(--text-12)" }}>
                       Baseline finish: {m.baseline.finish || "—"} → Current finish: {m.current.finish || "—"} ({varianceLabel})
                       {m.criticality_changed ? " · criticality changed" : ""}
                       {m.calendar_changed ? " · calendar changed" : ""}
@@ -4356,7 +4356,7 @@ function BaselineCompareResult({ result, currentScheduleName }: BaselineCompareR
               <div key={i} className="detail-card" style={{ marginBottom: "var(--space-2)", fontSize: "var(--text-sm)" }}>
                 <strong>{m.name}</strong>
                 <br />
-                <span className="text-secondary" style={{ fontSize: 12 }}>
+                <span className="text-secondary" style={{ fontSize: "var(--text-12)" }}>
                   {m.baseline.total_float}d → {m.current.total_float}d float (−{m.erosion}d){m.current.is_critical ? " · now critical" : ""}
                 </span>
               </div>
@@ -4452,7 +4452,7 @@ function BaselineRow({ b, scheduleId, refresh }: BaselineRowProps) {
               <strong>{b.name}</strong>
               {b.is_official ? <span className="status-badge status-badge--complete">Official</span> : null}
               <br />
-              <span className="text-secondary" style={{ fontSize: 12 }}>
+              <span className="text-secondary" style={{ fontSize: "var(--text-12)" }}>
                 Captured {formatDateTime(b.captured_at)} · {b.activity_count} activities · from Rev {b.schedule_revision_number}
                 {b.baseline_project_finish ? " · project finish at capture " + b.baseline_project_finish : ""}
               </span>

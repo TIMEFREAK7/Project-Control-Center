@@ -201,13 +201,13 @@ function CommitmentForm({
         </div>
 
         {!isNew ? (
-          <p className="text-secondary" style={{ fontSize: 12 }}>
+          <p className="text-secondary" style={{ fontSize: "var(--text-12)" }}>
             Actual Value is computed automatically — {formatMoney(actual, projectCurrency(data.projects, commitment.project_id))} so far, from Cost Tracking's Actual Cost entries logged against this
             commitment. Log or edit those in Cost Tracking, not here.
           </p>
         ) : null}
 
-        {showError ? <p style={{ color: "var(--status-critical)", fontSize: 13 }}>Project is required.</p> : null}
+        {showError ? <p style={{ color: "var(--status-critical)", fontSize: "var(--text-13)" }}>Project is required.</p> : null}
 
         <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
           <button type="submit" className="btn btn--primary" disabled={activeProjects.length === 0}>
@@ -287,11 +287,11 @@ function CommitmentRow({
       <div>
         <strong>{c.po_contract_number || "(no PO/Contract #)"}</strong>
         <br />
-        <span className="text-secondary" style={{ fontSize: 12 }}>
+        <span className="text-secondary" style={{ fontSize: "var(--text-12)" }}>
           {metaParts.join(" · ")}
         </span>
         <br />
-        <span style={{ fontSize: 12 }}>
+        <span style={{ fontSize: "var(--text-12)" }}>
           Committed {formatMoney(c.committed_value, cur)} · Approved {formatMoney(c.approved_value, cur)} · Actual {formatMoney(actual, cur)} ·{" "}
           <span style={{ color: remaining != null && remaining < 0 ? "var(--status-critical)" : "inherit" }}>Remaining {formatMoney(remaining, cur)}</span>
         </span>
@@ -300,7 +300,7 @@ function CommitmentRow({
         {commitmentIsAtRisk(c, data) ? (
           <span
             className="status-badge status-badge--critical"
-            style={{ fontSize: 11 }}
+            style={{ fontSize: "var(--text-xs)" }}
             title={
               "The linked activity starts within " +
               COMMITMENT_RISK_WINDOW_DAYS +
@@ -310,7 +310,7 @@ function CommitmentRow({
             Procurement Risk
           </span>
         ) : null}
-        <span className="status-badge status-badge--info" style={{ fontSize: 11 }}>
+        <span className="status-badge status-badge--info" style={{ fontSize: "var(--text-xs)" }}>
           {STATUS_LABELS[c.status || ""] || c.status}
         </span>
         {activity ? (
@@ -530,7 +530,7 @@ function PackageForm({
           <label htmlFor="pkgfield-notes">Notes</label>
           <textarea id="pkgfield-notes" rows={2} defaultValue={pkg.notes || ""} />
         </div>
-        {showError ? <p style={{ color: "var(--status-critical)", fontSize: 13 }}>Name is required.</p> : null}
+        {showError ? <p style={{ color: "var(--status-critical)", fontSize: "var(--text-13)" }}>Name is required.</p> : null}
         <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
           <button type="submit" className="btn btn--primary">
             {isNew ? "Add Package" : "Save Changes"}
@@ -601,7 +601,7 @@ function PackagesTab({ data, refresh }: { data: PCCStoreData; refresh: () => voi
                   <strong>{p.name}</strong>
                   {p.code ? " (" + p.code + ")" : ""}
                   <br />
-                  <span className="text-secondary" style={{ fontSize: 12 }}>
+                  <span className="text-secondary" style={{ fontSize: "var(--text-12)" }}>
                     {commitmentCount} commitment(s) · {documentCount} document(s)
                   </span>
                 </div>
@@ -642,7 +642,7 @@ export default function CommitmentsPage({
   return (
     <>
       <h2 style={{ marginBottom: 6 }}>Commitment Management</h2>
-      <p className="text-secondary" style={{ fontSize: 12, marginBottom: 16 }}>
+      <p className="text-secondary" style={{ fontSize: "var(--text-12)", marginBottom: 16 }}>
         Purchase Orders, Subcontracts, and other commercial commitments — Actual Value is computed live from Cost Tracking entries logged against
         each commitment, never entered here directly.
       </p>

@@ -169,7 +169,7 @@ function DailyLogForm({
         </div>
 
         {errorText ? (
-          <p style={{ color: errorLevel === "critical" ? "var(--status-critical)" : "var(--status-at-risk)", fontSize: 13 }}>{errorText}</p>
+          <p style={{ color: errorLevel === "critical" ? "var(--status-critical)" : "var(--status-at-risk)", fontSize: "var(--text-13)" }}>{errorText}</p>
         ) : null}
 
         <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
@@ -233,10 +233,10 @@ function PhotoCell({
             width: "100%",
             height: 90,
             objectFit: "cover",
-            borderRadius: 4,
+            borderRadius: "var(--radius-xs)",
             border: "1px solid var(--divider)",
             display: "block",
-            background: "var(--surface-2, #2a2a2a)",
+            background: "var(--surface-2)",
           }}
           src={src}
         />
@@ -245,13 +245,13 @@ function PhotoCell({
         type="text"
         placeholder="Caption…"
         defaultValue={photo.caption || ""}
-        style={{ fontSize: 12, padding: "4px 6px" }}
+        style={{ fontSize: "var(--text-12)", padding: "4px 6px" }}
         onChange={(e) => updatePhotoCaption(log.id, photo.id, e.target.value)}
       />
-      <span className="text-secondary" style={{ fontSize: 11 }}>
+      <span className="text-secondary" style={{ fontSize: "var(--text-xs)" }}>
         {formatBytes(photo.file_size)}
       </span>
-      <button className="btn btn--ghost" style={{ fontSize: 11, padding: "2px 8px" }} onClick={handleRemove}>
+      <button className="btn btn--ghost" style={{ fontSize: "var(--text-xs)", padding: "2px 8px" }} onClick={handleRemove}>
         Remove
       </button>
     </div>
@@ -286,7 +286,7 @@ function PhotosSection({ log, onChanged }: { log: PCCDailyLog; onChanged: () => 
         PHOTOS ({log.photos.length})
       </p>
       {log.photos.length === 0 ? (
-        <p className="text-secondary" style={{ fontSize: 13, margin: "0 0 8px" }}>
+        <p className="text-secondary" style={{ fontSize: "var(--text-13)", margin: "0 0 8px" }}>
           No photos attached yet.
         </p>
       ) : (
@@ -356,7 +356,7 @@ function CreateDelayForm({
           <label htmlFor="dailylogdelay-description">Description *</label>
           <textarea id="dailylogdelay-description" rows={2} defaultValue="" />
         </div>
-        {errorText ? <p style={{ color: "var(--status-critical)", fontSize: 13 }}>{errorText}</p> : null}
+        {errorText ? <p style={{ color: "var(--status-critical)", fontSize: "var(--text-13)" }}>{errorText}</p> : null}
         <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
           <button type="submit" className="btn btn--primary">
             Log Delay
@@ -403,7 +403,7 @@ function DailyLogDelaysSection({
       ) : null}
 
       {delaysForLog.length === 0 ? (
-        <p className="text-secondary" style={{ fontSize: 13 }}>
+        <p className="text-secondary" style={{ fontSize: "var(--text-13)" }}>
           No delays logged against this entry yet.
         </p>
       ) : (

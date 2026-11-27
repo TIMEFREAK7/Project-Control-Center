@@ -83,10 +83,10 @@ function ActionRow({
     >
       <div>
         <strong>{r.description}</strong>
-        <p className="text-secondary" style={{ fontSize: 12, margin: "4px 0 0" }}>
+        <p className="text-secondary" style={{ fontSize: "var(--text-12)", margin: "4px 0 0" }}>
           {activity ? activity.name : "(deleted activity)"} — {project ? project.name || "(unnamed project)" : "(deleted project)"}
         </p>
-        <p className="text-secondary" style={{ fontSize: 12, margin: "4px 0 0" }}>
+        <p className="text-secondary" style={{ fontSize: "var(--text-12)", margin: "4px 0 0" }}>
           {r.responsible_person ? r.responsible_person + " · " : ""}
           {r.target_recovery_date ? "target " + r.target_recovery_date : "no target date"}
           {r.estimated_recovery_days != null ? " · est. " + r.estimated_recovery_days + "d recovery" : ""}
@@ -148,19 +148,19 @@ function DelayRegisterComments({ r, refresh }: { r: PCCDelayRecord; refresh: () 
 
   return (
     <details style={{ marginTop: 6 }} onClick={(e) => e.stopPropagation()}>
-      <summary className="text-secondary" style={{ cursor: "pointer", fontSize: 12 }}>
+      <summary className="text-secondary" style={{ cursor: "pointer", fontSize: "var(--text-12)" }}>
         Comments ({comments.length})
       </summary>
       <div style={{ marginTop: 4 }}>
         {comments.map((c) => (
           <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginTop: 4 }}>
-            <div style={{ fontSize: 12 }}>
+            <div style={{ fontSize: "var(--text-12)" }}>
               <span className="text-secondary">{formatDateTime(c.created_at)}</span> — {c.text}
             </div>
             <button
               type="button"
               className="btn btn--ghost"
-              style={{ fontSize: 12, padding: "2px 6px", flexShrink: 0 }}
+              style={{ fontSize: "var(--text-12)", padding: "2px 6px", flexShrink: 0 }}
               onClick={() => {
                 deleteDelayComment(r.id, c.id);
                 refresh();
@@ -175,9 +175,9 @@ function DelayRegisterComments({ r, refresh }: { r: PCCDelayRecord; refresh: () 
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             placeholder="Add a comment — visible here and on the Schedule's Activity Detail Panel"
-            style={{ flex: 1, fontSize: 12, minHeight: 32 }}
+            style={{ flex: 1, fontSize: "var(--text-12)", minHeight: 32 }}
           />
-          <button type="button" className="btn btn--ghost" style={{ fontSize: 12, alignSelf: "flex-start" }} onClick={submit}>
+          <button type="button" className="btn btn--ghost" style={{ fontSize: "var(--text-12)", alignSelf: "flex-start" }} onClick={submit}>
             Add Comment
           </button>
         </div>
@@ -222,14 +222,14 @@ function DelayRegisterRow({
     >
       <div style={{ flex: "1 1 240px", minWidth: 0 }}>
         <strong>{r.description}</strong>
-        <p className="text-secondary" style={{ fontSize: 12, margin: "4px 0 0" }}>
+        <p className="text-secondary" style={{ fontSize: "var(--text-12)", margin: "4px 0 0" }}>
           {activityLine} — {project ? project.name || "(unnamed project)" : "(deleted project)"}
         </p>
-        <p className="text-secondary" style={{ fontSize: 12, margin: "4px 0 0" }}>
+        <p className="text-secondary" style={{ fontSize: "var(--text-12)", margin: "4px 0 0" }}>
           {DELAY_CAUSE_LABELS[r.delay_cause || ""]}
           {r.delay_days != null ? " · " + r.delay_days + "d (" + delaySeverityBucket(r.delay_days) + ")" : ""}
         </p>
-        <p className="text-secondary" style={{ fontSize: 12, margin: "4px 0 0" }}>
+        <p className="text-secondary" style={{ fontSize: "var(--text-12)", margin: "4px 0 0" }}>
           {DELAY_STATUS_LABELS[r.status] || r.status} · {DELAY_CATEGORY_LABELS[r.delay_category || ""] || r.delay_category || "Other"} ·{" "}
           {DELAY_RESPONSIBILITY_LABELS[r.responsibility_classification || ""] || "Unconfirmed"}
           {criticality ? " · " + DELAY_CRITICALITY_LABELS[criticality] : ""}
@@ -283,10 +283,10 @@ function GapRow({ g }: { g: GapActivity }) {
     >
       <div>
         <strong>{g.activity ? g.activity.name : "(deleted activity)"}</strong>
-        <p className="text-secondary" style={{ fontSize: 12, margin: "4px 0 0" }}>
+        <p className="text-secondary" style={{ fontSize: "var(--text-12)", margin: "4px 0 0" }}>
           {g.project ? g.project.name || "(unnamed project)" : "(deleted project)"}
         </p>
-        <p className="text-secondary" style={{ fontSize: 12, margin: "4px 0 0" }}>
+        <p className="text-secondary" style={{ fontSize: "var(--text-12)", margin: "4px 0 0" }}>
           {g.delayDays}d delay, {g.recoveryDays}d recovery estimated ({g.gapDays}d unaddressed)
         </p>
       </div>

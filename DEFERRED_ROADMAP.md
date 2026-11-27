@@ -681,7 +681,15 @@ of each gate. Tests prove nothing broke; they cannot prove it looks right.
 - **Acceptance:** screenshots before and after are visually identical (allow sub-pixel text
   differences only where a 13.5 px value snapped to a token; list each one). Suite green.
 - **Out:** changing any value. This gate exists so that 7.2 is a one-file change.
-- **Status:** open.
+- **Status:** closed 2026-11-27. The real count differed from the 425 above: 276 of 432 inline
+  sizes already used tokens; 158 literal sizes, 2 radii and 4 colours in pages plus 30 literal
+  CSS sizes were moved. Most were off-scale (12, 13, 13.5…), so Aditya chose exact interim
+  tokens (`--text-9` … `--text-24`) over snapping, and nothing moved at all: 32/32 baseline
+  shots, 80/80 shots of 20 more routes and 8/8 At a Glance shots are byte-identical to `main`.
+  New `test_no_style_literals.js` (fails on the old build) keeps literals out. Kept as-is for
+  7.2: `--surface-2`/`--border-default` are dark greys in both themes (a pre-existing light-mode
+  bug). `shots.js` gained `--index` and any-route screens, and now seeds `Math.random` so runs
+  are byte-repeatable.
 
 **Gate 7.2 — Foundation tokens (`styles.css` only).**
 - **Build:** the typeface, neutral scale, accent, status colours, radii, shadows and focus
