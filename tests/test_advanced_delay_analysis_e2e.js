@@ -23,6 +23,7 @@ const assert = require("assert");
 const { JSDOM } = require("jsdom");
 const FDBFactory = require("fake-indexeddb/lib/FDBFactory");
 
+const { openScheduleMenu } = require("./scheduleMenu");
 const INDEX_PATH = path.join(__dirname, "..", "index.html");
 
 function sleep(ms) {
@@ -140,6 +141,7 @@ function setReactTextareaValue(win, el, value) {
   });
 
   await check("Save Baseline captures Foundation's float at 10 days", async () => {
+    await openScheduleMenu(dom, "Save Baseline");
     var saveBtn = findButtonByText(dom, "Save Baseline");
     saveBtn.click();
     await flush();

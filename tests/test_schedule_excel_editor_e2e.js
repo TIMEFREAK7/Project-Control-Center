@@ -14,6 +14,7 @@ const assert = require("assert");
 const { JSDOM } = require("jsdom");
 const FDBFactory = require("fake-indexeddb/lib/FDBFactory");
 
+const { openScheduleMenu } = require("./scheduleMenu");
 const INDEX_PATH = path.join(__dirname, "..", "index.html");
 
 function sleep(ms) {
@@ -139,13 +140,15 @@ function setReactInputValue(win, el, value) {
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
-  await check("'Edit Excel' is enabled for a schedule with a source file", () => {
+  await check("'Edit Excel' is enabled for a schedule with a source file", async () => {
+    await openScheduleMenu(dom, "Edit Excel");
     var btn = findButtonByText(dom, "Edit Excel");
     assert.ok(btn, "Edit Excel button not found");
     assert.strictEqual(btn.disabled, false, "Edit Excel should be enabled once an imported schedule is selected");
   });
 
   await check("clicking 'Edit Excel' opens a grid pre-populated from current Activities/WBS/Relationships", async () => {
+    await openScheduleMenu(dom, "Edit Excel");
     var btn = findButtonByText(dom, "Edit Excel");
     btn.click();
     await flush();
@@ -272,6 +275,7 @@ function setReactInputValue(win, el, value) {
   });
 
   await check("re-opening Edit Excel and reviewing shows the hand-added-activity warning and blocks Apply", async () => {
+    await openScheduleMenu(dom, "Edit Excel");
     var editBtn = findButtonByText(dom, "Edit Excel");
     editBtn.click();
     await flush();

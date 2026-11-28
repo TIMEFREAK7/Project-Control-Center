@@ -10,6 +10,7 @@ const assert = require("assert");
 const { JSDOM } = require("jsdom");
 const FDBFactory = require("fake-indexeddb/lib/FDBFactory");
 
+const { openScheduleMenu } = require("./scheduleMenu");
 const INDEX_PATH = path.join(__dirname, "..", "index.html");
 
 function sleep(ms) {
@@ -99,6 +100,7 @@ function findButtonByText(win, text) {
   });
 
   await check("'Export to MS Project' is enabled once a schedule is selected, and produces a well-formed MSPDI file via nativeFile.save()", async () => {
+    await openScheduleMenu(win, "Export to MS Project");
     var exportBtn = findButtonByText(win, "Export to MS Project");
     assert.ok(exportBtn, "'Export to MS Project' button not found");
     assert.strictEqual(exportBtn.disabled, false);
@@ -139,6 +141,7 @@ function findButtonByText(win, text) {
       savedBlob = blob;
       return Promise.resolve();
     };
+    await openScheduleMenu(win, "Export to MS Project");
     findButtonByText(win, "Export to MS Project").click();
     await flush();
     win.PCC.nativeFile.save = realSave;

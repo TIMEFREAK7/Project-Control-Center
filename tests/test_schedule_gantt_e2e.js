@@ -143,7 +143,7 @@ function findButtonByText(dom, text) {
     assert.strictEqual(svg.querySelector('rect[data-activity-id="' + milestoneId + '"]'), null, "milestone should not also render a rect");
 
     assert.ok(
-      outlet.textContent.indexOf("1 activity(ies) have no planned or calculated dates") !== -1,
+      outlet.textContent.indexOf("1 activity has no planned or calculated dates") !== -1,
       "should call out the one undated activity, got: " + outlet.textContent.slice(0, 400)
     );
     assert.ok(outlet.textContent.indexOf("No dates set") !== -1, "undated activity's row should say 'No dates set'");

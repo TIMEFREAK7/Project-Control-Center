@@ -9,6 +9,7 @@ const assert = require("assert");
 const { JSDOM } = require("jsdom");
 const FDBFactory = require("fake-indexeddb/lib/FDBFactory");
 
+const { openScheduleMenu } = require("./scheduleMenu");
 const INDEX_PATH = path.join(__dirname, "..", "index.html");
 
 function sleep(ms) {
@@ -113,6 +114,7 @@ function uploadXerFile(win, fileInput, xerText, filename) {
     win.PCC.router.go("schedule");
     await flush();
 
+    await openScheduleMenu(win, "Import Schedule");
     var importBtn = findButtonByText(win, "Import Schedule");
     assert.ok(importBtn, "'Import Schedule' button not found");
     importBtn.click();
@@ -123,7 +125,7 @@ function uploadXerFile(win, fileInput, xerText, filename) {
     assert.ok(fileInput.accept.indexOf(".xer") !== -1, "file input must accept .xer");
     uploadXerFile(win, fileInput, SAMPLE_XER, "sample-programme.xer");
 
-    await waitFor(() => outlet().textContent.indexOf("Parsed 2 row(s)") !== -1);
+    await waitFor(() => outlet().textContent.indexOf("Parsed 2 rows") !== -1);
     assert.ok(outlet().textContent.indexOf("2 activities will be imported") !== -1, outlet().textContent.slice(0, 300));
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
@@ -175,6 +177,7 @@ function uploadXerFile(win, fileInput, xerText, filename) {
     win.PCC.router.go("schedule");
     await flush();
 
+    await openScheduleMenu(win, "Edit Excel");
     var editExcelBtn = findButtonByText(win, "Edit Excel");
     assert.ok(editExcelBtn, "'Edit Excel' button not found");
     assert.strictEqual(editExcelBtn.disabled, true);

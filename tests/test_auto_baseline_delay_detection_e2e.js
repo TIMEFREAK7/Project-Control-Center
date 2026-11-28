@@ -16,6 +16,7 @@ const assert = require("assert");
 const { JSDOM } = require("jsdom");
 const FDBFactory = require("fake-indexeddb/lib/FDBFactory");
 
+const { openScheduleMenu } = require("./scheduleMenu");
 const INDEX_PATH = path.join(__dirname, "..", "index.html");
 
 function sleep(ms) {
@@ -102,6 +103,7 @@ function findButtonByText(dom, text) {
   });
 
   await check("Save Baseline, then Mark Official — still no delay records (the schedule hasn't slipped from its own just-captured baseline)", async () => {
+    await openScheduleMenu(dom, "Save Baseline");
     findButtonByText(dom, "Save Baseline").click();
     await flush();
     var baselinesTabBtn = Array.from(win.document.querySelectorAll("button")).find((b) => b.textContent.trim() === "Baselines");

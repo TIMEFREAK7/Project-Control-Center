@@ -13,6 +13,7 @@ const assert = require("assert");
 const { JSDOM } = require("jsdom");
 const FDBFactory = require("fake-indexeddb/lib/FDBFactory");
 
+const { openScheduleMenu } = require("./scheduleMenu");
 const INDEX_PATH = path.join(__dirname, "..", "index.html");
 
 function sleep(ms) {
@@ -173,6 +174,7 @@ function findButtonsByText(dom, text) {
     projectSelect.dispatchEvent(new win.Event("change", { bubbles: true }));
     await flush();
 
+    await openScheduleMenu(dom, "Save Baseline");
     findButtonByText(dom, "Save Baseline").click();
     await flush();
 
@@ -188,6 +190,7 @@ function findButtonsByText(dom, text) {
     assert.ok(scheduleActionsBtn, "'Schedule actions' (⋯) menu toggle not found");
     scheduleActionsBtn.click();
     await flush();
+    await openScheduleMenu(dom, "Delete Schedule…");
     var deleteScheduleBtn = findButtonByText(dom, "Delete Schedule…");
     assert.ok(deleteScheduleBtn, "'Delete Schedule…' menu item not found");
 

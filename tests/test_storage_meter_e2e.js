@@ -11,6 +11,7 @@ const { JSDOM } = require("jsdom");
 const FDBFactory = require("fake-indexeddb/lib/FDBFactory");
 const SCHEMA_VERSION = require("./schemaVersion");
 
+const { openScheduleMenu } = require("./scheduleMenu");
 const INDEX_PATH = path.join(__dirname, "..", "index.html");
 const KEY = "pcc_local_data_v1";
 const FILLER_KEY = "pcc_test_filler";
@@ -158,6 +159,7 @@ function button(win, text) {
       </Tasks></Project>`;
     win.PCC.router.go("schedule");
     await flush();
+    await openScheduleMenu(win, "Import Schedule");
     button(win, "Import Schedule").click();
     await flush();
     const input = outlet().querySelector('input[type="file"]');

@@ -129,6 +129,7 @@ import type {
   DelayActivityImpact,
 } from "../types/pcc";
 import { dateCellToIso, formatDate, formatDateTime } from "../utils/localDate";
+import { plural } from "../utils/plural";
 
 interface ScheduleFormProps {
   schedule: PCCSchedule;
@@ -626,6 +627,33 @@ function ScheduleForm({ schedule, isNew, projectId, onDone }: ScheduleFormProps)
 
 // ===== Schedule picker bar =====
 
+// The toolbar wraps on a phone, so a menu toggle can sit at the left edge; a dropdown anchored
+// to its right edge would then run off screen. Open toward whichever side has room.
+// Inline, not a styles.css class, so the shared stylesheet (and At a Glance) stays unchanged.
+function dropdownStyle(toggle: HTMLElement | null): React.CSSProperties | undefined {
+  const startSide = !!toggle && toggle.getBoundingClientRect().left < window.innerWidth / 2;
+  return startSide ? { right: "auto", left: 0, width: "max-content", maxWidth: "calc(100vw - 2 * var(--space-4))" } : undefined;
+}
+
+// A labelled "⋯"-style menu for the toolbar (Import ▾ / Export ▾); same .card-menu markup.
+function ToolbarMenu({ label, disabled, children }: { label: string; disabled?: boolean; children: (close: () => void) => React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const toggleRef = React.useRef<HTMLButtonElement>(null);
+  return (
+    <div className="card-menu">
+      <button ref={toggleRef} className="btn btn--ghost" aria-haspopup="true" aria-expanded={open} disabled={disabled} onClick={() => setOpen((v) => !v)}>
+        {label} ▾
+      </button>
+      {open ? (
+        <React.Fragment>
+          <button className="card-menu__overlay" aria-label={"Close " + label.toLowerCase() + " menu"} onClick={() => setOpen(false)} />
+          <div className="card-menu__dropdown" style={dropdownStyle(toggleRef.current)}>{children(() => setOpen(false))}</div>
+        </React.Fragment>
+      ) : null}
+    </div>
+  );
+}
+
 function ScheduleBar({
   data,
   projectId,
@@ -710,32 +738,6 @@ function ScheduleBar({
 
       <div className="toolbar__spacer" />
 
-      <button className="btn btn--ghost" disabled={!scheduleId} onClick={onEditSchedule}>
-        Edit Schedule
-      </button>
-      <button className="btn btn--primary" disabled={activeProjects.length === 0} onClick={onNewSchedule}>
-        + New Schedule
-      </button>
-      <button className="btn btn--ghost" disabled={activeProjects.length === 0} onClick={onOpenImport}>
-        Import Schedule
-      </button>
-      <button
-        className="btn btn--ghost"
-        title={currentSchedule && currentSchedule.source_platform !== "excel" ? "This schedule wasn't imported from an Excel file, so there's nothing to edit here." : ""}
-        disabled={!currentSchedule || currentSchedule.source_platform !== "excel"}
-        onClick={() => onOpenExcelEditor(currentSchedule)}
-      >
-        Edit Excel
-      </button>
-      <button className="btn btn--ghost" disabled={!currentSchedule} onClick={() => onExportMsp(currentSchedule)}>
-        Export to MS Project
-      </button>
-      <button className="btn btn--ghost" disabled={!currentSchedule} onClick={() => onExportXer(currentSchedule)}>
-        Export to Primavera P6
-      </button>
-      <button className="btn btn--ghost" disabled={!scheduleId} onClick={onCalculate}>
-        Calculate Schedule
-      </button>
       {currentSchedule && isCpmStale(currentSchedule, data) ? (
         <span
           className="text-secondary"
@@ -745,18 +747,69 @@ function ScheduleBar({
           ⚠ Critical path out of date
         </span>
       ) : null}
-      <button className="btn btn--ghost" disabled={!scheduleId || baselineSaving || activityCount === 0} onClick={onSaveBaseline}>
-        {baselineSaving ? "Saving Baseline…" : "Save Baseline"}
+      <button className="btn btn--ghost" disabled={!scheduleId} onClick={onCalculate}>
+        Calculate Schedule
+      </button>
+      <ToolbarMenu label="Import" disabled={activeProjects.length === 0}>
+        {(close) => (
+          <React.Fragment>
+            <button className="card-menu__item" onClick={() => { close(); onOpenImport(); }}>
+              Import Schedule
+            </button>
+            <button
+              className="card-menu__item"
+              title={currentSchedule && currentSchedule.source_platform !== "excel" ? "This schedule wasn't imported from an Excel file, so there's nothing to edit here." : ""}
+              disabled={!currentSchedule || currentSchedule.source_platform !== "excel"}
+              onClick={() => { close(); onOpenExcelEditor(currentSchedule); }}
+            >
+              Edit Excel
+            </button>
+          </React.Fragment>
+        )}
+      </ToolbarMenu>
+      <ToolbarMenu label="Export" disabled={!currentSchedule}>
+        {(close) => (
+          <React.Fragment>
+            <button className="card-menu__item" onClick={() => { close(); onExportMsp(currentSchedule); }}>
+              Export to MS Project
+            </button>
+            <button className="card-menu__item" onClick={() => { close(); onExportXer(currentSchedule); }}>
+              Export to Primavera P6
+            </button>
+          </React.Fragment>
+        )}
+      </ToolbarMenu>
+      <button className="btn btn--primary" disabled={activeProjects.length === 0} onClick={onNewSchedule}>
+        + New Schedule
       </button>
 
       <div className="card-menu">
-        <button ref={scheduleMenuToggleRef} className="icon-btn" aria-label="Schedule actions" disabled={!scheduleId} onClick={() => setScheduleMenuOpen((v) => !v)}>
+        <button ref={scheduleMenuToggleRef} className="icon-btn" aria-label="Schedule actions" aria-expanded={scheduleMenuOpen} disabled={!scheduleId} onClick={() => setScheduleMenuOpen((v) => !v)}>
           ⋯
         </button>
         {scheduleMenuOpen ? (
           <React.Fragment>
             <button className="card-menu__overlay" aria-label="Close schedule actions menu" onClick={() => setScheduleMenuOpen(false)} />
-            <div className="card-menu__dropdown">
+            <div className="card-menu__dropdown" style={dropdownStyle(scheduleMenuToggleRef.current)}>
+              <button
+                className="card-menu__item"
+                disabled={baselineSaving || activityCount === 0}
+                onClick={() => {
+                  setScheduleMenuOpen(false);
+                  onSaveBaseline();
+                }}
+              >
+                {baselineSaving ? "Saving Baseline…" : "Save Baseline"}
+              </button>
+              <button
+                className="card-menu__item"
+                onClick={() => {
+                  setScheduleMenuOpen(false);
+                  onEditSchedule();
+                }}
+              >
+                Edit Schedule
+              </button>
               {isOllamaAvailable() ? (
                 <button
                   className="card-menu__item"
@@ -917,7 +970,14 @@ function WbsTab({ data, projectId, scheduleId, refresh }: WbsTabProps) {
       </div>
 
       {wbsItems.length === 0 ? (
-        <div className="panel empty-state">{scheduleId ? "No WBS items yet. Click “+ Add WBS Item” to add the first one." : "Create a schedule first."}</div>
+        <div className="panel empty-state">
+          {scheduleId ? "No WBS items yet." : "Create a schedule first."}
+          {scheduleId ? (
+            <button className="btn btn--ghost empty-state__action" onClick={() => setEditingWbsId("new")}>
+              + Add WBS Item
+            </button>
+          ) : null}
+        </div>
       ) : (
         <div className="project-list">
           {sorted.map((w) => {
@@ -1115,6 +1175,11 @@ function RelationshipsTab({ data, scheduleId, initialPrefillPredecessorId, refre
       {relationships.length === 0 ? (
         <div className="panel empty-state">
           {!scheduleId ? "Create a schedule first." : activities.length < 2 ? "Add at least two activities before creating relationships." : "No relationships yet."}
+          {scheduleId && activities.length >= 2 ? (
+            <button className="btn btn--ghost empty-state__action" onClick={() => setEditingRelationshipId("new")}>
+              + Add Relationship
+            </button>
+          ) : null}
         </div>
       ) : (
         <div className="project-list">
@@ -1125,7 +1190,7 @@ function RelationshipsTab({ data, scheduleId, initialPrefillPredecessorId, refre
                 <strong>{activityName(activities, r.successor_id)}</strong>
                 <br />
                 <span className="text-secondary" style={{ fontSize: "var(--text-12)" }}>
-                  {r.type} · Lag: {r.lag} day(s)
+                  {r.type} · Lag: {plural(r.lag || 0, "day")}
                 </span>
               </div>
               <button
@@ -1203,7 +1268,7 @@ function CalendarForm({ calendar, isNew, projectId, onDone }: CalendarFormProps)
             <div style={{ marginBottom: "var(--space-2)" }}>
               {holidays.map((dateStr, idx) => (
                 <div key={dateStr} style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", marginBottom: "var(--space-1)" }}>
-                  <span className="mono">{dateStr}</span>
+                  <span>{dateStr}</span>
                   <button
                     type="button"
                     className="btn btn--ghost"
@@ -1287,7 +1352,12 @@ function CalendarsTab({ data, projectId, refresh }: CalendarsTabProps) {
       </div>
 
       {calendars.length === 0 ? (
-        <div className="panel empty-state">No calendars yet for this project.</div>
+        <div className="panel empty-state">
+          No calendars yet for this project.
+          <button className="btn btn--ghost empty-state__action" onClick={() => setEditingCalendarId("new")}>
+            + Add Calendar
+          </button>
+        </div>
       ) : (
         <div className="project-list">
           {calendars.map((cal) => {
@@ -1432,7 +1502,7 @@ function ActivityForm({ activity, isNew, wbsItems, vendors, calendars, projectId
         </div>
       );
     } else {
-      const floatLabel = activity.total_float! <= 0 ? "Critical (0 float)" : activity.total_float + " day(s) float";
+      const floatLabel = activity.total_float! <= 0 ? "Critical (0 float)" : plural(activity.total_float!, "day") + " float";
       const data = window.PCC.store.get();
       const scheduleForStaleCheck = data.schedules.find((s) => s.id === activity.schedule_id);
       const stale = isCpmStale(scheduleForStaleCheck, data);
@@ -1447,7 +1517,7 @@ function ActivityForm({ activity, isNew, wbsItems, vendors, calendars, projectId
           {floatLabel}
           <br />
           <span className="text-secondary" style={{ fontSize: "var(--text-12)" }}>
-            ES {activity.early_start} · EF {activity.early_finish} · LS {activity.late_start} · LF {activity.late_finish} · Free Float {activity.free_float} day(s)
+            ES {activity.early_start} · EF {activity.early_finish} · LS {activity.late_start} · LF {activity.late_finish} · Free Float {activity.free_float == null ? "—" : plural(activity.free_float, "day")}
           </span>
         </div>
       );
@@ -1950,7 +2020,17 @@ function ActivitiesTab({ data, projectId, scheduleId, initialActivityTypeHint, i
 
       {filtered.length === 0 ? (
         <div className="panel empty-state">
-          {scheduleId ? (scheduleActivities.length === 0 ? "No activities yet. Click “+ Add Activity” to add the first one." : "No activities match this search/filter.") : "Create a schedule first."}
+          {scheduleId ? (scheduleActivities.length === 0 ? "No activities yet." : "No activities match this search/filter.") : "Create a schedule first."}
+          {scheduleId && scheduleActivities.length === 0 ? (
+            <button className="btn btn--ghost empty-state__action" onClick={() => { setActivityTypeHint(null); setClonePrefill(null); setEditingActivityId("new"); }}>
+              + Add Activity
+            </button>
+          ) : null}
+          {scheduleId && scheduleActivities.length > 0 ? (
+            <button className="btn btn--ghost empty-state__action" onClick={() => setFilter({ search: "", wbsId: "", status: "", critical: false })}>
+              Clear filters
+            </button>
+          ) : null}
         </div>
       ) : (
         <React.Fragment>
@@ -1984,7 +2064,7 @@ function ActivitiesTab({ data, projectId, scheduleId, initialActivityTypeHint, i
             ))}
           </div>
 
-          <div className="panel activities-table-wrap">
+          <div className="panel panel--flat activities-table-wrap">
             <div ref={scrollRef} style={{ overflowX: "auto", maxHeight: isVirtualized ? "70vh" : undefined, overflowY: isVirtualized ? "auto" : undefined }}>
               <table className="data-table data-table--sticky-header data-table--frozen-first-col">
                 <thead>
@@ -2060,7 +2140,7 @@ function ParsedIssuesToggle({ parsed }: ParsedIssuesToggleProps) {
   if (summary.warnings === 0 && summary.errors === 0) return null;
   return (
     <details style={{ marginBottom: "var(--space-3)" }}>
-      <summary style={{ cursor: "pointer", fontSize: "var(--text-sm)" }}>View {summary.errors + summary.warnings} issue(s)</summary>
+      <summary style={{ cursor: "pointer", fontSize: "var(--text-sm)" }}>View {plural(summary.errors + summary.warnings, "issue")}</summary>
       <div style={{ maxHeight: 220, overflowY: "auto", marginTop: "var(--space-2)" }}>
         {parsed.errors.map((e, i) => (
           <p key={"e" + i} style={{ fontSize: "var(--text-sm)", color: "var(--status-critical)" }}>
@@ -2268,7 +2348,7 @@ function ImportPanel({ data, projectId, onDone, onImported }: ImportPanelProps) 
       ) : null}
 
       <p style={{ fontSize: "var(--text-base)", fontWeight: 600, marginBottom: "var(--space-1)" }}>
-        Parsed {summary.total_rows} row(s) — {summary.imported} activities will be imported, {summary.warnings} warning(s), {summary.errors} error(s).
+        Parsed {plural(summary.total_rows, "row")} — {plural(summary.imported, "activity", "activities")} will be imported, {plural(summary.warnings, "warning")}, {plural(summary.errors, "error")}.
       </p>
       {summary.errors > 0 ? (
         <p className="text-secondary" style={{ fontSize: "var(--text-sm)", marginBottom: "var(--space-3)" }}>
@@ -2484,7 +2564,7 @@ function ExcelEditorPanel({ schedule, data, onDone }: ExcelEditorPanelProps) {
       ) : null}
 
       <p style={{ fontSize: "var(--text-base)", fontWeight: 600, marginBottom: "var(--space-1)" }}>
-        {summary.imported} activit{summary.imported === 1 ? "y" : "ies"} will be applied to this schedule, {summary.warnings} warning(s), {summary.errors} error(s).
+        {plural(summary.imported, "activity", "activities")} will be applied to this schedule, {plural(summary.warnings, "warning")}, {plural(summary.errors, "error")}.
       </p>
       {summary.errors > 0 ? (
         <p className="text-secondary" style={{ fontSize: "var(--text-sm)", marginBottom: "var(--space-3)" }}>
@@ -2616,11 +2696,11 @@ function GanttRow({ row, activity, y, rowHeight, chartWidth, pxPerDay, xForDate,
     return (
       <React.Fragment>
         <line x1={0} y1={y + rowHeight} x2={chartWidth} y2={y + rowHeight} stroke="var(--divider)" strokeWidth={1} />
-        <text x={6} y={rowCenter + 4} fontSize={11} fill="var(--text-primary)" style={{ cursor: "pointer" }} onClick={labelClick}>
+        <text x={6} y={rowCenter + 4} fill="var(--text-primary)" style={{ cursor: "pointer", fontSize: "var(--text-xs)" }} onClick={labelClick}>
           {truncateLabel(row.name, 26)}
           <title>{labelTitle}</title>
         </text>
-        <text x={200 + 4} y={rowCenter + 4} fontSize={11} fill="var(--text-secondary)" fontStyle="italic">
+        <text x={200 + 4} y={rowCenter + 4} fill="var(--text-secondary)" fontStyle="italic" style={{ fontSize: "var(--text-xs)" }}>
           No dates set
         </text>
       </React.Fragment>
@@ -2636,7 +2716,7 @@ function GanttRow({ row, activity, y, rowHeight, chartWidth, pxPerDay, xForDate,
     return (
       <React.Fragment>
         <line x1={0} y1={y + rowHeight} x2={chartWidth} y2={y + rowHeight} stroke="var(--divider)" strokeWidth={1} />
-        <text x={6} y={rowCenter + 4} fontSize={11} fill="var(--text-primary)" style={{ cursor: "pointer" }} onClick={labelClick}>
+        <text x={6} y={rowCenter + 4} fill="var(--text-primary)" style={{ cursor: "pointer", fontSize: "var(--text-xs)" }} onClick={labelClick}>
           {truncateLabel(row.name, 26)}
           <title>{labelTitle}</title>
         </text>
@@ -2666,7 +2746,7 @@ function GanttRow({ row, activity, y, rowHeight, chartWidth, pxPerDay, xForDate,
   return (
     <React.Fragment>
       <line x1={0} y1={y + rowHeight} x2={chartWidth} y2={y + rowHeight} stroke="var(--divider)" strokeWidth={1} />
-      <text x={6} y={rowCenter + 4} fontSize={11} fill="var(--text-primary)" style={{ cursor: "pointer" }} onClick={labelClick}>
+      <text x={6} y={rowCenter + 4} fill="var(--text-primary)" style={{ cursor: "pointer", fontSize: "var(--text-xs)" }} onClick={labelClick}>
         {truncateLabel(row.name, 26)}
         <title>{labelTitle}</title>
       </text>
@@ -2810,10 +2890,10 @@ function GanttToolbar({ data, projectId, allActivities, wbsItems, filter, setFil
           ))}
         </span>
         <div className="toolbar__spacer" />
-        <button className="btn btn--ghost" onClick={onAddActivity}>
+        <button className="btn btn--primary" onClick={onAddActivity}>
           + Add Activity
         </button>
-        <button className="btn btn--ghost" onClick={onAddMilestone}>
+        <button className="btn btn--quiet" onClick={onAddMilestone}>
           + Add Milestone
         </button>
       </div>
@@ -2894,7 +2974,7 @@ function GanttChart({ data, schedule, allActivities, wbsItems, filter, zoom, sho
             ? "No activities in this schedule yet. Add some on the Activities tab first."
             : activities.length === 0
             ? "No activities match the current filters."
-            : "None of this schedule's " + activities.length + " activity(ies) have a Planned Start/Finish or a calculated date yet. Add planned dates on the Activities tab, or run “Calculate Schedule” above."}
+            : "None of this schedule's " + plural(activities.length, "activity", "activities") + " has a Planned Start/Finish or a calculated date yet. Add planned dates on the Activities tab, or run “Calculate Schedule” above."}
         </div>
       </React.Fragment>
     );
@@ -2965,7 +3045,7 @@ function GanttChart({ data, schedule, allActivities, wbsItems, filter, zoom, sho
     <React.Fragment>
       {layout.undatedCount > 0 ? (
         <p className="text-secondary" style={{ fontSize: "var(--text-sm)", marginBottom: "var(--space-3)" }}>
-          {layout.undatedCount} activity(ies) have no planned or calculated dates and aren't shown on the chart.
+          {plural(layout.undatedCount, "activity", "activities")} {layout.undatedCount === 1 ? "has" : "have"} no planned or calculated dates and {layout.undatedCount === 1 ? "isn't" : "aren't"} shown on the chart.
         </p>
       ) : null}
 
@@ -2994,12 +3074,12 @@ function GanttChart({ data, schedule, allActivities, wbsItems, filter, zoom, sho
 
       {(() => {
         const chartPanel = (
-          <div ref={wrapRef} className="panel gantt-chart-panel" style={{ overflowX: "auto", overflowY: "auto", maxHeight: "70vh" }}>
+          <div ref={wrapRef} className="panel panel--flat gantt-chart-panel" style={{ overflowX: "auto", overflowY: "auto", maxHeight: "70vh" }}>
             <svg width={chartWidth} height={chartHeight} style={{ display: "block" }}>
               {ticks.map((tick) => (
                 <React.Fragment key={tick.t}>
                   <line x1={tick.x} y1={0} x2={tick.x} y2={chartHeight} stroke="var(--grid-line)" strokeWidth={1} />
-                  <text x={tick.x + 3} y={12} fontSize={10} fill="var(--text-secondary)">
+                  <text x={tick.x + 3} y={12} style={{ fontSize: "var(--text-10)" }} fill="var(--text-secondary)">
                     {formatAxisDate(tick.iso)}
                   </text>
                 </React.Fragment>
@@ -3008,7 +3088,7 @@ function GanttChart({ data, schedule, allActivities, wbsItems, filter, zoom, sho
               {ddx !== null ? (
                 <React.Fragment>
                   <line x1={ddx} y1={0} x2={ddx} y2={chartHeight} stroke="var(--signal-amber)" strokeWidth={2} strokeDasharray="4,3" />
-                  <text x={ddx + 4} y={ddLabelY} fontSize={10} fill="var(--signal-amber)" fontWeight={600}>
+                  <text x={ddx + 4} y={ddLabelY} style={{ fontSize: "var(--text-10)" }} fill="var(--signal-amber)" fontWeight={600}>
                     Data Date
                   </text>
                 </React.Fragment>
@@ -3016,7 +3096,7 @@ function GanttChart({ data, schedule, allActivities, wbsItems, filter, zoom, sho
               {tdx !== null ? (
                 <React.Fragment>
                   <line x1={tdx} y1={0} x2={tdx} y2={chartHeight} stroke="var(--status-on-track)" strokeWidth={2} />
-                  <text x={tdx + 4} y={tdLabelY} fontSize={10} fill="var(--status-on-track)" fontWeight={600}>
+                  <text x={tdx + 4} y={tdLabelY} style={{ fontSize: "var(--text-10)" }} fill="var(--status-on-track)" fontWeight={600}>
                     Today
                   </text>
                 </React.Fragment>
@@ -4201,7 +4281,7 @@ function ActivityDetailPanel({ activity, data, wbsItems, scheduleActivities, rel
             ? "Not yet calculated"
             : activity.total_float <= 0
             ? "Critical (0 float)"
-            : activity.total_float + " day(s) total, " + (activity.free_float == null ? "—" : activity.free_float) + " free"
+            : plural(activity.total_float!, "day") + " total, " + (activity.free_float == null ? "—" : activity.free_float) + " free"
         )}
         {detailItem("Out of Sequence", activity.is_out_of_sequence ? "Yes — actual progress preceded predecessor logic" : "No")}
         {detailItem("% Complete", (activity.percent_complete || 0) + "%")}
@@ -4268,8 +4348,8 @@ function BaselineCompareResult({ result, currentScheduleName }: BaselineCompareR
       ? "Overall finish variance: not comparable (missing dates on one side)."
       : "Overall finish variance: " +
         (s.project_finish_variance_days > 0 ? "+" : "") +
-        s.project_finish_variance_days +
-        " day(s) (" +
+        plural(s.project_finish_variance_days, "day") +
+        " (" +
         (s.project_finish_variance_days > 0 ? "later" : s.project_finish_variance_days < 0 ? "earlier" : "unchanged") +
         " than baseline).";
 
@@ -4283,14 +4363,14 @@ function BaselineCompareResult({ result, currentScheduleName }: BaselineCompareR
     .sort((a, b) => b.erosion - a.erosion);
 
   return (
-    <div className="panel" style={{ marginTop: "var(--space-3)", marginBottom: "var(--space-4)" }}>
+    <div className="panel panel--flat" style={{ marginTop: "var(--space-3)", marginBottom: "var(--space-4)" }}>
       <h4 style={{ marginBottom: "var(--space-3)" }}>Baseline vs Current — comparing against "{currentScheduleName}"</h4>
       <p style={{ fontSize: "var(--text-sm)", marginBottom: "var(--space-3)" }}>
         {s.activity_count_baseline} activities in baseline · {s.activity_count_current} in current · {s.added_count} added · {s.removed_count} removed
         {s.not_comparable_count ? " · " + s.not_comparable_count + " not comparable (no calculated or planned dates)" : ""}
         <br />
         {s.delayed_count} delayed · {s.on_time_count} on time · {s.ahead_count} ahead
-        {s.max_delay_days > 0 ? " · worst slip: " + s.max_delay_days + " day(s)" : ""}
+        {s.max_delay_days > 0 ? " · worst slip: " + plural(s.max_delay_days, "day") : ""}
         <br />
         {finishBit}
         {result.relationship_changes.added || result.relationship_changes.removed ? (
@@ -4325,7 +4405,7 @@ function BaselineCompareResult({ result, currentScheduleName }: BaselineCompareR
         <React.Fragment>
           <div className="project-list">
             {changed.slice(0, 50).map((m, i) => {
-              const varianceLabel = (m.finish_variance_days > 0 ? "+" : "") + m.finish_variance_days + " day(s)" + (m.mixed_date_sources ? " (baseline/current use different date sources — verify)" : "");
+              const varianceLabel = (m.finish_variance_days > 0 ? "+" : "") + plural(m.finish_variance_days, "day") + (m.mixed_date_sources ? " (baseline/current use different date sources — verify)" : "");
               return (
                 <div key={i} className="detail-card" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--space-2)" }}>
                   <div>
@@ -4520,7 +4600,7 @@ function BaselinesTab({ data, projectId, scheduleId, refresh }: BaselinesTabProp
   const baselines = data.schedule_baselines.filter((b) => b.project_id === projectId).sort((a, b) => new Date(b.captured_at || "").getTime() - new Date(a.captured_at || "").getTime());
 
   if (baselines.length === 0) {
-    return <div className="panel empty-state">No baselines saved for this project yet. Click "Save Baseline" above to freeze the currently selected schedule's dates and logic for later comparison.</div>;
+    return <div className="panel empty-state">No baselines saved for this project yet. Save Baseline, in the schedule's ⋯ menu, freezes its dates and logic for later comparison.</div>;
   }
 
   return (
@@ -4619,7 +4699,7 @@ function WhatIfTab({ data, scheduleId }: WhatIfTabProps) {
       </div>
 
       {result ? (
-        <div className="panel" style={{ marginTop: "var(--space-3)" }}>
+        <div className="panel panel--flat" style={{ marginTop: "var(--space-3)" }}>
           <h4 style={{ marginBottom: "var(--space-3)" }}>What-If Result — {result.activityName || "(unnamed activity)"}</h4>
           {result.actualReduction < result.requestedReduction ? (
             <p className="text-secondary" style={{ fontSize: "var(--text-sm)", marginBottom: "var(--space-2)" }}>
@@ -4749,10 +4829,10 @@ export default function SchedulePage({ initialProjectId, initialScheduleId, init
     const schedule = data.schedules.find((s) => s.id === currentScheduleId);
     if (!schedule) return;
     const impact = scheduleDeleteImpact(schedule.id);
-    const parts = [impact.activities + " activit" + (impact.activities === 1 ? "y" : "ies"), impact.relationships + " relationship(s)", impact.wbsItems + " WBS item(s)"];
-    if (impact.baselines > 0) parts.push(impact.baselines + " saved baseline(s)");
-    if (impact.recoveryActions > 0) parts.push(impact.recoveryActions + " recovery action(s)");
-    if (impact.delayRecords > 0) parts.push(impact.delayRecords + " delay record(s)");
+    const parts = [plural(impact.activities, "activity", "activities"), plural(impact.relationships, "relationship"), plural(impact.wbsItems, "WBS item")];
+    if (impact.baselines > 0) parts.push(plural(impact.baselines, "saved baseline"));
+    if (impact.recoveryActions > 0) parts.push(plural(impact.recoveryActions, "recovery action"));
+    if (impact.delayRecords > 0) parts.push(plural(impact.delayRecords, "delay record"));
     if (!confirm('Permanently delete schedule "' + (schedule.name || "(unnamed)") + '" — ' + parts.join(", ") + "? This CANNOT be undone.")) return;
     deleteSchedule(schedule.id).then(() => {
       const remaining = data.schedules.filter((s) => s.project_id === schedule.project_id && s.id !== schedule.id);
@@ -4768,12 +4848,9 @@ export default function SchedulePage({ initialProjectId, initialScheduleId, init
 
   return (
     <React.Fragment>
-      <h2 className="focus-mode-hide" style={{ marginBottom: "var(--space-2)" }}>
+      <h2 className="focus-mode-hide" style={{ marginBottom: "var(--space-4)" }}>
         Schedule
       </h2>
-      <p className="text-secondary focus-mode-hide" style={{ fontSize: "var(--text-sm)", marginBottom: "var(--space-4)" }}>
-        Hand-enter activities, import from Excel, or calculate the critical path. View the Gantt tab for a timeline, and save/compare baselines from the Baselines tab.
-      </p>
 
       <ScheduleBar
         data={data}
@@ -4839,7 +4916,18 @@ export default function SchedulePage({ initialProjectId, initialScheduleId, init
       ) : null}
 
       {!currentScheduleId ? (
-        <div className="panel empty-state">{activeProjects.length === 0 ? "Add a project in Portfolio first, then create a schedule against it." : "No schedule selected. Click “+ New Schedule” above to create one."}</div>
+        <div className="panel empty-state">
+          {activeProjects.length === 0 ? "Add a project in Portfolio first, then create a schedule against it." : "No schedule selected."}
+          {activeProjects.length === 0 ? (
+            <button className="btn btn--ghost empty-state__action" onClick={() => window.PCC.router.go("portfolio")}>
+              Go to Portfolio
+            </button>
+          ) : (
+            <button className="btn btn--ghost empty-state__action" onClick={() => setEditingScheduleId("new")}>
+              + New Schedule
+            </button>
+          )}
+        </div>
       ) : (
         <React.Fragment>
           <div className="tab-bar" style={{ marginTop: "var(--space-4)" }}>

@@ -141,6 +141,8 @@ enough) · ExcelJS stays 4.4.0 (write-only use) · Resource rate×usage cost (no
 - Tests run the real code: unit tests eval `src/js/*.js`; e2e loads the real `index.html` in jsdom
   with fake-indexeddb (stub `FileReader.readAsDataURL` where needed). Each new test is proven to
   fail on the old build first.
+- Schedule's toolbar actions live in Import ▾ / Export ▾ / ⋯ menus that render only while open:
+  tests call `openScheduleMenu()` (`tests/scheduleMenu.js`) before looking such a button up.
 - UI changes: real Chromium at 1440×900 and 412×915, zero console errors, no sideways scroll,
   screenshots sent (`pcc-visual-qa` skill). The mirror app is verified only in Chromium.
 
