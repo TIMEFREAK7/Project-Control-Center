@@ -7,10 +7,11 @@ it (and a zip) to Aditya directly after every major upgrade, not just committing
 
 ## Current state (2026-11-28)
 
-- `main` has every gate through 7.5c (Aditya approved the look; zip
-  `scratch/pcc-7.5c-zip/Project-Control-Center-2026-11-28-7.5c.zip`, verified from a fresh
-  extraction in Chromium). Branch `gate-7.5d` is cut from `main`, no changes yet. Schema
-  **67**. 143 test files
+- `main` has every gate through 7.5c plus its follow-up (dates, keyboard heat map); zip
+  `scratch/pcc-7.5c-fix-zip/Project-Control-Center-2026-11-28-7.5c.1.zip`, verified from a fresh
+  extraction in Chromium. Branch `gate-7.5d` is cut from `main`, no changes yet; its scope is
+  proposed and waiting for Aditya (inspection shots: `scratch/pcc-7.5d/inspect/`, seeded by
+  `scratch/pcc-7.5d/cs-shots.js`). Schema **67**. 143 test files
   (`cd tests && npm test`), green in UTC and IST. Windows installer builds natively on this PC
   (1.10.0 last built).
 - Next in `DEFERRED_ROADMAP.md` after 7.5c: Gate 7.5d (Cost and supply page pass). Features track: 1.1.
