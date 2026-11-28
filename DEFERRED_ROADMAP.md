@@ -775,7 +775,17 @@ Apply 7.2–7.4 and the "one primary action" rule. No new features, no moved dat
 - **7.5d Cost and supply:** Cost, Commitments, Resources, Vendors, Vendor Performance.
 - **7.5e Documents and system:** Documents, Document Types, Document Control, Storage,
   Daily Log, Lessons Learned, Knowledge Base, Reports (the screen), Settings.
-- **Status:** 7.5a done 2026-11-27 (Aditya signed off on the look); 7.5b–e open.
+- **Status:** 7.5a done 2026-11-27 (Aditya signed off on the look); 7.5b built 2026-11-28,
+  waiting for Aditya's look sign-off; 7.5c–e open.
+  7.5b: toolbar = + New Schedule (only primary), Calculate Schedule, Import ▾ (Import Schedule,
+  Edit Excel), Export ▾ (MS Project, P6), ⋯ (Save Baseline, Edit Schedule, AI summary, Delete).
+  **Roadmap vs code:** Gantt colours were already tokens (no hex/rgb anywhere in the page); only
+  its SVG text sizes were literal, now tokens. The Gantt never recomputed CPM; a test now locks
+  that in. Subtitle removed; one primary per tab (Gantt's + Add Activity, milestone quiet);
+  empty states with actions (New Schedule, Go to Portfolio, Add Activity/WBS/Relationship/
+  Calendar, Clear filters); 16 "word(s)" → `plural()`; table, Gantt and result sections
+  `.panel--flat` (forms keep their box). Phone: the toolbar's buttons take 2 rows instead of 4. `styles.css` untouched, so
+  At a Glance is unchanged. New `test_schedule_phase7.js` (8/21 on the old build).
   7.5a found Dashboard's context card was EMPTY at <=1150px and in the mirror app (it reuses
   `.title-block__cell`, which the title block's hide rule caught); the rule is now scoped to
   `.title-block`, and the card shows only at <=1150px (always in the mirror). Portfolio phone:

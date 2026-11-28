@@ -10,6 +10,7 @@ const assert = require("assert");
 const { JSDOM } = require("jsdom");
 const FDBFactory = require("fake-indexeddb/lib/FDBFactory");
 
+const { openScheduleMenu } = require("./scheduleMenu");
 const INDEX_PATH = path.join(__dirname, "..", "index.html");
 
 function sleep(ms) {
@@ -104,7 +105,8 @@ function findButtonByText(dom, text) {
   });
 
   let baselineCountBefore;
-  await check("'Save Baseline' button exists and is enabled once a schedule with activities is selected", () => {
+  await check("'Save Baseline' button exists and is enabled once a schedule with activities is selected", async () => {
+    await openScheduleMenu(dom, "Save Baseline");
     var btn = findButtonByText(dom, "Save Baseline");
     assert.ok(btn, "Save Baseline button not found");
     assert.strictEqual(btn.disabled, false, "Save Baseline should be enabled with 1 activity present");
@@ -112,6 +114,7 @@ function findButtonByText(dom, text) {
   });
 
   await check("clicking 'Save Baseline' writes a thin index row and a matching IndexedDB snapshot", async () => {
+    await openScheduleMenu(dom, "Save Baseline");
     var btn = findButtonByText(dom, "Save Baseline");
     btn.click();
     await flush();
@@ -192,6 +195,7 @@ function findButtonByText(dom, text) {
     var hideBtn = findButtonByText(dom, "Hide Comparison");
     if (hideBtn) hideBtn.click();
     await flush();
+    await openScheduleMenu(dom, "Save Baseline");
     var saveBtn = findButtonByText(dom, "Save Baseline");
     saveBtn.click();
     await flush();

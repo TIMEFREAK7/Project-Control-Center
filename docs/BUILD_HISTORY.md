@@ -6856,3 +6856,26 @@ first project shows without scrolling.
 **Found along the way.** Dashboard's "Current context" box was empty on phones, tablets and in
 the phone app (its drop-downs were being hidden by a rule meant for the top bar); it now works
 there and is hidden on wide screens, where the top bar already has the same switcher.
+
+## Gate 7.5b: the Schedule page (2026-11-28)
+
+**What changed for Aditya.** The Schedule toolbar was eight equal buttons that wrapped to four
+rows on a phone. Now it shows "+ New Schedule" as the one dark button, "Calculate Schedule" next
+to it, and three menus: Import (Import Schedule, Edit Excel), Export (MS Project, Primavera P6)
+and "⋯" (Save Baseline, Edit Schedule, the AI summary, Delete Schedule). On a phone the
+buttons take two rows. The sentence under the "Schedule" title is gone. Each tab has one main
+button (on the Gantt, "+ Add Activity"; "+ Add Milestone" is quieter). Empty tabs offer the
+button that fills them. Counts read "1 day" and "3 activities" instead of "day(s)". The
+activities table, the Gantt chart and the baseline and what-if results sit on the page with a
+fine line instead of a box. Forms keep their box.
+
+**Decided along the way (Aditya).** Save Baseline goes into "⋯" rather than a one-item
+Baseline menu. Tests open the menus the way a person would (one shared helper) instead of the
+page keeping hidden copies of the buttons. Button wording stays as it was.
+
+**Already fine, so not changed.** The Gantt's colours were already the design tokens, and it
+never recalculated the critical path. A test now makes sure it never does.
+
+**Found in the browser check.** On a phone, the Import and "⋯" menus opened off the left edge
+of the screen, because the toolbar wraps those buttons to the left. They now open toward
+whichever side has room.

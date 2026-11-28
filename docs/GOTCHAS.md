@@ -895,3 +895,15 @@ error: primary buttons rendered browser-grey, and the tab and empty-state rules 
 tests could not see it; a real-Chromium `getComputedStyle` did. Fix: strip it, and
 `test_components_phase7.js` now fails on any U+FEFF after the first character. Rule: write
 source with the editor tools or Node, never PowerShell `Set-Content`/`Out-File`.
+
+## Schedule toolbar menus and the tests that click them (Gate 7.5b, 2026-11-28)
+
+Gate 7.5b moved Import Schedule, Edit Excel, both exports, Save Baseline and Edit Schedule off the
+Schedule toolbar into Import ▾ / Export ▾ / ⋯ menus. A `.card-menu` renders its items only while
+it is open, so 13 test files that found those buttons with their own `findButtonByText()` stopped
+finding them. Rather than keep hidden copies in the page (tests would then click buttons no user
+can see), `tests/scheduleMenu.js` maps each label to its menu and `openScheduleMenu(ctx, label)`
+opens it first (a no-op when the button is already showing). A newly moved button needs one
+`MENU_OF` entry. Also: a right-anchored dropdown runs off the left edge when the phone toolbar
+wraps a toggle to the left, so Schedule's menus open toward the side with room (`dropdownStyle`
+in `Schedule.tsx`, inline so `styles.css` and At a Glance stay unchanged).

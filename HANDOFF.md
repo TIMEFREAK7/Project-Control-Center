@@ -5,11 +5,13 @@ Paste this into a new chat to resume work with full context. This file lives in 
 path — see the standing instructions in `CLAUDE.md` about keeping it current and about handing
 it (and a zip) to Aditya directly after every major upgrade, not just committing quietly.
 
-## Current state (2026-11-27)
+## Current state (2026-11-28)
 
-- `main` has every gate through 7.5a. Schema **67**. 141 test files (`cd tests && npm test`), green in UTC and IST.
-  Windows installer builds natively on this PC (1.10.0 last built).
-- Next in `DEFERRED_ROADMAP.md` after 7.5a: Gate 7.5b (Schedule page pass). Features track: 1.1.
+- `main` has every gate through 7.5a. Gate 7.5b is built on branch `gate-7.5b`, waiting for
+  Aditya to approve the look; then merge, zip, push. Schema **67**. 142 test files
+  (`cd tests && npm test`), green in UTC and IST. Windows installer builds natively on this PC
+  (1.10.0 last built).
+- Next in `DEFERRED_ROADMAP.md` after 7.5b: Gate 7.5c (Registers page pass). Features track: 1.1.
 - Waiting on Aditya: Gate 0.1 (phone check of At a Glance 1.9 + predictive back) and the real
   Storage Management → App data reading (decides Gate 6.2).
 - Docs layout since Gate 6.3: `CLAUDE.md` = rules (10.5 KB); `docs/GOTCHAS.md` = the old
@@ -37,6 +39,30 @@ it (and a zip) to Aditya directly after every major upgrade, not just committing
 - Open small items: Dashboard's own 7 phone filters stack (Portfolio's `.filter-fold` would fix
   it); Executive Center's "INR 42,00,00,000" wraps in its KPI tile; title still truncates for
   the 4 longest page names at 360 px.
+
+## 2026-11-28 — Gate 7.5b: Schedule page pass
+
+- Toolbar: + New Schedule (only primary), Calculate Schedule (with the "out of date" warning),
+  Import ▾ (Import Schedule, Edit Excel), Export ▾ (MS Project, P6), ⋯ (Save Baseline, Edit
+  Schedule, Summarize (AI), Delete). `ToolbarMenu` in `Schedule.tsx`; button text unchanged.
+- **Roadmap vs code:** the Gantt already used colour tokens and never recomputed CPM. Its SVG
+  text sizes moved onto `--text-xs`/`--text-10` (via `style`, since an SVG `font-size`
+  attribute can't take `var()`).
+- Subtitle under "Schedule" removed; one primary per tab (Gantt: + Add Activity primary,
+  + Add Milestone quiet); empty states with actions; 16 "word(s)" strings → `plural()`
+  ("1 activity has…", "Parsed 4 rows"); table/Gantt/result sections `.panel--flat`; holiday
+  dates out of `.mono`.
+- **Bug caught in Chromium:** at 412 px the Import and ⋯ dropdowns opened off the left edge
+  (right-anchored, toggle wrapped left). `dropdownStyle()` opens toward the side with room,
+  inline, so `styles.css` is untouched and the mirror app needs no rebuild.
+- Tests: new `test_schedule_phase7.js` (8/21 on the old build, 21/21 now; includes a spy proving
+  the Gantt never calls `calculateSchedule`). New `tests/scheduleMenu.js` (`openScheduleMenu`);
+  13 older tests call it before looking up a moved button (inserted by
+  `scratch/pcc-7.5b/insert-menu-open.js`); 4 tests' plural strings updated.
+- Chromium: 8 shots + 16 open-menu states (`scratch/pcc-7.5b/menu-states.js`), both themes,
+  both sizes: 0 console errors, 0 contrast failures, audit pass, no sideways scroll, every
+  dropdown inside the viewport. Sheets: `scratch/pcc-7.5b/sheets/`, menus: `scratch/pcc-7.5b/menus/`.
+- `index.html` 6,360.2 → 6,361.7 KB.
 
 ## 2026-11-27 — Gate 7.5a: Overview page pass (Dashboard, My Work, Action Centre, Portfolio, Project Workspace, Executive Center)
 

@@ -10,6 +10,7 @@ const assert = require("assert");
 const { JSDOM } = require("jsdom");
 const FDBFactory = require("fake-indexeddb/lib/FDBFactory");
 
+const { openScheduleMenu } = require("./scheduleMenu");
 const INDEX_PATH = path.join(__dirname, "..", "index.html");
 
 function sleep(ms) {
@@ -130,6 +131,7 @@ function uploadXmlFile(win, fileInput, xmlText, filename) {
     win.PCC.router.go("schedule");
     await flush();
 
+    await openScheduleMenu(win, "Import Schedule");
     var importBtn = findButtonByText(win, "Import Schedule");
     assert.ok(importBtn, "'Import Schedule' button not found");
     importBtn.click();
@@ -141,9 +143,9 @@ function uploadXmlFile(win, fileInput, xmlText, filename) {
     // total_rows counts every <Task> element in the file, including the project-summary
     // row (UID 0) and the one WBS Summary task (UID 1) that don't become activities —
     // 4 total: UID 0, 1, 10, 11.
-    await waitFor(() => outlet().textContent.indexOf("Parsed 4 row(s)") !== -1);
+    await waitFor(() => outlet().textContent.indexOf("Parsed 4 rows") !== -1);
 
-    assert.ok(outlet().textContent.indexOf("Parsed 4 row(s)") !== -1, "expected the reviewing step showing 4 Task rows parsed: " + outlet().textContent.slice(0, 300));
+    assert.ok(outlet().textContent.indexOf("Parsed 4 rows") !== -1, "expected the reviewing step showing 4 Task rows parsed: " + outlet().textContent.slice(0, 300));
     assert.ok(outlet().textContent.indexOf("2 activities will be imported") !== -1, "1 Summary + 2 leaf tasks -> 2 activities: " + outlet().textContent.slice(0, 300));
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
@@ -202,6 +204,7 @@ function uploadXmlFile(win, fileInput, xmlText, filename) {
     await flush();
 
     // The schedule picker defaults to the most recent schedule for the active project.
+    await openScheduleMenu(win, "Edit Excel");
     var editExcelBtn = findButtonByText(win, "Edit Excel");
     assert.ok(editExcelBtn, "'Edit Excel' button not found");
     assert.strictEqual(editExcelBtn.disabled, true, "Edit Excel must stay disabled for a schedule that didn't come from Excel");

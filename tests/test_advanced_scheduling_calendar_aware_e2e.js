@@ -13,6 +13,7 @@ const assert = require("assert");
 const { JSDOM } = require("jsdom");
 const FDBFactory = require("fake-indexeddb/lib/FDBFactory");
 
+const { openScheduleMenu } = require("./scheduleMenu");
 const INDEX_PATH = path.join(__dirname, "..", "index.html");
 
 function sleep(ms) {
@@ -100,6 +101,7 @@ function findButtonByText(win, text) {
   });
 
   await check("the Schedule Settings form has a 'Calendar-Aware Calculation' checkbox, unchecked by default", async () => {
+    await openScheduleMenu(win, "Edit Schedule");
     findButtonByText(win, "Edit Schedule").click();
     await flush();
     var checkbox = win.document.getElementById("schedfield-calendar_aware");
@@ -140,6 +142,7 @@ function findButtonByText(win, text) {
   });
 
   await check("turning the checkbox back off and recalculating reverts to plain calendar-day math", async () => {
+    await openScheduleMenu(win, "Edit Schedule");
     findButtonByText(win, "Edit Schedule").click();
     await flush();
     var checkbox = win.document.getElementById("schedfield-calendar_aware");
@@ -176,6 +179,7 @@ function findButtonByText(win, text) {
   });
 
   await check("the Schedule Settings form has a 'Honor Date Constraints' checkbox, unchecked by default", async () => {
+    await openScheduleMenu(win, "Edit Schedule");
     findButtonByText(win, "Edit Schedule").click();
     await flush();
     var checkbox = win.document.getElementById("schedfield-constraints_enabled");
@@ -199,6 +203,7 @@ function findButtonByText(win, text) {
   });
 
   await check("turning Honor Date Constraints back off and recalculating reverts to ignoring the constraint again", async () => {
+    await openScheduleMenu(win, "Edit Schedule");
     findButtonByText(win, "Edit Schedule").click();
     await flush();
     var checkbox = win.document.getElementById("schedfield-constraints_enabled");

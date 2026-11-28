@@ -10,6 +10,7 @@ const assert = require("assert");
 const { JSDOM } = require("jsdom");
 const FDBFactory = require("fake-indexeddb/lib/FDBFactory");
 
+const { openScheduleMenu } = require("./scheduleMenu");
 const INDEX_PATH = path.join(__dirname, "..", "index.html");
 
 function sleep(ms) {
@@ -97,6 +98,7 @@ function findButtonByText(win, text) {
   });
 
   await check("'Export to Primavera P6' is enabled once a schedule is selected, and produces a well-formed XER file via nativeFile.save()", async () => {
+    await openScheduleMenu(win, "Export to Primavera P6");
     var exportBtn = findButtonByText(win, "Export to Primavera P6");
     assert.ok(exportBtn, "'Export to Primavera P6' button not found");
     assert.strictEqual(exportBtn.disabled, false);
@@ -135,6 +137,7 @@ function findButtonByText(win, text) {
       savedBlob = blob;
       return Promise.resolve();
     };
+    await openScheduleMenu(win, "Export to Primavera P6");
     findButtonByText(win, "Export to Primavera P6").click();
     await flush();
     win.PCC.nativeFile.save = realSave;

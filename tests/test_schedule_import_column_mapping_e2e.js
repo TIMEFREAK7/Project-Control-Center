@@ -11,6 +11,7 @@ const assert = require("assert");
 const { JSDOM } = require("jsdom");
 const FDBFactory = require("fake-indexeddb/lib/FDBFactory");
 
+const { openScheduleMenu } = require("./scheduleMenu");
 const INDEX_PATH = path.join(__dirname, "..", "index.html");
 
 function sleep(ms) {
@@ -116,6 +117,7 @@ function uploadWorkbook(win, fileInput, headers, dataRows, filename) {
     win.PCC.router.go("schedule");
     await flush();
 
+    await openScheduleMenu(win, "Import Schedule");
     var importBtn = findButtonByText(win, "Import Schedule");
     assert.ok(importBtn, "'Import Excel' button not found");
     importBtn.click();
@@ -135,13 +137,14 @@ function uploadWorkbook(win, fileInput, headers, dataRows, filename) {
       "matching-headers.xlsx"
     );
     await flush();
-    assert.ok(outlet().textContent.indexOf("Parsed 1 row(s)") !== -1, "should land directly on the review step: " + outlet().textContent.slice(0, 200));
+    assert.ok(outlet().textContent.indexOf("Parsed 1 row") !== -1, "should land directly on the review step: " + outlet().textContent.slice(0, 200));
     assert.strictEqual(outlet().textContent.indexOf("MAPS TO PCC FIELD"), -1, "no mapping step for already-matching headers");
 
     // Cancel back to a clean 'pick' step for the next check.
     var cancelBtn = findButtonByText(win, "Cancel");
     cancelBtn.click();
     await flush();
+    await openScheduleMenu(win, "Import Schedule");
     var reopenBtn = findButtonByText(win, "Import Schedule");
     reopenBtn.click();
     await flush();
@@ -185,8 +188,8 @@ function uploadWorkbook(win, fileInput, headers, dataRows, filename) {
     await flush();
 
     var text = outlet().textContent;
-    assert.ok(text.indexOf("Parsed 1 row(s)") !== -1, "should now be on the review step: " + text.slice(0, 300));
-    assert.ok(text.indexOf("1 activities will be imported") !== -1, "the manually-mapped row should parse as one importable activity");
+    assert.ok(text.indexOf("Parsed 1 row") !== -1, "should now be on the review step: " + text.slice(0, 300));
+    assert.ok(text.indexOf("1 activity will be imported") !== -1, "the manually-mapped row should parse as one importable activity");
 
     var confirmBtn = Array.from(outlet().querySelectorAll("button")).find((b) => b.textContent.indexOf("Confirm Import") === 0);
     assert.ok(confirmBtn, "'Confirm Import' button not found");
@@ -207,6 +210,7 @@ function uploadWorkbook(win, fileInput, headers, dataRows, filename) {
   await check("choosing the same PCC field for two different columns is blocked with a clear error, not silently accepted", async () => {
     win.PCC.router.go("schedule");
     await flush();
+    await openScheduleMenu(win, "Import Schedule");
     var importBtn = findButtonByText(win, "Import Schedule");
     importBtn.click();
     await flush();

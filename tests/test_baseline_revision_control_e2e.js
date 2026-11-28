@@ -15,6 +15,7 @@ const assert = require("assert");
 const { JSDOM } = require("jsdom");
 const FDBFactory = require("fake-indexeddb/lib/FDBFactory");
 
+const { openScheduleMenu } = require("./scheduleMenu");
 const INDEX_PATH = path.join(__dirname, "..", "index.html");
 
 function sleep(ms) {
@@ -109,6 +110,7 @@ function setReactInputValue(win, el, value) {
   await check("navigate to the schedule route and Save Baseline captures a project finish at capture time", async () => {
     win.PCC.router.go("schedule");
     win.PCC.router.render();
+    await openScheduleMenu(dom, "Save Baseline");
     var saveBtn = findButtonByText(dom, "Save Baseline");
     assert.ok(saveBtn, "Save Baseline button not found");
     saveBtn.click();
@@ -226,6 +228,7 @@ function setReactInputValue(win, el, value) {
 
   await check("capturing and marking a second baseline Official un-marks the first (at most one Official per project)", async () => {
     win.PCC.router.go("schedule");
+    await openScheduleMenu(dom, "Save Baseline");
     var saveBtn = findButtonByText(dom, "Save Baseline");
     saveBtn.click();
     await flush();
