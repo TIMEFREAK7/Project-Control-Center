@@ -115,7 +115,7 @@ const REGISTERS = [
     d.risks.push(S.newRisk({ project_id: pid, type: "risk", title: "Monsoon delays", status: "open", probability: "high", impact: "high", owner: "R. K." }));
     d.rfis.push(S.newRfi({ project_id: pid, type: "rfi", number: "RVT-RFI-014", subject: "Pile cap clash", status: "open", priority: "high", date_raised: "2026-01-10", date_required: "2026-01-18" }));
     d.change_orders.push(S.newChangeOrder({ project_id: pid, number: "RVT-CO-003", title: "Dock pits", status: "pending", cost_impact_amount: 3850000, schedule_impact_days: 9 }));
-    d.decisions.push(S.newDecision({ project_id: pid, title: "Precast stairs", status: "pending" }));
+    d.decisions.push(S.newDecision({ project_id: pid, title: "Precast stairs", status: "decided", decision_date: "2026-01-15", decided_by: "PM" }));
     // a meeting 3 days out, so the Lookahead has an item whatever today is
     const soon = win.PCC.dates.localIsoDate(new Date(Date.now() + 3 * 86400000));
     d.meetings.push(S.newMeeting({ project_id: pid, title: "Weekly review", meeting_date: soon, actions: [] }));
@@ -177,6 +177,33 @@ const REGISTERS = [
     assert.strictEqual(empty.length, 8, "empty cells: " + empty.length);
     assert.ok(cells.every((c) => c.classList.contains("heatmap-cell--empty") === (c.textContent.trim() === "0")));
     assert.ok(!/Click a cell/.test(outlet().textContent), "instruction line still shown");
+  });
+
+  // 7.5c follow-up (2026-11-28): dates in the app's format on register rows and details
+  for (const route of ["meetings", "decisionRegister", "rfis", "changeOrders"]) {
+    await check(route + ": no raw ISO dates in rows or open details", async () => {
+      await go(route);
+      btn("Details").click();
+      await flush();
+      const shown = Array.from(outlet().querySelectorAll(".project-card__meta, .detail-item__value, .attention-item__text")).map((e) => e.textContent);
+      const raw = shown.filter((t) => /\d{4}-\d{2}-\d{2}/.test(t));
+      assert.deepStrictEqual(raw, []);
+    });
+  }
+
+  await check("heat map cells are buttons: named, pressed state follows the filter, reachable by keyboard", async () => {
+    await go("risks");
+    const cells = Array.from(outlet().querySelectorAll(".heatmap-cell"));
+    assert.ok(cells.every((c) => c.tagName === "BUTTON" && c.type === "button"), "not all buttons");
+    assert.ok(cells.every((c) => /probability, .* impact: \d+ entr(y|ies)$/.test(c.getAttribute("aria-label"))), cells[0].getAttribute("aria-label"));
+    assert.ok(cells.every((c) => c.getAttribute("aria-pressed") === "false"));
+    const occupied = cells.find((c) => c.textContent.trim() !== "0");
+    occupied.focus();
+    assert.strictEqual(doc.activeElement, occupied, "cell can't take focus");
+    occupied.click();
+    await flush();
+    const pressed = Array.from(outlet().querySelectorAll(".heatmap-cell")).filter((c) => c.getAttribute("aria-pressed") === "true");
+    assert.strictEqual(pressed.length, 1, "pressed cells: " + pressed.length);
   });
 
   await check("heat map CSS: text face (tabular figures), status-token colours, no rgba literals", () => {

@@ -102,7 +102,7 @@ function RfiForm({
       <h3 style={{ marginBottom: "var(--space-4)" }}>{isNew ? "Add RFI / Technical Query" : "Edit " + (rfi.number || "Entry")}</h3>
       {sourceMeeting ? (
         <p className="text-secondary" style={{ fontSize: "var(--text-sm)", marginTop: -8, marginBottom: "var(--space-4)" }}>
-          Linked to meeting: &#8220;{sourceMeeting.title}&#8221; ({sourceMeeting.meeting_date})
+          Linked to meeting: &#8220;{sourceMeeting.title}&#8221; ({formatDate(sourceMeeting.meeting_date)})
         </p>
       ) : null}
       <form onSubmit={handleSubmit}>
@@ -216,8 +216,8 @@ function RfiDetails({ r, data, onChanged }: { r: PCCRfi; data: PCCStoreData; onC
   const fields = [
     { label: "Raised by", value: r.raised_by || "—" },
     { label: "Assigned to", value: r.assigned_to || "—" },
-    { label: "Date raised", value: r.date_raised || "—" },
-    { label: "Response required by", value: r.date_required || "—" },
+    { label: "Date raised", value: r.date_raised ? formatDate(r.date_raised) : "—" },
+    { label: "Response required by", value: r.date_required ? formatDate(r.date_required) : "—" },
     { label: "Cost impact", value: r.cost_impact ? "Yes" : "No" },
     { label: "Schedule impact", value: r.schedule_impact ? "Yes" : "No" },
     { label: "Question / query", value: r.question || "—", wide: true },
@@ -253,7 +253,7 @@ function RfiDetails({ r, data, onChanged }: { r: PCCRfi; data: PCCStoreData; onC
             <span className="attention-item__icon attention-item__icon--info" />
             <div className="attention-item__body">
               <div className="attention-item__text">
-                {sourceMeeting.title} ({sourceMeeting.meeting_date})
+                {sourceMeeting.title} ({formatDate(sourceMeeting.meeting_date)})
               </div>
               <div className="attention-item__meta">Raised in meeting</div>
             </div>

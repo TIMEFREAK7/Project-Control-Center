@@ -42,6 +42,18 @@ it (and a zip) to Aditya directly after every major upgrade, not just committing
   it); Executive Center's "INR 42,00,00,000" wraps in its KPI tile; title still truncates for
   the 4 longest page names at 360 px.
 
+## 2026-11-28 — 7.5c follow-up: register dates and keyboard heat map
+
+- Displayed ISO dates → `formatDate` on Meetings and Decisions rows, detail fields (RFI date
+  raised / required, CO date requested / decided, decision date), "(meeting date)" links on
+  Risks / RFI / Decisions / CO, and Delay & Recovery's "target" date. Form inputs and sort keys
+  stay ISO. Done with `scratch/pcc-7.5c-fix/format-dates.js` (exact-match replacements).
+- Heat-map cells are `<button type="button">` with `aria-label` ("High probability, High
+  impact: 2 entries") and `aria-pressed`; `.heatmap-cell:focus-visible` joins the app's
+  2 px focus-ring rule. Checked in Chromium: Tab reaches the cells, Enter filters.
+- `test_registers_phase7.js` gained 5 checks (fail on the 7.5c build, pass now; 33 total).
+- `styles.css` one rule, so the mirror was rebuilt: 8 of 8 tab shots byte-identical.
+
 ## 2026-11-28 — Gate 7.5c: Registers page pass
 
 - Seven pages: Risk Register, RFI / TQ, Change Management, Decision Register, Meetings, Delay &
@@ -67,7 +79,8 @@ it (and a zip) to Aditya directly after every major upgrade, not just committing
 - Mirror rebuilt from a C: copy (`scratch/pcc-7.5c/build-mirror.ps1`), 682.4 → 682.8 KB: 6 of 8
   tab shots byte-identical; dark Dashboard and My Work differ by 3–4 PNG bytes with no visible
   change (old build self-compare is 8/8, so it's real but tiny; not measured per pixel).
-- Found, not fixed: raw ISO dates on Meetings/Decisions rows; heat-map cells not keyboard-reachable.
+- Found, then fixed in the follow-up below: raw ISO dates on Meetings/Decisions rows; heat-map
+  cells not keyboard-reachable.
 
 ## 2026-11-28 — Gate 7.5b: Schedule page pass
 

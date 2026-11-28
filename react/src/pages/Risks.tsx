@@ -37,6 +37,7 @@ import {
 import type { FieldConfig, ActivityOption } from "../services/risksService";
 import type { PCCRisk, PCCProject, PCCStoreData, PCCMeeting, PCCActivity } from "../types/pcc";
 import { fuzzyMatch } from "../utils/fuzzyMatch";
+import { formatDate } from "../utils/localDate";
 
 function RiskForm({
   isNew,
@@ -87,7 +88,7 @@ function RiskForm({
       <h3 style={{ marginBottom: 14 }}>{isNew ? "Add Register Entry" : "Edit Register Entry"}</h3>
       {sourceMeeting ? (
         <p className="text-secondary" style={{ fontSize: "var(--text-12)", marginTop: -8, marginBottom: 14 }}>
-          Linked to meeting: &#8220;{sourceMeeting.title}&#8221; ({sourceMeeting.meeting_date})
+          Linked to meeting: &#8220;{sourceMeeting.title}&#8221; ({formatDate(sourceMeeting.meeting_date)})
         </p>
       ) : null}
       <form onSubmit={handleSubmit}>
@@ -202,14 +203,18 @@ function Heatmap({
               const severity = severityOf({ probability: prob, impact: impact });
               const isActive = heatmapFilter && heatmapFilter.probability === prob && heatmapFilter.impact === impact;
               return (
-                <div
+                // A real button: reachable with Tab, Enter/Space filter, and named for screen readers.
+                <button
+                  type="button"
                   key={impact}
                   className={"heatmap-cell heatmap-cell--" + severity + (count === 0 ? " heatmap-cell--empty" : "") + (isActive ? " heatmap-cell--active" : "")}
                   title={LEVEL_LABELS[prob] + " probability × " + LEVEL_LABELS[impact] + " impact"}
+                  aria-label={LEVEL_LABELS[prob] + " probability, " + LEVEL_LABELS[impact] + " impact: " + count + (count === 1 ? " entry" : " entries")}
+                  aria-pressed={!!isActive}
                   onClick={() => onCellClick(prob, impact, !!isActive)}
                 >
                   {count}
-                </div>
+                </button>
               );
             })}
           </React.Fragment>
@@ -254,7 +259,7 @@ function RiskDetails({ r, data }: { r: PCCRisk; data: PCCStoreData }) {
             <span className="attention-item__icon attention-item__icon--info" />
             <div className="attention-item__body">
               <div className="attention-item__text">
-                {sourceMeeting.title} ({sourceMeeting.meeting_date})
+                {sourceMeeting.title} ({formatDate(sourceMeeting.meeting_date)})
               </div>
               <div className="attention-item__meta">Raised in meeting</div>
             </div>

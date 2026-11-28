@@ -35,6 +35,7 @@ import {
 import type { FieldConfig, ActivityOption } from "../services/decisionRegisterService";
 import type { PCCDecision, PCCProject, PCCStoreData, PCCMeeting } from "../types/pcc";
 import { fuzzyMatch } from "../utils/fuzzyMatch";
+import { formatDate } from "../utils/localDate";
 import { RowMenu } from "../components/RowMenu";
 
 function DecisionForm({
@@ -86,7 +87,7 @@ function DecisionForm({
       <h3 style={{ marginBottom: 14 }}>{isNew ? "Add Decision" : "Edit Decision"}</h3>
       {sourceMeeting ? (
         <p className="text-secondary" style={{ fontSize: "var(--text-12)", marginTop: -8, marginBottom: 14 }}>
-          Linked to meeting: &#8220;{sourceMeeting.title}&#8221; ({sourceMeeting.meeting_date})
+          Linked to meeting: &#8220;{sourceMeeting.title}&#8221; ({formatDate(sourceMeeting.meeting_date)})
         </p>
       ) : null}
       <form onSubmit={handleSubmit}>
@@ -162,7 +163,7 @@ function DecisionForm({
 function DecisionDetails({ d, data }: { d: PCCDecision; data: PCCStoreData }) {
   const fields = [
     { label: "Status", value: STATUS_LABELS[d.status] },
-    { label: "Decision date", value: d.decision_date || "—" },
+    { label: "Decision date", value: d.decision_date ? formatDate(d.decision_date) : "—" },
     { label: "Decided by", value: d.decided_by || "—" },
     { label: "Context / background", value: d.description || "—", wide: true },
     { label: "Decision", value: d.decision || "—", wide: true },
@@ -188,7 +189,7 @@ function DecisionDetails({ d, data }: { d: PCCDecision; data: PCCStoreData }) {
             <span className="attention-item__icon attention-item__icon--info" />
             <div className="attention-item__body">
               <div className="attention-item__text">
-                {sourceMeeting.title} ({sourceMeeting.meeting_date})
+                {sourceMeeting.title} ({formatDate(sourceMeeting.meeting_date)})
               </div>
               <div className="attention-item__meta">Raised in meeting</div>
             </div>
@@ -463,7 +464,7 @@ function DecisionEntry({
           <div className="project-card__meta">
             {projectName(projects, d.project_id)}
             {d.decided_by ? " · " + d.decided_by : ""}
-            {d.decision_date ? " · " + d.decision_date : ""}
+            {d.decision_date ? " · " + formatDate(d.decision_date) : ""}
           </div>
         </div>
         <div style={{ display: "flex", gap: 6 }}>
