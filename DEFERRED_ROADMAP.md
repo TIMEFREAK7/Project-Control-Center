@@ -790,7 +790,7 @@ Apply 7.2–7.4 and the "one primary action" rule. No new features, no moved dat
   register rows, details and meeting links show dates via `formatDate` (Meetings, Decisions,
   RFI, Change Orders, Risks, Delay & Recovery); heat-map cells are buttons (Tab, Enter/Space,
   a name, `aria-pressed`, the app's focus ring).
-  7.5d built 2026-11-28, waiting for Aditya's look sign-off. **Correctness found:** Cost showed no
+  7.5d done 2026-11-28 (Aditya signed off on the look). **Correctness found:** Cost showed no
   currency and its Summary/EVM tiles summed all projects' money into one figure; now rows carry
   the project's currency, tiles are per currency, and portfolio CPI/SPI is "—" when currencies
   differ. **Layout bug found:** Vendor List ran off a phone screen (View Profile as a primary +
