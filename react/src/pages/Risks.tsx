@@ -180,13 +180,13 @@ function Heatmap({
   const isNarrowed = toolbarFilteredRisks.length !== allRisks.length;
 
   return (
-    <div className="panel" style={{ marginBottom: 16 }}>
-      <h3 style={{ marginBottom: 4 }}>Heat Map</h3>
-      <p className="text-secondary" style={{ fontSize: "var(--text-12)", marginTop: 0, marginBottom: 12 }}>
-        {isNarrowed
-          ? "Reflects the current search/type/status/project filters below. Click a cell to also filter by that probability/impact combination."
-          : "Click a cell to filter the list below by that probability/impact combination."}
-      </p>
+    <div className="panel panel--flat" style={{ marginBottom: 16 }}>
+      <h3 style={{ marginBottom: 12 }}>Heat map</h3>
+      {isNarrowed ? (
+        <p className="text-secondary" style={{ fontSize: "var(--text-12)", marginTop: -8, marginBottom: 12 }}>
+          Reflects the current search/type/status/project filters below.
+        </p>
+      ) : null}
       <div className="heatmap">
         <div className="heatmap-corner" />
         {["low", "medium", "high"].map((impact) => (
@@ -204,7 +204,7 @@ function Heatmap({
               return (
                 <div
                   key={impact}
-                  className={"heatmap-cell heatmap-cell--" + severity + (isActive ? " heatmap-cell--active" : "")}
+                  className={"heatmap-cell heatmap-cell--" + severity + (count === 0 ? " heatmap-cell--empty" : "") + (isActive ? " heatmap-cell--active" : "")}
                   title={LEVEL_LABELS[prob] + " probability × " + LEVEL_LABELS[impact] + " impact"}
                   onClick={() => onCellClick(prob, impact, !!isActive)}
                 >
@@ -226,11 +226,11 @@ function Heatmap({
 
 function RiskDetails({ r, data }: { r: PCCRisk; data: PCCStoreData }) {
   const fields = [
-    { label: "PROBABILITY", value: LEVEL_LABELS[r.probability || ""] },
-    { label: "IMPACT", value: LEVEL_LABELS[r.impact || ""] },
-    { label: "OWNER", value: r.owner || "—" },
-    { label: "DESCRIPTION", value: r.description || "—", wide: true },
-    { label: "MITIGATION / RESPONSE", value: r.mitigation || "—", wide: true },
+    { label: "Probability", value: LEVEL_LABELS[r.probability || ""] },
+    { label: "Impact", value: LEVEL_LABELS[r.impact || ""] },
+    { label: "Owner", value: r.owner || "—" },
+    { label: "Description", value: r.description || "—", wide: true },
+    { label: "Mitigation / response", value: r.mitigation || "—", wide: true },
   ];
 
   const sourceMeeting = r.source_meeting_id ? data.meetings.find((m) => m.id === r.source_meeting_id) : null;
@@ -256,7 +256,7 @@ function RiskDetails({ r, data }: { r: PCCRisk; data: PCCStoreData }) {
               <div className="attention-item__text">
                 {sourceMeeting.title} ({sourceMeeting.meeting_date})
               </div>
-              <div className="attention-item__meta">RAISED IN MEETING</div>
+              <div className="attention-item__meta">Raised in meeting</div>
             </div>
           </div>
         </div>
@@ -271,7 +271,7 @@ function RiskDetails({ r, data }: { r: PCCRisk; data: PCCStoreData }) {
             <span className="attention-item__icon attention-item__icon--info" />
             <div className="attention-item__body">
               <div className="attention-item__text">{linkedActivity.name}</div>
-              <div className="attention-item__meta">LINKED ACTIVITY</div>
+              <div className="attention-item__meta">Linked activity</div>
             </div>
           </div>
         </div>
@@ -584,8 +584,17 @@ export default function RisksPage({
             {data.risks.length === 0
               ? projects.filter((p) => !p.archived).length === 0
                 ? "Add a project in Portfolio first, then log risks, issues, and opportunities against it."
-                : "No entries yet. Click “+ Add Entry” to log your first risk, issue, or opportunity."
+                : "No risks, issues or opportunities yet."
               : "No entries match this search/filter."}
+            {data.risks.length === 0 && projects.filter((p) => !p.archived).length === 0 ? (
+              <button className="btn btn--ghost empty-state__action" onClick={() => window.PCC.router.go("portfolio")}>
+                Go to Portfolio
+              </button>
+            ) : data.risks.length === 0 ? (
+              <button className="btn btn--ghost empty-state__action" onClick={() => { setEditingId("new"); }}>
+                + Add Entry
+              </button>
+            ) : null}
           </div>
         ) : (
           <div className="project-list">

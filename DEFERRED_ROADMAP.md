@@ -776,7 +776,21 @@ Apply 7.2–7.4 and the "one primary action" rule. No new features, no moved dat
 - **7.5e Documents and system:** Documents, Document Types, Document Control, Storage,
   Daily Log, Lessons Learned, Knowledge Base, Reports (the screen), Settings.
 - **Status:** 7.5a done 2026-11-27 (Aditya signed off on the look); 7.5b done 2026-11-28
-  (Aditya signed off on the look); 7.5c–e open.
+  (Aditya signed off on the look); 7.5c built 2026-11-28, waiting for Aditya's look sign-off;
+  7.5d–e open.
+  7.5c: rows on RFI / TQ, Change Orders, Decisions and Meetings are Details + ⋯ (shared
+  `RowMenu`; RFI page 17 → 9 buttons with test data); ~40 capitalised labels → sentence case;
+  sentences under the title removed (Change Management, Delay & Recovery, Lookahead); empty
+  states offer their action (Add X / Go to Portfolio / Go to Schedule); Change Orders show the
+  project's currency (`changeOrdersService.formatMoney(amount, currency)`, the 6.4 finding);
+  heat map in the text face with token colours and no tint on empty cells, no instruction line;
+  RFI overdue section flat, dates via `formatDate`; Delay & Recovery sections `.panel--flat`,
+  figures out of `.mono`; Lookahead dates via `formatDate`, kind in the meta line instead of
+  "[Activity]", window buttons "7 days"… with `aria-pressed`. **Found, not fixed:** Meetings and
+  Decisions rows still show raw ISO dates; heat-map cells are clickable `div`s (no keyboard).
+  `styles.css` changed (heat map), so At a Glance was rebuilt: 6 of 8 shots byte-identical, dark
+  Dashboard and My Work differ by a few PNG bytes with no visible change.
+  New `test_registers_phase7.js` (3/28 on the old build).
   7.5b: toolbar = + New Schedule (only primary), Calculate Schedule, Import ▾ (Import Schedule,
   Edit Excel), Export ▾ (MS Project, P6), ⋯ (Save Baseline, Edit Schedule, AI summary, Delete).
   **Roadmap vs code:** Gantt colours were already tokens (no hex/rgb anywhere in the page); only

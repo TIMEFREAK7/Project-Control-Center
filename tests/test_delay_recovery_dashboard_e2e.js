@@ -126,10 +126,10 @@ function kpiValue(dom, label) {
   });
 
   await check("the KPI cards show correct totals, excluding the archived project's recovery action", () => {
-    assert.strictEqual(kpiValue(dom, "TOTAL RECOVERY ACTIONS"), "3", "3 across the two active projects; the archived project's 4th must be excluded");
-    assert.strictEqual(kpiValue(dom, "OPEN"), "2", "the overdue-open one and the in_progress one; completed doesn't count as open");
-    assert.strictEqual(kpiValue(dom, "OVERDUE"), "1");
-    assert.strictEqual(kpiValue(dom, "COMPLETED"), "1");
+    assert.strictEqual(kpiValue(dom, "Total recovery actions"), "3", "3 across the two active projects; the archived project's 4th must be excluded");
+    assert.strictEqual(kpiValue(dom, "Open"), "2", "the overdue-open one and the in_progress one; completed doesn't count as open");
+    assert.strictEqual(kpiValue(dom, "Overdue"), "1");
+    assert.strictEqual(kpiValue(dom, "Completed"), "1");
   });
 
   await check("the Open Recovery Actions panel lists the overdue one first, and never the archived project's action", () => {

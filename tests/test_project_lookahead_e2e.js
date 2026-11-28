@@ -183,7 +183,7 @@ function todayPlusDays(days) {
     assert.ok(text.indexOf("Coming Up (8)") !== -1, "expected exactly 8 items in the default 7-day window; got: " + text.match(/Coming Up \(\d+\)/));
 
     ["Critical foundation pour", "Near critical steel erection", "On track cabling", "Substantial completion milestone",
-     "Weekly Coordination", "Circulate updated drawing", "Cladding detail query", "[Document] BOQ"].forEach(function (needle) {
+     "Weekly Coordination", "Circulate updated drawing", "Cladding detail query", "BOQ"].forEach(function (needle) {
       assert.ok(text.indexOf(needle) !== -1, "expected to find: " + needle);
     });
 
@@ -196,7 +196,12 @@ function todayPlusDays(days) {
     // The overdue Method Statements requirement and the available ITP requirement must
     // never appear — check the Document kind specifically since "BOQ" / "ITP" could
     // otherwise collide with unrelated substrings elsewhere on the page.
-    assert.ok(text.indexOf("[Document] ITP") === -1, "an Available requirement must never appear, even with a date in-window");
+    // Gate 7.5c: the kind moved from a "[Document]" prefix to the start of the meta line.
+    var docTitles = Array.from(outlet().querySelectorAll(".attention-item"))
+      .filter((it) => it.querySelector(".attention-item__meta").textContent.indexOf("Document · ") === 0)
+      .map((it) => it.querySelector(".attention-item__text").textContent);
+    assert.ok(docTitles.some((t) => t.indexOf("BOQ") === 0), "the required BOQ must be listed as a Document: " + docTitles.join(" | "));
+    assert.ok(!docTitles.some((t) => t.indexOf("ITP") === 0), "an Available requirement must never appear, even with a date in-window");
     assert.ok(text.indexOf("Method Statements") === -1, "an overdue (past-date) requirement must never appear in a forward-only Lookahead");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
@@ -224,12 +229,12 @@ function todayPlusDays(days) {
   });
 
   await check("switching to the 30-day window adds the day-20 meeting but still excludes the day-45 items", async () => {
-    var btn = findButtonByText(dom, "30 Day");
-    assert.ok(btn, "30 Day toggle button not found");
+    var btn = findButtonByText(dom, "30 days");
+    assert.ok(btn, "30 days toggle button not found");
     btn.click();
     await flush();
     var text = outlet().textContent;
-    assert.ok(text.indexOf("next 30 days") !== -1);
+    assert.strictEqual(findButtonByText(dom, "30 days").getAttribute("aria-pressed"), "true"); // Gate 7.5c: was the subtitle's "next 30 days"
     assert.ok(text.indexOf("Client Review (Day 20)") !== -1, "the day-20 meeting must appear once the window is 30 days");
     assert.ok(text.indexOf("Far future commissioning") === -1, "day-45 activity must still be excluded at a 30-day window");
     assert.ok(text.indexOf("Far future query") === -1, "day-45 RFI must still be excluded at a 30-day window");
@@ -238,12 +243,12 @@ function todayPlusDays(days) {
   });
 
   await check("switching to the 60-day window adds both day-45 items", async () => {
-    var btn = findButtonByText(dom, "60 Day");
-    assert.ok(btn, "60 Day toggle button not found");
+    var btn = findButtonByText(dom, "60 days");
+    assert.ok(btn, "60 days toggle button not found");
     btn.click();
     await flush();
     var text = outlet().textContent;
-    assert.ok(text.indexOf("next 60 days") !== -1);
+    assert.strictEqual(findButtonByText(dom, "60 days").getAttribute("aria-pressed"), "true"); // Gate 7.5c: was the subtitle's "next 60 days"
     assert.ok(text.indexOf("Far future commissioning") !== -1);
     assert.ok(text.indexOf("Far future query") !== -1);
     assert.ok(text.indexOf("Coming Up (11)") !== -1, "expected 11 items at the 60-day window; got: " + text.match(/Coming Up \(\d+\)/));

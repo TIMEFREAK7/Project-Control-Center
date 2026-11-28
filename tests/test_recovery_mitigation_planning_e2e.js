@@ -250,8 +250,8 @@ function setReactTextareaValue(win, el, value) {
       var card = kpiCards.find((c) => c.textContent.indexOf(label) !== -1);
       return card ? card.querySelector(".kpi-card__value").textContent : undefined;
     }
-    assert.strictEqual(kpiValue("EST. RECOVERY DAYS (OPEN)"), "3");
-    assert.strictEqual(kpiValue("EST. RECOVERY COST (OPEN)"), "15,000");
+    assert.strictEqual(kpiValue("Est. recovery days (open)"), "3");
+    assert.strictEqual(kpiValue("Est. recovery cost (open)"), "15,000");
 
     var text = outlet().textContent;
     assert.ok(text.indexOf("est. 3d recovery") !== -1);
@@ -266,7 +266,7 @@ function setReactTextareaValue(win, el, value) {
     win.PCC.router.render();
 
     var kpiCards = Array.from(outlet().querySelectorAll(".kpi-card"));
-    var estDaysCard = kpiCards.find((c) => c.textContent.indexOf("EST. RECOVERY DAYS") !== -1);
+    var estDaysCard = kpiCards.find((c) => c.textContent.indexOf("Est. recovery days") !== -1);
     assert.ok(!estDaysCard, "the est. days/cost KPI row should disappear entirely once no OPEN action has an estimate");
   });
 

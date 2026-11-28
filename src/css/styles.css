@@ -2052,16 +2052,17 @@ td .status-badge--info::before { background-color: var(--text-secondary); }
   /* empty top-left cell */
 }
 
+/* Gate 7.5c: labels and counts in the text face (counts tabular); colour only where a cell
+   holds something, from the status tokens. */
 .heatmap-col-label,
 .heatmap-row-label {
-  font-family: var(--font-mono);
-  font-size: var(--text-10-5);
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
   color: var(--text-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
   text-align: center;
-  letter-spacing: 0.5px;
 }
 
 .heatmap-row-label {
@@ -2075,7 +2076,8 @@ td .status-badge--info::before { background-color: var(--text-secondary); }
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
+  font-variant-numeric: tabular-nums;
   font-size: var(--text-20);
   font-weight: 600;
   cursor: pointer;
@@ -2089,16 +2091,21 @@ td .status-badge--info::before { background-color: var(--text-secondary); }
 }
 
 .heatmap-cell--low {
-  background-color: rgba(31, 157, 108, 0.18);
+  background-color: color-mix(in srgb, var(--status-on-track) 18%, transparent);
   color: var(--status-badge-on-track-text);
 }
 .heatmap-cell--medium {
-  background-color: rgba(214, 158, 46, 0.2);
+  background-color: color-mix(in srgb, var(--status-at-risk) 20%, transparent);
   color: var(--status-badge-at-risk-text);
 }
 .heatmap-cell--high {
-  background-color: rgba(229, 62, 62, 0.22);
+  background-color: color-mix(in srgb, var(--status-critical) 22%, transparent);
   color: var(--heatmap-high-text);
+}
+.heatmap-cell--empty {
+  background-color: transparent;
+  color: var(--text-secondary);
+  font-weight: 400;
 }
 
 .heatmap-cell--active {

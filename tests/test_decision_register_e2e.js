@@ -15,6 +15,7 @@ const path = require("path");
 const assert = require("assert");
 const { JSDOM } = require("jsdom");
 const FDBFactory = require("fake-indexeddb/lib/FDBFactory");
+const { openRowMenu } = require("./rowMenu");
 
 const INDEX_PATH = path.join(__dirname, "..", "index.html");
 
@@ -149,7 +150,7 @@ function findButtonByText(dom, text) {
     findButtonByText(dom, "Details").click();
     await flush();
     var text = outlet().textContent;
-    assert.ok(text.indexOf("LINKED ACTIVITY") !== -1);
+    assert.ok(text.indexOf("Linked activity") !== -1);
     assert.ok(text.indexOf("Foundation Design") !== -1);
 
     // Redesign Gate 10: retrofitted onto .attention-list/.attention-item — the whole
@@ -248,6 +249,7 @@ function findButtonByText(dom, text) {
     await flush();
     var origConfirm = win.confirm;
     win.confirm = () => true;
+    await openRowMenu(outlet(), 0);
     var deleteButtons = Array.from(outlet().querySelectorAll("button")).filter((b) => b.textContent.trim() === "Delete");
     deleteButtons[0].click();
     win.confirm = origConfirm;

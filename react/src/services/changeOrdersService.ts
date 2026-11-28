@@ -20,12 +20,21 @@ export function projectName(projects: PCCProject[], projectId: string | undefine
   return p ? p.name || "(unnamed project)" : "Unassigned";
 }
 
-export function formatMoney(amount: number | string | null | undefined): string | null {
+// `currency` is the project's (Gate 7.5c; was always bare): "+INR 38,50,000", or "+38,50,000"
+// when the project has none, as Cost and Commitments show it.
+export function formatMoney(amount: number | string | null | undefined, currency?: string): string | null {
   if (amount === null || amount === undefined || amount === "") return null;
   var n = Number(amount);
   if (isNaN(n)) return null;
   var sign = n > 0 ? "+" : n < 0 ? "−" : "";
-  return sign + Math.abs(n).toLocaleString();
+  return sign + (currency ? currency + " " : "") + Math.abs(n).toLocaleString();
+}
+
+export function projectCurrency(projects: PCCProject[], projectId: string | undefined): string {
+  var p = projects.find(function (x) {
+    return x.id === projectId;
+  });
+  return (p && p.currency) || "";
 }
 
 export function formatDays(days: number | string | null | undefined): string | null {

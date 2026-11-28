@@ -35,6 +35,7 @@ import {
 import type { FieldConfig, ActivityOption } from "../services/decisionRegisterService";
 import type { PCCDecision, PCCProject, PCCStoreData, PCCMeeting } from "../types/pcc";
 import { fuzzyMatch } from "../utils/fuzzyMatch";
+import { RowMenu } from "../components/RowMenu";
 
 function DecisionForm({
   isNew,
@@ -160,11 +161,11 @@ function DecisionForm({
 
 function DecisionDetails({ d, data }: { d: PCCDecision; data: PCCStoreData }) {
   const fields = [
-    { label: "STATUS", value: STATUS_LABELS[d.status] },
-    { label: "DECISION DATE", value: d.decision_date || "—" },
-    { label: "DECIDED BY", value: d.decided_by || "—" },
-    { label: "CONTEXT / BACKGROUND", value: d.description || "—", wide: true },
-    { label: "DECISION", value: d.decision || "—", wide: true },
+    { label: "Status", value: STATUS_LABELS[d.status] },
+    { label: "Decision date", value: d.decision_date || "—" },
+    { label: "Decided by", value: d.decided_by || "—" },
+    { label: "Context / background", value: d.description || "—", wide: true },
+    { label: "Decision", value: d.decision || "—", wide: true },
   ];
 
   const sourceMeeting = d.source_meeting_id ? data.meetings.find((m) => m.id === d.source_meeting_id) : null;
@@ -189,7 +190,7 @@ function DecisionDetails({ d, data }: { d: PCCDecision; data: PCCStoreData }) {
               <div className="attention-item__text">
                 {sourceMeeting.title} ({sourceMeeting.meeting_date})
               </div>
-              <div className="attention-item__meta">RAISED IN MEETING</div>
+              <div className="attention-item__meta">Raised in meeting</div>
             </div>
           </div>
         </div>
@@ -204,7 +205,7 @@ function DecisionDetails({ d, data }: { d: PCCDecision; data: PCCStoreData }) {
             <span className="attention-item__icon attention-item__icon--info" />
             <div className="attention-item__body">
               <div className="attention-item__text">{linkedActivity.name}</div>
-              <div className="attention-item__meta">LINKED ACTIVITY</div>
+              <div className="attention-item__meta">Linked activity</div>
             </div>
           </div>
         </div>
@@ -388,8 +389,17 @@ export default function DecisionRegisterPage({
             {data.decisions.length === 0
               ? projects.filter((p) => !p.archived).length === 0
                 ? "Add a project in Portfolio first, then log decisions against it."
-                : "No decisions logged yet. Click “+ Add Decision” to log your first one."
+                : "No decisions logged yet."
               : "No decisions match this search/filter."}
+            {data.decisions.length === 0 && projects.filter((p) => !p.archived).length === 0 ? (
+              <button className="btn btn--ghost empty-state__action" onClick={() => window.PCC.router.go("portfolio")}>
+                Go to Portfolio
+              </button>
+            ) : data.decisions.length === 0 ? (
+              <button className="btn btn--ghost empty-state__action" onClick={handleAdd}>
+                + Add Decision
+              </button>
+            ) : null}
           </div>
         ) : (
           <div className="project-list">
@@ -470,15 +480,7 @@ function DecisionEntry({
           <button className="btn btn--ghost" onClick={onToggleDetails}>
             {expanded ? "Hide" : "Details"}
           </button>
-          <button className="btn btn--ghost" onClick={onEdit}>
-            Edit
-          </button>
-          <button className="btn btn--ghost" onClick={onClone}>
-            Clone
-          </button>
-          <button className="btn btn--ghost" onClick={onDelete}>
-            Delete
-          </button>
+          <RowMenu onEdit={onEdit} onClone={onClone} onDelete={onDelete} />
         </div>
       </div>
       {expanded ? <DecisionDetails d={d} data={data} /> : null}

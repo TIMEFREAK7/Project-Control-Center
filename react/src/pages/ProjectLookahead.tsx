@@ -33,10 +33,13 @@ import {
 } from "../services/projectLookaheadService";
 import type { Item } from "../services/projectLookaheadService";
 import type { PCCProject } from "../types/pcc";
+import { formatDate } from "../utils/localDate";
 
 function ItemRow({ item, project }: { item: Item; project: PCCProject | undefined }) {
   const meta =
-    item.date +
+    item.kind +
+    " · " +
+    formatDate(item.date) +
     " · " +
     (project ? project.name || "(unnamed project)" : "(deleted project)") +
     " · " +
@@ -47,7 +50,7 @@ function ItemRow({ item, project }: { item: Item; project: PCCProject | undefine
     <div className={"attention-item" + (project ? " attention-item--clickable" : "")} onClick={project ? item.view : undefined}>
       <span className={"attention-item__icon attention-item__icon--" + item.badgeClass} />
       <div className="attention-item__body">
-        <div className="attention-item__text">{"[" + item.kind + "] " + item.title}</div>
+        <div className="attention-item__text">{item.title}</div>
         <div className="attention-item__meta">{meta}</div>
       </div>
     </div>
@@ -88,30 +91,9 @@ export default function ProjectLookaheadPage() {
     setProjectContext(value);
   }
 
-  const subtitle = validProjectFilter
-    ? "Schedule activities, milestones, meetings, RFI/TQ, and document submissions due in the next " +
-      windowDays +
-      " day" +
-      (windowDays === 1 ? "" : "s") +
-      " for " +
-      (projectsById[validProjectFilter].name || "(unnamed project)") +
-      "."
-    : "Schedule activities, milestones, meetings, RFI/TQ, and document submissions due in the next " +
-      windowDays +
-      " day" +
-      (windowDays === 1 ? "" : "s") +
-      " across " +
-      allActiveProjects.length +
-      " active project" +
-      (allActiveProjects.length === 1 ? "" : "s") +
-      ".";
-
   return (
     <>
-      <h2 style={{ marginBottom: 4 }}>Project Lookahead</h2>
-      <p className="text-secondary" style={{ marginTop: 0, marginBottom: 16 }}>
-        {subtitle}
-      </p>
+      <h2 style={{ marginBottom: 16 }}>Project Lookahead</h2>
 
       {allActiveProjects.length > 0 ? (
         <div className="toolbar no-print" style={{ marginBottom: 8 }}>
@@ -129,15 +111,15 @@ export default function ProjectLookaheadPage() {
         </div>
       ) : null}
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+      <div role="group" aria-label="Lookahead window" style={{ display: "flex", gap: 8, marginBottom: 16 }}>
         {WINDOW_OPTIONS.map((days) => (
-          <button key={days} className={"btn" + (windowDays === days ? "" : " btn--ghost")} onClick={() => setWindowDays(days)}>
-            {days + " Day"}
+          <button key={days} className="btn btn--ghost" aria-pressed={windowDays === days} onClick={() => setWindowDays(days)}>
+            {days + " days"}
           </button>
         ))}
       </div>
 
-      <div className="panel">
+      <div className="panel panel--flat">
         <h3 style={{ marginBottom: 8 }}>{"Coming Up (" + items.length + ")"}</h3>
         {items.length === 0 ? (
           <p className="text-secondary" style={{ margin: 0 }}>

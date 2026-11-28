@@ -143,6 +143,8 @@ enough) · ExcelJS stays 4.4.0 (write-only use) · Resource rate×usage cost (no
   fail on the old build first.
 - Schedule's toolbar actions live in Import ▾ / Export ▾ / ⋯ menus that render only while open:
   tests call `openScheduleMenu()` (`tests/scheduleMenu.js`) before looking such a button up.
+- Register rows show only "Details"; Edit / Clone / Delete live in `RowMenu` (`react/src/components/`).
+  Tests open it with `openRowMenu(root, index)` (`tests/rowMenu.js`) first.
 - UI changes: real Chromium at 1440×900 and 412×915, zero console errors, no sideways scroll,
   screenshots sent (`pcc-visual-qa` skill). The mirror app is verified only in Chromium.
 
