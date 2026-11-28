@@ -776,8 +776,8 @@ Apply 7.2–7.4 and the "one primary action" rule. No new features, no moved dat
 - **7.5e Documents and system:** Documents, Document Types, Document Control, Storage,
   Daily Log, Lessons Learned, Knowledge Base, Reports (the screen), Settings.
 - **Status:** 7.5a done 2026-11-27 (Aditya signed off on the look); 7.5b done 2026-11-28
-  (Aditya signed off on the look); 7.5c built 2026-11-28, waiting for Aditya's look sign-off;
-  7.5d–e open.
+  (Aditya signed off on the look); 7.5c done 2026-11-28 (Aditya signed off on the
+  look); 7.5d–e open.
   7.5c: rows on RFI / TQ, Change Orders, Decisions and Meetings are Details + ⋯ (shared
   `RowMenu`; RFI page 17 → 9 buttons with test data); ~40 capitalised labels → sentence case;
   sentences under the title removed (Change Management, Delay & Recovery, Lookahead); empty
