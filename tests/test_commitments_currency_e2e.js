@@ -71,15 +71,15 @@ async function check(label, fn) {
   });
 
   await check("with both projects visible, totals are per currency, not one mixed sum", () => {
-    assert.strictEqual(kpi("TOTAL COMMITTED"), "INR " + n(1200000) + " · USD " + n(50000));
-    assert.strictEqual(kpi("TOTAL APPROVED"), "INR " + n(1000000) + " · USD " + n(50000));
+    assert.strictEqual(kpi("Total committed"), "INR " + n(1200000) + " · USD " + n(50000));
+    assert.strictEqual(kpi("Total approved"), "INR " + n(1000000) + " · USD " + n(50000));
   });
 
   await check("filtered to one project, the total is that project's currency alone", async () => {
     win.PCC.commitments.filterByProject("pus");
     win.PCC.router.go("commitments");
     await flush();
-    assert.strictEqual(kpi("TOTAL COMMITTED"), "USD " + n(50000));
+    assert.strictEqual(kpi("Total committed"), "USD " + n(50000));
   });
 
   await check("no uncaught errors", () => assert.strictEqual(errors.length, 0, errors.join(" | ")));

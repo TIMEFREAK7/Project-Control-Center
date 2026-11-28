@@ -9,6 +9,7 @@ const path = require("path");
 const assert = require("assert");
 const { JSDOM } = require("jsdom");
 const FDBFactory = require("fake-indexeddb/lib/FDBFactory");
+const { openRowMenu } = require("./rowMenu");
 
 const INDEX_PATH = path.join(__dirname, "..", "index.html");
 
@@ -126,6 +127,7 @@ function findButtonByText(win, text) {
   });
 
   await check("editing a budget item through the real form updates the store", async () => {
+    await openRowMenu(win.document.getElementById("page-outlet"), 0);
     var editBtn = findButtonByText(win, "Edit");
     assert.ok(editBtn, "Edit button not found on the budget item card");
     editBtn.click();
@@ -217,6 +219,7 @@ function findButtonByText(win, text) {
     var budgetTabBtn = findButtonByText(win, "Budget");
     budgetTabBtn.click();
     await flush();
+    await openRowMenu(win.document.getElementById("page-outlet"), 0);
     var deleteBtn = findButtonByText(win, "Delete");
     assert.ok(deleteBtn, "Delete button not found on budget item card");
     var originalConfirm = win.confirm;
@@ -237,6 +240,7 @@ function findButtonByText(win, text) {
     var actualsTabBtn = findButtonByText(win, "Actuals");
     actualsTabBtn.click();
     await flush();
+    await openRowMenu(win.document.getElementById("page-outlet"), 0);
     var deleteButtons = Array.from(win.document.querySelectorAll("button")).filter((b) => b.textContent.trim() === "Delete");
     assert.ok(deleteButtons.length >= 1, "expected at least one Delete button on the Actuals tab");
     var originalConfirm = win.confirm;

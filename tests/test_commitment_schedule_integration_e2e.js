@@ -148,7 +148,7 @@ function addDaysIso(days) {
     assert.strictEqual(row.textContent.indexOf("Procurement Risk"), -1, "an activity 90 days out shouldn't be flagged yet");
   });
 
-  await check("the Commitments page shows a Procurement Risk badge and an AT RISK KPI of 1", async () => {
+  await check("the Commitments page shows a Procurement Risk badge and an At risk KPI of 1", async () => {
     win.PCC.commitments.filterByProject(projectId);
     win.PCC.router.go("commitments");
     await flush();
@@ -157,8 +157,8 @@ function addDaysIso(days) {
     assert.ok(text.indexOf("Procurement Risk") !== -1);
 
     var kpiCards = Array.from(outlet().querySelectorAll(".kpi-card"));
-    var atRiskCard = kpiCards.find((c) => c.textContent.indexOf("AT RISK") !== -1);
-    assert.ok(atRiskCard, "AT RISK KPI card not found");
+    var atRiskCard = kpiCards.find((c) => c.textContent.indexOf("At risk") !== -1);
+    assert.ok(atRiskCard, "At risk KPI card not found");
     assert.strictEqual(atRiskCard.querySelector(".kpi-card__value").textContent, "1");
   });
 
@@ -189,7 +189,7 @@ function addDaysIso(days) {
     var text = outlet().textContent;
     assert.ok(text.indexOf("Procurement Risk") === -1, "no commitment should still be flagged");
     var kpiCards = Array.from(outlet().querySelectorAll(".kpi-card"));
-    var atRiskCard = kpiCards.find((c) => c.textContent.indexOf("AT RISK") !== -1);
+    var atRiskCard = kpiCards.find((c) => c.textContent.indexOf("At risk") !== -1);
     assert.strictEqual(atRiskCard.querySelector(".kpi-card__value").textContent, "0");
 
     win.PCC.schedule.viewActivity(projectId, scheduleId, imminentActivityId);

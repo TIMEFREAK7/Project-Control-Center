@@ -16,6 +16,7 @@ const path = require("path");
 const assert = require("assert");
 const { JSDOM } = require("jsdom");
 const FDBFactory = require("fake-indexeddb/lib/FDBFactory");
+const { openRowMenu } = require("./rowMenu");
 
 const INDEX_PATH = path.join(__dirname, "..", "index.html");
 
@@ -125,9 +126,9 @@ function findButtonByText(dom, text) {
     await flush();
     var text = outlet().textContent;
     assert.ok(text.indexOf("Skilled Electricians") !== -1);
-    assert.ok(text.indexOf("Over-Allocated Days") !== -1);
+    assert.ok(text.indexOf("Over-allocated days") !== -1);
     // KPI card should read 0, not blank/dash, since max_availability IS set.
-    var overAllocCard = Array.from(outlet().querySelectorAll(".kpi-card")).find((c) => c.textContent.indexOf("Over-Allocated Days") !== -1);
+    var overAllocCard = Array.from(outlet().querySelectorAll(".kpi-card")).find((c) => c.textContent.indexOf("Over-allocated days") !== -1);
     assert.ok(overAllocCard && overAllocCard.querySelector(".kpi-card__value").textContent === "0");
   });
 
@@ -149,26 +150,28 @@ function findButtonByText(dom, text) {
     await flush();
 
     var text = outlet().textContent;
-    assert.ok(text.indexOf("2020-01-03 to 2020-01-04") !== -1, "the new period should be listed");
+    // Gate 7.5d: period dates are shown in the app's date format, not raw ISO.
+    var fd = win.PCC.dates.formatDate;
+    assert.ok(text.indexOf(fd("2020-01-03") + " to " + fd("2020-01-04")) !== -1, "the new period should be listed");
     assert.ok(text.indexOf("Training Course") !== -1);
 
     findButtonByText(dom, "Leveling").click();
     await flush();
     var levelingText = outlet().textContent;
-    var overAllocCard = Array.from(outlet().querySelectorAll(".kpi-card")).find((c) => c.textContent.indexOf("Over-Allocated Days") !== -1);
+    var overAllocCard = Array.from(outlet().querySelectorAll(".kpi-card")).find((c) => c.textContent.indexOf("Over-allocated days") !== -1);
     assert.strictEqual(overAllocCard.querySelector(".kpi-card__value").textContent, "2", "exactly the 2 leave-overlapping days should now be over-allocated");
-    var worstCard = Array.from(outlet().querySelectorAll(".kpi-card")).find((c) => c.textContent.indexOf("Worst Over-Allocation") !== -1);
+    var worstCard = Array.from(outlet().querySelectorAll(".kpi-card")).find((c) => c.textContent.indexOf("Worst over-allocation") !== -1);
     assert.strictEqual(worstCard.querySelector(".kpi-card__value").textContent, "+2", "5 needed vs 3 available (5-2 leave) = +2");
     assert.ok(levelingText.indexOf("2020-01-03") !== -1 && levelingText.indexOf("needed vs 3 available") !== -1, "conflict day detail should show leave-adjusted availability (3, not the flat 5)");
   });
 
-  await check("Demand vs Available and Avg. Utilisation KPIs reflect the leave-adjusted numbers", () => {
-    var demandCard = Array.from(outlet().querySelectorAll(".kpi-card")).find((c) => c.textContent.indexOf("Demand vs Available") !== -1);
+  await check("Demand vs available and Avg. utilisation KPIs reflect the leave-adjusted numbers", () => {
+    var demandCard = Array.from(outlet().querySelectorAll(".kpi-card")).find((c) => c.textContent.indexOf("Demand vs available") !== -1);
     assert.strictEqual(demandCard.querySelector(".kpi-card__value").textContent, "25 / 21 unit-days", "5/day * 5 days = 25 demand; (5+5+3+3+5) = 21 available after leave");
-    var utilCard = Array.from(outlet().querySelectorAll(".kpi-card")).find((c) => c.textContent.indexOf("Avg. Utilisation") !== -1);
+    var utilCard = Array.from(outlet().querySelectorAll(".kpi-card")).find((c) => c.textContent.indexOf("Avg. utilisation") !== -1);
     assert.ok(utilCard.querySelector(".kpi-card__value").textContent.indexOf("%") !== -1);
     assert.ok(outlet().textContent.indexOf("Utilisation Trend") !== -1, "trend chart panel must render");
-    assert.ok(outlet().textContent.indexOf("Shortfall: 4 unit-day(s)") !== -1, "2 over-allocated days * 2 shortfall each = 4 unit-days");
+    assert.ok(outlet().textContent.indexOf("Shortfall: 4 unit-days") !== -1, "2 over-allocated days * 2 shortfall each = 4 unit-days");
   });
 
   await check("the Assignment form round-trips actual quantity, planned/overtime hours, and the sourcing vendor", async () => {
@@ -177,6 +180,7 @@ function findButtonByText(dom, text) {
     await flush();
     findButtonByText(dom, "Assignments").click();
     await flush();
+    await openRowMenu(outlet(), 0);
     var editBtn = Array.from(outlet().querySelectorAll("button")).find((b) => b.textContent.trim() === "Edit");
     assert.ok(editBtn, "no Edit button found on the seeded assignment");
     editBtn.click();

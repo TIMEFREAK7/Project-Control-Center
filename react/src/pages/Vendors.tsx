@@ -95,6 +95,7 @@ import type {
   PCCActivity,
 } from "../types/pcc";
 import { formatDate, formatDateTime } from "../utils/localDate";
+import { RowMenu } from "../components/RowMenu";
 
 function statusBadgeClass(status: string | undefined): string {
   if (status === "preferred") return "status-badge status-badge--on_track";
@@ -271,16 +272,11 @@ function VendorCard({ v, data, onView, onEdit, onDeleted }: VendorCardProps) {
             {projectCount} project{projectCount === 1 ? "" : "s"}
           </p>
         </div>
-        <div style={{ display: "flex", gap: "var(--space-2)", flexShrink: 0 }}>
-          <button className="btn btn--primary" onClick={onView}>
+        <div style={{ display: "flex", gap: "var(--space-2)", flexShrink: 0, alignItems: "center" }}>
+          <button className="btn btn--ghost" onClick={onView}>
             View Profile
           </button>
-          <button className="btn btn--ghost" onClick={onEdit}>
-            Edit
-          </button>
-          <button className="btn btn--ghost" onClick={handleDelete}>
-            Delete
-          </button>
+          <RowMenu onEdit={onEdit} onDelete={handleDelete} />
         </div>
       </div>
     </div>
@@ -366,7 +362,12 @@ function VendorList({ data, filters, setFilters, editingVendorId, onEdit, onAdd,
 
       {filtered.length === 0 ? (
         <div className="panel empty-state">
-          {data.vendors.length === 0 ? "No vendors yet. Click “+ Add Vendor” to create your first one." : "No vendors match this search/filter."}
+          {data.vendors.length === 0 ? "No vendors yet." : "No vendors match this search/filter."}
+          {data.vendors.length === 0 ? (
+            <button className="btn btn--ghost empty-state__action" onClick={onAdd}>
+              + Add Vendor
+            </button>
+          ) : null}
         </div>
       ) : (
         <div className="project-list">
@@ -380,18 +381,6 @@ function VendorList({ data, filters, setFilters, editingVendorId, onEdit, onAdd,
 }
 
 // ===== Dashboard =====
-
-function SummaryCard({ label, value, sub }: { label: string; value: string | number; sub?: React.ReactNode }) {
-  return (
-    <div className="panel">
-      <p className="text-secondary" style={{ fontSize: "var(--text-xs)", marginBottom: "var(--space-2)" }}>
-        {label.toUpperCase()}
-      </p>
-      <p style={{ fontSize: "var(--text-2xl)", fontWeight: 600, margin: 0 }}>{value}</p>
-      {sub ? <div style={{ marginTop: "var(--space-2)" }}>{sub}</div> : null}
-    </div>
-  );
-}
 
 function MiniList({ items }: { items: string[] }) {
   if (items.length === 0) {
@@ -458,48 +447,49 @@ function Dashboard({ data }: { data: PCCStoreData }) {
     .slice(0, 5)
     .map((v) => v.vendor_name + " (" + formatDate(v.updated_at) + ")");
 
+  // Gate 7.5d: one figure strip (the shared .kpi-grid) instead of six boxed tiles; the lists sit
+  // together in one flat section below it.
+  const kpis: [string, number][] = [
+    ["Total vendors", data.vendors.length],
+    ["Active vendors", activeCount],
+    ["Preferred vendors", preferredCount],
+    ["Projects with vendors", perProjectRows.length],
+    ["Expiring documents (≤" + EXPIRING_SOON_DAYS + "d)", expiring.length],
+  ];
+  const lists: [string, string[]][] = [
+    ["Vendors per project", perProjectRows],
+    [
+      "Expiring documents",
+      expiring.slice(0, 5).map((d) => {
+        const diff = daysUntil(d.expiry_date) || 0;
+        return vendorName(data.vendors, d.vendor_id) + " — " + documentLabel(d) + " — " + (diff < 0 ? "expired " + Math.abs(diff) + "d ago" : diff + "d left");
+      }),
+    ],
+    ["Recently uploaded documents", recentUploads.map((d) => vendorName(data.vendors, d.vendor_id) + " — " + documentLabel(d) + (d.upload_date ? " (" + formatDate(d.upload_date.slice(0, 10)) + ")" : ""))],
+    ["Recently added vendors", recentVendors],
+    ["Recently updated vendor information", recentlyUpdated],
+  ];
+
   return (
     <>
-      <h3 style={{ marginBottom: "var(--space-3)" }}>Vendor Dashboard</h3>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "var(--space-3)", marginBottom: "var(--space-5)" }}>
-        <SummaryCard label="Total Vendors" value={data.vendors.length} />
-        <SummaryCard label="Active Vendors" value={activeCount} />
-        <SummaryCard label="Preferred Vendors" value={preferredCount} />
-        <SummaryCard label="Vendors per Project" value={perProjectRows.length} sub={<MiniList items={perProjectRows} />} />
-        <SummaryCard
-          label={"Expiring Documents (≤" + EXPIRING_SOON_DAYS + "d)"}
-          value={expiring.length}
-          sub={
-            <MiniList
-              items={expiring.slice(0, 5).map((d) => {
-                const diff = daysUntil(d.expiry_date) || 0;
-                return vendorName(data.vendors, d.vendor_id) + " — " + documentLabel(d) + " — " + (diff < 0 ? "expired " + Math.abs(diff) + "d ago" : diff + "d left");
-              })}
-            />
-          }
-        />
-        <SummaryCard
-          label="Recently Uploaded Documents"
-          value={recentUploads.length}
-          sub={<MiniList items={recentUploads.map((d) => vendorName(data.vendors, d.vendor_id) + " — " + documentLabel(d))} />}
-        />
+      <div className="kpi-grid">
+        {kpis.map(([label, value]) => (
+          <div className="kpi-card" key={label}>
+            <span className="kpi-card__label">{label}</span>
+            <span className="kpi-card__value">{value}</span>
+          </div>
+        ))}
       </div>
 
-      <div className="panel">
+      <div className="panel panel--flat" style={{ marginTop: "var(--space-4)" }}>
         <h3 style={{ marginBottom: "var(--space-3)" }}>Recent Activity</h3>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "var(--space-4)" }}>
-          <div>
-            <p style={{ fontSize: "var(--text-sm)", fontWeight: 600, marginBottom: "var(--space-2)" }}>Recently Added Vendors</p>
-            <MiniList items={recentVendors} />
-          </div>
-          <div>
-            <p style={{ fontSize: "var(--text-sm)", fontWeight: 600, marginBottom: "var(--space-2)" }}>Recently Uploaded Documents</p>
-            <MiniList items={recentUploads.map((d) => vendorName(data.vendors, d.vendor_id) + " — " + documentLabel(d) + " (" + (d.upload_date || "").slice(0, 10) + ")")} />
-          </div>
-          <div>
-            <p style={{ fontSize: "var(--text-sm)", fontWeight: 600, marginBottom: "var(--space-2)" }}>Recently Updated Vendor Information</p>
-            <MiniList items={recentlyUpdated} />
-          </div>
+          {lists.map(([title, items]) => (
+            <div key={title}>
+              <p style={{ fontSize: "var(--text-sm)", fontWeight: 600, marginBottom: "var(--space-2)" }}>{title}</p>
+              <MiniList items={items} />
+            </div>
+          ))}
         </div>
       </div>
     </>
@@ -1816,11 +1806,7 @@ export default function VendorsPage({ initialView, initialProfileVendorId, initi
 
   return (
     <>
-      <h2 style={{ marginBottom: "var(--space-2)" }}>Vendor Management</h2>
-      <p className="text-secondary" style={{ fontSize: "var(--text-sm)", marginBottom: "var(--space-4)" }}>
-        The single source of truth for vendor information across every project — master list, project links, documents, meetings, RFI/TQ, risks, and
-        performance, all from one profile.
-      </p>
+      <h2 style={{ marginBottom: "var(--space-4)" }}>Vendor Management</h2>
 
       {view !== "profile" ? (
         <div className="tab-bar" style={{ marginBottom: "var(--space-4)" }}>

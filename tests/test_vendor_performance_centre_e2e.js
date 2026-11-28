@@ -118,11 +118,11 @@ function kpiValue(dom, label) {
   });
 
   await check("the KPI cards show correct portfolio-wide totals", () => {
-    assert.strictEqual(kpiValue(dom, "TOTAL VENDORS"), "3");
-    assert.strictEqual(kpiValue(dom, "REVIEWED"), "2");
-    assert.strictEqual(kpiValue(dom, "NOT YET REVIEWED"), "1");
+    assert.strictEqual(kpiValue(dom, "Total vendors"), "3");
+    assert.strictEqual(kpiValue(dom, "Reviewed"), "2");
+    assert.strictEqual(kpiValue(dom, "Not yet reviewed"), "1");
     // Portfolio avg = average of the two reviewed vendors' own overall ratings: (4.5 + 2) / 2 = 3.25 -> rounds to 3.3.
-    assert.strictEqual(kpiValue(dom, "PORTFOLIO AVG RATING"), "3.3 / 5");
+    assert.strictEqual(kpiValue(dom, "Portfolio avg rating"), "3.3 / 5");
   });
 
   await check("the ranked panel lists both reviewed vendors worst-first (Shaky before Reliable)", () => {

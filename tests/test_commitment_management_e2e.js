@@ -15,6 +15,7 @@ const path = require("path");
 const assert = require("assert");
 const { JSDOM } = require("jsdom");
 const FDBFactory = require("fake-indexeddb/lib/FDBFactory");
+const { openRowMenu } = require("./rowMenu");
 
 const INDEX_PATH = path.join(__dirname, "..", "index.html");
 
@@ -246,10 +247,10 @@ function setReactSelectValue(win, select, value) {
       var card = kpiCards.find((c) => c.textContent.indexOf(label) !== -1);
       return card ? card.querySelector(".kpi-card__value").textContent : undefined;
     }
-    assert.strictEqual(kpiValue("TOTAL COMMITTED"), "USD 50,000");
-    assert.strictEqual(kpiValue("TOTAL APPROVED"), "USD 48,000");
-    assert.strictEqual(kpiValue("TOTAL ACTUAL"), "USD 25,000");
-    assert.strictEqual(kpiValue("TOTAL REMAINING"), "USD 25,000");
+    assert.strictEqual(kpiValue("Total committed"), "USD 50,000");
+    assert.strictEqual(kpiValue("Total approved"), "USD 48,000");
+    assert.strictEqual(kpiValue("Total actual"), "USD 25,000");
+    assert.strictEqual(kpiValue("Total remaining"), "USD 25,000");
   });
 
   await check("Executive Center shows a Commitments KPI section with the same totals", async () => {
@@ -301,6 +302,7 @@ function setReactSelectValue(win, select, value) {
     await flush();
     findButtonByText(dom, "Commitments").click();
     await flush();
+    await openRowMenu(outlet(), 0);
     var deleteBtn = findButtonByText(dom, "Delete");
     assert.ok(deleteBtn, "no Delete button found on the commitment row");
     var originalConfirm = win.confirm;
@@ -318,6 +320,7 @@ function setReactSelectValue(win, select, value) {
   await check("deleting the Package unlinks documents referencing it", async () => {
     findButtonByText(dom, "Packages").click();
     await flush();
+    await openRowMenu(outlet(), 0);
     var deleteBtn = findButtonByText(dom, "Delete");
     var originalConfirm = win.confirm;
     win.confirm = () => true;

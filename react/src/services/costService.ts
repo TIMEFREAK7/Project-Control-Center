@@ -32,11 +32,38 @@ export function projectName(projects: PCCProject[], projectId: string | undefine
   return p ? p.name || "(unnamed project)" : "Unassigned";
 }
 
+// Gate 7.5d: whole units on screen (no paise); the engines' figures are unchanged.
 export function formatMoney(value: number | string | null | undefined, currency?: string): string {
   if (value === null || value === undefined || value === "") return "—";
   var num = Number(value);
   if (Number.isNaN(num)) return "—";
-  return (currency ? currency + " " : "") + num.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  return (currency ? currency + " " : "") + num.toLocaleString(undefined, { maximumFractionDigits: 0 });
+}
+
+export function projectCurrency(projects: PCCProject[], projectId: string | undefined): string {
+  var p = projects.find(function (x) {
+    return x.id === projectId;
+  });
+  return (p && p.currency) || "";
+}
+
+/** Totals across projects: one figure per currency ("INR 1,000 · USD 500"), never a mixed
+ * sum (same rule as Commitments since Gate 6.4). `signed` prefixes "+" on non-negative figures. */
+export function formatMoneyTotals(byCurrency: { [currency: string]: number }, signed?: boolean): string {
+  var keys = Object.keys(byCurrency).sort();
+  if (keys.length === 0) return formatMoney(0);
+  return keys
+    .map(function (k) {
+      var v = byCurrency[k];
+      return (signed && v >= 0 ? "+" : "") + formatMoney(v, k);
+    })
+    .join(" · ");
+}
+
+/** Adds `value` to `acc` under the project's currency ("" when the project has none). */
+export function addByCurrency(acc: { [currency: string]: number }, projects: PCCProject[], projectId: string, value: number): void {
+  var cur = projectCurrency(projects, projectId);
+  acc[cur] = (acc[cur] || 0) + (value || 0);
 }
 
 export function formatIndex(value: number | null | undefined): string {

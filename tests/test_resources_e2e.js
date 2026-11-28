@@ -9,6 +9,7 @@ const path = require("path");
 const assert = require("assert");
 const { JSDOM } = require("jsdom");
 const FDBFactory = require("fake-indexeddb/lib/FDBFactory");
+const { openRowMenu } = require("./rowMenu");
 
 const INDEX_PATH = path.join(__dirname, "..", "index.html");
 
@@ -193,7 +194,7 @@ function setReactSelectValue(win, select, value) {
     await flush();
 
     var outlet2 = win.document.getElementById("page-outlet");
-    assert.ok(outlet2.textContent.indexOf("Over-Allocated Days") !== -1);
+    assert.ok(outlet2.textContent.indexOf("Over-allocated days") !== -1);
     assert.ok(outlet2.textContent.indexOf("2026-03-03") !== -1, "the first day both activities overlap should be flagged");
     assert.ok(outlet2.textContent.indexOf("Tower Crane Erection") !== -1 && outlet2.textContent.indexOf("Riverside Tower") !== -1, "conflict detail should name the contributing activity and project");
     assert.ok(outlet2.textContent.indexOf("Depot Steel Lift") !== -1 && outlet2.textContent.indexOf("Harborview Depot") !== -1, "conflict detail should name BOTH contributing projects, proving this is cross-project");
@@ -310,6 +311,7 @@ function setReactSelectValue(win, select, value) {
     var originalConfirm = win.confirm;
     var confirmMessage = "";
     win.confirm = (msg) => { confirmMessage = msg; return true; };
+    await openRowMenu(win.document.getElementById("page-outlet"), 0);
     var deleteBtn = findButtonByText(dom, "Delete");
     assert.ok(deleteBtn, "Delete button not found on resource card");
     deleteBtn.click();

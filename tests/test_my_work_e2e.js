@@ -291,6 +291,7 @@ function addDaysIso(days) {
     await flush();
     findButtonByText(dom, "Vendor List").click();
     await flush();
+    await openRowMenu(outlet(), 0);
     var vendorEdit = Array.from(outlet().querySelectorAll("button")).find((b) => b.textContent.trim() === "Edit");
     assert.ok(vendorEdit, "no Edit button found on the seeded vendor");
     vendorEdit.click();

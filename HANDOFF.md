@@ -9,12 +9,12 @@ it (and a zip) to Aditya directly after every major upgrade, not just committing
 
 - `main` has every gate through 7.5c plus its follow-up (dates, keyboard heat map); zip
   `scratch/pcc-7.5c-fix-zip/Project-Control-Center-2026-11-28-7.5c.1.zip`, verified from a fresh
-  extraction in Chromium. Branch `gate-7.5d` is cut from `main`, no changes yet; its scope is
-  proposed and waiting for Aditya (inspection shots: `scratch/pcc-7.5d/inspect/`, seeded by
-  `scratch/pcc-7.5d/cs-shots.js`). Schema **67**. 143 test files
+  extraction in Chromium. Gate 7.5d is built on branch `gate-7.5d`, waiting for Aditya to approve
+  the look; then merge, zip, push. Schema **67**. 144 test files
   (`cd tests && npm test`), green in UTC and IST. Windows installer builds natively on this PC
   (1.10.0 last built).
-- Next in `DEFERRED_ROADMAP.md` after 7.5c: Gate 7.5d (Cost and supply page pass). Features track: 1.1.
+- Next in `DEFERRED_ROADMAP.md` after 7.5d: Gate 7.5e (Documents and system pages; consider
+  adding the Vendor Profile screen, left out of 7.5d). Features track: 1.1.
 - Waiting on Aditya: Gate 0.1 (phone check of At a Glance 1.9 + predictive back) and the real
   Storage Management → App data reading (decides Gate 6.2).
 - Docs layout since Gate 6.3: `CLAUDE.md` = rules (10.5 KB); `docs/GOTCHAS.md` = the old
@@ -42,6 +42,36 @@ it (and a zip) to Aditya directly after every major upgrade, not just committing
 - Open small items: Dashboard's own 7 phone filters stack (Portfolio's `.filter-fold` would fix
   it); Executive Center's "INR 42,00,00,000" wraps in its KPI tile; title still truncates for
   the 4 longest page names at 360 px.
+
+## 2026-11-28 — Gate 7.5d: Cost and supply page pass
+
+- Pages: Cost Tracking, Commitments, Resources, Vendors (dashboard + list; not the Profile),
+  Vendor Performance Centre.
+- **Correctness:** Cost rows had no currency and Summary/EVM summed every project's money into one
+  figure. `costService.ts` gained `projectCurrency`, `addByCurrency`, `formatMoneyTotals`; tiles
+  are per currency; portfolio CPI/SPI is "—" with a note when currencies differ. Cost
+  `formatMoney` now shows whole units (`maximumFractionDigits: 0`); only Cost.tsx uses it.
+- **Layout bug:** Vendor List overflowed at 412 px (View Profile primary + Edit + Delete). Now
+  View Profile (ghost) + `RowMenu`. Desktop had 4 primaries, now 1.
+- `RowMenu` on Cost Budget/Actuals, Commitments, Packages, Resources Register/Assignments/
+  Unavailability. New `react/src/components/MoneyFigure.tsx` (money KPI at `--text-xl`; it may
+  still wrap after the currency code on a phone, deliberately: a no-wrap version scrolled the
+  phone sideways and was dropped).
+- Vendor dashboard: shared `.kpi-grid` strip (5 figures) + one flat "Recent Activity" section
+  with the five lists; the "Vendor Dashboard" heading (repeated the tab) is gone.
+- Copy: title sentences removed on all five pages; ~25 labels to sentence case; 12 plurals via
+  `plural()`; `formatDate` on Cost Actuals, Commitments, Resources periods/over-allocated days,
+  vendor upload dates; empty states with actions. Flat: Cost Summary/EVM "By Project", Leveling's
+  sections, VPC's two lists. Forms keep their box (a first pass flattened 5 Resources forms by
+  mistake; caught and reverted before testing).
+- Tests: new `test_cost_supply_phase7.js` (3/29 on the old build, 29/29 now, incl. an INR + USD
+  seed); `tests/rowMenu.js` now finds any `.card-menu > "More actions"`; 10 older tests updated
+  (labels via `scratch/pcc-7.5d/relabel-tests.js` + `label-map.json`, row menus via
+  `insert-row-menus.js`, a leave-period date via `PCC.dates.formatDate`, `test_vendors_e2e`'s
+  dashboard check now reads the active tab).
+- Chromium: 48 shots (12 screens × 2 themes × 2 sizes, seeded by `scratch/pcc-7.5d/cs-shots.js`):
+  0 console errors, 0 contrast failures, no sideways scroll. Sheets: `scratch/pcc-7.5d/sheets/`.
+- `styles.css` untouched and no mirror-app input changed, so At a Glance needs no rebuild.
 
 ## 2026-11-28 — 7.5c follow-up: register dates and keyboard heat map
 
