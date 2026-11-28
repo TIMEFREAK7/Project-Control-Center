@@ -28,6 +28,9 @@ import {
   getData,
   projectName,
   formatMoney,
+  formatMoneyTotals,
+  addByCurrency,
+  projectCurrency,
   formatIndex,
   activitiesForProject,
   budgetItemsForProject,
@@ -47,6 +50,10 @@ import {
 import type { ActivityOption, LabeledOption } from "../services/costService";
 import type { PCCCostBudgetItem, PCCCostActual, PCCProject, PCCStoreData } from "../types/pcc";
 import { fuzzyMatch } from "../utils/fuzzyMatch";
+import { formatDate } from "../utils/localDate";
+import { plural } from "../utils/plural";
+import { RowMenu } from "../components/RowMenu";
+import { MoneyFigure } from "../components/MoneyFigure";
 
 function BudgetForm({
   isNew,
@@ -438,7 +445,7 @@ function BudgetTab({
     const linkedCount = actualsAgainst(data, b.id).length;
     const msg =
       'Delete budget item "' + b.name + '"?' +
-      (linkedCount > 0 ? " " + linkedCount + " actual cost entry(ies) reference it — they'll be kept, just unlinked." : "");
+      (linkedCount > 0 ? " " + plural(linkedCount, "actual cost entry", "actual cost entries") + (linkedCount === 1 ? " references" : " reference") + " it — they'll be kept, just unlinked." : "");
     if (!window.confirm(msg)) return;
     deleteBudgetItem(b.id);
     onSaved();
@@ -472,15 +479,27 @@ function BudgetTab({
         <div className="panel empty-state">
           {data.cost_budget_items.length === 0
             ? hasActiveProjects
-              ? "No budget items yet. Click “+ Add Budget Item” to log the first planned cost line."
+              ? "No budget items yet."
               : "Add a project in Portfolio first, then set up a budget against it."
             : "No budget items match this search/filter."}
+          {data.cost_budget_items.length === 0 ? (
+            hasActiveProjects ? (
+              <button className="btn btn--ghost empty-state__action" onClick={onAdd}>
+                + Add Budget Item
+              </button>
+            ) : (
+              <button className="btn btn--ghost empty-state__action" onClick={() => window.PCC.router.go("portfolio")}>
+                Go to Portfolio
+              </button>
+            )
+          ) : null}
         </div>
       ) : (
         <div className="project-list">
           {filtered.map((b) => {
             const actualTotal = actualsAgainst(data, b.id).reduce((sum, a) => sum + (Number(a.amount) || 0), 0);
             const linkedActivity = b.activity_id ? data.activities.find((a) => a.id === b.activity_id) : null;
+            const cur = projectCurrency(data.projects, b.project_id);
             return (
               <div key={b.id} className="project-entry">
                 <div className="detail-card" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
@@ -488,19 +507,12 @@ function BudgetTab({
                     <strong>{b.name}</strong>
                     <br />
                     <span className="text-secondary" style={{ fontSize: "var(--text-12)" }}>
-                      {CATEGORY_LABELS[b.category || ""]} · {projectName(data.projects, b.project_id)} · Planned {formatMoney(b.planned_amount)} · Actual so far{" "}
-                      {formatMoney(actualTotal)}
+                      {[CATEGORY_LABELS[b.category || ""], projectName(data.projects, b.project_id)].filter(Boolean).join(" · ")} · Planned {formatMoney(b.planned_amount, cur)} ·
+                      Actual so far {formatMoney(actualTotal, cur)}
                       {linkedActivity ? " · linked to “" + linkedActivity.name + "” (" + (linkedActivity.percent_complete || 0) + "% complete)" : ""}
                     </span>
                   </div>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button className="btn btn--ghost" onClick={() => onEdit(b.id)}>
-                      Edit
-                    </button>
-                    <button className="btn btn--ghost" onClick={() => handleDelete(b)}>
-                      Delete
-                    </button>
-                  </div>
+                  <RowMenu onEdit={() => onEdit(b.id)} onDelete={() => handleDelete(b)} />
                 </div>
               </div>
             );
@@ -589,9 +601,20 @@ function ActualsTab({
         <div className="panel empty-state">
           {data.cost_actuals.length === 0
             ? hasActiveProjects
-              ? "No actual costs logged yet. Click “+ Log Actual Cost” to record the first one."
+              ? "No actual costs logged yet."
               : "Add a project in Portfolio first, then log actual costs against it."
             : "No actual costs match this search/filter."}
+          {data.cost_actuals.length === 0 ? (
+            hasActiveProjects ? (
+              <button className="btn btn--ghost empty-state__action" onClick={onAdd}>
+                + Log Actual Cost
+              </button>
+            ) : (
+              <button className="btn btn--ghost empty-state__action" onClick={() => window.PCC.router.go("portfolio")}>
+                Go to Portfolio
+              </button>
+            )
+          ) : null}
         </div>
       ) : (
         <div className="project-list">
@@ -605,20 +628,14 @@ function ActualsTab({
                     <strong>{a.description}</strong>
                     <br />
                     <span className="text-secondary" style={{ fontSize: "var(--text-12)" }}>
-                      {CATEGORY_LABELS[a.category || ""]} · {projectName(data.projects, a.project_id)} · {a.date} · {formatMoney(a.amount)}
+                      {[CATEGORY_LABELS[a.category || ""], projectName(data.projects, a.project_id), a.date ? formatDate(a.date) : ""].filter(Boolean).join(" · ")} ·{" "}
+                      {formatMoney(a.amount, projectCurrency(data.projects, a.project_id))}
                       {a.vendor ? " · " + a.vendor : ""}
                       {linkedBudget ? " · against “" + linkedBudget.name + "”" : ""}
                       {linkedCommitment ? " · commitment " + (linkedCommitment.po_contract_number || "(no PO/Contract #)") : ""}
                     </span>
                   </div>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button className="btn btn--ghost" onClick={() => onEdit(a.id)}>
-                      Edit
-                    </button>
-                    <button className="btn btn--ghost" onClick={() => handleDelete(a)}>
-                      Delete
-                    </button>
-                  </div>
+                  <RowMenu onEdit={() => onEdit(a.id)} onDelete={() => handleDelete(a)} />
                 </div>
               </div>
             );
@@ -631,40 +648,40 @@ function ActualsTab({
 
 function SummaryTab({ data }: { data: PCCStoreData }) {
   const activeProjects = data.projects.filter((p) => !p.archived);
-  const totals = activeProjects.reduce(
-    (acc, p) => {
-      const s = projectCostSummary(data, p.id);
-      acc.budgeted += s.budgeted;
-      acc.actual += s.actual;
-      if (s.usingPortfolioBudget) acc.fallbackCount += 1;
-      return acc;
-    },
-    { budgeted: 0, actual: 0, fallbackCount: 0 }
-  );
-  const totalVariance = totals.budgeted - totals.actual;
+  // Totals are kept per currency (Gate 7.5d): summing INR and USD projects into one figure was wrong.
+  const budgeted: { [currency: string]: number } = {};
+  const actual: { [currency: string]: number } = {};
+  const variance: { [currency: string]: number } = {};
+  let fallbackCount = 0;
+  activeProjects.forEach((p) => {
+    const s = projectCostSummary(data, p.id);
+    addByCurrency(budgeted, data.projects, p.id, s.budgeted);
+    addByCurrency(actual, data.projects, p.id, s.actual);
+    addByCurrency(variance, data.projects, p.id, s.budgeted - s.actual);
+    if (s.usingPortfolioBudget) fallbackCount += 1;
+  });
+  const anyOverrun = Object.keys(variance).some((k) => variance[k] < 0);
 
   return (
     <>
       <div className="kpi-grid">
         <div className="kpi-card">
-          <span className="kpi-card__label">TOTAL BUDGETED</span>
-          <span className="kpi-card__value mono">{formatMoney(totals.budgeted)}</span>
+          <span className="kpi-card__label">Total budgeted</span>
+          <MoneyFigure text={formatMoneyTotals(budgeted)} />
         </div>
         <div className="kpi-card">
-          <span className="kpi-card__label">TOTAL ACTUAL</span>
-          <span className="kpi-card__value mono">{formatMoney(totals.actual)}</span>
+          <span className="kpi-card__label">Total actual</span>
+          <MoneyFigure text={formatMoneyTotals(actual)} />
         </div>
         <div className="kpi-card">
-          <span className="kpi-card__label">VARIANCE</span>
-          <span className="kpi-card__value mono" style={{ color: totalVariance < 0 ? "var(--status-critical)" : "var(--status-on-track)" }}>
-            {(totalVariance >= 0 ? "+" : "") + formatMoney(totalVariance)}
-          </span>
+          <span className="kpi-card__label">Variance</span>
+          <MoneyFigure text={formatMoneyTotals(variance, true)} color={anyOverrun ? "var(--status-critical)" : "var(--status-on-track)"} />
         </div>
       </div>
 
-      {totals.fallbackCount > 0 ? (
+      {fallbackCount > 0 ? (
         <p className="text-secondary" style={{ fontSize: "var(--text-12)", marginTop: -10, marginBottom: 10 }}>
-          {totals.fallbackCount} of {activeProjects.length} project(s) above use Portfolio's Budget field as a stand-in, since they have no Cost Tracking
+          {fallbackCount} of {plural(activeProjects.length, "project")} above use Portfolio's Budget field as a stand-in, since they have no Cost Tracking
           budget line items yet — add line items on the Budget tab for a more detailed number.
         </p>
       ) : null}
@@ -672,27 +689,31 @@ function SummaryTab({ data }: { data: PCCStoreData }) {
       {activeProjects.length === 0 ? (
         <div className="panel empty-state" style={{ marginTop: 16 }}>
           Add a project in Portfolio first to see cost summaries here.
+          <button className="btn btn--ghost empty-state__action" onClick={() => window.PCC.router.go("portfolio")}>
+            Go to Portfolio
+          </button>
         </div>
       ) : (
-        <div className="panel" style={{ marginTop: 16 }}>
+        <div className="panel panel--flat" style={{ marginTop: 16 }}>
           <h3 style={{ marginBottom: 12 }}>By Project</h3>
           <div className="project-list">
             {activeProjects.map((p) => {
               const s = projectCostSummary(data, p.id);
               const pctUsed = s.budgeted > 0 ? Math.round((s.actual / s.budgeted) * 100) : null;
+              const cur = projectCurrency(data.projects, p.id);
               return (
                 <div key={p.id} className="detail-card" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, gap: 12, flexWrap: "wrap" }}>
                   <div>
                     <strong>{p.name || "(unnamed project)"}</strong>
                     <br />
                     <span className="text-secondary" style={{ fontSize: "var(--text-12)" }}>
-                      Budgeted {formatMoney(s.budgeted)} · Actual {formatMoney(s.actual)}
+                      Budgeted {formatMoney(s.budgeted, cur)} · Actual {formatMoney(s.actual, cur)}
                       {pctUsed !== null ? " (" + pctUsed + "% used)" : ""}
                       {s.usingPortfolioBudget ? " · from Portfolio's Budget field (no cost line items yet)" : ""}
                     </span>
                   </div>
                   <span className={"status-badge " + (s.variance < 0 ? "status-badge--critical" : "status-badge--on_track")}>
-                    {(s.variance >= 0 ? "+" : "") + formatMoney(s.variance) + " variance"}
+                    {(s.variance >= 0 ? "+" : "") + formatMoney(s.variance, cur) + " variance"}
                   </span>
                 </div>
               );
@@ -714,7 +735,12 @@ function EvmTab({ data }: { data: PCCStoreData }) {
           Planned Value and Earned Value only reflect budget items linked to a Schedule activity (set on the Budget tab). Actual Cost always reflects
           everything logged, linked or not.
         </p>
-        <div className="panel empty-state">Add a project in Portfolio first to see EVM here.</div>
+        <div className="panel empty-state">
+          Add a project in Portfolio first to see EVM here.
+          <button className="btn btn--ghost empty-state__action" onClick={() => window.PCC.router.go("portfolio")}>
+            Go to Portfolio
+          </button>
+        </div>
       </>
     );
   }
@@ -731,9 +757,19 @@ function EvmTab({ data }: { data: PCCStoreData }) {
     },
     { bac: 0, ac: 0, pv: 0, ev: 0, linkedBac: 0 }
   );
-  const portfolioCpi = totals.ac > 0 && totals.linkedBac > 0 ? totals.ev / totals.ac : null;
-  const portfolioSpi = totals.pv > 0 && totals.linkedBac > 0 ? totals.ev / totals.pv : null;
+  // Per-currency money totals (Gate 7.5d). A portfolio CPI/SPI divides summed money, so it is
+  // only shown when every active project uses the same currency.
+  const evByCur: { [currency: string]: number } = {};
+  const acByCur: { [currency: string]: number } = {};
+  perProject.forEach((row) => {
+    addByCurrency(evByCur, data.projects, row.project.id, row.evm.ev);
+    addByCurrency(acByCur, data.projects, row.project.id, row.evm.ac);
+  });
+  const singleCurrency = new Set(activeProjects.map((p) => projectCurrency(data.projects, p.id))).size <= 1;
+  const portfolioCpi = singleCurrency && totals.ac > 0 && totals.linkedBac > 0 ? totals.ev / totals.ac : null;
+  const portfolioSpi = singleCurrency && totals.pv > 0 && totals.linkedBac > 0 ? totals.ev / totals.pv : null;
   const coveragePct = totals.bac > 0 ? Math.round((totals.linkedBac / totals.bac) * 100) : null;
+  const mixedTitle = singleCurrency ? undefined : "Projects use different currencies, so there is no single portfolio figure. See each project below.";
 
   return (
     <>
@@ -744,26 +780,31 @@ function EvmTab({ data }: { data: PCCStoreData }) {
 
       <div className="kpi-grid">
         <div className="kpi-card">
-          <span className="kpi-card__label">EARNED VALUE</span>
-          <span className="kpi-card__value mono">{formatMoney(totals.ev)}</span>
+          <span className="kpi-card__label">Earned value</span>
+          <MoneyFigure text={formatMoneyTotals(evByCur)} />
         </div>
         <div className="kpi-card">
-          <span className="kpi-card__label">ACTUAL COST</span>
-          <span className="kpi-card__value mono">{formatMoney(totals.ac)}</span>
+          <span className="kpi-card__label">Actual cost</span>
+          <MoneyFigure text={formatMoneyTotals(acByCur)} />
         </div>
-        <div className="kpi-card">
+        <div className="kpi-card" title={mixedTitle}>
           <span className="kpi-card__label">CPI</span>
-          <span className="kpi-card__value mono" style={{ color: portfolioCpi != null && portfolioCpi < 1 ? "var(--status-critical)" : "var(--status-on-track)" }}>
+          <span className="kpi-card__value" style={portfolioCpi == null ? undefined : { color: portfolioCpi < 1 ? "var(--status-critical)" : "var(--status-on-track)" }}>
             {formatIndex(portfolioCpi)}
           </span>
         </div>
-        <div className="kpi-card">
+        <div className="kpi-card" title={mixedTitle}>
           <span className="kpi-card__label">SPI</span>
-          <span className="kpi-card__value mono" style={{ color: portfolioSpi != null && portfolioSpi < 1 ? "var(--status-critical)" : "var(--status-on-track)" }}>
+          <span className="kpi-card__value" style={portfolioSpi == null ? undefined : { color: portfolioSpi < 1 ? "var(--status-critical)" : "var(--status-on-track)" }}>
             {formatIndex(portfolioSpi)}
           </span>
         </div>
       </div>
+      {!singleCurrency ? (
+        <p className="text-secondary" style={{ fontSize: "var(--text-12)", marginTop: -10, marginBottom: 10 }}>
+          {mixedTitle}
+        </p>
+      ) : null}
 
       {coveragePct !== null && coveragePct < 100 ? (
         <p className="text-secondary" style={{ fontSize: "var(--text-12)", marginTop: -10, marginBottom: 10 }}>
@@ -772,27 +813,30 @@ function EvmTab({ data }: { data: PCCStoreData }) {
         </p>
       ) : null}
 
-      <div className="panel" style={{ marginTop: 16 }}>
+      <div className="panel panel--flat" style={{ marginTop: 16 }}>
         <h3 style={{ marginBottom: 12 }}>By Project</h3>
         <div className="project-list">
-          {perProject.map(({ project: p, evm }) => (
+          {perProject.map(({ project: p, evm }) => {
+            const cur = projectCurrency(data.projects, p.id);
+            return (
             <div key={p.id} className="detail-card" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, gap: 12, flexWrap: "wrap" }}>
               <div>
                 <strong>{p.name || "(unnamed project)"}</strong>
                 <br />
                 <span className="text-secondary" style={{ fontSize: "var(--text-12)" }}>
-                  EV {formatMoney(evm.ev)} · AC {formatMoney(evm.ac)} · PV {formatMoney(evm.pv)} · CPI {formatIndex(evm.cpi)} · SPI {formatIndex(evm.spi)}
-                  {evm.eac != null ? " · EAC " + formatMoney(evm.eac) : ""}
+                  EV {formatMoney(evm.ev, cur)} · AC {formatMoney(evm.ac, cur)} · PV {formatMoney(evm.pv, cur)} · CPI {formatIndex(evm.cpi)} · SPI {formatIndex(evm.spi)}
+                  {evm.eac != null ? " · EAC " + formatMoney(evm.eac, cur) : ""}
                   {evm.coveragePct != null ? " · " + evm.coveragePct + "% linked" : " · nothing linked yet"}
                 </span>
               </div>
               {evm.vac != null ? (
                 <span className={"status-badge " + (evm.vac < 0 ? "status-badge--critical" : "status-badge--on_track")}>
-                  {(evm.vac >= 0 ? "+" : "") + formatMoney(evm.vac) + " VAC"}
+                  {(evm.vac >= 0 ? "+" : "") + formatMoney(evm.vac, cur) + " VAC"}
                 </span>
               ) : null}
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </>
@@ -829,11 +873,7 @@ export default function CostPage({ initialProjectFilter }: { initialProjectFilte
 
   return (
     <>
-      <h2 style={{ marginBottom: 6 }}>Cost Tracking</h2>
-      <p className="text-secondary" style={{ fontSize: "var(--text-12)", marginBottom: 16 }}>
-        Budget line items vs. actual costs incurred, per project. No automatic link to Contract Value or Change Orders — reconciliation stays a manual,
-        deliberate act.
-      </p>
+      <h2 style={{ marginBottom: 16 }}>Cost Tracking</h2>
 
       <div className="tab-bar">
         {[

@@ -917,3 +917,14 @@ Its items render only while it is open, so tests that found the first "Edit" or 
 page now call `openRowMenu(outlet(), 0)` (or `-1` for the last row) from `tests/rowMenu.js`
 first. The same gate moved capitalised detail labels to sentence case; tests that read a label
 were updated inside their quotes (`scratch/pcc-7.5c/relabel-tests.js`, map in `label-map.json`).
+
+## Cost totals summed different currencies (Gate 7.5d, 2026-11-28)
+
+Cost Tracking never passed a project's currency to `formatMoney`, and its Summary and EVM tiles
+added every active project's budget, actual, EV and AC into one figure, so an INR project and a
+USD project produced one meaningless number (Commitments had been fixed for the same thing in
+Gate 6.4). Now `costService.ts` has `projectCurrency`, `addByCurrency` and `formatMoneyTotals`:
+rows show their project's currency and tiles show "INR … · USD …". The portfolio CPI/SPI tiles
+divide summed money, so they show "—" with a one-line explanation when currencies differ (the
+per-project CPI/SPI below are unaffected). Cost money also shows whole units now; the engines'
+figures are unchanged. Rule: never add money across projects without grouping by currency.

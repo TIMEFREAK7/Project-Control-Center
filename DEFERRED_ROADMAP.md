@@ -790,6 +790,18 @@ Apply 7.2–7.4 and the "one primary action" rule. No new features, no moved dat
   register rows, details and meeting links show dates via `formatDate` (Meetings, Decisions,
   RFI, Change Orders, Risks, Delay & Recovery); heat-map cells are buttons (Tab, Enter/Space,
   a name, `aria-pressed`, the app's focus ring).
+  7.5d built 2026-11-28, waiting for Aditya's look sign-off. **Correctness found:** Cost showed no
+  currency and its Summary/EVM tiles summed all projects' money into one figure; now rows carry
+  the project's currency, tiles are per currency, and portfolio CPI/SPI is "—" when currencies
+  differ. **Layout bug found:** Vendor List ran off a phone screen (View Profile as a primary +
+  Edit + Delete per row); now View Profile (secondary) + ⋯. Rows on Cost Budget/Actuals,
+  Commitments, Packages, Resources (all three tabs) and Vendors use `RowMenu`; no title
+  sentences; ~25 labels to sentence case; 12 plurals; dates via `formatDate`; Vendor dashboard is
+  one KPI strip (was six boxed tiles + a heading repeating the tab); Leveling, Summary, EVM and
+  Vendor Performance sections flat; figures out of `.mono`; Cost money in whole units; new
+  `MoneyFigure` keeps "INR 8,16,00,000" on one line on desktop (it broke after "INR").
+  `styles.css` untouched, mirror unaffected. New `test_cost_supply_phase7.js` (3/29 on the old
+  build). Not in this gate: the Vendor Profile screen.
   `styles.css` changed (heat map), so At a Glance was rebuilt: 6 of 8 shots byte-identical, dark
   Dashboard and My Work differ by a few PNG bytes with no visible change.
   New `test_registers_phase7.js` (3/28 on the old build).

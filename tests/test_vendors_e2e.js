@@ -12,6 +12,7 @@ const path = require("path");
 const assert = require("assert");
 const { JSDOM } = require("jsdom");
 const FDBFactory = require("fake-indexeddb/lib/FDBFactory");
+const { openRowMenu } = require("./rowMenu");
 
 const INDEX_PATH = path.join(__dirname, "..", "index.html");
 
@@ -120,8 +121,10 @@ function findButtonsByTextPrefix(dom, prefix) {
   await check("navigate to the vendors route — dashboard is the default view", () => {
     win.PCC.router.go("vendors");
     win.PCC.router.render();
-    assert.ok(outlet().textContent.indexOf("Vendor Dashboard") !== -1, "dashboard should be the default view");
-    assert.ok(outlet().textContent.toUpperCase().indexOf("TOTAL VENDORS") !== -1);
+    // Gate 7.5d: the "Vendor Dashboard" heading (it repeated the tab) is gone; the active tab says it.
+    var activeTab = outlet().querySelector(".tab-btn--active");
+    assert.ok(activeTab && activeTab.textContent.trim() === "Dashboard", "dashboard should be the default view");
+    assert.ok(outlet().textContent.indexOf("Total vendors") !== -1);
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });
 
@@ -460,6 +463,7 @@ function findButtonsByTextPrefix(dom, prefix) {
     setReactSelectValue(win, statusSelect, "");
     await flush();
 
+    await openRowMenu(outlet(), 0);
     findButtonByText(dom, "Delete").click();
     await flush();
     win.confirm = confirmed;

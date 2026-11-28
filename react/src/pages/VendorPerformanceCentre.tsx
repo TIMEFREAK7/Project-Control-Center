@@ -22,7 +22,7 @@ function KpiCard({ label, value, colorVar }: { label: string; value: string | nu
   return (
     <div className="kpi-card">
       <span className="kpi-card__label">{label}</span>
-      <span className="kpi-card__value mono" style={colorVar ? { color: `var(${colorVar})` } : undefined}>
+      <span className="kpi-card__value" style={colorVar ? { color: `var(${colorVar})` } : undefined}>
         {value}
       </span>
     </div>
@@ -55,31 +55,29 @@ export default function VendorPerformanceCentrePage() {
 
   return (
     <div>
-      <h2 style={{ marginBottom: "4px" }}>Vendor Performance Centre</h2>
-      <p className="text-secondary" style={{ marginTop: "0", marginBottom: "20px" }}>
-        {vendors.length === 0
-          ? "No vendors yet — add some from Vendor Management."
-          : `Portfolio-wide performance rollup across ${vendors.length} vendor${vendors.length === 1 ? "" : "s"}. Reviews are added from each vendor's own Profile → Performance tab.`}
-      </p>
+      <h2 style={{ marginBottom: "var(--space-4)" }}>Vendor Performance Centre</h2>
 
       {vendors.length === 0 ? (
         <div className="panel empty-state">
-          Nothing to show yet. Once vendors exist and have at least one performance review, this page will rank them worst-first.
+          No vendors yet. Add some in Vendors, then review them from each vendor's Profile → Performance tab.
+          <button className="btn btn--ghost empty-state__action" onClick={() => window.PCC.router.go("vendors")}>
+            Go to Vendors
+          </button>
         </div>
       ) : (
         <>
           <div className="kpi-grid">
-            <KpiCard label="TOTAL VENDORS" value={vendors.length} colorVar={null} />
-            <KpiCard label="REVIEWED" value={reviewed.length} colorVar={null} />
-            <KpiCard label="NOT YET REVIEWED" value={unreviewed.length} colorVar={unreviewed.length > 0 ? "--status-at-risk" : null} />
-            <KpiCard label="PORTFOLIO AVG RATING" value={portfolioAvg === null ? "—" : ratingText(portfolioAvg)} colorVar={null} />
+            <KpiCard label="Total vendors" value={vendors.length} colorVar={null} />
+            <KpiCard label="Reviewed" value={reviewed.length} colorVar={null} />
+            <KpiCard label="Not yet reviewed" value={unreviewed.length} colorVar={unreviewed.length > 0 ? "--status-at-risk" : null} />
+            <KpiCard label="Portfolio avg rating" value={portfolioAvg === null ? "—" : ratingText(portfolioAvg)} colorVar={null} />
           </div>
 
-          <div className="panel" style={{ marginTop: "16px" }}>
+          <div className="panel panel--flat" style={{ marginTop: "16px" }}>
             <h3 style={{ marginBottom: "8px" }}>Vendor Performance (worst first)</h3>
             {reviewed.length === 0 ? (
               <p className="text-secondary" style={{ fontSize: "var(--text-13)" }}>
-                No performance reviews yet across the portfolio.
+                No performance reviews yet across the portfolio. Reviews are added from each vendor's Profile → Performance tab.
               </p>
             ) : (
               <div className="attention-list">
@@ -90,7 +88,7 @@ export default function VendorPerformanceCentrePage() {
             )}
           </div>
 
-          <div className="panel" style={{ marginTop: "16px" }}>
+          <div className="panel panel--flat" style={{ marginTop: "16px" }}>
             <h3 style={{ marginBottom: "8px" }}>Not Yet Reviewed ({unreviewed.length})</h3>
             {unreviewed.length === 0 ? (
               <p className="text-secondary" style={{ fontSize: "var(--text-13)" }}>

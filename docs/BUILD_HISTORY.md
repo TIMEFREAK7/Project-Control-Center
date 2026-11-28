@@ -6903,3 +6903,23 @@ inside the details of RFIs, Change Orders, Decisions and Risks, now read like th
 app (15/11/2026, not 2026-11-15). The heat map's cells can be reached with the Tab key, pressed
 with Enter or Space, and read out by a screen reader ("High probability, high impact: 2
 entries").
+
+## Gate 7.5d: Cost and supply (2026-11-28)
+
+**What changed for Aditya.** Cost Tracking, Commitments, Resources, Vendors and Vendor
+Performance Centre now follow the same rules as the other pages. The most important change is a
+correction: Cost Tracking now shows each project's currency, and its Summary and EVM totals list
+one figure per currency ("INR 16,30,00,000 · USD 2,00,000") instead of adding rupees and dollars
+together. When projects use different currencies, the portfolio CPI and SPI tiles show "—" with
+a short note, because those ratios would mix currencies; each project's own CPI and SPI are
+still shown below. Money on Cost shows whole rupees (no paise).
+
+Rows keep one visible action and a "⋯" menu for Edit and Delete. On a phone, the Vendor List no
+longer runs off the right edge of the screen. The vendor dashboard is one row of figures instead
+of six boxes. The sentences under every page title are gone, labels are in normal case, counts
+read "2 assignments", dates read like the rest of the app, and empty pages offer the button that
+fills them. Commitments' totals no longer break between "INR" and the number on a desktop.
+
+**Decided along the way (Aditya).** Totals per currency, and whole units on Cost.
+
+**Not in this gate.** The Vendor Profile screen (the one that opens from the list).

@@ -45,6 +45,10 @@ import {
 import type { ActivityOption, BudgetItemOption } from "../services/commitmentsService";
 import type { PCCCommitment, PCCPackage, PCCStoreData, PCCActivity } from "../types/pcc";
 import { fuzzyMatch } from "../utils/fuzzyMatch";
+import { formatDate } from "../utils/localDate";
+import { plural } from "../utils/plural";
+import { RowMenu } from "../components/RowMenu";
+import { MoneyFigure } from "../components/MoneyFigure";
 
 function CommitmentForm({
   isNew,
@@ -241,11 +245,11 @@ function KpiStrip({ filtered, data }: { filtered: PCCCommitment[]; data: PCCStor
   const anyNegativeRemaining = Object.keys(totals.remaining).some((k) => totals.remaining[k] < 0);
 
   const kpis: { label: string; value: string | number; colorVar?: string | null }[] = [
-    { label: "TOTAL COMMITTED", value: formatMoneyTotals(totals.committed) },
-    { label: "TOTAL APPROVED", value: formatMoneyTotals(totals.approved) },
-    { label: "TOTAL ACTUAL", value: formatMoneyTotals(totals.actual) },
-    { label: "TOTAL REMAINING", value: formatMoneyTotals(totals.remaining), colorVar: anyNegativeRemaining ? "--status-critical" : null },
-    { label: "AT RISK", value: atRisk, colorVar: atRisk > 0 ? "--status-critical" : null },
+    { label: "Total committed", value: formatMoneyTotals(totals.committed) },
+    { label: "Total approved", value: formatMoneyTotals(totals.approved) },
+    { label: "Total actual", value: formatMoneyTotals(totals.actual) },
+    { label: "Total remaining", value: formatMoneyTotals(totals.remaining), colorVar: anyNegativeRemaining ? "--status-critical" : null },
+    { label: "At risk", value: atRisk, colorVar: atRisk > 0 ? "--status-critical" : null },
   ];
 
   return (
@@ -253,9 +257,13 @@ function KpiStrip({ filtered, data }: { filtered: PCCCommitment[]; data: PCCStor
       {kpis.map((kpi) => (
         <div className="kpi-card" key={kpi.label}>
           <span className="kpi-card__label">{kpi.label}</span>
-          <span className="kpi-card__value mono" style={kpi.colorVar ? { color: "var(" + kpi.colorVar + ")" } : undefined}>
-            {kpi.value}
-          </span>
+          {typeof kpi.value === "string" ? (
+            <MoneyFigure text={kpi.value} color={kpi.colorVar ? "var(" + kpi.colorVar + ")" : undefined} />
+          ) : (
+            <span className="kpi-card__value" style={kpi.colorVar ? { color: "var(" + kpi.colorVar + ")" } : undefined}>
+              {kpi.value}
+            </span>
+          )}
         </div>
       ))}
     </div>
@@ -279,7 +287,7 @@ function CommitmentRow({
   const metaParts = [projectName(data.projects, c.project_id), TYPE_LABELS[c.type || ""] || c.type];
   if (c.vendor_id) metaParts.push(vendorName(data.vendors, c.vendor_id));
   if (c.package_id) metaParts.push(packageName(data.packages, c.package_id));
-  if (c.commitment_date) metaParts.push(c.commitment_date);
+  if (c.commitment_date) metaParts.push(formatDate(c.commitment_date));
   const activity = c.activity_id ? data.activities.find((a) => a.id === c.activity_id) : null;
 
   return (
@@ -318,12 +326,7 @@ function CommitmentRow({
             View Activity
           </button>
         ) : null}
-        <button className="btn btn--ghost" onClick={onEdit}>
-          Edit
-        </button>
-        <button className="btn btn--ghost" onClick={onDelete}>
-          Delete
-        </button>
+        <RowMenu onEdit={onEdit} onDelete={onDelete} />
       </div>
     </div>
   );
@@ -467,8 +470,13 @@ function CommitmentsTab({
       {filtered.length === 0 ? (
         <div className="panel empty-state">
           {data.commitments.length === 0
-            ? "No commitments yet. Click “+ Add Commitment” to add the first Purchase Order, Subcontract, or other commercial commitment."
+            ? "No purchase orders, subcontracts or other commitments yet."
             : "No commitments match this search/filter."}
+          {data.commitments.length === 0 && hasActiveProjects ? (
+            <button className="btn btn--ghost empty-state__action" onClick={() => setEditingCommitmentId("new")}>
+              + Add Commitment
+            </button>
+          ) : null}
         </div>
       ) : (
         <div className="project-list">
@@ -553,7 +561,7 @@ function PackagesTab({ data, refresh }: { data: PCCStoreData; refresh: () => voi
   function handleDelete(p: PCCPackage, commitmentCount: number, documentCount: number) {
     const warning =
       commitmentCount > 0 || documentCount > 0
-        ? 'Delete "' + p.name + '"? ' + commitmentCount + " commitment(s) and " + documentCount + " document(s) referencing it will be unlinked, not deleted."
+        ? 'Delete "' + p.name + '"? ' + plural(commitmentCount, "commitment") + " and " + plural(documentCount, "document") + " referencing it will be unlinked, not deleted."
         : 'Delete "' + p.name + '"?';
     if (!window.confirm(warning)) return;
     deletePackage(p.id);
@@ -584,7 +592,10 @@ function PackagesTab({ data, refresh }: { data: PCCStoreData; refresh: () => voi
 
       {data.packages.length === 0 ? (
         <div className="panel empty-state">
-          No packages yet. Click “+ Add Package” to add one — packages are shared across every project and reused by both Commitments and Documents.
+          No packages yet. Packages are shared across every project and reused by both Commitments and Documents.
+          <button className="btn btn--ghost empty-state__action" onClick={() => setEditingPackageId("new")}>
+            + Add Package
+          </button>
         </div>
       ) : (
         <div className="project-list">
@@ -602,17 +613,10 @@ function PackagesTab({ data, refresh }: { data: PCCStoreData; refresh: () => voi
                   {p.code ? " (" + p.code + ")" : ""}
                   <br />
                   <span className="text-secondary" style={{ fontSize: "var(--text-12)" }}>
-                    {commitmentCount} commitment(s) · {documentCount} document(s)
+                    {plural(commitmentCount, "commitment")} · {plural(documentCount, "document")}
                   </span>
                 </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button className="btn btn--ghost" onClick={() => setEditingPackageId(p.id)}>
-                    Edit
-                  </button>
-                  <button className="btn btn--ghost" onClick={() => handleDelete(p, commitmentCount, documentCount)}>
-                    Delete
-                  </button>
-                </div>
+                <RowMenu onEdit={() => setEditingPackageId(p.id)} onDelete={() => handleDelete(p, commitmentCount, documentCount)} />
               </div>
             );
           })}
@@ -641,11 +645,7 @@ export default function CommitmentsPage({
 
   return (
     <>
-      <h2 style={{ marginBottom: 6 }}>Commitment Management</h2>
-      <p className="text-secondary" style={{ fontSize: "var(--text-12)", marginBottom: 16 }}>
-        Purchase Orders, Subcontracts, and other commercial commitments — Actual Value is computed live from Cost Tracking entries logged against
-        each commitment, never entered here directly.
-      </p>
+      <h2 style={{ marginBottom: 16 }}>Commitment Management</h2>
 
       <div className="tab-bar">
         {[

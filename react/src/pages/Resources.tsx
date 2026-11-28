@@ -67,6 +67,9 @@ import type {
   LevelingProposal,
 } from "../types/pcc";
 import { fuzzyMatch } from "../utils/fuzzyMatch";
+import { formatDate } from "../utils/localDate";
+import { plural } from "../utils/plural";
+import { RowMenu } from "../components/RowMenu";
 
 // ===== Register tab =====
 
@@ -184,7 +187,7 @@ function RegisterTab({ data, editingId, onEdit, onAdd, onCancelEdit, onSaved, on
     const assignmentCount = data.resource_assignments.filter((a) => a.resource_id === r.id).length;
     const warning =
       assignmentCount > 0
-        ? 'Delete "' + r.name + '"? This also removes its ' + assignmentCount + " assignment(s). This can't be undone."
+        ? 'Delete "' + r.name + '"? This also removes its ' + plural(assignmentCount, "assignment") + ". This can't be undone."
         : 'Delete "' + r.name + '"?';
     if (!window.confirm(warning)) return;
     deleteResource(r.id);
@@ -217,7 +220,12 @@ function RegisterTab({ data, editingId, onEdit, onAdd, onCancelEdit, onSaved, on
 
       {filtered.length === 0 ? (
         <div className="panel empty-state">
-          {data.resources.length === 0 ? "No resources yet. Click “+ Add Resource” to add the first one." : "No resources match this search/filter."}
+          {data.resources.length === 0 ? "No resources yet." : "No resources match this search/filter."}
+          {data.resources.length === 0 ? (
+            <button className="btn btn--ghost empty-state__action" onClick={onAdd}>
+              + Add Resource
+            </button>
+          ) : null}
         </div>
       ) : (
         <div className="project-list">
@@ -236,19 +244,14 @@ function RegisterTab({ data, editingId, onEdit, onAdd, onCancelEdit, onSaved, on
                     {TYPE_LABELS[r.type || ""]}
                     {r.unit ? " · " + r.unit : ""}
                     {r.max_availability != null ? " · Max " + r.max_availability + "/day" : " · max availability not set"}
-                    {" · " + assignmentCount + " assignment(s)"}
+                    {" · " + plural(assignmentCount, "assignment")}
                   </span>
                 </div>
-                <div style={{ display: "flex", gap: "var(--space-2)" }}>
+                <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center" }}>
                   <button className="btn btn--ghost" onClick={() => onViewLeveling(r.id)}>
                     View Leveling
                   </button>
-                  <button className="btn btn--ghost" onClick={() => onEdit(r.id)}>
-                    Edit
-                  </button>
-                  <button className="btn btn--ghost" onClick={() => handleDelete(r)}>
-                    Delete
-                  </button>
+                  <RowMenu onEdit={() => onEdit(r.id)} onDelete={() => handleDelete(r)} />
                 </div>
               </div>
             );
@@ -529,8 +532,13 @@ function AssignmentsTab({
           {data.resources.length === 0
             ? "Add a resource first, then assign it to a Schedule activity here."
             : data.resource_assignments.length === 0
-            ? "No assignments yet. Click “+ Add Assignment” to assign a resource to an activity."
+            ? "No assignments yet."
             : "No assignments match this filter."}
+          {data.resources.length > 0 && data.resource_assignments.length === 0 ? (
+            <button className="btn btn--ghost empty-state__action" onClick={onAdd}>
+              + Add Assignment
+            </button>
+          ) : null}
         </div>
       ) : (
         <div className="project-list">
@@ -562,12 +570,7 @@ function AssignmentsTab({
                       View in Gantt
                     </button>
                   ) : null}
-                  <button className="btn btn--ghost" onClick={() => onEdit(a.id)}>
-                    Edit
-                  </button>
-                  <button className="btn btn--ghost" onClick={() => handleDelete(a)}>
-                    Delete
-                  </button>
+                  <RowMenu onEdit={() => onEdit(a.id)} onDelete={() => handleDelete(a)} />
                 </div>
               </div>
             );
@@ -731,8 +734,13 @@ function UnavailabilityTab({ data, editingId, onEdit, onAdd, onCancelEdit, onSav
           {data.resources.length === 0
             ? "Add a resource first, then record its leave/unavailable periods here."
             : data.resource_unavailability.length === 0
-            ? "No leave/unavailable periods recorded yet. Click “+ Add Period” to add one."
+            ? "No leave or unavailable periods recorded yet."
             : "No periods match this filter."}
+          {data.resources.length > 0 && data.resource_unavailability.length === 0 ? (
+            <button className="btn btn--ghost empty-state__action" onClick={onAdd}>
+              + Add Period
+            </button>
+          ) : null}
         </div>
       ) : (
         <div className="project-list">
@@ -746,18 +754,11 @@ function UnavailabilityTab({ data, editingId, onEdit, onAdd, onCancelEdit, onSav
                 <strong>{resourceName(data.resources, u.resource_id)}</strong> — {u.quantity} unavailable
                 <br />
                 <span className="text-secondary" style={{ fontSize: "var(--text-12)" }}>
-                  {u.start_date} to {u.end_date}
+                  {formatDate(u.start_date)} to {formatDate(u.end_date)}
                   {u.reason ? " · " + u.reason : ""}
                 </span>
               </div>
-              <div style={{ display: "flex", gap: "var(--space-2)" }}>
-                <button className="btn btn--ghost" onClick={() => onEdit(u.id)}>
-                  Edit
-                </button>
-                <button className="btn btn--ghost" onClick={() => handleDelete(u)}>
-                  Delete
-                </button>
-              </div>
+              <RowMenu onEdit={() => onEdit(u.id)} onDelete={() => handleDelete(u)} />
             </div>
           ))}
         </div>
@@ -900,7 +901,7 @@ function SuggestedLeveling({ resource, data, onApplied }: SuggestedLevelingProps
   }
 
   return (
-    <div className="panel" style={{ marginTop: "var(--space-4)" }}>
+    <div className="panel panel--flat" style={{ marginTop: "var(--space-4)" }}>
       <h4 style={{ marginBottom: "var(--space-2)" }}>Suggested Leveling</h4>
       <p className="text-secondary" style={{ fontSize: "var(--text-sm)", marginBottom: "var(--space-3)" }}>
         Proposes pushing lower-priority activities later, entirely within their own existing float — never extends the project finish, never touches a
@@ -958,7 +959,7 @@ function SuggestedLeveling({ resource, data, onApplied }: SuggestedLevelingProps
 
           {proposals.unresolved.length > 0 ? (
             <p style={{ fontSize: "var(--text-sm)", color: "var(--status-critical)", marginTop: "var(--space-3)" }}>
-              {proposals.unresolved.length} day(s) remain over-allocated even after leveling within existing float — resolving this needs more capacity,
+              {plural(proposals.unresolved.length, "day")} {proposals.unresolved.length === 1 ? "remains" : "remain"} over-allocated even after leveling within existing float — resolving this needs more capacity,
               less demand, or accepting a later project finish, none of which this tool decides for you.
             </p>
           ) : null}
@@ -979,7 +980,7 @@ function LevelingTab({ data, levelingResourceId, onSelectResource, onChanged }: 
   const portfolioSummary = portfolioOverAllocationSummary(data);
 
   const summaryPanel = (
-    <div className="panel" style={{ marginBottom: "var(--space-4)" }}>
+    <div className="panel panel--flat" style={{ marginBottom: "var(--space-4)" }}>
       <h3 style={{ marginBottom: "var(--space-2)" }}>Over-Allocated Resources (Portfolio-Wide)</h3>
       {portfolioSummary.length === 0 ? (
         <p className="text-secondary" style={{ fontSize: "var(--text-sm)" }}>
@@ -993,7 +994,7 @@ function LevelingTab({ data, levelingResourceId, onSelectResource, onChanged }: 
               <div className="attention-item__body">
                 <div className="attention-item__text">{s.resourceName}</div>
                 <div className="attention-item__meta">
-                  {s.overAllocatedDayCount} over-allocated day(s), worst +{s.maxOverBy}
+                  {plural(s.overAllocatedDayCount, "over-allocated day")}, worst +{s.maxOverBy}
                 </div>
               </div>
             </div>
@@ -1039,32 +1040,32 @@ function LevelingTab({ data, levelingResourceId, onSelectResource, onChanged }: 
 
       <div className="kpi-grid">
         <div className="kpi-card">
-          <span className="kpi-card__label">Max Availability</span>
-          <span className="kpi-card__value mono">{resource.max_availability == null ? "Not set" : resource.max_availability + "/day"}</span>
+          <span className="kpi-card__label">Max availability</span>
+          <span className="kpi-card__value">{resource.max_availability == null ? "Not set" : resource.max_availability + "/day"}</span>
         </div>
         <div className="kpi-card">
-          <span className="kpi-card__label">Total Assignments</span>
-          <span className="kpi-card__value mono">{totalAssignments}</span>
+          <span className="kpi-card__label">Total assignments</span>
+          <span className="kpi-card__value">{totalAssignments}</span>
         </div>
         <div className="kpi-card">
-          <span className="kpi-card__label">Over-Allocated Days</span>
-          <span className="kpi-card__value mono" style={{ color: overAlloc.available && overAlloc.count > 0 ? "var(--status-critical)" : undefined }}>
+          <span className="kpi-card__label">Over-allocated days</span>
+          <span className="kpi-card__value" style={{ color: overAlloc.available && overAlloc.count > 0 ? "var(--status-critical)" : undefined }}>
             {overAlloc.available ? overAlloc.count : "—"}
           </span>
         </div>
         <div className="kpi-card">
-          <span className="kpi-card__label">Worst Over-Allocation</span>
-          <span className="kpi-card__value mono" style={{ color: overAlloc.maxOverBy ? "var(--status-critical)" : undefined }}>
+          <span className="kpi-card__label">Worst over-allocation</span>
+          <span className="kpi-card__value" style={{ color: overAlloc.maxOverBy ? "var(--status-critical)" : undefined }}>
             {overAlloc.maxOverBy == null ? "—" : "+" + overAlloc.maxOverBy}
           </span>
         </div>
         <div className="kpi-card">
-          <span className="kpi-card__label">Avg. Utilisation</span>
-          <span className="kpi-card__value mono">{utilisation.averageUtilisationPct == null ? "—" : Math.round(utilisation.averageUtilisationPct) + "%"}</span>
+          <span className="kpi-card__label">Avg. utilisation</span>
+          <span className="kpi-card__value">{utilisation.averageUtilisationPct == null ? "—" : Math.round(utilisation.averageUtilisationPct) + "%"}</span>
         </div>
         <div className="kpi-card">
-          <span className="kpi-card__label">Demand vs Available</span>
-          <span className="kpi-card__value mono" style={{ color: utilisation.available && (utilisation.totalShortfallUnitDays || 0) > 0 ? "var(--status-critical)" : undefined }}>
+          <span className="kpi-card__label">Demand vs available</span>
+          <span className="kpi-card__value" style={{ color: utilisation.available && (utilisation.totalShortfallUnitDays || 0) > 0 ? "var(--status-critical)" : undefined }}>
             {utilisation.available ? utilisation.totalDemandUnitDays + " / " + utilisation.totalAvailableUnitDays + " unit-days" : "—"}
           </span>
         </div>
@@ -1072,7 +1073,7 @@ function LevelingTab({ data, levelingResourceId, onSelectResource, onChanged }: 
 
       {utilisation.available && (utilisation.totalShortfallUnitDays || 0) > 0 ? (
         <p style={{ fontSize: "var(--text-sm)", color: "var(--status-critical)", marginTop: -8, marginBottom: "var(--space-3)" }}>
-          Shortfall: {utilisation.totalShortfallUnitDays} unit-day(s) of demand exceed availability across this resource's active date range.
+          Shortfall: {plural(utilisation.totalShortfallUnitDays || 0, "unit-day")} of demand {utilisation.totalShortfallUnitDays === 1 ? "exceeds" : "exceed"} availability across this resource's active date range.
         </p>
       ) : null}
 
@@ -1084,26 +1085,26 @@ function LevelingTab({ data, levelingResourceId, onSelectResource, onChanged }: 
 
       {timeline.skippedCount > 0 ? (
         <p className="text-secondary" style={{ fontSize: "var(--text-sm)", marginBottom: "var(--space-3)" }}>
-          {timeline.skippedCount} assignment(s) excluded from this chart (milestone, undated, or zero-quantity activity).
+          {plural(timeline.skippedCount, "assignment")} excluded from this chart (milestone, undated, or zero-quantity activity).
         </p>
       ) : null}
 
-      <div className="panel" style={{ marginBottom: "var(--space-4)" }}>
+      <div className="panel panel--flat" style={{ marginBottom: "var(--space-4)" }}>
         <h4 style={{ marginBottom: "var(--space-2)" }}>Usage Histogram</h4>
         <Histogram timeline={timeline} maxAvailability={resource.max_availability} />
       </div>
 
-      <div className="panel" style={{ marginBottom: "var(--space-4)" }}>
+      <div className="panel panel--flat" style={{ marginBottom: "var(--space-4)" }}>
         <h4 style={{ marginBottom: "var(--space-2)" }}>Utilisation Trend</h4>
         <UtilisationTrend utilisation={utilisation} />
       </div>
 
       {resourceUnavailability.length > 0 ? (
-        <div className="panel" style={{ marginBottom: "var(--space-4)" }}>
+        <div className="panel panel--flat" style={{ marginBottom: "var(--space-4)" }}>
           <h4 style={{ marginBottom: "var(--space-2)" }}>Leave / Unavailable Periods ({resourceUnavailability.length})</h4>
           {resourceUnavailability.map((u) => (
             <p key={u.id} style={{ fontSize: "var(--text-sm)", margin: "var(--space-1) 0" }}>
-              {u.start_date} to {u.end_date} — {u.quantity} unavailable{u.reason ? " (" + u.reason + ")" : ""}
+              {formatDate(u.start_date)} to {formatDate(u.end_date)} —{u.quantity} unavailable{u.reason ? " (" + u.reason + ")" : ""}
             </p>
           ))}
         </div>
@@ -1111,11 +1112,11 @@ function LevelingTab({ data, levelingResourceId, onSelectResource, onChanged }: 
 
       {overAlloc.available && overAlloc.count > 0 ? (
         <>
-          <div className="panel">
+          <div className="panel panel--flat">
             <h4 style={{ marginBottom: "var(--space-2)" }}>Over-Allocated Days ({overAlloc.count})</h4>
             {overAlloc.overAllocatedDays.slice(0, 20).map((day, i) => (
               <div key={i} className="detail-card" style={{ marginBottom: "var(--space-2)" }}>
-                <strong>{day.date}</strong> — {day.allocated} needed vs {day.available} available (+{day.overBy})
+                <strong>{formatDate(day.date)}</strong> — {day.allocated} needed vs {day.available} available (+{day.overBy})
                 <br />
                 <span className="text-secondary" style={{ fontSize: "var(--text-12)" }}>
                   {day.contributors.map((c) => c.activityName + " (" + projectName(data.projects, c.projectId) + ", " + c.quantity + ")").join(", ")}
@@ -1124,7 +1125,7 @@ function LevelingTab({ data, levelingResourceId, onSelectResource, onChanged }: 
             ))}
             {overAlloc.count > 20 ? (
               <p className="text-secondary" style={{ fontSize: "var(--text-sm)" }}>
-                +{overAlloc.count - 20} more over-allocated day(s) not shown.
+                +{plural(overAlloc.count - 20, "more over-allocated day", "more over-allocated days")} not shown.
               </p>
             ) : null}
           </div>
@@ -1170,11 +1171,7 @@ export default function ResourcesPage({ initialTab, initialProjectFilter, initia
 
   return (
     <>
-      <h2 style={{ marginBottom: "var(--space-2)" }}>Resource Management</h2>
-      <p className="text-secondary" style={{ fontSize: "var(--text-sm)", marginBottom: "var(--space-4)" }}>
-        A shared resource pool assigned to Schedule activities across every project, with cross-project over-allocation, leave-adjusted availability, and
-        utilisation tracking. Quantity/availability only — no cost linkage.
-      </p>
+      <h2 style={{ marginBottom: "var(--space-4)" }}>Resource Management</h2>
 
       <div className="tab-bar">
         {[

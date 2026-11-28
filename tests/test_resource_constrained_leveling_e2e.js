@@ -133,7 +133,7 @@ function findButtonByText(win, text) {
     setReactSelectValue(win, resSelect, resourceId);
     await flush();
 
-    assert.ok(outlet().textContent.indexOf("Over-Allocated Days") !== -1, "expected a real over-allocation to be detected first");
+    assert.ok(outlet().textContent.indexOf("Over-allocated days") !== -1, "expected a real over-allocation to be detected first");
     findButtonByText(win, "Suggest Leveling").click();
     await flush();
 
@@ -182,7 +182,7 @@ function findButtonByText(win, text) {
     setReactSelectValue(win, resSelect, resourceId);
     await flush();
     var text = outlet().textContent;
-    assert.ok(text.indexOf("Over-Allocated Days0") !== -1, "the KPI card must now read 0 over-allocated days");
+    assert.ok(text.indexOf("Over-allocated days0") !== -1, "the KPI card must now read 0 over-allocated days");
     assert.ok(!/Over-Allocated Days \(/.test(text), "the detailed conflict panel (only rendered when count > 0) must be gone entirely");
   });
 
