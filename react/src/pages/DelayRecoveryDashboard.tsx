@@ -36,7 +36,7 @@ import {
   deleteDelayComment,
 } from "../services/delayRecoveryDashboardService";
 import type { PCCActivity, PCCProject, PCCRecoveryAction, PCCDelayRecord, PCCStoreData } from "../types/pcc";
-import { formatDateTime } from "../utils/localDate";
+import { formatDateTime, formatDate } from "../utils/localDate";
 
 function KpiCard({ label, value, colorVar }: { label: string; value: number | string; colorVar?: string | null }) {
   return (
@@ -88,7 +88,7 @@ function ActionRow({
         </p>
         <p className="text-secondary" style={{ fontSize: "var(--text-12)", margin: "4px 0 0" }}>
           {r.responsible_person ? r.responsible_person + " · " : ""}
-          {r.target_recovery_date ? "target " + r.target_recovery_date : "no target date"}
+          {r.target_recovery_date ? "target " + formatDate(r.target_recovery_date) : "no target date"}
           {r.estimated_recovery_days != null ? " · est. " + r.estimated_recovery_days + "d recovery" : ""}
           {fmtMoney(r.estimated_cost) != null ? " · est. cost " + fmtMoney(r.estimated_cost) : ""}
         </p>

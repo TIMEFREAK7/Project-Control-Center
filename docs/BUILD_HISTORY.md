@@ -6898,5 +6898,8 @@ the way the rest of the app does, puts the item type in its second line instead 
 note was dropped because the Cost Impact field already says "reference only"; the currency fix
 was done here rather than in its own gate.
 
-**Found, not fixed.** Meetings and Decisions rows still show dates as 2026-11-21; the heat map's
-cells can't be reached with the keyboard.
+**Fixed right after (same day, at Aditya's request).** Dates on Meetings and Decisions rows, and
+inside the details of RFIs, Change Orders, Decisions and Risks, now read like the rest of the
+app (15/11/2026, not 2026-11-15). The heat map's cells can be reached with the Tab key, pressed
+with Enter or Space, and read out by a screen reader ("High probability, high impact: 2
+entries").

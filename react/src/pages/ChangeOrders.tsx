@@ -46,6 +46,7 @@ import {
 import type { ActivityOption } from "../services/changeOrdersService";
 import type { PCCChangeOrder, PCCProject, PCCStoreData, PCCRfi, PCCRisk } from "../types/pcc";
 import { fuzzyMatch } from "../utils/fuzzyMatch";
+import { formatDate } from "../utils/localDate";
 import { RowMenu } from "../components/RowMenu";
 
 function ChangeOrderForm({
@@ -261,9 +262,9 @@ function ChangeOrderDetails({
 
   const fields = [
     { label: "Requested by", value: co.requested_by || "—" },
-    { label: "Date requested", value: co.date_requested || "—" },
+    { label: "Date requested", value: co.date_requested ? formatDate(co.date_requested) : "—" },
     { label: "Decision by", value: co.decision_by || "—" },
-    { label: "Date decided", value: co.date_decided || "—" },
+    { label: "Date decided", value: co.date_decided ? formatDate(co.date_decided) : "—" },
     { label: "Cost impact", value: costStr === null ? "— (not specified)" : costStr + " (reference only)" },
     { label: "Schedule impact", value: daysStr === null ? "— (not specified)" : daysStr },
     { label: "Description", value: co.description || "—", wide: true },
@@ -273,7 +274,7 @@ function ChangeOrderDetails({
   const links: { label: string; text: string; go: () => void }[] = [];
   if (co.source_meeting_id) {
     const m = data.meetings.find((x) => x.id === co.source_meeting_id);
-    if (m) links.push({ label: "Raised in meeting", text: m.title + " (" + m.meeting_date + ")", go: () => viewMeeting(m.id) });
+    if (m) links.push({ label: "Raised in meeting", text: m.title + " (" + formatDate(m.meeting_date) + ")", go: () => viewMeeting(m.id) });
   }
   if (co.source_rfi_id) {
     const r = data.rfis.find((x) => x.id === co.source_rfi_id);

@@ -786,8 +786,10 @@ Apply 7.2–7.4 and the "one primary action" rule. No new features, no moved dat
   heat map in the text face with token colours and no tint on empty cells, no instruction line;
   RFI overdue section flat, dates via `formatDate`; Delay & Recovery sections `.panel--flat`,
   figures out of `.mono`; Lookahead dates via `formatDate`, kind in the meta line instead of
-  "[Activity]", window buttons "7 days"… with `aria-pressed`. **Found, not fixed:** Meetings and
-  Decisions rows still show raw ISO dates; heat-map cells are clickable `div`s (no keyboard).
+  "[Activity]", window buttons "7 days"… with `aria-pressed`. **Follow-up fixed the same day:**
+  register rows, details and meeting links show dates via `formatDate` (Meetings, Decisions,
+  RFI, Change Orders, Risks, Delay & Recovery); heat-map cells are buttons (Tab, Enter/Space,
+  a name, `aria-pressed`, the app's focus ring).
   `styles.css` changed (heat map), so At a Glance was rebuilt: 6 of 8 shots byte-identical, dark
   Dashboard and My Work differ by a few PNG bytes with no visible change.
   New `test_registers_phase7.js` (3/28 on the old build).

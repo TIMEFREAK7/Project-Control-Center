@@ -56,6 +56,7 @@ import {
 import type { ActivityOption, LabeledOption } from "../services/meetingsService";
 import type { PCCMeeting, PCCMeetingAction, PCCMeetingRecording, PCCProject, PCCStoreData } from "../types/pcc";
 import { fuzzyMatch } from "../utils/fuzzyMatch";
+import { formatDate } from "../utils/localDate";
 import { RowMenu } from "../components/RowMenu";
 
 function ActionRow({
@@ -594,7 +595,7 @@ function MeetingEntry({
         <div className="project-card__main">
           <div className="project-card__name">{m.title || "(untitled)"}</div>
           <div className="project-card__meta">
-            {m.meeting_date} · {projectName(projects, m.project_id)}
+            {formatDate(m.meeting_date)} · {projectName(projects, m.project_id)}
           </div>
         </div>
         {overdue > 0 ? (
