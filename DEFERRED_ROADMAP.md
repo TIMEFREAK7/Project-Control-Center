@@ -775,8 +775,8 @@ Apply 7.2–7.4 and the "one primary action" rule. No new features, no moved dat
 - **7.5d Cost and supply:** Cost, Commitments, Resources, Vendors, Vendor Performance.
 - **7.5e Documents and system:** Documents, Document Types, Document Control, Storage,
   Daily Log, Lessons Learned, Knowledge Base, Reports (the screen), Settings.
-- **Status:** 7.5a done 2026-11-27 (Aditya signed off on the look); 7.5b built 2026-11-28,
-  waiting for Aditya's look sign-off; 7.5c–e open.
+- **Status:** 7.5a done 2026-11-27 (Aditya signed off on the look); 7.5b done 2026-11-28
+  (Aditya signed off on the look); 7.5c–e open.
   7.5b: toolbar = + New Schedule (only primary), Calculate Schedule, Import ▾ (Import Schedule,
   Edit Excel), Export ▾ (MS Project, P6), ⋯ (Save Baseline, Edit Schedule, AI summary, Delete).
   **Roadmap vs code:** Gantt colours were already tokens (no hex/rgb anywhere in the page); only
