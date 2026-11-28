@@ -244,7 +244,7 @@ function findButtonByText(dom, text) {
       return card ? card.querySelector(".kpi-card__value").textContent : undefined;
     }
     // Delay & Recovery Dashboard is a 7.5c page: its own labels are still uppercase here.
-    assert.strictEqual(kpiValue("UNADDRESSED DELAY (DAYS)"), "9");
+    assert.strictEqual(kpiValue("Unaddressed delay (days)"), "9");
 
     var text = outlet().textContent;
     assert.ok(text.indexOf("Activities With Unaddressed Delay (worst first)") !== -1);

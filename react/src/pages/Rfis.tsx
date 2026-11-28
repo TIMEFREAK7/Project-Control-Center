@@ -42,6 +42,8 @@ import {
 import type { FieldConfig, ActivityOption } from "../services/rfisService";
 import type { PCCRfi, PCCProject, PCCStoreData, PCCMeeting } from "../types/pcc";
 import { fuzzyMatch } from "../utils/fuzzyMatch";
+import { formatDate } from "../utils/localDate";
+import { RowMenu } from "../components/RowMenu";
 
 function RfiForm({
   isNew,
@@ -212,14 +214,14 @@ function RfiDetails({ r, data, onChanged }: { r: PCCRfi; data: PCCStoreData; onC
   const [draftNote, setDraftNote] = useState("");
 
   const fields = [
-    { label: "RAISED BY", value: r.raised_by || "—" },
-    { label: "ASSIGNED TO", value: r.assigned_to || "—" },
-    { label: "DATE RAISED", value: r.date_raised || "—" },
-    { label: "RESPONSE REQUIRED BY", value: r.date_required || "—" },
-    { label: "COST IMPACT", value: r.cost_impact ? "Yes" : "No" },
-    { label: "SCHEDULE IMPACT", value: r.schedule_impact ? "Yes" : "No" },
-    { label: "QUESTION / QUERY", value: r.question || "—", wide: true },
-    { label: "RESPONSE", value: r.response || "— (awaiting response)", wide: true },
+    { label: "Raised by", value: r.raised_by || "—" },
+    { label: "Assigned to", value: r.assigned_to || "—" },
+    { label: "Date raised", value: r.date_raised || "—" },
+    { label: "Response required by", value: r.date_required || "—" },
+    { label: "Cost impact", value: r.cost_impact ? "Yes" : "No" },
+    { label: "Schedule impact", value: r.schedule_impact ? "Yes" : "No" },
+    { label: "Question / query", value: r.question || "—", wide: true },
+    { label: "Response", value: r.response || "— (awaiting response)", wide: true },
   ];
 
   const sourceMeeting = r.source_meeting_id ? data.meetings.find((m) => m.id === r.source_meeting_id) : null;
@@ -253,7 +255,7 @@ function RfiDetails({ r, data, onChanged }: { r: PCCRfi; data: PCCStoreData; onC
               <div className="attention-item__text">
                 {sourceMeeting.title} ({sourceMeeting.meeting_date})
               </div>
-              <div className="attention-item__meta">RAISED IN MEETING</div>
+              <div className="attention-item__meta">Raised in meeting</div>
             </div>
           </div>
         </div>
@@ -268,7 +270,7 @@ function RfiDetails({ r, data, onChanged }: { r: PCCRfi; data: PCCStoreData; onC
             <span className="attention-item__icon attention-item__icon--info" />
             <div className="attention-item__body">
               <div className="attention-item__text">{linkedActivity.name}</div>
-              <div className="attention-item__meta">LINKED ACTIVITY</div>
+              <div className="attention-item__meta">Linked activity</div>
             </div>
           </div>
         </div>
@@ -293,7 +295,7 @@ function RfiDetails({ r, data, onChanged }: { r: PCCRfi; data: PCCStoreData; onC
 
       <div style={{ marginTop: "var(--space-4)", paddingTop: "var(--space-3)", borderTop: "1px solid var(--divider)" }}>
         <p className="detail-item__label" style={{ marginBottom: "var(--space-2)" }}>
-          REVISION HISTORY ({r.revisions.length})
+          Revision history ({r.revisions.length})
         </p>
         {r.revisions.length === 0 ? (
           <p className="text-secondary" style={{ fontSize: "var(--text-sm)", margin: "0 0 var(--space-2)" }}>
@@ -394,15 +396,7 @@ function RfiEntry({
           <button className="btn btn--ghost" onClick={onToggleDetails}>
             {expanded ? "Hide" : "Details"}
           </button>
-          <button className="btn btn--ghost" onClick={onEdit}>
-            Edit
-          </button>
-          <button className="btn btn--ghost" onClick={onClone}>
-            Clone
-          </button>
-          <button className="btn btn--ghost" onClick={onDelete}>
-            Delete
-          </button>
+          <RowMenu onEdit={onEdit} onClone={onClone} onDelete={onDelete} />
         </div>
       </div>
       {expanded ? <RfiDetails r={r} data={data} onChanged={onChanged} /> : null}
@@ -415,19 +409,19 @@ function OverduePanel({ rfis, projects }: { rfis: PCCRfi[]; projects: PCCProject
   if (overdueItems.length === 0) return null;
 
   return (
-    <div className="panel" style={{ marginBottom: "var(--space-4)", borderColor: "var(--status-critical)" }}>
-      <h3 style={{ marginBottom: "var(--space-2)", color: "var(--status-critical)" }}>
+    <div className="panel panel--flat" style={{ marginBottom: "var(--space-4)" }}>
+      <h3 style={{ marginBottom: "var(--space-2)" }}>
         Overdue RFIs / Technical Queries ({overdueItems.length})
       </h3>
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
         {overdueItems.slice(0, 8).map((r) => (
-          <div key={r.id} style={{ fontSize: "var(--text-sm)", display: "flex", justifyContent: "space-between" }}>
+          <div key={r.id} style={{ fontSize: "var(--text-sm)", display: "flex", justifyContent: "space-between", gap: "var(--space-3)" }}>
             <span>
               <span className="mono">{r.number}</span> — {r.subject || "(untitled)"}{" "}
               <span className="text-secondary">({projectName(projects, r.project_id)})</span>
             </span>
-            <span className="mono" style={{ color: "var(--status-critical)" }}>
-              {r.date_required}
+            <span style={{ color: "var(--status-critical)", whiteSpace: "nowrap" }}>
+              {formatDate(r.date_required)}
             </span>
           </div>
         ))}
@@ -627,8 +621,17 @@ export default function RfisPage({
             {data.rfis.length === 0
               ? projects.filter((p) => !p.archived).length === 0
                 ? "Add a project in Portfolio first, then log RFIs and Technical Queries against it."
-                : "No entries yet. Click “+ Add RFI / TQ” to log your first one."
+                : "No RFIs or technical queries yet."
               : "No entries match this search/filter."}
+            {data.rfis.length === 0 && projects.filter((p) => !p.archived).length === 0 ? (
+              <button className="btn btn--ghost empty-state__action" onClick={() => window.PCC.router.go("portfolio")}>
+                Go to Portfolio
+              </button>
+            ) : data.rfis.length === 0 ? (
+              <button className="btn btn--ghost empty-state__action" onClick={handleAdd}>
+                + Add RFI / TQ
+              </button>
+            ) : null}
           </div>
         ) : (
           <div className="project-list">

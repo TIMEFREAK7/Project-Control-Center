@@ -9,10 +9,11 @@ it (and a zip) to Aditya directly after every major upgrade, not just committing
 
 - `main` has every gate through 7.5b (Aditya approved the look; zip
   `scratch/pcc-7.5b-zip/Project-Control-Center-2026-11-28-7.5b.zip`, verified from a fresh
-  extraction in Chromium). Branch `gate-7.5c` is cut from `main`, no changes yet. Schema **67**. 142 test files
+  extraction in Chromium). Gate 7.5c is built on branch `gate-7.5c`, waiting for Aditya to
+  approve the look; then merge, zip, push. Schema **67**. 143 test files
   (`cd tests && npm test`), green in UTC and IST. Windows installer builds natively on this PC
   (1.10.0 last built).
-- Next in `DEFERRED_ROADMAP.md` after 7.5b: Gate 7.5c (Registers page pass). Features track: 1.1.
+- Next in `DEFERRED_ROADMAP.md` after 7.5c: Gate 7.5d (Cost and supply page pass). Features track: 1.1.
 - Waiting on Aditya: Gate 0.1 (phone check of At a Glance 1.9 + predictive back) and the real
   Storage Management → App data reading (decides Gate 6.2).
 - Docs layout since Gate 6.3: `CLAUDE.md` = rules (10.5 KB); `docs/GOTCHAS.md` = the old
@@ -40,6 +41,33 @@ it (and a zip) to Aditya directly after every major upgrade, not just committing
 - Open small items: Dashboard's own 7 phone filters stack (Portfolio's `.filter-fold` would fix
   it); Executive Center's "INR 42,00,00,000" wraps in its KPI tile; title still truncates for
   the 4 longest page names at 360 px.
+
+## 2026-11-28 — Gate 7.5c: Registers page pass
+
+- Seven pages: Risk Register, RFI / TQ, Change Management, Decision Register, Meetings, Delay &
+  Recovery Dashboard, Project Lookahead.
+- Rows: new shared `react/src/components/RowMenu.tsx` (first file in `components/`): Details
+  stays, Edit / Clone / Delete in "⋯" on RFI, Change Orders, Decisions, Meetings (no Clone).
+- Copy: ~40 capitalised labels → sentence case (`scratch/pcc-7.5c/label-case.js`,
+  `jsx-labels.js`, map in `label-map.json`); title sentences removed on Change Management,
+  Delay & Recovery (both branches) and Lookahead; empty states with actions.
+- Change Orders: `changeOrdersService.formatMoney(amount, currency)` + `projectCurrency()`.
+- Heat map (`styles.css`): text face + tabular numerals, `color-mix()` on status tokens,
+  `.heatmap-cell--empty` (no tint), no instruction line (the "Reflects the current … filters"
+  note stays when narrowed; a test reads it).
+- RFI overdue section flat, heading not red, dates via `formatDate`. Delay & Recovery: all
+  section wrappers `.panel--flat`, KPI values off `.mono`. Lookahead: `formatDate`, kind in the
+  meta line, "7 days"… with `aria-pressed`.
+- Tests: new `test_registers_phase7.js` (3/28 on the old build, 28/28 now); new
+  `tests/rowMenu.js` (`openRowMenu`); 11 older tests updated (labels via
+  `scratch/pcc-7.5c/relabel-tests.js`, row menus, Lookahead strings).
+- Chromium: 28 shots of the seven pages with every page seeded (`scratch/pcc-7.5c/reg-shots.js`;
+  the shots.js seed leaves four of them empty), both themes and sizes: 0 console errors, 0
+  contrast failures, no sideways scroll. Sheets: `scratch/pcc-7.5c/sheets/`.
+- Mirror rebuilt from a C: copy (`scratch/pcc-7.5c/build-mirror.ps1`), 682.4 → 682.8 KB: 6 of 8
+  tab shots byte-identical; dark Dashboard and My Work differ by 3–4 PNG bytes with no visible
+  change (old build self-compare is 8/8, so it's real but tiny; not measured per pixel).
+- Found, not fixed: raw ISO dates on Meetings/Decisions rows; heat-map cells not keyboard-reachable.
 
 ## 2026-11-28 — Gate 7.5b: Schedule page pass
 

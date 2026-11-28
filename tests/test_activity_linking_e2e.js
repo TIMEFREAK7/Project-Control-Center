@@ -224,10 +224,10 @@ function findButtonByText(dom, text) {
     detailsBtn.click();
     await flush();
     var outlet = win.document.getElementById("page-outlet");
-    assert.ok(outlet.textContent.indexOf("LINKED ACTIVITY") !== -1, "risk details should show the linked activity");
+    assert.ok(outlet.textContent.indexOf("Linked activity") !== -1, "risk details should show the linked activity");
     // Redesign Gate 10: retrofitted onto .attention-list/.attention-item — the whole
     // row is the click target now, no separate "View in Gantt" button.
-    var viewRow = Array.from(outlet.querySelectorAll(".attention-item--clickable")).find((r) => r.textContent.indexOf("LINKED ACTIVITY") !== -1);
+    var viewRow = Array.from(outlet.querySelectorAll(".attention-item--clickable")).find((r) => r.textContent.indexOf("Linked activity") !== -1);
     assert.ok(viewRow, "linked-activity row not found");
     // Deliberately no extra win.PCC.router.render() call here — the row's onclick
     // already calls window.PCC.schedule.viewActivity() + router.go("schedule"), and
@@ -281,7 +281,7 @@ function findButtonByText(dom, text) {
     assert.strictEqual(win.PCC.router.currentRouteName(), "rfis");
     var outlet2 = win.document.getElementById("page-outlet");
     assert.ok(outlet2.textContent.indexOf("Beam Spec") !== -1);
-    assert.ok(outlet2.textContent.indexOf("LINKED ACTIVITY") !== -1, "RFI details should be expanded and show its own linked-activity row");
+    assert.ok(outlet2.textContent.indexOf("Linked activity") !== -1, "RFI details should be expanded and show its own linked-activity row");
     assert.ok(outlet2.textContent.indexOf("Pour Foundation") !== -1);
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });

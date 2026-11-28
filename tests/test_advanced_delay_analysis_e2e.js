@@ -252,10 +252,10 @@ function setReactTextareaValue(win, el, value) {
       var card = kpiCards.find((c) => c.textContent.indexOf(label) !== -1);
       return card ? card.querySelector(".kpi-card__value").textContent : undefined;
     }
-    assert.strictEqual(kpiValue("DELAY RECORDS"), "1");
-    assert.strictEqual(kpiValue("TOTAL DELAY DAYS"), "10");
-    assert.strictEqual(kpiValue("EXCUSABLE"), "1");
-    assert.strictEqual(kpiValue("NON-EXCUSABLE"), "0");
+    assert.strictEqual(kpiValue("Delay records"), "1");
+    assert.strictEqual(kpiValue("Total delay days"), "10");
+    assert.strictEqual(kpiValue("Excusable"), "1");
+    assert.strictEqual(kpiValue("Non-excusable"), "0");
 
     var text = outlet().textContent;
     assert.ok(text.indexOf("By cause:") !== -1 && text.indexOf("Contractor-Caused (1)") !== -1);

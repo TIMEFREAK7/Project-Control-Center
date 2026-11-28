@@ -6879,3 +6879,24 @@ never recalculated the critical path. A test now makes sure it never does.
 **Found in the browser check.** On a phone, the Import and "⋯" menus opened off the left edge
 of the screen, because the toolbar wraps those buttons to the left. They now open toward
 whichever side has room.
+
+## Gate 7.5c: the Registers (2026-11-28)
+
+**What changed for Aditya.** Risk Register, RFI / TQ, Change Management, Decision Register,
+Meetings, Delay & Recovery and Project Lookahead now follow the same rules as the other pages.
+Each row shows "Details" and a "⋯" menu (Edit, Clone, Delete) instead of four buttons, so the
+RFI page went from 17 buttons to 9 with the test data. Labels inside the details are in normal
+case instead of capitals. The explanatory sentences under three page titles are gone. Empty
+pages offer the button that fills them. Change Orders now show the project's currency
+("+INR 38,50,000" instead of "+38,50,000"). The risk heat map uses the normal text font, and
+empty cells are no longer tinted, so the cells that hold risks stand out. The overdue RFI list
+and the Delay & Recovery sections sit on the page instead of in boxes. The Lookahead shows dates
+the way the rest of the app does, puts the item type in its second line instead of a
+"[Activity]" tag, and its window buttons read "7 days", "14 days" and so on.
+
+**Decided along the way (Aditya).** Row actions go into "⋯" like Risks; the Change Management
+note was dropped because the Cost Impact field already says "reference only"; the currency fix
+was done here rather than in its own gate.
+
+**Found, not fixed.** Meetings and Decisions rows still show dates as 2026-11-21; the heat map's
+cells can't be reached with the keyboard.

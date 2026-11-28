@@ -11,6 +11,7 @@ const path = require("path");
 const assert = require("assert");
 const { JSDOM } = require("jsdom");
 const FDBFactory = require("fake-indexeddb/lib/FDBFactory");
+const { openRowMenu } = require("./rowMenu");
 
 const INDEX_PATH = path.join(__dirname, "..", "index.html");
 
@@ -239,6 +240,7 @@ function addDaysIso(days) {
     // and after the click (its state update commits asynchronously) — see CLAUDE.md's
     // React migration notes.
     await flush();
+    await openRowMenu(outlet(), 0);
     var rfiEdit = Array.from(outlet().querySelectorAll("button")).find((b) => b.textContent.trim() === "Edit");
     assert.ok(rfiEdit, "no Edit button found on the seeded RFI");
     rfiEdit.click();
@@ -254,6 +256,7 @@ function addDaysIso(days) {
     // render() pair) and after the click (its state update commits asynchronously) —
     // see CLAUDE.md's React migration notes.
     await flush();
+    await openRowMenu(outlet(), 0);
     var coEdit = Array.from(outlet().querySelectorAll("button")).find((b) => b.textContent.trim() === "Edit");
     assert.ok(coEdit, "no Edit button found on a seeded Change Order");
     coEdit.click();
@@ -268,6 +271,7 @@ function addDaysIso(days) {
     // render() pair) and again after the click (its state update commits
     // asynchronously) — see CLAUDE.md's React migration notes.
     await flush();
+    await openRowMenu(outlet(), 0);
     var decEdit = Array.from(outlet().querySelectorAll("button")).find((b) => b.textContent.trim() === "Edit");
     assert.ok(decEdit, "no Edit button found on the seeded Decision");
     decEdit.click();

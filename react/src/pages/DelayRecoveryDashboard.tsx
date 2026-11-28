@@ -42,7 +42,7 @@ function KpiCard({ label, value, colorVar }: { label: string; value: number | st
   return (
     <div className="kpi-card">
       <span className="kpi-card__label">{label}</span>
-      <span className="kpi-card__value mono" style={colorVar ? { color: "var(" + colorVar + ")" } : undefined}>
+      <span className="kpi-card__value" style={colorVar ? { color: "var(" + colorVar + ")" } : undefined}>
         {value}
       </span>
     </div>
@@ -329,20 +329,17 @@ export default function DelayRecoveryDashboardPage() {
   if (actions.length === 0 && delayRecords.length === 0) {
     return (
       <>
-        <h2 style={{ marginBottom: 4 }}>Delay & Recovery Dashboard</h2>
-        <p className="text-secondary" style={{ marginTop: 0, marginBottom: 24 }}>
-          Nothing logged across the active portfolio yet — add a recovery action or delay record from an activity's own Detail
-          Panel in the Schedule module (Gantt tab).
-        </p>
+        <h2 style={{ marginBottom: 16 }}>Delay & Recovery Dashboard</h2>
         <div className="panel empty-state">
-          Nothing to show yet. Once activities have recovery actions or delay records logged against them, this dashboard will
-          roll them up.
+          Nothing to show yet. Delays and recovery actions are logged from an activity's Detail Panel on the Schedule's Gantt tab.
+          <button className="btn btn--ghost empty-state__action" onClick={() => window.PCC.router.go("schedule")}>
+            Go to Schedule
+          </button>
         </div>
       </>
     );
   }
 
-  const activeCount = Object.keys(activeProjectIds).length;
 
   let delaySection = null;
   if (delayRecords.length > 0) {
@@ -406,13 +403,13 @@ export default function DelayRecoveryDashboardPage() {
     delaySection = (
       <>
         <div className="kpi-grid">
-          <KpiCard label="DELAY RECORDS" value={delayRecords.length} />
-          <KpiCard label="TOTAL DELAY DAYS" value={totalDelayDays} colorVar={totalDelayDays > 0 ? "--status-critical" : null} />
-          <KpiCard label="EXCUSABLE" value={excusableCount} />
-          <KpiCard label="NON-EXCUSABLE" value={delayRecords.length - excusableCount} />
+          <KpiCard label="Delay records" value={delayRecords.length} />
+          <KpiCard label="Total delay days" value={totalDelayDays} colorVar={totalDelayDays > 0 ? "--status-critical" : null} />
+          <KpiCard label="Excusable" value={excusableCount} />
+          <KpiCard label="Non-excusable" value={delayRecords.length - excusableCount} />
         </div>
 
-        <div className="panel" style={{ marginTop: 16 }}>
+        <div className="panel panel--flat" style={{ marginTop: 16 }}>
           <h3 style={{ marginBottom: 8 }}>Delay Analysis — by Cause and Severity</h3>
           <p style={{ fontSize: "var(--text-sm)", marginBottom: 8 }}>
             <strong>By cause:</strong>{" "}
@@ -430,7 +427,7 @@ export default function DelayRecoveryDashboardPage() {
           </p>
         </div>
 
-        <div className="panel" style={{ marginTop: 16 }}>
+        <div className="panel panel--flat" style={{ marginTop: 16 }}>
           <h3 style={{ marginBottom: 8 }}>Delay Analytics — Status, Category, Responsibility &amp; Criticality</h3>
           <AnalyticsLine label="By status" orderedKeys={delayRecordStatuses()} counts={byStatus} labelMap={DELAY_STATUS_LABELS} />
           <AnalyticsLine label="By category" orderedKeys={delayCategories()} counts={byCategory} labelMap={DELAY_CATEGORY_LABELS} />
@@ -449,7 +446,7 @@ export default function DelayRecoveryDashboardPage() {
           />
         </div>
 
-        <div className="panel" style={{ marginTop: 16 }}>
+        <div className="panel panel--flat" style={{ marginTop: 16 }}>
           <h3 style={{ marginBottom: 8 }}>Delay Records (worst first)</h3>
           <div className="toolbar no-print" style={{ marginBottom: 8 }}>
             <select aria-label="Filter by status" value={registerStatusFilter} onChange={(e) => setRegisterStatusFilter(e.target.value)}>
@@ -473,11 +470,11 @@ export default function DelayRecoveryDashboardPage() {
         </div>
 
         <div className="kpi-grid" style={{ marginTop: 12 }}>
-          <KpiCard label="UNADDRESSED DELAY (DAYS)" value={totalUnaddressedGapDays} colorVar={totalUnaddressedGapDays > 0 ? "--status-critical" : null} />
+          <KpiCard label="Unaddressed delay (days)" value={totalUnaddressedGapDays} colorVar={totalUnaddressedGapDays > 0 ? "--status-critical" : null} />
         </div>
 
         {gapActivities.length > 0 ? (
-          <div className="panel" style={{ marginTop: 16 }}>
+          <div className="panel panel--flat" style={{ marginTop: 16 }}>
             <h3 style={{ marginBottom: 8 }}>Activities With Unaddressed Delay (worst first)</h3>
             {gapActivities.map((g, i) => (
               <GapRow key={g.activity ? g.activity.id : i} g={g} />
@@ -493,11 +490,7 @@ export default function DelayRecoveryDashboardPage() {
   if (actions.length === 0) {
     return (
       <>
-        <h2 style={{ marginBottom: 4 }}>Delay & Recovery Dashboard</h2>
-        <p className="text-secondary" style={{ marginTop: 0, marginBottom: 24 }}>
-          Portfolio-wide recovery actions and delay records across {activeCount} active project{activeCount === 1 ? "" : "s"}.
-          Finish-variance/float-erosion analysis itself stays in each schedule's own Baselines tab.
-        </p>
+        <h2 style={{ marginBottom: 16 }}>Delay & Recovery Dashboard</h2>
         {delaySection}
         <div className="panel empty-state">No recovery actions logged across the active portfolio yet.</div>
       </>
@@ -524,29 +517,25 @@ export default function DelayRecoveryDashboardPage() {
 
   return (
     <>
-      <h2 style={{ marginBottom: 4 }}>Delay & Recovery Dashboard</h2>
-      <p className="text-secondary" style={{ marginTop: 0, marginBottom: 24 }}>
-        Portfolio-wide recovery actions and delay records across {activeCount} active project{activeCount === 1 ? "" : "s"}.
-        Finish-variance/float-erosion analysis itself stays in each schedule's own Baselines tab.
-      </p>
+      <h2 style={{ marginBottom: 16 }}>Delay & Recovery Dashboard</h2>
 
       {delaySection}
 
       <div className="kpi-grid">
-        <KpiCard label="TOTAL RECOVERY ACTIONS" value={actions.length} />
-        <KpiCard label="OPEN" value={open.length} />
-        <KpiCard label="OVERDUE" value={overdueCount} colorVar={overdueCount > 0 ? "--status-critical" : null} />
-        <KpiCard label="COMPLETED" value={actions.filter((r) => r.status === "completed").length} />
+        <KpiCard label="Total recovery actions" value={actions.length} />
+        <KpiCard label="Open" value={open.length} />
+        <KpiCard label="Overdue" value={overdueCount} colorVar={overdueCount > 0 ? "--status-critical" : null} />
+        <KpiCard label="Completed" value={actions.filter((r) => r.status === "completed").length} />
       </div>
 
       {estDaysTotal > 0 || estCostTotal > 0 ? (
         <div className="kpi-grid" style={{ marginTop: 12 }}>
-          <KpiCard label="EST. RECOVERY DAYS (OPEN)" value={estDaysTotal} />
-          <KpiCard label="EST. RECOVERY COST (OPEN)" value={fmtMoney(estCostTotal) || "0"} />
+          <KpiCard label="Est. recovery days (open)" value={estDaysTotal} />
+          <KpiCard label="Est. recovery cost (open)" value={fmtMoney(estCostTotal) || "0"} />
         </div>
       ) : null}
 
-      <div className="panel" style={{ marginTop: 16 }}>
+      <div className="panel panel--flat" style={{ marginTop: 16 }}>
         <h3 style={{ marginBottom: 8 }}>Open Recovery Actions (overdue first)</h3>
         {openSorted.length === 0 ? (
           <p className="text-secondary" style={{ fontSize: "var(--text-sm)" }}>
@@ -559,7 +548,7 @@ export default function DelayRecoveryDashboardPage() {
         )}
       </div>
 
-      <div className="panel" style={{ marginTop: 16 }}>
+      <div className="panel panel--flat" style={{ marginTop: 16 }}>
         <h3 style={{ marginBottom: 8 }}>Completed / Cancelled ({closed.length})</h3>
         {closed.length === 0 ? (
           <p className="text-secondary" style={{ fontSize: "var(--text-sm)" }}>

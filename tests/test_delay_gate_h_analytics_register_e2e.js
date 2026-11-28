@@ -182,7 +182,7 @@ function todayPlusDays(days) {
     var text = outlet().textContent;
     assert.ok(text.indexOf("By cause:") !== -1);
     assert.ok(text.indexOf("By severity:") !== -1);
-    assert.strictEqual(kpiValue(dom, "DELAY RECORDS"), "3");
+    assert.strictEqual(kpiValue(dom, "Delay records"), "3");
   });
 
   await check("the Delay Register list shows all three rows by default, each with its own Status/Category/Responsibility/Criticality line", () => {
@@ -209,7 +209,7 @@ function todayPlusDays(days) {
     assert.ok(text.indexOf("Steel delivery delayed") === -1, "the investigating delay must be filtered out");
     assert.ok(text.indexOf("Client instruction pending, no activity yet") === -1, "the open delay must be filtered out");
     // KPIs and both breakdown panels stay computed over the full unfiltered set.
-    assert.strictEqual(kpiValue(dom, "DELAY RECORDS"), "3");
+    assert.strictEqual(kpiValue(dom, "Delay records"), "3");
     assert.ok(text.indexOf("Under Investigation (1)") !== -1, "the status breakdown above the list must stay unfiltered");
     assert.strictEqual(thrownErrors.length, 0, "window.onerror captured: " + thrownErrors.join(" | "));
   });

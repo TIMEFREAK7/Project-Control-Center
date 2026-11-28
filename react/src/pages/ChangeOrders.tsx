@@ -24,6 +24,7 @@ import {
   getData,
   projectName,
   formatMoney,
+  projectCurrency,
   formatDays,
   statusBadgeClass,
   sourceOptionsFor,
@@ -45,6 +46,7 @@ import {
 import type { ActivityOption } from "../services/changeOrdersService";
 import type { PCCChangeOrder, PCCProject, PCCStoreData, PCCRfi, PCCRisk } from "../types/pcc";
 import { fuzzyMatch } from "../utils/fuzzyMatch";
+import { RowMenu } from "../components/RowMenu";
 
 function ChangeOrderForm({
   isNew,
@@ -254,38 +256,38 @@ function ChangeOrderDetails({
   const [draftAuthor, setDraftAuthor] = useState("");
   const [draftNote, setDraftNote] = useState("");
 
-  const costStr = formatMoney(co.cost_impact_amount);
+  const costStr = formatMoney(co.cost_impact_amount, projectCurrency(data.projects, co.project_id));
   const daysStr = formatDays(co.schedule_impact_days);
 
   const fields = [
-    { label: "REQUESTED BY", value: co.requested_by || "—" },
-    { label: "DATE REQUESTED", value: co.date_requested || "—" },
-    { label: "DECISION BY", value: co.decision_by || "—" },
-    { label: "DATE DECIDED", value: co.date_decided || "—" },
-    { label: "COST IMPACT", value: costStr === null ? "— (not specified)" : costStr + " (reference only)" },
-    { label: "SCHEDULE IMPACT", value: daysStr === null ? "— (not specified)" : daysStr },
-    { label: "DESCRIPTION", value: co.description || "—", wide: true },
-    { label: "JUSTIFICATION", value: co.justification || "—", wide: true },
+    { label: "Requested by", value: co.requested_by || "—" },
+    { label: "Date requested", value: co.date_requested || "—" },
+    { label: "Decision by", value: co.decision_by || "—" },
+    { label: "Date decided", value: co.date_decided || "—" },
+    { label: "Cost impact", value: costStr === null ? "— (not specified)" : costStr + " (reference only)" },
+    { label: "Schedule impact", value: daysStr === null ? "— (not specified)" : daysStr },
+    { label: "Description", value: co.description || "—", wide: true },
+    { label: "Justification", value: co.justification || "—", wide: true },
   ];
 
   const links: { label: string; text: string; go: () => void }[] = [];
   if (co.source_meeting_id) {
     const m = data.meetings.find((x) => x.id === co.source_meeting_id);
-    if (m) links.push({ label: "RAISED IN MEETING", text: m.title + " (" + m.meeting_date + ")", go: () => viewMeeting(m.id) });
+    if (m) links.push({ label: "Raised in meeting", text: m.title + " (" + m.meeting_date + ")", go: () => viewMeeting(m.id) });
   }
   if (co.source_rfi_id) {
     const r = data.rfis.find((x) => x.id === co.source_rfi_id);
-    if (r) links.push({ label: "SOURCE RFI / TQ", text: r.number + " — " + (r.subject || "(untitled)"), go: () => viewRfi(r.id) });
+    if (r) links.push({ label: "Source RFI / TQ", text: r.number + " — " + (r.subject || "(untitled)"), go: () => viewRfi(r.id) });
   }
   if (co.source_risk_id) {
     const risk = data.risks.find((x) => x.id === co.source_risk_id);
-    if (risk) links.push({ label: "SOURCE RISK / ISSUE", text: risk.title || "(untitled)", go: () => viewRisk(risk.id) });
+    if (risk) links.push({ label: "Source risk / issue", text: risk.title || "(untitled)", go: () => viewRisk(risk.id) });
   }
   if (co.activity_id) {
     const linkedActivity = data.activities.find((x) => x.id === co.activity_id);
     if (linkedActivity) {
       links.push({
-        label: "LINKED ACTIVITY",
+        label: "Linked activity",
         text: linkedActivity.name || "(unnamed activity)",
         go: () => viewActivityInSchedule(co.project_id, linkedActivity.schedule_id, linkedActivity.id),
       });
@@ -329,7 +331,7 @@ function ChangeOrderDetails({
 
       <div style={{ marginTop: 14, paddingTop: 10, borderTop: "1px solid var(--divider)" }}>
         <p className="detail-item__label" style={{ marginBottom: 6 }}>
-          APPROVAL / DECISION HISTORY ({co.revisions.length})
+          Approval / decision history ({co.revisions.length})
         </p>
         {co.revisions.length === 0 ? (
           <p className="text-secondary" style={{ fontSize: "var(--text-13)", margin: "0 0 8px" }}>
@@ -404,7 +406,7 @@ function CoEntry({
   onDelete: () => void;
   onChanged: () => void;
 }) {
-  const costStr = formatMoney(co.cost_impact_amount);
+  const costStr = formatMoney(co.cost_impact_amount, projectCurrency(projects, co.project_id));
   const daysStr = formatDays(co.schedule_impact_days);
 
   return (
@@ -439,15 +441,7 @@ function CoEntry({
           <button className="btn btn--ghost" onClick={onToggleDetails}>
             {expanded ? "Hide" : "Details"}
           </button>
-          <button className="btn btn--ghost" onClick={onEdit}>
-            Edit
-          </button>
-          <button className="btn btn--ghost" onClick={onClone}>
-            Clone
-          </button>
-          <button className="btn btn--ghost" onClick={onDelete}>
-            Delete
-          </button>
+          <RowMenu onEdit={onEdit} onClone={onClone} onDelete={onDelete} />
         </div>
       </div>
       {expanded ? <ChangeOrderDetails co={co} data={data} onChanged={onChanged} /> : null}
@@ -556,9 +550,6 @@ export default function ChangeOrdersPage({
   return (
     <>
       <h2 style={{ marginBottom: 16 }}>Change Management</h2>
-      <p className="text-secondary" style={{ fontSize: "var(--text-12)", marginTop: -10, marginBottom: 14 }}>
-        Cost and schedule impact are tracked for reference only — they don't change a project's contract value in Portfolio automatically.
-      </p>
 
       {coBeingEdited ? (
         <ChangeOrderForm
@@ -631,8 +622,17 @@ export default function ChangeOrdersPage({
             {data.change_orders.length === 0
               ? projects.filter((p) => !p.archived).length === 0
                 ? "Add a project in Portfolio first, then log Change Orders against it."
-                : "No Change Orders yet. Click “+ Add Change Order” to log your first one."
+                : "No Change Orders yet."
               : "No entries match this search/filter."}
+            {data.change_orders.length === 0 && projects.filter((p) => !p.archived).length === 0 ? (
+              <button className="btn btn--ghost empty-state__action" onClick={() => window.PCC.router.go("portfolio")}>
+                Go to Portfolio
+              </button>
+            ) : data.change_orders.length === 0 ? (
+              <button className="btn btn--ghost empty-state__action" onClick={handleAdd}>
+                + Add Change Order
+              </button>
+            ) : null}
           </div>
         ) : (
           <div className="project-list">

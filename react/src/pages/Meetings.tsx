@@ -56,6 +56,7 @@ import {
 import type { ActivityOption, LabeledOption } from "../services/meetingsService";
 import type { PCCMeeting, PCCMeetingAction, PCCMeetingRecording, PCCProject, PCCStoreData } from "../types/pcc";
 import { fuzzyMatch } from "../utils/fuzzyMatch";
+import { RowMenu } from "../components/RowMenu";
 
 function ActionRow({
   action,
@@ -379,15 +380,15 @@ function MeetingDetails({ m, data, projects }: { m: PCCMeeting; data: PCCStoreDa
     <div className="project-details">
       <div className="detail-grid">
         <div>
-          <span className="detail-item__label">ATTENDEES</span>
+          <span className="detail-item__label">Attendees</span>
           <span className="detail-item__value">{m.attendees || "—"}</span>
         </div>
         <div style={{ gridColumn: "1 / -1" }}>
-          <span className="detail-item__label">AGENDA</span>
+          <span className="detail-item__label">Agenda</span>
           <span className="detail-item__value">{m.agenda || "—"}</span>
         </div>
         <div style={{ gridColumn: "1 / -1" }}>
-          <span className="detail-item__label">MINUTES</span>
+          <span className="detail-item__label">Minutes</span>
           <span className="detail-item__value">{m.minutes || "—"}</span>
         </div>
       </div>
@@ -401,7 +402,7 @@ function MeetingDetails({ m, data, projects }: { m: PCCMeeting; data: PCCStoreDa
             <span className="attention-item__icon attention-item__icon--info" />
             <div className="attention-item__body">
               <div className="attention-item__text">{linkedActivity.name}</div>
-              <div className="attention-item__meta">LINKED ACTIVITY</div>
+              <div className="attention-item__meta">Linked activity</div>
             </div>
           </div>
         </div>
@@ -609,12 +610,7 @@ function MeetingEntry({
           <button className="btn btn--ghost" onClick={onToggleDetails}>
             {expanded ? "Hide" : "Details"}
           </button>
-          <button className="btn btn--ghost" onClick={onEdit}>
-            Edit
-          </button>
-          <button className="btn btn--ghost" onClick={onDelete}>
-            Delete
-          </button>
+          <RowMenu onEdit={onEdit} onDelete={onDelete} />
         </div>
       </div>
       {expanded ? <MeetingDetails m={m} data={data} projects={projects} /> : null}
@@ -752,9 +748,18 @@ export default function MeetingsPage({
           <div className="panel empty-state">
             {data.meetings.length === 0
               ? hasActiveProjects
-                ? "No meetings logged yet. Click “+ Add Meeting” to start."
+                ? "No meetings logged yet."
                 : "Add a project in Portfolio first, then log meetings against it."
               : "No meetings match this search/filter."}
+            {data.meetings.length === 0 && !hasActiveProjects ? (
+              <button className="btn btn--ghost empty-state__action" onClick={() => window.PCC.router.go("portfolio")}>
+                Go to Portfolio
+              </button>
+            ) : data.meetings.length === 0 ? (
+              <button className="btn btn--ghost empty-state__action" onClick={() => setEditingId("new")}>
+                + Add Meeting
+              </button>
+            ) : null}
           </div>
         ) : (
           <div className="project-list">

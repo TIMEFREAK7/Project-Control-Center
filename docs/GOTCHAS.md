@@ -907,3 +907,13 @@ opens it first (a no-op when the button is already showing). A newly moved butto
 `MENU_OF` entry. Also: a right-anchored dropdown runs off the left edge when the phone toolbar
 wraps a toggle to the left, so Schedule's menus open toward the side with room (`dropdownStyle`
 in `Schedule.tsx`, inline so `styles.css` and At a Glance stay unchanged).
+
+## Register row menus (Gate 7.5c, 2026-11-28)
+
+RFI / TQ, Change Orders, Decisions and Meetings showed Details, Edit, Clone and Delete as four
+loose buttons per row (24 on RFI with three projects). Gate 7.5c moved Edit / Clone / Delete into
+a shared `RowMenu` (`react/src/components/RowMenu.tsx`), the same "⋯" markup Risks already used.
+Its items render only while it is open, so tests that found the first "Edit" or "Delete" on the
+page now call `openRowMenu(outlet(), 0)` (or `-1` for the last row) from `tests/rowMenu.js`
+first. The same gate moved capitalised detail labels to sentence case; tests that read a label
+were updated inside their quotes (`scratch/pcc-7.5c/relabel-tests.js`, map in `label-map.json`).

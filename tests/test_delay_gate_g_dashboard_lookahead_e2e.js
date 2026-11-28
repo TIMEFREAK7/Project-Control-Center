@@ -200,8 +200,8 @@ function todayPlusDays(days) {
   await check("Project Lookahead shows the critical activity with '1 open delay' in its meta line, without changing its Critical badge", async () => {
     win.PCC.router.go("projectLookahead");
     await flush();
-    var winBtn60 = Array.from(dom.window.document.querySelectorAll("button")).find((b) => b.textContent.trim() === "60 Day");
-    assert.ok(winBtn60, "60 Day window toggle not found");
+    var winBtn60 = Array.from(dom.window.document.querySelectorAll("button")).find((b) => b.textContent.trim() === "60 days");
+    assert.ok(winBtn60, "60 days window toggle not found");
     winBtn60.click();
     await flush();
     var row = findRowByText(dom, "Foundation Pour");

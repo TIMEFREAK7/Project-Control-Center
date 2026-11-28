@@ -10,6 +10,7 @@ const path = require("path");
 const assert = require("assert");
 const { JSDOM } = require("jsdom");
 const FDBFactory = require("fake-indexeddb/lib/FDBFactory");
+const { openRowMenu } = require("./rowMenu");
 
 const INDEX_PATH = path.join(__dirname, "..", "index.html");
 
@@ -81,6 +82,7 @@ function findButtonByText(dom, text) {
     // (see CLAUDE.md's React migration notes), so await flush() before reading the
     // resulting DOM.
     await flush();
+    await openRowMenu(outlet(), 0);
     findButtonByText(dom, "Edit").click();
     await flush();
     var statusSelect = outlet().querySelector("#rfifield-status");
@@ -105,6 +107,7 @@ function findButtonByText(dom, text) {
     });
     win.PCC.router.render();
     await flush();
+    await openRowMenu(outlet(), -1);
     var editButtons = Array.from(outlet().querySelectorAll("button")).filter((b) => b.textContent.trim() === "Edit");
     editButtons[editButtons.length - 1].click();
     await flush();
